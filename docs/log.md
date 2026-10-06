@@ -17,3 +17,4 @@
 | 2026-10-06 | builder (helper session) | TopStock pre-flight checks: all pass (Playwright CLI 0.1.22 with committed config on Chromium 1247 and WebKit 2368, 0 console messages; three skills listed; Context7 answered next-intl from `/amannn/next-intl`) |
 | 2026-10-06 | Haider | Cloud environment "Default" (the one this work runs in) edited and renamed TopStock: Custom network list from Cloud Workflow section 2 and the corrected setup script pasted (read as yes to PR #4 question 1) |
 | 2026-10-06 | builder | TopStock setup script ran in 58 s (well under the ~5-minute caching limit); the helper session's checks passed (commit 4a34adb). Sign-off rows 1 to 3 now verified |
+| 2026-10-06 | Haider | PR #4 questions: yes to all. Setup script correction confirmed; tool 1 checked against a localhost test page instead of example.com (Cloud Workflow section 3 row 1 updated); tool 5 (web-design-guidelines) verification waived until the Day 1 scaffold |
