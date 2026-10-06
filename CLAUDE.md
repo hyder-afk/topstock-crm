@@ -1,7 +1,14 @@
 # TopStock Wholesale CRM + IMS
+
 Sales CRM and inventory for a wholesale importer in France. DESKTOP/MACBOOK FIRST, fully usable on phones.
 English + French. Users: Haider, Henri, Kais (all admins; roles admin/manager/rep stay in the schema).
 No Google Workspace: no mailbox sync, no calendar sync. Email = open the mail app + one-tap log.
+
+## BUILD MODE: CLOUD ONLY (since 6 Oct 2026)
+Built in Claude Code cloud sessions + GitHub + Vercel + Supabase, never on Haider's Mac.
+Read docs/TopStock_CRM_Cloud_Workflow.md before any step; it overrides any instruction that assumes his Mac.
+Every change: branch -> PR -> CI green -> Vercel preview -> advisor approves -> Haider merges.
+Supabase: dev only, fake data; production lives in a separate Supabase account Claude never reaches.
 
 ## Stack
 Next.js App Router + TypeScript, Tailwind, shadcn/ui, Motion, TanStack Query/Table/Virtual,

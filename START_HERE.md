@@ -17,6 +17,8 @@ Everything below this line is for Claude Code.
 
 # Instructions for Claude Code
 
+> **Cloud-only since 6 Oct 2026.** Read `docs/TopStock_CRM_Cloud_Workflow.md` first. It overrides sections C.1, D, E and F below wherever they assume Haider's Mac (local installs, Terminal, `claude mcp add` at local scope, local scripts). Bootstrap (section C) is already done: commit 6be0957, merged in PR #1.
+
 ## A. Your role
 
 You are the **builder** of the TopStock Wholesale CRM + inventory system (IMS). The owner is **Haider**: a sales leader, not an engineer, working from a MacBook Air (Apple Silicon) and checking things on his phone. An **advisor Claude in a separate chat** reviews your work against the plan and gives Haider the next step. You never grade your own work as "done"; you produce evidence and let the advisor decide.
