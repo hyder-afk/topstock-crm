@@ -52,9 +52,12 @@ Never in environment variables: a `service_role` / secret key, a database passwo
 
 ```bash
 #!/bin/bash
-npm install -g @playwright/cli@latest
-npx -y playwright@latest install --with-deps chromium webkit || npx -y playwright@latest install chromium webkit
+npm install -g @playwright/cli@0.1.22 || true
+playwright-cli install-browser chromium --with-deps || playwright-cli install-browser chromium || true
+playwright-cli install-browser webkit --with-deps || playwright-cli install-browser webkit || true
 ```
+
+(Correction proposed by the builder in the pre-flight, 6 Oct 2026; **Haider applied it to the TopStock environment and confirmed it the same day**; it ran in 58 seconds. The original script was `npm install -g @playwright/cli@latest` followed by `npx -y playwright@latest install --with-deps chromium webkit || npx -y playwright@latest install chromium webkit`. Why it changed: `@playwright/cli` 0.1.22 bundles its own Playwright 1.64 pre-release, which needs Chromium build 1247 and WebKit 2368; `npx playwright@latest install` fetches the 1.63.0 builds (1243 and 2359), so `playwright-cli` would not find its browser. The CLI's own `install-browser` fetches the matching builds. `|| true` keeps a failed download from blocking every new session (a setup script that exits non-zero stops the session from starting); the first session then reports the missing tool. Bump the pinned version on dependency update day.)
 
 Once the project pins its own `@playwright/test` version (Day 1), Claude Code adds a SessionStart hook in `.claude/settings.json` that runs `npm ci` and installs the matching browser build if it differs.
 
@@ -64,7 +67,7 @@ A fresh VM has nothing from earlier sessions except what is in the repository an
 
 | # | Tool | Cloud setup | Verify |
 |---|---|---|---|
-| 1 | Playwright CLI + Playwright Test | CLI and browsers from the setup script; `@playwright/test` as a devDependency; `playwright-cli install --skills` output committed to `.claude/skills/` | Screenshot of `https://example.com` saved to `docs/evidence/preflight/` |
+| 1 | Playwright CLI + Playwright Test | CLI and browsers from the setup script; `@playwright/test` as a devDependency; `playwright-cli install --skills` output committed to `.claude/skills/` | Screenshot of a localhost test page (`docs/evidence/preflight/test-page.html`) in Chromium and WebKit saved to `docs/evidence/preflight/` (changed from `https://example.com` by Haider, 6 Oct 2026: example.com is not on the TopStock network list, and Playwright points only at localhost) |
 | 2 | Taste Skill | Read its `SKILL.md` first, then commit it to `.claude/skills/design-taste-frontend/`, pinned to a commit hash noted in `docs/log.md` | Listed as an available skill in a new session |
 | 3 | Context7 | `.mcp.json` at the repo root: `{"mcpServers": {"context7": {"type": "http", "url": "https://mcp.context7.com/mcp"}}}` | New session answers "How do I set up next-intl with the App Router? use context7" and names the docs |
 | 4 | Supabase MCP (dev, read-only) | `.mcp.json` entry with type `http` and URL `https://mcp.supabase.com/mcp?project_ref=<dev-project-ref>&read_only=true` (feature groups limited per the official Supabase MCP docs); token from the API credential | "List the tables using MCP tools" shows only the dev project. **Pending until Day 0** |
