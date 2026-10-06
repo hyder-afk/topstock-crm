@@ -11,8 +11,11 @@ This addendum **overrides** every instruction in `START_HERE.md`, the Master Pla
 1. Haider starts a session at **claude.ai/code** on `hyder-afk/topstock-crm`, in the cloud environment **TopStock** (section 2).
 2. Claude Code works on a branch, runs lint, typecheck and tests in the VM, runs the app (`next dev`) inside the VM against the Supabase **dev** project, takes Playwright screenshots, commits, pushes and opens a **pull request**.
 3. GitHub Actions runs CI on the PR. Vercel builds a **preview deployment** and posts its URL on the PR.
-4. Haider opens the preview URL on his phone or any browser (signed in to Vercel), and pastes Claude Code's `REPORT` into the advisor chat.
-5. When the advisor approves and CI is green, Haider clicks **Merge**. `main` deploys to Vercel production (Pro plan before go-live).
+4. Before reporting, Claude Code runs the **`advisor` subagent** (`.claude/agents/advisor.md`): a read-only reviewer with a fresh context that checks the step against the plan, the security checklist and the evidence bundle. Claude Code fixes what it raises until it returns APPROVED.
+5. Claude Code shows Haider the `REPORT` with the advisor's verdict and the preview link. Haider looks at the preview on his phone or any browser (signed in to Vercel).
+6. When the advisor approved and CI is green, Haider clicks **Merge**. `main` deploys to Vercel production (Pro plan before go-live).
+
+Haider works **only in Claude Code**; there is no separate advisor chat (decided 6 Oct 2026).
 
 Sessions are disposable; the **repository is the memory**: `CLAUDE.md`, `docs/`, `docs/log.md`. Commit often: an idle session's VM is reclaimed and running work is lost (the conversation is kept).
 
@@ -107,7 +110,7 @@ A Supabase personal access token can reach **every project in every organisation
 
 ## 9. Order of work from here
 
-1. **Advisor PR merged** (this file).
+1. **PR #2 merged** (this file and the `advisor` subagent).
 2. **Cloud environment TopStock** created with the network list and setup script (section 2). Variables and credential come later.
 3. **Tooling pre-flight** in a new session (tools 1, 2, 3, 5; tool 4 pending), delivered as a PR with the sign-off table.
 4. **Day 0 accounts** (Haider, on the web, one at a time): Supabase account A + `topstock-dev`; Supabase account B + `topstock-prod`; Vercel import with All Deployments protection; MFA on GitHub, Vercel, both Supabase accounts and email. Then environment variables, API credential, GitHub repository secrets, and tool 4.
