@@ -8,9 +8,9 @@ Cloud Workflow (Addendum B) section 3: tools 1, 2, 3 and 5. Tool 4 waits for Day
 
 | Tool | Installed | Verified (output shown) | Waived or pending (reason) |
 |---|---|---|---|
-| 1. Playwright CLI + Playwright Test | **Partly.** Skill (from `playwright-cli install --skills`, with local edits, see below) and `.playwright/cli.config.json` (use Playwright's Chromium, not Google Chrome) are committed. The CLI itself, `@playwright/cli` 0.1.22, exists only in this session's throwaway VM; in the cloud it comes from the setup script, which is a proposal not yet in any environment | **Partial.** The CLI opened a localhost test page and took screenshots at 1440 px, light and dark (`docs/evidence/preflight/playwright-cli-localhost-1440-*.png`); console showed one 404 for the test server's missing `favicon.ico`. This ran on the preinstalled Chromium 1194 through a temporary config in the scratchpad, **not** with the committed config, the CLI's own Chromium 1247 or WebKit | TopStock session: run with the committed config and the setup script's browsers, Chromium and WebKit. `@playwright/test` devDependency arrives with the Day 1 scaffold (Cloud Workflow section 2). Proposed, **Haider to approve:** check against a localhost test page instead of the plan's `https://example.com` (Cloud Workflow section 3, row 1). `example.com` is not on the TopStock network list, so that check could never pass, and the plan's own guardrail says to point Playwright only at localhost |
-| 2. Taste Skill | Yes. `.claude/skills/design-taste-frontend/SKILL.md` (v2) + `LICENSE` (MIT), byte-identical to upstream | **No.** Not yet listed in a new session | TopStock session |
-| 3. Context7 | Yes. `.mcp.json` (`context7`, http, `https://mcp.context7.com/mcp`, no API key). `.claude/settings.json` enables exactly this one server (`enabledMcpjsonServers`) and grants no permissions | **No.** `mcp.context7.com` is blocked in Default | TopStock session: the next-intl question with "use context7" |
+| 1. Playwright CLI + Playwright Test | **Partly.** Skill (from `playwright-cli install --skills`, with local edits, see below) and `.playwright/cli.config.json` (use Playwright's Chromium, not Google Chrome) are committed. The CLI itself, `@playwright/cli` 0.1.22, exists only in this session's throwaway VM; in the cloud it comes from the setup script, which is a proposal not yet in any environment | **Pass (TopStock session, 6 Oct 2026).** `playwright-cli` 0.1.22 with the committed config and no extra flags opened the localhost test page in Chromium (headless shell 1247 from `/opt/pw-browsers`) and, with `--browser=webkit`, in WebKit 2368. Screenshots at 1440 px: `docs/evidence/preflight/topstock-chromium-1440-light.png`, `topstock-chromium-1440-dark.png`, `topstock-webkit-1440-light.png`, all showing the test page. Console: 0 messages in both browsers. Earlier Default-environment run: `playwright-cli-localhost-1440-*.png` | `@playwright/test` devDependency arrives with the Day 1 scaffold (Cloud Workflow section 2). Proposed, **Haider to approve:** check against a localhost test page instead of the plan's `https://example.com` (Cloud Workflow section 3, row 1). `example.com` is not on the TopStock network list, so that check could never pass, and the plan's own guardrail says to point Playwright only at localhost |
+| 2. Taste Skill | Yes. `.claude/skills/design-taste-frontend/SKILL.md` (v2) + `LICENSE` (MIT), byte-identical to upstream | **Pass.** `design-taste-frontend` is listed in the TopStock session's available skills (with `playwright-cli` and `web-design-guidelines`) | None |
+| 3. Context7 | Yes. `.mcp.json` (`context7`, http, `https://mcp.context7.com/mcp`, no API key). `.claude/settings.json` enables exactly this one server (`enabledMcpjsonServers`) and grants no permissions | **Pass.** `context7` MCP connected in the TopStock session (tools `resolve-library-id`, `query-docs`). The next-intl App Router question resolved to `/amannn/next-intl` (v4.14.7) and returned its docs (`getting-started/app-router.mdx`, `usage/plugin.mdx`, `routing/setup.mdx`) | None |
 | 4. Supabase MCP (dev, read-only) | No | No | Pending until Day 0 |
 | 5. Web design guidelines | Yes. `.claude/skills/web-design-guidelines/SKILL.md` (Vercel, MIT per upstream README), rules URL pinned (see below) | **No.** The skill has not run. The pinned rules were fetched (SHA-256 matches) and applied by hand to the test page (`docs/evidence/preflight/web-design-guidelines-smoke.md`) | Real verification needs the Day 1 scaffold (Cloud Workflow section 3, row 5). Proposed: **waived until Day 1, Haider to agree.** Skill listing in the TopStock session |
 
@@ -66,6 +66,55 @@ The original script installed browsers with `npx playwright@latest`, which today
 | Semgrep OSS | Not applicable yet: no application code. Runs in CI from Day 1 |
 | npm audit, lint, typecheck, unit tests, Playwright suite | Not applicable yet: no `package.json` until the Day 1 scaffold |
 | CI, Vercel preview | Do not exist yet (Day 0 / Day 1 work) |
+
+## TopStock session results (6 October 2026)
+
+Helper session in the TopStock environment, branch `claude/busy-darwin-xech8m`. Setup-script duration was not visible to this session and is not recorded here.
+
+**0. Environment**
+
+```
+$ which playwright-cli && playwright-cli --version
+/opt/node22/bin/playwright-cli
+0.1.22
+$ ls /opt/pw-browsers
+chromium  chromium-1194  chromium-1247  chromium_headless_shell-1194  chromium_headless_shell-1247  ffmpeg-1011  webkit-2368
+$ node -v
+v22.22.0
+```
+
+**a. Playwright CLI (committed `.playwright/cli.config.json`, no extra flags): pass.** Test page served with `python3 -m http.server 4173 --bind 127.0.0.1 --directory docs/evidence/preflight`.
+
+```
+$ playwright-cli open http://127.0.0.1:4173/test-page.html
+### Browser `default` opened with pid 2154.
+- Page URL: http://127.0.0.1:4173/test-page.html
+- Page Title: TopStock pre-flight
+$ playwright-cli resize 1440 900 / screenshot / set-color-scheme dark / screenshot
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.emulateMedia({ colorScheme: 'dark' });
+$ playwright-cli console
+Total messages: 0 (Errors: 0, Warnings: 0)
+$ playwright-cli close
+Browser 'default' closed
+
+$ playwright-cli open --browser=webkit http://127.0.0.1:4173/test-page.html
+### Browser `default` opened with pid 2314.
+- Page Title: TopStock pre-flight
+$ playwright-cli resize 1440 900 / screenshot
+$ playwright-cli console
+Total messages: 0 (Errors: 0, Warnings: 0)
+$ playwright-cli close
+Browser 'default' closed
+```
+
+Browser builds in use (from the running processes): `/opt/pw-browsers/chromium_headless_shell-1247` for the default run, `/opt/pw-browsers/webkit-2368` for `--browser=webkit`. The 1194 builds were not used. Evidence, each opened and checked to show the test page: `docs/evidence/preflight/topstock-chromium-1440-light.png`, `topstock-chromium-1440-dark.png` (dark scheme applied), `topstock-webkit-1440-light.png`. No skill-mismatch or update warning was printed this run.
+
+**b. Skills: pass.** The session's available-skills list includes `playwright-cli`, `design-taste-frontend` and `web-design-guidelines`.
+
+**c. Context7: pass.** The `context7` MCP server connected (tools `mcp__context7__resolve-library-id` and `mcp__context7__query-docs`). Question: "How do I set up next-intl with the App Router? use context7". `resolve-library-id` returned `/amannn/next-intl` (High reputation, 738 snippets, version v4.14.7), plus `/websites/next-intl_dev` and others; `query-docs` on `/amannn/next-intl` returned sections from `docs/src/pages/docs/getting-started/app-router.mdx`, `docs/src/pages/docs/usage/plugin.mdx` and `docs/src/pages/docs/routing/setup.mdx` (all in `github.com/amannn/next-intl`). Answer: install `next-intl`, wrap `next.config.ts` with `createNextIntlPlugin()` (request config at `i18n/request.ts` by default), add `createMiddleware(routing)` in `src/proxy.ts` with a matcher that skips `/api`, `/_next`, `/_vercel` and files with a dot, and wrap `children` in the root layout with `NextIntlClientProvider` so Client Components get the messages.
+
+**Failures:** none.
 
 ## Before merge, in this order
 
