@@ -62,7 +62,7 @@ The original script installed browsers with `npx playwright@latest`, which today
 | Check | Result |
 |---|---|
 | `/security-review` | First run on 686ced6: it raised the Playwright skill's `allowed-tools` grant (Medium); the false-positive check scored it 3/10 as a vulnerability (it only matters if the agent is first manipulated by injected text), so hardening rather than a qualifying finding; removed anyway (local edit 1). Re-run on 421c25e (the last commit that changed anything outside `docs/`): **no findings**; it confirmed the grant is gone and that no committed setting or skill grants permissions, adds hooks or auto-approves anything |
-| gitleaks | v8.30.1 (built from source with Go into the scratchpad; not installed in the repo). On 421c25e: `gitleaks git --redact .` (14 commits scanned) and `gitleaks dir --redact .` (working tree), both "no leaks found" |
+| gitleaks | v8.30.1 (built from source with Go into the scratchpad; not installed in the repo). On 421c25e: `gitleaks git --redact .` (14 commits scanned) and `gitleaks dir --redact .` (working tree), both "no leaks found". Re-run on 5be5d4b: `gitleaks git` (16 commits scanned) and `gitleaks dir`, both "no leaks found" |
 | Semgrep OSS | Not applicable yet: no application code. Runs in CI from Day 1 |
 | npm audit, lint, typecheck, unit tests, Playwright suite | Not applicable yet: no `package.json` until the Day 1 scaffold |
 | CI, Vercel preview | Do not exist yet (Day 0 / Day 1 work) |
@@ -124,7 +124,7 @@ Browser builds in use (from the running processes): `/opt/pw-browsers/chromium_h
    - b. The skills `playwright-cli`, `design-taste-frontend` and `web-design-guidelines` are listed.
    - c. Context7 answers "How do I set up next-intl with the App Router? use context7" and names the docs.
    It commits the evidence and the updated sign-off table to this branch.
-3. **Done (6 Oct 2026):** `/security-review` re-run on 421c25e, no findings; gitleaks on 421c25e, no leaks. Later commits change only `docs/preflight.md` and `docs/log.md`; gitleaks is re-run on the final head. Original instruction: **Re-run `/security-review` and gitleaks on the final head.**
+3. **Done (6 Oct 2026):** `/security-review` re-run on 421c25e, no findings; gitleaks on 421c25e, no leaks. Later commits change only files under `docs/` (`preflight.md`, `log.md`, `TopStock_CRM_Cloud_Workflow.md`); gitleaks re-run on 5be5d4b: 16 commits and the working tree, no leaks. Original instruction: **Re-run `/security-review` and gitleaks on the final head.**
 4. **Run the advisor again** on the final head.
 5. **Haider decides (6 Oct 2026):** yes to all three PR questions (setup script, localhost test page, tool 5 waived until Day 1). Merge after the final advisor review.
 
