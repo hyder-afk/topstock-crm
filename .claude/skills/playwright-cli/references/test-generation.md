@@ -153,7 +153,7 @@ test -f playwright.config.ts || test -f playwright.config.js
 npx --no-install playwright --version
 ```
 
-If there is no Playwright install, do not bootstrap one (TopStock local edit: upstream suggests `npm init playwright@latest`, which is unpinned). In TopStock, Playwright Test is a pinned devDependency of the project from the Day 1 scaffold; run it with:
+If there is no Playwright install, stop and report it (CLAUDE.md: if a tool is unavailable, say so and stop); do not bootstrap one (TopStock local edit: upstream suggests `npm init playwright@latest`, which is unpinned). From the Day 1 scaffold, Playwright Test is a pinned devDependency of the project; run it with:
 
 ```bash
 npx --no-install playwright test
