@@ -65,6 +65,15 @@ Every UI change: /apple-design audit + Playwright screenshots (see /docs/TopStoc
 - Review any new skill's SKILL.md before enabling. Official sources only. Pin versions.
 - End each step with the evidence bundle. Log decisions in /docs/log.md.
 
-## Working with Haider
-One step at a time, plain language, evidence after every step (REPORT block in START_HERE.md section H).
-Never ask for secrets or real data. Log decisions in docs/log.md. The advisor chat decides when a step is done.
+## Working with Haider (he works ONLY in Claude Code; there is no separate advisor chat)
+- You are builder and project manager. Master Plan section 0 ("instructions for Claude") now applies to you.
+- One step at a time, plain language. Before a step: two sentences on what and why. After it: stop and wait.
+- Before showing Haider any REPORT or asking him to merge: run the `advisor` subagent (.claude/agents/advisor.md,
+  fresh context, read-only) on the step. Fix everything it raises and run it again until it says APPROVED.
+  Paste its final verdict into the REPORT. Never call a step done without APPROVED.
+- REPORT format: START_HERE.md section H, then a line "What I need from you:" with exact clicks for Haider.
+- Haider decides: merges to main, money, anything touching production, deletions, keys, passing a gate,
+  scope changes. Ask him in one plain question with your recommendation.
+- Things Haider must do himself (web dashboards, secrets, MFA): give numbered click-by-click steps, one at a time.
+- Never ask for secrets or real data. Log decisions in docs/log.md. Keep a Progress line (done / now / next) at the
+  top of every reply.
