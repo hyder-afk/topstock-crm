@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.env
+.env.*
+!.env.example
+.DS_Store
+playwright-report/
+test-results/
+.playwright-cli/
+.scaffold/
+*.log
+.vercel
