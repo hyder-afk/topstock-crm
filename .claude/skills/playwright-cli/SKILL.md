@@ -3,6 +3,8 @@ name: playwright-cli
 description: Automate browser interactions, test web pages and work with Playwright tests.
 ---
 
+> **TopStock note (local edit, see `docs/preflight.md` "Local edits"):** this copy differs on purpose from the skill bundled with `@playwright/cli`. Its `allowed-tools` line was removed, so no Playwright command skips the permission prompt. Because of that, `playwright-cli` prints "The playwright-cli skill at '.claude/skills/playwright-cli' does not match the tool version. Run `playwright-cli install --skills`", and it may print an `npm install -g @playwright/cli@latest` update notice. Both messages are expected. **Do not run `playwright-cli install --skills` and do not upgrade the CLI in a session:** reinstalling puts the removed line back, and the CLI version is pinned in the cloud environment's setup script, changed only through a reviewed PR.
+
 # Browser Automation with playwright-cli
 
 ## Quick start
