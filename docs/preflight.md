@@ -62,7 +62,7 @@ The original script installed browsers with `npx playwright@latest`, which today
 | Check | Result |
 |---|---|
 | `/security-review` | Run on commit 686ced6. It raised the Playwright skill's `allowed-tools` grant (Medium). The false-positive check scored it 3/10 as a vulnerability: it only matters if the agent is first manipulated by injected text, so it is hardening, not a qualifying finding. Removed anyway (local edit 1). No findings at the review's confidence bar. To re-run on the final head before merge |
-| gitleaks | v8.30.1 (built from source with Go into the scratchpad; not installed in the repo): `gitleaks git --redact .` scanned 7 commits, `gitleaks dir --redact .` scanned the working tree; both "no leaks found" |
+| gitleaks | v8.30.1 (built from source with Go into the scratchpad; not installed in the repo). On 61c1035: `gitleaks git --redact .` (9 commits scanned) and `gitleaks dir --redact .` (working tree), both "no leaks found". To re-run on the final head before merge |
 | Semgrep OSS | Not applicable yet: no application code. Runs in CI from Day 1 |
 | npm audit, lint, typecheck, unit tests, Playwright suite | Not applicable yet: no `package.json` until the Day 1 scaffold |
 | CI, Vercel preview | Do not exist yet (Day 0 / Day 1 work) |
