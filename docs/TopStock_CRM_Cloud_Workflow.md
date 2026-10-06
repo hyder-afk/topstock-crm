@@ -52,9 +52,12 @@ Never in environment variables: a `service_role` / secret key, a database passwo
 
 ```bash
 #!/bin/bash
-npm install -g @playwright/cli@latest
-npx -y playwright@latest install --with-deps chromium webkit || npx -y playwright@latest install chromium webkit
+npm install -g @playwright/cli@0.1.22
+playwright-cli install-browser chromium --with-deps || playwright-cli install-browser chromium
+playwright-cli install-browser webkit --with-deps || playwright-cli install-browser webkit
 ```
+
+(Corrected in the pre-flight, 6 Oct 2026: `@playwright/cli` 0.1.22 bundles its own Playwright 1.64 pre-release, which needs Chromium build 1247 and WebKit 2368. `npx playwright@latest install` would fetch the 1.63.0 builds (1243 and 2359), and `playwright-cli` would not find its browser. The CLI's own `install-browser` fetches the matching builds. Bump the pinned version on dependency update day.)
 
 Once the project pins its own `@playwright/test` version (Day 1), Claude Code adds a SessionStart hook in `.claude/settings.json` that runs `npm ci` and installs the matching browser build if it differs.
 
