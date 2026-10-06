@@ -8,7 +8,7 @@
 
    `Read START_HERE.md and follow it.`
 
-4. Claude Code works **one step at a time**. After every step it prints a block that starts with `REPORT`. Copy that block into the advisor chat (the chat where you got this file). The advisor checks it and tells you the next step.
+4. Claude Code works **one step at a time**. After every step it has its own reviewer (the `advisor` subagent) check the work, then prints a `REPORT` with what it needs from you. You only work in Claude Code; reply "go" for the next step.
 5. Optional: from the handover pack zip, copy `prototype/topstock-crm-prototype.html` into `docs/prototype/` and the two logo PNGs into `docs/assets/`. Not needed to start.
 
 Everything below this line is for Claude Code.
@@ -17,7 +17,7 @@ Everything below this line is for Claude Code.
 
 # Instructions for Claude Code
 
-> **Cloud-only since 6 Oct 2026.** Read `docs/TopStock_CRM_Cloud_Workflow.md` first. It overrides sections C.1, D, E and F below wherever they assume Haider's Mac (local installs, Terminal, `claude mcp add` at local scope, local scripts). Bootstrap (section C) is already done: commit 6be0957, merged in PR #1.
+> **Cloud-only since 6 Oct 2026.** Read `docs/TopStock_CRM_Cloud_Workflow.md` first. It overrides sections C.1, D, E and F below wherever they assume Haider's Mac (local installs, Terminal, `claude mcp add` at local scope, local scripts). Bootstrap (section C) is already done: commit 6be0957, merged in PR #1. There is **no separate advisor chat** any more: wherever this file says "the advisor", run the `advisor` subagent (`.claude/agents/advisor.md`) and follow the "Working with Haider" rules in `CLAUDE.md`.
 
 ## A. Your role
 
