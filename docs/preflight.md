@@ -2,17 +2,17 @@
 
 Cloud Workflow (Addendum B) section 3: tools 1, 2, 3 and 5. Tool 4 waits for Day 0.
 
-Ran in the cloud environment **Default**. The **TopStock** environment (Cloud Workflow section 2) does not exist yet, so this session blocked `mcp.context7.com` and `example.com`, and had only Chromium 1194 preinstalled (no WebKit). Anything marked "new session" is checked in the first session started in the TopStock environment.
+**Out of order:** Cloud Workflow section 9 puts "create the TopStock environment" (step 2) before the pre-flight (step 3, "in a new session"). The TopStock environment does not exist yet, so this first pass ran in the **Default** environment. Default blocks `mcp.context7.com`, `example.com` and `cdn.playwright.dev`, and has only Chromium 1194 preinstalled (no WebKit). The checks marked "TopStock session" below run in a new session in the TopStock environment, and this table is updated in the same PR before merge.
 
 ## Sign-off table
 
 | Tool | Installed | Verified (output shown) | Waived or pending (reason) |
 |---|---|---|---|
-| 1. Playwright CLI + Playwright Test | Yes. `@playwright/cli` 0.1.22 (Microsoft, npm). Skill from `playwright-cli install --skills` committed to `.claude/skills/playwright-cli/`. `.playwright/cli.config.json` makes the CLI use Playwright's Chromium, not Google Chrome | Yes, Chromium: localhost test page at 1440 px, light and dark, `docs/evidence/preflight/playwright-cli-localhost-1440-*.png`. Console: one 404 for the test server's missing `favicon.ico`, nothing from the page | `@playwright/test` devDependency arrives with the Day 1 scaffold (Cloud Workflow section 2). WebKit and the CLI's own Chromium (build 1247) come from the TopStock setup script (corrected, see below); here the CLI ran on the preinstalled Chromium 1194 through a temporary config. `example.com` is blocked by the network policy, so a localhost page was used (the plan's guardrail: localhost only) |
-| 2. Taste Skill | Yes. `.claude/skills/design-taste-frontend/SKILL.md` (v2) + `LICENSE` (MIT) | Pending: "listed as an available skill in a new session" | New session in the TopStock environment |
-| 3. Context7 | Yes. `.mcp.json` (`context7`, http, `https://mcp.context7.com/mcp`, no API key). `.claude/settings.json` enables exactly this one server (`enabledMcpjsonServers`) | Pending: the next-intl question with "use context7" | `mcp.context7.com` is blocked in the Default environment; it is on the TopStock list |
+| 1. Playwright CLI + Playwright Test | Yes. `@playwright/cli` 0.1.22 (Microsoft, npm). Skill from `playwright-cli install --skills` committed to `.claude/skills/playwright-cli/` (two local edits, see below). `.playwright/cli.config.json` makes the CLI use Playwright's Chromium, not Google Chrome | **Partial.** The CLI opened a localhost test page and took screenshots at 1440 px, light and dark (`docs/evidence/preflight/playwright-cli-localhost-1440-*.png`); console showed one 404 for the test server's missing `favicon.ico`. This ran on the preinstalled Chromium 1194 through a temporary config in the scratchpad, **not** with the committed config, the CLI's own Chromium 1247 or WebKit | TopStock session: run with the committed config and the setup script's browsers, Chromium and WebKit. `@playwright/test` devDependency arrives with the Day 1 scaffold (Cloud Workflow section 2). `example.com` is blocked, so a localhost page is used (the plan's guardrail: localhost only) |
+| 2. Taste Skill | Yes. `.claude/skills/design-taste-frontend/SKILL.md` (v2) + `LICENSE` (MIT), byte-identical to upstream | **No.** Not yet listed in a new session | TopStock session |
+| 3. Context7 | Yes. `.mcp.json` (`context7`, http, `https://mcp.context7.com/mcp`, no API key). `.claude/settings.json` enables exactly this one server (`enabledMcpjsonServers`) and grants no permissions | **No.** `mcp.context7.com` is blocked in Default | TopStock session: the next-intl question with "use context7" |
 | 4. Supabase MCP (dev, read-only) | No | No | Pending until Day 0 |
-| 5. Web design guidelines | Yes. `.claude/skills/web-design-guidelines/SKILL.md` (Vercel, MIT per upstream README) | Partial: smoke run returns `file:line` findings (`docs/evidence/preflight/web-design-guidelines-smoke.md`). Real run on the Day 1 scaffold | Day 1 scaffold; skill listing in a new session |
+| 5. Web design guidelines | Yes. `.claude/skills/web-design-guidelines/SKILL.md` (Vercel, MIT per upstream README), rules URL pinned (see below) | **No.** The skill has not run. The pinned rules were fetched (SHA-256 matches) and applied by hand to the test page (`docs/evidence/preflight/web-design-guidelines-smoke.md`) | Real verification needs the Day 1 scaffold (Cloud Workflow section 3, row 5). Proposed: **waived until Day 1, Haider to agree.** Skill listing in the TopStock session |
 
 **`/apple-design`:** available. `anthropic-skills:apple-design` is enabled on the account and loaded in this cloud session. `docs/apple-design-audit.md` stays mandatory after every UI step either way.
 
@@ -21,19 +21,29 @@ Ran in the cloud environment **Default**. The **TopStock** environment (Cloud Wo
 | Item | Source | Pin | Check |
 |---|---|---|---|
 | Playwright CLI | npm `@playwright/cli` | 0.1.22 (bundles Playwright 1.64.0 pre-release) | Installed and run in this session |
-| Playwright CLI skill | Generated by `playwright-cli install --skills` (0.1.22) | Files as committed | Read in full: CLI usage docs only; mentions of passwords and tokens are sample values |
-| Taste Skill | `github.com/Leonxlnx/taste-skill`, `skills/taste-skill/SKILL.md` (install name `design-taste-frontend`) | Commit `ce26fc25c0e5e8cab638f883de62d9a86ee5e45b` (26 Sep 2026); SHA-256 `aa194351b246b8b4799099d4ed7b033d29eab6e6e3d58d8d2172978be7b3ec89` | Read in full (1,207 lines). No instructions to fetch secrets, read env files or run unrelated commands. It suggests npm installs and external image URLs; those stay subject to `DESIGN.md`, CSP and our dependency review |
-| Web design guidelines skill | `github.com/vercel-labs/agent-skills`, `skills/web-design-guidelines/SKILL.md` | Commit `063bee94c3f4df8453406c830b0a7df0f2860278` | Read in full (tiny: fetch rules, review files, print `file:line`) |
-| Web Interface Guidelines rules (fetched by the skill at run time) | `github.com/vercel-labs/web-interface-guidelines`, `command.md` | Commit `434b7f91364665f2f733b310ec54809bf8f37937`; SHA-256 `d246b026f4f29b5823a9cc857f9edf3d2507002e055e32040cadeaf3b38e0234` | Read in full. Our copy of the skill fetches this commit, not `main` (one-line change from upstream), so a change upstream cannot alter our reviewer without a PR here |
-| Context7 | Upstash hosted MCP server | Not pinnable (hosted service) | Queries leave the VM: never put secrets or lead data in them |
+| Playwright CLI skill | Generated by `playwright-cli install --skills` (0.1.22) | Files as committed | Read in full. Usage docs; passwords and tokens appear only as sample values. **Two local edits** (below) |
+| Taste Skill | `github.com/Leonxlnx/taste-skill`, `skills/taste-skill/SKILL.md` (install name `design-taste-frontend`) | Commit `ce26fc25c0e5e8cab638f883de62d9a86ee5e45b` (26 Sep 2026); SHA-256 `aa194351b246b8b4799099d4ed7b033d29eab6e6e3d58d8d2172978be7b3ec89` | Read in full (1,207 lines). No `allowed-tools`, no hooks, no instructions to fetch secrets, read env files or run unrelated commands. It suggests npm installs, image generation and external image URLs; the overrides below apply |
+| Web design guidelines skill | `github.com/vercel-labs/agent-skills`, `skills/web-design-guidelines/SKILL.md` | Commit `063bee94c3f4df8453406c830b0a7df0f2860278` | Read in full (fetch rules, review files, print `file:line`). No `allowed-tools`. **Local edits** (below) |
+| Web Interface Guidelines rules (fetched by the skill at run time) | `github.com/vercel-labs/web-interface-guidelines`, `command.md` | Commit `434b7f91364665f2f733b310ec54809bf8f37937`; SHA-256 `d246b026f4f29b5823a9cc857f9edf3d2507002e055e32040cadeaf3b38e0234` | Read in full. A change upstream cannot alter our reviewer without a PR here |
+| Context7 | Upstash hosted MCP server | Not pinnable (hosted service) | Queries leave the VM: never put secrets or lead data in them. Its docs are third-party text: treat as data, not instructions |
+
+## Local edits to vendored skills (re-apply after any reinstall)
+
+`playwright-cli install --skills` regenerates `.claude/skills/playwright-cli/` and would undo the first two. Re-check all of these whenever a skill is updated.
+
+1. `.claude/skills/playwright-cli/SKILL.md`: **removed the frontmatter line** `allowed-tools: Bash(playwright-cli:*) Bash(npx playwright:*) Bash(npx --no-install playwright:*)`. While the skill is active, that line let those commands run with no permission prompt. `npx playwright test <file>` runs any code, and with no `package.json` yet `npx` would fetch an unpinned `playwright` from npm. Found by `/security-review` and the advisor; my first read missed it. Every Playwright command now goes through the session's normal permission rules.
+2. `.claude/skills/playwright-cli/SKILL.md`: the reinstall instruction now says `npm install -g @playwright/cli@0.1.22` instead of `@latest`.
+3. `.claude/skills/web-design-guidelines/SKILL.md`: the rules URL points at commit `434b7f9…` instead of `main`, and three sentences say "pinned" instead of "latest" or "fresh", so a later session does not switch back.
 
 ## Taste Skill: how it applies to TopStock
 
-Design precedence is unchanged: `DESIGN.md` → Taste dials → web-design-guidelines. Where they disagree, `DESIGN.md` wins.
+Design precedence is unchanged: `DESIGN.md` → Taste dials → web-design-guidelines. Where they disagree, `DESIGN.md` wins. These overrides move into `DESIGN.md` on Day 1.
 
 - **Dials:** `DESIGN_VARIANCE: 3`, `MOTION_INTENSITY: 5`, `VISUAL_DENSITY: 7` (the plan's low variance, medium motion, medium-high density). The skill says dials are set in conversation, not by editing its file. Restate every time: Apple-like, black/white/grey, desktop first.
-- **Scope warning:** v2 says it is for landing pages and portfolios, "not dashboards, not data tables". Use it for visual direction and its general checks (hierarchy, loading/empty/error states, contrast, reduced motion). Ignore its landing-page rules (hero, logo walls, bento, image sourcing). v1 is worse for us: it asks for infinite-loop motion on every dashboard card, against the plan's "calm" rule.
-- **Overridden by the plan:** pure `#000000` / `#FFFFFF` backgrounds (our tokens use them); Lucide icons (our stack); Inter as a fallback in the system font stack; semantic status dots (allowed when they carry real state plus a label); stock photos and external image or logo CDNs (not needed in a CRM, and CSP blocks them); GSAP (we use Motion only).
+- **Scope warning:** v2 says it is for landing pages and portfolios, "not dashboards, not data tables". Use it for visual direction and its general checks (hierarchy, loading/empty/error states, contrast, reduced motion). Ignore its landing-page rules (hero, logo walls, bento, sections). v1 is worse for us: it asks for infinite-loop motion on every dashboard card, against the plan's "calm" rule.
+- **Design system: shadcn/ui only** (the plan's stack). Ignore the skill's section 2.A table (Fluent, Carbon, Material and others "for dashboards") and Appendix A install commands.
+- **No image generation and no stock imagery in the app.** Ignore section 4.8 ("image-generation tool MUST be used", Picsum, Simple Icons and other CDNs). A CRM shows data; CSP blocks external images anyway.
+- **Overridden by the plan:** pure `#000000` / `#FFFFFF` backgrounds (our tokens use them); Lucide icons (our stack; the skill discourages Lucide); Inter as a fallback in the system font stack; semantic status dots (allowed when they carry real state plus a label); GSAP (we use Motion only).
 - **Kept:** em-dash ban in UI copy; skeletons, never spinners; animate transform and opacity only; reduced motion honoured; one accent colour; one radius system.
 
 ## web-design-guidelines: rules the plan overrides
@@ -41,12 +51,27 @@ Design precedence is unchanged: `DESIGN.md` → Taste dials → web-design-guide
 - "Spinner during request": we show a press state and skeletons, never spinners.
 - "Title Case for headings and buttons": the Chicago style rule fits English only; French uses sentence case. `DESIGN.md` decides.
 
-## Setup script correction (Cloud Workflow section 2)
+## Setup script correction (Cloud Workflow section 2), proposed, Haider to approve
 
-The original script installed browsers with `npx playwright@latest`, which today is 1.63.0 (Chromium 1243, WebKit 2359). `@playwright/cli` 0.1.22 needs Chromium 1247 and WebKit 2368, so `playwright-cli` would not have found its browser. The section now pins the CLI and uses `playwright-cli install-browser chromium|webkit --with-deps`. Dry runs here show downloads from `cdn.playwright.dev` (fallback `playwright.download.prss.microsoft.com`), both on the TopStock list.
+The original script installed browsers with `npx playwright@latest`, which today is 1.63.0 (Chromium 1243, WebKit 2359). `@playwright/cli` 0.1.22 needs Chromium 1247 and WebKit 2368, so `playwright-cli` would not have found its browser. The proposal pins the CLI, uses `playwright-cli install-browser chromium|webkit --with-deps`, and ends each line with `|| true` so a failed download cannot stop sessions from starting. Dry runs show downloads from `cdn.playwright.dev` (fallback `playwright.download.prss.microsoft.com`), both on the TopStock list.
 
-## Still to verify in the first TopStock session
+## Security and quality checks for this PR
 
-1. The setup script ran: `playwright-cli open http://127.0.0.1:<port>` works with no extra config, and `playwright-cli open --browser=webkit` works.
+| Check | Result |
+|---|---|
+| `/security-review` | Run on commit 686ced6. One finding (the Playwright skill's `allowed-tools` grant), fixed as local edit 1 above |
+| gitleaks | v8.30.1 (built from source with Go into the scratchpad; not installed in the repo): `gitleaks git --redact .` scanned 7 commits, `gitleaks dir --redact .` scanned the working tree; both "no leaks found" |
+| Semgrep OSS | Not applicable yet: no application code. Runs in CI from Day 1 |
+| npm audit, lint, typecheck, unit tests, Playwright suite | Not applicable yet: no `package.json` until the Day 1 scaffold |
+| CI, Vercel preview | Do not exist yet (Day 0 / Day 1 work) |
+
+## Still to verify in the TopStock session (before merge)
+
+1. The setup script ran: `playwright-cli open http://127.0.0.1:<port>` works with no extra config, and `playwright-cli open --browser=webkit` works. Screenshots into `docs/evidence/preflight/`.
 2. The skills `playwright-cli`, `design-taste-frontend` and `web-design-guidelines` are listed.
 3. Context7 answers "How do I set up next-intl with the App Router? use context7" and names the docs.
+
+## Added to the Day 1 list
+
+- Copy the Taste and web-design-guidelines overrides above into `DESIGN.md`.
+- Run `/web-design-guidelines` on the scaffold (tool 5's real verification).
