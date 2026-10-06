@@ -406,11 +406,7 @@ If global `playwright-cli` command is not available, try a local version via `np
 npx --no-install playwright --version
 ```
 
-When local version is available, use `npx playwright cli` in all commands. Otherwise, install `playwright-cli` as a global command:
-
-```bash
-npm install -g @playwright/cli@0.1.22
-```
+When local version is available, use `npx playwright cli` in all commands. Otherwise, stop and report it (TopStock local edit: the cloud environment's setup script did not install it). Do not install it in a session: in-session installs vanish with the VM and would hide a broken setup script. The setup script installs `@playwright/cli@0.1.22`.
 
 ## Example: Form submission
 
