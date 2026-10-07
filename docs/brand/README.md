@@ -1,3 +1,5 @@
+> **TopStock repo copy (7 Oct 2026):** only the essentials of Brand Pack v9 are here (this README, tokens, a few logo SVGs, the fonts with their licence). The folder list below describes the full pack, which Haider keeps. One em dash in the hero copy was replaced with a full stop (the UI bans em dashes).
+
 # TopStock Wholesale: Brand Pack v9
 
 Everything for the TopStock identity. Every asset comes as a vector **SVG master** plus an **HD PNG**; stationery and labels also as print-ready **PDF**, the letterhead as **DOCX**.
@@ -17,7 +19,7 @@ Tagline: **Small start. Same grade. Big orders.**
 The brand speaks short, specific and generous: it offers the test bale before anyone asks, never oversells a lot, and tells a buyer which one fits. Numbers over adjectives; one red word per headline; no exclamation marks; lowercase only on social.
 
 - **Tagline:** Small start. Same grade. Big orders.
-- **Hero:** Less sorting. More selling. — We do the grading so your floor doesn't have to. Graded second-hand clothing in sealed, tagged bales, from one test bale to a full container. [Order a test bale] [Talk to us on WhatsApp]
+- **Hero:** Less sorting. More selling. We do the grading so your floor doesn't have to. Graded second-hand clothing in sealed, tagged bales, from one test bale to a full container. [Order a test bale] [Talk to us on WhatsApp]
 - **Manifesto:** Start small. We grow with you. A test bale before a container. The same grade every order. A straight answer on WhatsApp, even when it's "not this lot."
 - **Three points:** Graded, not guessed (every bale sorted by hand and tagged with its grade, weight and category) · Start with one bale (test bale first, container second; order sizes that fit where you are) · People, not a portal (a real person answers, helps you pick, and says when a lot isn't right for you).
 - **How it works:** 1 Tell us what you sell. 2 Order a test bale. 3 Scale when you're ready, at the same grade every time.

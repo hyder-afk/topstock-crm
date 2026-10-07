@@ -1,7 +1,7 @@
 
 <title>TopStock CRM Prototype</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=DM+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&family=DM+Mono:wght@500&display=swap">
 <meta name="theme-color" content="#F5F3EF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0E0E10" media="(prefers-color-scheme: dark)">
 <!-- v4 (7 Oct 2026): TopStock brand pack v9 applied (Black / Signal Red / Chalk, Outfit + DM Mono, block-T lockup), apple-design audit 4. Earlier: v3.2 (6 Oct 2026): decisions applied (4 stages, no Google Workspace, Pipeline tab, inventory for containers), skeleton loaders, apple-design audit 3 -->
@@ -151,7 +151,6 @@ html.tt *{transition:background-color .45s ease,color .45s ease,border-color .45
 :root{
   --red:#F2203E;        /* Signal Red: fills (mark, bead, primary button) */
   --onred:#0E0E10;      /* type on red: TopStock Black, 4.64:1 */
-  --redt:#C0122E;       /* red used as text on light grounds */
   --bg:#F5F3EF;         /* Chalk White page */
   --s1:#FFFFFF;         /* cards */
   --s2:#EBE8E2;         /* wells, tracks, avatars */
@@ -165,15 +164,15 @@ html.tt *{transition:background-color .45s ease,color .45s ease,border-color .45
   --f-data:"DM Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
 }
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --redt:#FF6B7F;--bg:#0E0E10;--s1:#1C1C21;--s2:#2A2A30;--bd:#34343B;--tx:#F5F3EF;--t2:#A8A8B0;
+  --bg:#0E0E10;--s1:#1C1C21;--s2:#2A2A30;--bd:#34343B;--tx:#F5F3EF;--t2:#A8A8B0;
   --ac:#F5F3EF;--act:#0E0E10;--pill:#3A3A42;--glass:rgba(28,28,33,.74);--edge:rgba(255,255,255,.12);--shine:rgba(255,255,255,.06);color-scheme:dark}}
 :root[data-theme="dark"]{
-  --redt:#FF6B7F;--bg:#0E0E10;--s1:#1C1C21;--s2:#2A2A30;--bd:#34343B;--tx:#F5F3EF;--t2:#A8A8B0;
+  --bg:#0E0E10;--s1:#1C1C21;--s2:#2A2A30;--bd:#34343B;--tx:#F5F3EF;--t2:#A8A8B0;
   --ac:#F5F3EF;--act:#0E0E10;--pill:#3A3A42;--glass:rgba(28,28,33,.74);--edge:rgba(255,255,255,.12);--shine:rgba(255,255,255,.06);color-scheme:dark}
 body{font-family:var(--f-ui);background:var(--bg);color:var(--tx)}
 h1,h2,.kpi b{letter-spacing:-.03em}
 h1{font-weight:700}h1 .m{font-weight:400}
-h2{font-weight:600}
+h2{font-weight:700}
 .nb{font-family:var(--f-ui)}
 /* the lockup: mark stands in for the t; 184px keeps it above the 180px minimum */
 .brand{display:block;flex:none;color:var(--tx);border-radius:8px}
@@ -201,14 +200,17 @@ td.n .sb{margin-left:auto}
 .proto{padding:5px 10px;margin-bottom:18px}
 .sign{margin:28px 4px 0;color:var(--t2);font-size:.875rem}
 .btn{white-space:nowrap}
+/* small text on red is TopStock Black (brand rule; white on red is 3.4:1) */
+.outs .chip.c4.on,.nb{color:var(--onred)}
 #v-inv .wrap table{min-width:640px}#v-inv td:nth-child(2),#v-inv td:nth-child(3){white-space:nowrap} /* scroll the stock table inside its card on phones instead of squeezing the grade column */
 @media(max-width:900px){.lg{width:180px}.search{display:none}.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.btn{padding:10px 14px}}
 @media(prefers-reduced-motion:reduce){.search:active{transform:none}.btn,.search,.chip{transition:none}}
+@media(prefers-contrast:more){:root,:root:not([data-theme="light"]),:root[data-theme="light"],:root[data-theme="dark"]{--bd:var(--tx);--t2:var(--tx)}}
 </style>
 
 <div class="app">
 <header>
-<a class="brand" href="#" onclick="go(0);return false" aria-label="TopStock, go to Today"><svg class="lg" viewBox="0 0 7379 1940" role="img" aria-hidden="true" focusable="false"><g transform="translate(0 570) scale(10)"><g transform="translate(0 -9) scale(0.83846)"><path d="M26 0H100V44H76V104L50 130H24V44H0V26ZM63 21L68.81 21L36.63 53.17L45.83 62.37L78 30.19L78 36L91 36L91 8L63 8Z" fill="var(--red)"/></g><path d="M193.85 50A52 52 0 1 1 89.85 50A52 52 0 1 1 193.85 50ZM173.35 50A31.5 31.5 0 1 0 110.35 50A31.5 31.5 0 1 0 173.35 50ZM206.85 0H226.85V137H206.85ZM206.85 0H244.85A35.5 35.5 0 0 1 244.85 71H206.85ZM226.85 20V51H244.85A15.5 15.5 0 0 0 244.85 20ZM318.85 0H377.85V20H318.85ZM293.85 25A25 25 0 0 1 318.85 0L318.85 20A5 5 0 0 0 313.85 25ZM293.85 25H313.85V35H293.85ZM318.85 60A25 25 0 0 1 293.85 35L313.85 35A5 5 0 0 0 318.85 40ZM318.85 40H347.85V60H318.85ZM347.85 40A25 25 0 0 1 372.85 65L352.85 65A5 5 0 0 0 347.85 60ZM352.85 65H372.85V75H352.85ZM372.85 75A25 25 0 0 1 347.85 100L347.85 80A5 5 0 0 0 352.85 75ZM293.85 80H347.85V100H293.85ZM377.85 0H451.85V20H377.85ZM404.35 20H424.35V73Q424.35 81 432.35 81H463.85V100H432.35A28 28 0 0 1 404.35 72ZM561.85 50A52 52 0 1 1 457.85 50A52 52 0 1 1 561.85 50ZM541.35 50A31.5 31.5 0 1 0 478.35 50A31.5 31.5 0 1 0 541.35 50ZM643.85 95.52A51 51 0 1 1 643.85 4.48L643.85 29.97A30.5 30.5 0 1 0 643.85 70.03ZM651.85 0H671.85V100H651.85ZM671.85 35H704.85V55H671.85ZM706.85 -34H726.85V33H706.85ZM726.85 33A22 22 0 0 1 704.85 55L704.85 35A2 2 0 0 0 706.85 33ZM688.85 50H712.85L723.85 77.5H737.85V100H712.85L688.85 50ZM697.85 -34L716.85 -57L735.85 -34Z" fill="currentColor"/></g></svg></a>
+<a class="brand" href="#" onclick="go(0);return false" aria-label="TopStock, go to Today"><svg class="lg" viewBox="0 0 7379 1940" aria-hidden="true" focusable="false"><g transform="translate(0 570) scale(10)"><g transform="translate(0 -9) scale(0.83846)"><path d="M26 0H100V44H76V104L50 130H24V44H0V26ZM63 21L68.81 21L36.63 53.17L45.83 62.37L78 30.19L78 36L91 36L91 8L63 8Z" fill="var(--red)"/></g><path d="M193.85 50A52 52 0 1 1 89.85 50A52 52 0 1 1 193.85 50ZM173.35 50A31.5 31.5 0 1 0 110.35 50A31.5 31.5 0 1 0 173.35 50ZM206.85 0H226.85V137H206.85ZM206.85 0H244.85A35.5 35.5 0 0 1 244.85 71H206.85ZM226.85 20V51H244.85A15.5 15.5 0 0 0 244.85 20ZM318.85 0H377.85V20H318.85ZM293.85 25A25 25 0 0 1 318.85 0L318.85 20A5 5 0 0 0 313.85 25ZM293.85 25H313.85V35H293.85ZM318.85 60A25 25 0 0 1 293.85 35L313.85 35A5 5 0 0 0 318.85 40ZM318.85 40H347.85V60H318.85ZM347.85 40A25 25 0 0 1 372.85 65L352.85 65A5 5 0 0 0 347.85 60ZM352.85 65H372.85V75H352.85ZM372.85 75A25 25 0 0 1 347.85 100L347.85 80A5 5 0 0 0 352.85 75ZM293.85 80H347.85V100H293.85ZM377.85 0H451.85V20H377.85ZM404.35 20H424.35V73Q424.35 81 432.35 81H463.85V100H432.35A28 28 0 0 1 404.35 72ZM561.85 50A52 52 0 1 1 457.85 50A52 52 0 1 1 561.85 50ZM541.35 50A31.5 31.5 0 1 0 478.35 50A31.5 31.5 0 1 0 541.35 50ZM643.85 95.52A51 51 0 1 1 643.85 4.48L643.85 29.97A30.5 30.5 0 1 0 643.85 70.03ZM651.85 0H671.85V100H651.85ZM671.85 35H704.85V55H671.85ZM706.85 -34H726.85V33H706.85ZM726.85 33A22 22 0 0 1 704.85 55L704.85 35A2 2 0 0 0 706.85 33ZM688.85 50H712.85L723.85 77.5H737.85V100H712.85L688.85 50ZM697.85 -34L716.85 -57L735.85 -34Z" fill="currentColor"/></g></svg></a>
 <span class="sp"></span>
 <button class="search" id="srch" onclick="toast('Prototype: the ⌘K palette opens here')"><kbd translate="no">⌘&nbsp;K</kbd>Search leads, deals, stock…</button>
 <button class="chip" id="lang" aria-label="Switch language, English or French" translate="no">EN | FR</button>
@@ -261,7 +263,7 @@ td.n .sb{margin-left:auto}
 
 <div class="call" id="call">
 <button class="x" id="cx" aria-label="Close call panel, nothing is logged">✕</button><div class="muted" id="cn">Calling…</div><div class="t" id="ct">00:00</div><div class="muted" id="cp" style="margin-bottom:8px"></div>
-<div id="cs1"><button class="btn" id="end" style="width:100%;background:var(--dg);color:#fff">End call</button></div>
+<div id="cs1"><button class="btn" id="end" style="width:100%;background:var(--dg);color:var(--onred)">End call</button></div>
 <div id="cs2" hidden><div class="muted">Outcome</div><div class="outs" id="outs"></div><textarea id="cnote" style="min-height:60px" placeholder="Quick note…"></textarea><button class="btn" id="sv" style="width:100%">Save to timeline</button></div>
 <p class="muted" style="font-size:0.6875rem;margin:10px 0 0">Prototype: simulated call. Live build uses click-to-call plus one-tap logging.</p>
 </div>
