@@ -1,6 +1,6 @@
 # CRM prototype v4: brand pack applied (7 Oct 2026)
 
-Artifact: https://claude.ai/artifact/3ppCxqmfgKHs5uRidvcNv6 (version 5). Source: `docs/prototype/topstock-crm-prototype.html`.
+Artifact: https://claude.ai/artifact/3ppCxqmfgKHs5uRidvcNv6 (version 6). Source: `docs/prototype/topstock-crm-prototype.html`.
 Brand source: TopStock Brand Pack v9 (essentials copied to `docs/brand/`: README, tokens, logo SVGs, fonts with OFL licence).
 This is the throwaway prototype, not the Next.js app. The app gets these choices through `DESIGN.md` on Day 1.
 
@@ -45,11 +45,13 @@ unused `--redt` token removed; logo SVG no longer has both `role="img"` and `ari
 
 ## Checks
 
-- Screenshots in this folder (25, all retaken on version 5, after the advisor fixes): 1440 light and dark (all four screens, call panel
+- Screenshots in this folder (25, taken on version 5 after the advisor fixes; call-1440-light, leads-stock-1440-dark and v3-390-light retaken on version 6): 1440 light and dark (all four screens, call panel
   light and dark, lead Stock tab), Today and Inventory at 390, 768, 1024, 1280 and 1728 light, Today and Leads at 390 and 1280 in French dark.
   Fonts loaded from the brand pack files (Google Fonts is not on this VM's network list; the published page loads the same 400/700 weights from Google Fonts).
 - Browser: the VM's preinstalled Chromium 1194 through a scratch config, not the pinned 1247 build (missing in this VM). WebKit was not run.
-- No horizontal scroll at any captured width (scrollWidth equals the viewport at 390, 768, 1024, 1280, 1728). Found and fixed on the way: the search box showed on phones and pushed
+- No horizontal scroll at any captured width with the brand fonts loaded (scrollWidth equals the viewport at 390, 768, 1024, 1280, 1728).
+  With the fonts blocked (fallback font, as on a first load before Outfit arrives): 390 on all four screens in EN and FR, after the
+  Inventory title row was allowed to wrap (advisor round 3 found 402 px). Found and fixed on the way: the search box showed on phones and pushed
   the page to 551 px; the inventory buttons wrapped; the stock tiles stacked one per row; the stock table squeezed the grade column.
 - Console: no errors except the local server's missing favicon.
 - No em dashes in the page.
@@ -60,5 +62,9 @@ unused `--redt` token removed; logo SVG no longer has both `role="img"` and `ari
    font stack (Master Plan lines 137 and 169, apple-design-audit item 10); Day 1's `DESIGN.md`, the CLAUDE.md design line and audit
    item 10 change to match. Fonts are self-hosted through next/font (no runtime Google Fonts request), only Outfit 400/700 and DM Mono 500.
 2. **Stock is sold by the piece.** Sample data changed from bales to pieces (pairs for sneakers). Inventory counts pieces.
+
+Advisor round 3 (CHANGES NEEDED), fixed in version 6: the lead Stock tab coloured availability with a fixed threshold of 10, so lots the
+Inventory screen calls Low showed green with no label; it now uses each lot's low-stock level and says the status in words
+("340 pieces available · Low"). A sample note still said "cartons"; sneakers now show "pairs" in the Stock tab.
 
 French still covers headings and the dock only; full EN/FR comes with next-intl in the real build.
