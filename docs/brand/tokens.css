@@ -1,0 +1,16 @@
+:root {
+  --ts-black: #0E0E10;  /* TopStock Black */
+  --ts-red: #F2203E;  /* Signal Red */
+  --ts-white: #F5F3EF;  /* Chalk White */
+  --ts-char: #1C1C21;  /* Charcoal */
+  --ts-grey: #8C8C94;  /* Steel Grey */
+  --ts-deep: #B5122F;  /* Deep Red */
+  --ts-font-display: "Outfit", system-ui, sans-serif;
+  --ts-font-body: "Outfit", system-ui, sans-serif;
+  --ts-font-mono: "DM Mono", ui-monospace, monospace;
+  --ts-tracking-display: -0.03em;
+  --ts-tracking-label: 0.08em;
+  --ts-radius-tile: 22%;
+  --ts-radius-card: 22px;
+  --ts-radius-chip: 999px;
+}

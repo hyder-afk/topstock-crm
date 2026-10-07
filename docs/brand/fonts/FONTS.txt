@@ -1,0 +1,8 @@
+TopStock typefaces (both free, SIL Open Font License 1.1, see OFL.txt)
+
+Outfit Bold      the wordmark, headlines and anything that needs weight. Tracking -3%.
+Outfit Regular   everything you read: body text, captions, the tagline.
+DM Mono Medium   labels and data: LOT / GRADE / WEIGHT, container codes, specs.
+
+The wordmark is supplied as vector outlines. Use the files; do not retype the name as a logo.
+Web: https://fonts.google.com/specimen/Outfit and https://fonts.google.com/specimen/DM+Mono
