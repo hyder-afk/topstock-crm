@@ -60,5 +60,5 @@ Turn on two-factor for contact@ and the second (ops@) mailbox. Henri and Kais do
 "Day 0 done", the dev project reference, and anything that did not match these steps.
 
 ## Later visits (unavoidable, at go-live / Gate 1 only)
-Vercel Pro upgrade; Vercel Production variables switched to the production URL and key; Deployment Protection to Standard;
+Vercel Pro upgrade; Vercel Production variables switched to the production URL and key; revisit Deployment Protection at the Pro upgrade (Standard approved 9 Oct 2026);
 inviting Henri and Kais.
