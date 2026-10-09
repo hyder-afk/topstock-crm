@@ -19,8 +19,9 @@ two-factor setup (QR), enter code, signed-in home. One narrow card under the bra
 | 12 | Spatial consistency | Same header, card width and button position on every step; desktop focus lands in the first field, phones wait for a tap | autofocus limited to fine pointers |
 
 Red use: only the primary button on each screen (black text on red, 4.64:1) and the logo mark. Links are grey text with underline on hover.
-Screenshots (76, this folder): signed-out screens against the dev project (sign-in at 390/768/1024/1280/1440/1728; error, forgot,
-forgot-done, email-link landing at 390 and 1440; EN/FR, light/dark); signed-in screens (two-factor setup with QR, enter code,
-choose password, home; 390 and 1440, EN/FR, light/dark) taken against a real Supabase Auth server built locally
-(`scripts/local-auth/start.sh`); CI produces the same set from the full Supabase stack as artifact `auth-screens`.
+Screenshots (126, this folder), all from `tests/auth/screens.spec.ts` against a real Supabase Auth server
+(`scripts/local-auth/start.sh` locally; the full Supabase stack in CI, artifact `auth-screens`). Nine screens: sign-in, wrong
+password, forgot, forgot-done, email-link landing, choose password, two-factor setup with QR, enter code, home.
+Widths: EN light at 390/768/1024/1280/1440/1728, FR dark at 390/1280/1440/1728, EN dark and FR light at 390/1440.
+Each shot waits for the real screen (heading visible, not the skeleton) and checks no console errors and no sideways scroll.
 Also fixed after looking at them: French "Vous êtes connecté / invité" assumed a gender, now neutral; home text curly apostrophes.

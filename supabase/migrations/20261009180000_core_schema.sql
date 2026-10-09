@@ -64,6 +64,21 @@ language sql stable set search_path = '' as $$
   select coalesce((select auth.jwt() ->> 'aal'), '') = 'aal2'
 $$;
 
+-- Step-up MFA (Master Plan F3): aal2 AND a TOTP code entered within the last max_age_s seconds. The JWT's amr
+-- list keeps the time of each sign-in method; refreshing the session does not renew it.
+create function private.has_recent_aal2(max_age_s integer) returns boolean
+language sql stable set search_path = '' as $$
+  with amr as (select (select auth.jwt() -> 'amr') as v)
+  select private.has_aal2() and exists (
+    select 1
+    from amr, jsonb_array_elements(case when jsonb_typeof(amr.v) = 'array' then amr.v else '[]'::jsonb end) as m
+    where jsonb_typeof(m) = 'object'
+      and m ->> 'method' = 'totp'
+      and (m ->> 'timestamp') ~ '^[0-9]{1,12}$'
+      and (m ->> 'timestamp')::bigint >= extract(epoch from now())::bigint - max_age_s
+  )
+$$;
+
 -- ---------------------------------------------------------------------------
 -- CRM tables
 -- ---------------------------------------------------------------------------
@@ -390,7 +405,8 @@ $$;
 create trigger on_auth_user_created after insert on auth.users
 for each row execute function private.handle_new_user();
 
--- Role changes only through this function: admin, step-up MFA (aal2), same org, never removes the last admin.
+-- Role changes only through this function: admin, step-up MFA (code entered in the last 10 minutes), same org,
+-- never removes the last admin.
 create function public.set_user_role(target_user uuid, new_role public.app_role) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -398,8 +414,8 @@ declare
   target_org uuid;
   old_role public.app_role;
 begin
-  if not private.is_admin() or not private.has_aal2() then
-    raise exception 'admin with two-factor sign-in required' using errcode = '42501';
+  if not private.is_admin() or not private.has_recent_aal2(600) then
+    raise exception 'admin with a two-factor code from the last 10 minutes required' using errcode = '42501';
   end if;
   select org_id, role into target_org, old_role from public.profiles where id = target_user for update;
   if target_org is null or target_org <> caller_org then
@@ -449,66 +465,78 @@ begin
                            'activities','tasks','files','saved_views','audit_log'] loop
     execute format('alter table public.%I enable row level security', t);
     -- Every row of every table requires a two-factor (aal2) session.
-    execute format('create policy require_mfa on public.%I as restrictive to authenticated using (private.has_aal2()) with check (private.has_aal2())', t);
+    execute format('create policy require_mfa on public.%I as restrictive to authenticated using ((select private.has_aal2())) with check ((select private.has_aal2()))', t);
   end loop;
 end;
 $$;
 
 create policy orgs_select on public.orgs for select to authenticated
-  using (id = private.current_org_id());
+  using (id = (select private.current_org_id()));
 
 create policy profiles_select on public.profiles for select to authenticated
-  using (org_id = private.current_org_id());
+  using (org_id = (select private.current_org_id()));
 create policy profiles_update_own on public.profiles for update to authenticated
   using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
 -- Owned records: reps see and change their own; managers and admins see and change all in the org.
+-- Writes may only link to parent records the caller can see: subqueries in policies run under the caller's RLS,
+-- whereas foreign keys alone would accept another rep's contact or another org's stage.
+-- Helper calls are wrapped in (select ...) so they run once per statement, not once per row.
 create policy companies_rw on public.companies for all to authenticated
-  using (org_id = private.current_org_id() and (private.is_manager_or_admin() or owner_id = (select auth.uid())))
-  with check (org_id = private.current_org_id() and (private.is_manager_or_admin() or owner_id = (select auth.uid())));
+  using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid())))
+  with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid())));
 
 create policy contacts_rw on public.contacts for all to authenticated
-  using (org_id = private.current_org_id() and (private.is_manager_or_admin() or owner_id = (select auth.uid())))
-  with check (org_id = private.current_org_id() and (private.is_manager_or_admin() or owner_id = (select auth.uid())));
+  using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid())))
+  with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid()))
+    and (contacts.company_id is null or exists (select 1 from public.companies p where p.id = contacts.company_id)));
 
 create policy deals_rw on public.deals for all to authenticated
-  using (org_id = private.current_org_id() and (private.is_manager_or_admin() or owner_id = (select auth.uid())))
-  with check (org_id = private.current_org_id() and (private.is_manager_or_admin() or owner_id = (select auth.uid())));
+  using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid())))
+  with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid()))
+    and (deals.contact_id is null or exists (select 1 from public.contacts p where p.id = deals.contact_id))
+    and (deals.company_id is null or exists (select 1 from public.companies p where p.id = deals.company_id))
+    and exists (select 1 from public.pipeline_stages p where p.id = deals.stage_id));
 
 create policy activities_rw on public.activities for all to authenticated
-  using (org_id = private.current_org_id() and (private.is_manager_or_admin() or user_id = (select auth.uid())))
-  with check (org_id = private.current_org_id() and (private.is_manager_or_admin() or user_id = (select auth.uid())));
+  using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or user_id = (select auth.uid())))
+  with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or user_id = (select auth.uid()))
+    and (activities.contact_id is null or exists (select 1 from public.contacts p where p.id = activities.contact_id))
+    and (activities.deal_id is null or exists (select 1 from public.deals p where p.id = activities.deal_id)));
 
 create policy tasks_rw on public.tasks for all to authenticated
-  using (org_id = private.current_org_id() and (private.is_manager_or_admin() or assignee_id = (select auth.uid())))
-  with check (org_id = private.current_org_id() and (private.is_manager_or_admin() or assignee_id = (select auth.uid())));
+  using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or assignee_id = (select auth.uid())))
+  with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or assignee_id = (select auth.uid()))
+    and (tasks.contact_id is null or exists (select 1 from public.contacts p where p.id = tasks.contact_id))
+    and (tasks.deal_id is null or exists (select 1 from public.deals p where p.id = tasks.deal_id)));
 
 create policy files_rw on public.files for all to authenticated
-  using (org_id = private.current_org_id() and (private.is_manager_or_admin() or uploaded_by = (select auth.uid())))
-  with check (org_id = private.current_org_id() and (private.is_manager_or_admin() or uploaded_by = (select auth.uid())));
+  using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or uploaded_by = (select auth.uid())))
+  with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or uploaded_by = (select auth.uid()))
+    and (files.contact_id is null or exists (select 1 from public.contacts p where p.id = files.contact_id)));
 
 create policy saved_views_own on public.saved_views for all to authenticated
-  using (org_id = private.current_org_id() and user_id = (select auth.uid()))
-  with check (org_id = private.current_org_id() and user_id = (select auth.uid()));
+  using (org_id = (select private.current_org_id()) and user_id = (select auth.uid()))
+  with check (org_id = (select private.current_org_id()) and user_id = (select auth.uid()));
 
 -- Imports: admins only (the import page also requires step-up MFA).
 create policy import_batches_admin on public.import_batches for all to authenticated
-  using (org_id = private.current_org_id() and private.is_admin())
-  with check (org_id = private.current_org_id() and private.is_admin());
+  using (org_id = (select private.current_org_id()) and (select private.is_admin()))
+  with check (org_id = (select private.current_org_id()) and (select private.is_admin()));
 
 create policy pipeline_stages_select on public.pipeline_stages for select to authenticated
-  using (org_id = private.current_org_id());
+  using (org_id = (select private.current_org_id()));
 create policy pipeline_stages_admin_write on public.pipeline_stages for insert to authenticated
-  with check (org_id = private.current_org_id() and private.is_admin());
+  with check (org_id = (select private.current_org_id()) and (select private.is_admin()));
 create policy pipeline_stages_admin_update on public.pipeline_stages for update to authenticated
-  using (org_id = private.current_org_id() and private.is_admin())
-  with check (org_id = private.current_org_id() and private.is_admin());
+  using (org_id = (select private.current_org_id()) and (select private.is_admin()))
+  with check (org_id = (select private.current_org_id()) and (select private.is_admin()));
 create policy pipeline_stages_admin_delete on public.pipeline_stages for delete to authenticated
-  using (org_id = private.current_org_id() and private.is_admin());
+  using (org_id = (select private.current_org_id()) and (select private.is_admin()));
 
 -- Audit log: append-only (written by triggers), readable by admins of the org only.
 create policy audit_log_admin_select on public.audit_log for select to authenticated
-  using (org_id = private.current_org_id() and private.is_admin());
+  using (org_id = (select private.current_org_id()) and (select private.is_admin()));
 
 -- ---------------------------------------------------------------------------
 -- Function privileges: nothing in private is callable by anon or PUBLIC; authenticated may call only the
@@ -517,4 +545,4 @@ create policy audit_log_admin_select on public.audit_log for select to authentic
 revoke all on all functions in schema private from public, anon, authenticated;
 alter default privileges in schema private revoke execute on functions from public;
 grant execute on function private.current_org_id(), private.current_app_role(), private.is_manager_or_admin(),
-  private.is_admin(), private.has_aal2() to authenticated;
+  private.is_admin(), private.has_aal2(), private.has_recent_aal2(integer) to authenticated;

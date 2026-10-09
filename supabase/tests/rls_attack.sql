@@ -29,6 +29,53 @@ insert into public.contacts (id, org_id, first_name, owner_id) values
   ('10000000-0000-0000-0000-0000000000b1', (select id from public.orgs where name = 'TopStock Wholesale'), 'B-lead', '00000000-0000-0000-0000-0000000000b1'),
   ('10000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000cc', 'C-lead', '00000000-0000-0000-0000-0000000000c1');
 
+-- More fixtures: one row per owned table for rep A, rep B and the other org; private and admin-only rows.
+insert into public.pipeline_stages (id, org_id, name, position)
+values ('20000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000cc', 'Other stage', 1);
+do $$
+declare
+  main_org uuid := (select id from public.orgs where name = 'TopStock Wholesale');
+  lead_stage uuid := (select s.id from public.pipeline_stages s join public.orgs o on o.id = s.org_id
+                      where o.name = 'TopStock Wholesale' and s.position = 1);
+  who record;
+begin
+  for who in select * from (values
+      ('a1', main_org, '00000000-0000-0000-0000-0000000000a1'::uuid, lead_stage),
+      ('b1', main_org, '00000000-0000-0000-0000-0000000000b1'::uuid, lead_stage),
+      ('c1', '00000000-0000-0000-0000-0000000000cc'::uuid, '00000000-0000-0000-0000-0000000000c1'::uuid,
+             '20000000-0000-0000-0000-0000000000c1'::uuid)
+    ) as w (tag, org, usr, stage) loop
+    insert into public.companies (id, org_id, name, owner_id)
+    values (('30000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org, 'Co ' || who.tag, who.usr);
+    insert into public.deals (id, org_id, contact_id, stage_id, owner_id)
+    values (('40000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
+            ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.stage, who.usr);
+    insert into public.activities (id, org_id, contact_id, type, user_id)
+    values (('50000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
+            ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'note', who.usr);
+    insert into public.tasks (id, org_id, contact_id, title, assignee_id)
+    values (('60000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
+            ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'Call back', who.usr);
+    insert into public.files (id, org_id, contact_id, storage_path, mime, size, uploaded_by)
+    values (('70000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
+            ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'f/' || who.tag || '.pdf', 'application/pdf', 100, who.usr);
+  end loop;
+  insert into public.saved_views (id, org_id, user_id, section, name)
+  values ('80000000-0000-0000-0000-0000000000b1', main_org, '00000000-0000-0000-0000-0000000000b1', 'leads', 'B only');
+  insert into public.import_batches (id, org_id, filename, uploaded_by)
+  values ('90000000-0000-0000-0000-00000000000a', main_org, 'leads.csv', '00000000-0000-0000-0000-00000000000a');
+end $$;
+
+-- Sets the JWT claims the way Supabase does. totp_age_s: seconds since the two-factor code was entered (null = none).
+create function pg_temp.as_user(sub text, aal text, totp_age_s integer default null) returns void
+language sql as $$
+  select set_config('request.jwt.claims', jsonb_build_object(
+    'sub', sub, 'role', 'authenticated', 'aal', aal,
+    'amr', case when totp_age_s is null then '[]'::jsonb else jsonb_build_array(
+      jsonb_build_object('method', 'totp', 'timestamp', extract(epoch from now())::bigint - totp_age_s)) end
+  )::text, false)
+$$;
+
 -- 1. anon has no access to any table ------------------------------------------------------------------
 set role anon;
 do $$ begin perform set_config('request.jwt.claims', '{"role":"anon"}', false); end $$;
@@ -129,6 +176,62 @@ begin
   end;
 end $$;
 
+-- 3b. Rep A against every owned table: rep B's and the other org's rows are invisible and untouchable ------
+do $$
+declare
+  t text;
+  n int;
+begin
+  foreach t in array array['companies','deals','activities','tasks','files'] loop
+    execute format('select count(*) from public.%I where id::text like %L or id::text like %L', t, '%b1', '%c1') into n;
+    if n <> 0 then raise exception 'FAIL: rep A can read rep B or other-org rows in %', t; end if;
+    execute format('select count(*) from public.%I where id::text like %L', t, '%a1') into n;
+    if n <> 1 then raise exception 'FAIL: rep A should see own row in %', t; end if;
+    execute format('update public.%I set updated_at = now() where id::text like %L or id::text like %L', t, '%b1', '%c1');
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'FAIL: rep A updated a foreign row in %', t; end if;
+    execute format('delete from public.%I where id::text like %L or id::text like %L', t, '%b1', '%c1');
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'FAIL: rep A deleted a foreign row in %', t; end if;
+  end loop;
+  if (select count(*) from public.saved_views) <> 0 then raise exception 'FAIL: rep A can read rep B saved view'; end if;
+  if (select count(*) from public.import_batches) <> 0 then raise exception 'FAIL: rep can read import batches'; end if;
+  if (select count(*) from public.orgs) <> 1 then raise exception 'FAIL: rep sees another org'; end if;
+  if exists (select 1 from public.pipeline_stages where org_id = '00000000-0000-0000-0000-0000000000cc') then
+    raise exception 'FAIL: rep sees another org pipeline stages';
+  end if;
+end $$;
+
+-- 3c. Writes cannot link to records the caller cannot see (foreign keys alone would allow it) ---------------
+do $$
+declare
+  attempt text;
+begin
+  foreach attempt in array array[
+    $q$insert into public.activities (contact_id, type) values ('10000000-0000-0000-0000-0000000000b1', 'note')$q$,
+    $q$insert into public.activities (deal_id, type) values ('40000000-0000-0000-0000-0000000000b1', 'note')$q$,
+    $q$insert into public.tasks (contact_id, title) values ('10000000-0000-0000-0000-0000000000b1', 'x')$q$,
+    $q$insert into public.tasks (deal_id, title) values ('40000000-0000-0000-0000-0000000000b1', 'x')$q$,
+    $q$insert into public.deals (contact_id, stage_id) values ('10000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
+    $q$insert into public.deals (company_id, stage_id) values ('30000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
+    $q$insert into public.deals (stage_id) values ('20000000-0000-0000-0000-0000000000c1')$q$,
+    $q$insert into public.contacts (first_name, company_id) values ('x', '30000000-0000-0000-0000-0000000000b1')$q$,
+    $q$insert into public.files (contact_id, storage_path, mime, size) values ('10000000-0000-0000-0000-0000000000b1', 'f/x.pdf', 'application/pdf', 1)$q$,
+    $q$update public.activities set contact_id = '10000000-0000-0000-0000-0000000000b1' where id = '50000000-0000-0000-0000-0000000000a1'$q$,
+    $q$update public.deals set stage_id = '20000000-0000-0000-0000-0000000000c1' where id = '40000000-0000-0000-0000-0000000000a1'$q$
+  ] loop
+    begin
+      execute attempt;
+      raise exception 'FAIL: linked to a record the caller cannot see: %', attempt;
+    exception when insufficient_privilege then null;
+    end;
+  end loop;
+  -- Linking to one's own records still works.
+  insert into public.activities (contact_id, deal_id, type)
+  values ('10000000-0000-0000-0000-0000000000a1', '40000000-0000-0000-0000-0000000000a1', 'call');
+  insert into public.tasks (contact_id, title) values ('10000000-0000-0000-0000-0000000000a1', 'Follow up');
+end $$;
+
 -- 4. Admin: aal1 sees nothing; aal2 sees the whole org but never another org ---------------------------
 do $$ begin perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated","aal":"aal1"}', false); end $$;
 do $$ begin
@@ -140,9 +243,36 @@ do $$ begin
   end;
 end $$;
 
-do $$ begin perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated","aal":"aal2"}', false); end $$;
+-- Step-up (Master Plan F3): a two-factor code older than 10 minutes, or none at all, is not enough for a role change.
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 660); end $$;
+do $$ begin
+  begin
+    perform public.set_user_role('00000000-0000-0000-0000-0000000000a1', 'manager');
+    raise exception 'FAIL: role change with a two-factor code older than 10 minutes';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', null); end $$;
+do $$ begin
+  begin
+    perform public.set_user_role('00000000-0000-0000-0000-0000000000a1', 'manager');
+    raise exception 'FAIL: role change with no two-factor time in the token';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30); end $$;
 do $$ begin
   if (select count(*) from public.contacts) <> 3 then raise exception 'FAIL: admin should see the 3 contacts of the org'; end if;
+  if (select count(*) from public.saved_views) <> 0 then raise exception 'FAIL: admin can read another user saved view'; end if;
+  if (select count(*) from public.import_batches) <> 1 then raise exception 'FAIL: admin should see the org import batch'; end if;
+  if (select count(*) from public.orgs) <> 1 then raise exception 'FAIL: admin sees another org'; end if;
+  if exists (select 1 from public.pipeline_stages where org_id = '00000000-0000-0000-0000-0000000000cc') then
+    raise exception 'FAIL: admin sees another org pipeline stages';
+  end if;
+  if (select count(*) from public.deals) <> 2 or (select count(*) from public.files) <> 2 then
+    raise exception 'FAIL: admin should see both reps'' deals and files, nothing from the other org';
+  end if;
   if exists (select 1 from public.contacts where id = '10000000-0000-0000-0000-0000000000c1') then
     raise exception 'FAIL: admin can read another org';
   end if;
@@ -186,6 +316,8 @@ end $$;
 do $$ begin perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}', false); end $$;
 do $$ begin
   if (select count(*) from public.contacts) <> 3 then raise exception 'FAIL: manager should see the whole org'; end if;
+  if (select count(*) from public.saved_views) <> 0 then raise exception 'FAIL: manager can read another user saved view'; end if;
+  if (select count(*) from public.import_batches) <> 0 then raise exception 'FAIL: manager can read import batches'; end if;
 end $$;
 reset role;
 

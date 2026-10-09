@@ -1,5 +1,6 @@
 #!/bin/bash
-# Local RLS test: throwaway PostgreSQL 16 cluster + auth shim + migrations + attack tests. No keys, no network.
+# Local RLS test: throwaway PostgreSQL 16 cluster + auth shim + migrations + attack tests + Supabase advisors.
+# No keys; the only network call fetches the pinned advisor rules (scripts/db-advisors.sh).
 # CI runs the same migrations and tests against the real Supabase Postgres image.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,3 +18,4 @@ PSQL="psql -h $WORK -p 54329 -U postgres -d postgres -X -q -v ON_ERROR_STOP=1"
 $PSQL -f "$ROOT/supabase/tests/shim.sql"
 for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$f"; done
 $PSQL -f "$ROOT/supabase/tests/rls_attack.sql"
+bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p 54329 -U postgres -d postgres

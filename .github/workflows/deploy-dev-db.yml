@@ -28,9 +28,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx supabase link --project-ref "$DEV_PROJECT_REF"
-      - name: Apply migrations to dev
-        run: npx supabase db push --yes
+      # Auth settings go first: the schema makes the first new user an admin, so sign-ups must be closed
+      # (and proven closed) before any migration lands.
       - name: Show auth settings diff (logged for review)
         run: npx supabase config diff
       - name: Apply auth settings to dev
         run: npx supabase config push --yes
+      - name: Prove sign-ups are closed on dev (stops the job otherwise)
+        run: |
+          disabled=$(curl -fsS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$DEV_PROJECT_REF/config/auth" | jq -r '.disable_signup')
+          if [ "$disabled" != "true" ]; then
+            echo "::error::Dev sign-ups are not closed (disable_signup=$disabled). Migrations were not applied."
+            exit 1
+          fi
+          echo "Dev sign-ups closed."
+      - name: Apply migrations to dev
+        run: npx supabase db push --yes

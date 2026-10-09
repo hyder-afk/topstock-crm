@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Full sign-in journey against a throwaway local Supabase (CI job "auth" in .github/workflows/db.yml).
-// Needs SUPABASE_LOCAL_URL, SUPABASE_LOCAL_SERVICE_ROLE_KEY (the local stack's built-in demo key) and MAILPIT_URL.
+// Full sign-in journey and evidence screenshots against a throwaway local Supabase (CI job "auth-journey" in
+// .github/workflows/ci.yml; locally scripts/local-auth/start.sh). Needs NEXT_PUBLIC_SUPABASE_URL/ANON_KEY,
+// SUPABASE_LOCAL_URL, SUPABASE_LOCAL_SERVICE_ROLE_KEY (local stack only; helpers refuse non-local URLs) and MAILPIT_URL.
 const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
 
 export default defineConfig({

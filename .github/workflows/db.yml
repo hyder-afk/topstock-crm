@@ -1,5 +1,5 @@
 # Database checks on every PR: apply all migrations to the real Supabase Postgres (local, throwaway, no keys),
-# run the two-user RLS attack test, and lint the SQL functions.
+# run the two-user RLS attack test, the Supabase advisors (splinter) and lint the SQL functions.
 name: db
 on:
   pull_request:
@@ -25,6 +25,8 @@ jobs:
         run: npx supabase start -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Two-user RLS attack test
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_attack.sql
+      - name: Supabase security and performance advisors (fail on ERROR)
+        run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions
         run: npx supabase db lint --local --level warning --fail-on error
       - if: always()

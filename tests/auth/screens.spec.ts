@@ -2,23 +2,25 @@ import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { createUser, nextWindow, totp } from "./helpers";
 
-// Evidence screenshots of the signed-in sign-in screens (they need a real session, so they live here, not in tests/e2e).
-// Saved to test-results/screens and uploaded by the CI job "auth-journey".
-test.describe.configure({ mode: "serial" });
+// Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
+// Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
+// docs/evidence. Each shot waits for the real screen (not the loading skeleton) and checks for console errors and
+// sideways scroll first.
+test.describe.configure({ mode: "serial", timeout: 600_000 });
 
 const dir = "test-results/screens";
-const combos = [
-  { locale: "en", scheme: "light" },
-  { locale: "fr", scheme: "dark" },
-  { locale: "en", scheme: "dark" },
-  { locale: "fr", scheme: "light" },
+// CLAUDE.md widths: all six for EN light, the desktop set plus phone for FR dark, phone and laptop for the rest.
+const matrix = [
+  { locale: "en", scheme: "light", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "fr", scheme: "dark", widths: [390, 1280, 1440, 1728] },
+  { locale: "en", scheme: "dark", widths: [390, 1440] },
+  { locale: "fr", scheme: "light", widths: [390, 1440] },
 ] as const;
-const widths = [390, 1440];
 const password = "Screens-Pass-42!";
 const withFactor = `screens-a-${Date.now()}@example.test`;
 const noFactor = `screens-b-${Date.now()}@example.test`;
 let secret = "";
-const states: Record<string, Awaited<ReturnType<BrowserContext["storageState"]>>> = {};
+const states: Record<string, Awaited<ReturnType<BrowserContext["storageState"]>> | undefined> = { none: undefined };
 
 async function signIn(browser: Browser, email: string) {
   const context = await browser.newContext();
@@ -31,20 +33,26 @@ async function signIn(browser: Browser, email: string) {
   return { context, page };
 }
 
-async function shoot(browser: Browser, state: string, path: string, name: string, before?: (page: Page) => Promise<void>) {
-  for (const { locale, scheme } of combos) {
+async function shoot(browser: Browser, state: string, path: string, name: string, act?: (page: Page) => Promise<void>) {
+  for (const { locale, scheme, widths } of matrix) {
     for (const width of widths) {
-      const context = await browser.newContext({ storageState: states[state], viewport: { width, height: width < 600 ? 844 : 900 }, colorScheme: scheme });
+      const context = await browser.newContext({
+        storageState: states[state],
+        viewport: { width, height: width < 600 ? 844 : 900 },
+        colorScheme: scheme,
+      });
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
       const errors: string[] = [];
       page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(path);
-      await expect(page).toHaveURL(new RegExp(`${path.replace(/\//g, "\\/")}$`));
-      if (before) await before(page);
+      // The real screen, not the loading skeleton (which has no heading).
+      await expect(page.locator("main h1").first()).toBeVisible();
+      if (act) await act(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
       await page.screenshot({ path: `${dir}/${name}-${locale}-${scheme}-${width}.png`, fullPage: true });
-      expect(errors).toEqual([]);
+      expect(errors, `${name} ${locale} ${scheme} ${width}`).toEqual([]);
       await context.close();
     }
   }
@@ -67,6 +75,23 @@ test.beforeAll(async ({ browser }) => {
   await expect(a.page).toHaveURL(/\/$/);
   states.full = await a.context.storageState();
   await a.context.close();
+});
+
+test("signed out: sign in, wrong password, forgot, link landing", async ({ browser }) => {
+  await shoot(browser, "none", "/login", "login");
+  await shoot(browser, "none", "/login", "login-error", async (page) => {
+    await page.locator("input[name=email]").fill("nobody@example.test");
+    await page.locator("input[name=password]").fill("Wrong-Password-1!");
+    await page.locator("button[type=submit]").click();
+    await expect(page.getByRole("main").getByRole("alert")).not.toBeEmpty();
+  });
+  await shoot(browser, "none", "/forgot-password", "forgot");
+  await shoot(browser, "none", "/forgot-password", "forgot-done", async (page) => {
+    await page.locator("input[name=email]").fill("nobody@example.test");
+    await page.locator("button[type=submit]").click();
+    await expect(page.getByRole("main").getByRole("status")).not.toBeEmpty();
+  });
+  await shoot(browser, "none", "/auth/confirm?token_hash=fake&type=invite", "confirm-invite");
 });
 
 test("two-factor setup (QR shown)", async ({ browser }) => {

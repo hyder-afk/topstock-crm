@@ -36,6 +36,10 @@ export async function nextWindow() {
 function env(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`${name} is not set (see playwright.auth.config.ts)`);
+  // These helpers send the local stack's service key: refuse anything that is not this machine.
+  if (name.endsWith("_URL") && !["127.0.0.1", "localhost"].includes(new URL(v).hostname)) {
+    throw new Error(`${name} must point at a local stack (127.0.0.1 or localhost)`);
+  }
   return v;
 }
 
