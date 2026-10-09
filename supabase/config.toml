@@ -137,10 +137,11 @@ enabled = true
 # Store analytical data in S3 for running ETL jobs over Iceberg Catalog
 # This feature is only available on the hosted platform.
 [storage.analytics]
-# TopStock: matches the hosted dev project's default (on) so `config push` leaves storage untouched; the feature is
+# TopStock: every value matches the hosted dev project's defaults so `config push` leaves storage untouched (the free
+# plan refuses analytics changes: "upgrade the project to a paid tier to enable iceberg catalog"). The feature is
 # unused and hosted-only (no effect on the local stack).
 enabled = true
-max_namespaces = 5
+max_namespaces = 10
 max_tables = 10
 max_catalogs = 2
 
