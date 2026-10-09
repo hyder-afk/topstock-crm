@@ -33,8 +33,21 @@ async function signIn(browser: Browser, email: string) {
   return { context, page };
 }
 
-async function shoot(browser: Browser, state: string, path: string, name: string, act?: (page: Page) => Promise<void>) {
-  for (const { locale, scheme, widths } of matrix) {
+// Placeholder sections share one component: EN light and FR dark at phone and laptop width are enough for them.
+const lightMatrix = [
+  { locale: "en", scheme: "light", widths: [390, 1440] },
+  { locale: "fr", scheme: "dark", widths: [390, 1440] },
+] as const;
+
+async function shoot(
+  browser: Browser,
+  state: string,
+  path: string,
+  name: string,
+  act?: (page: Page) => Promise<void>,
+  combos: readonly { locale: string; scheme: "light" | "dark"; widths: readonly number[] }[] = matrix,
+) {
+  for (const { locale, scheme, widths } of combos) {
     for (const width of widths) {
       const context = await browser.newContext({
         storageState: states[state],
@@ -47,7 +60,8 @@ async function shoot(browser: Browser, state: string, path: string, name: string
       page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
       page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(path);
-      // The real screen, not the loading skeleton (which has no heading).
+      // The right page (no unexpected redirect), then the real screen, not the loading skeleton (which has no heading).
+      await expect(page).toHaveURL((url) => url.pathname === new URL(path, "http://localhost:3100").pathname);
       await expect(page.locator("main h1").first()).toBeVisible();
       if (act) await act(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -111,4 +125,12 @@ test("enter your code", async ({ browser }) => {
 
 test("home, signed in", async ({ browser }) => {
   await shoot(browser, "full", "/", "home");
+});
+
+test("app shell: leads and more in full, the other sections in brief", async ({ browser }) => {
+  await shoot(browser, "full", "/leads", "leads");
+  await shoot(browser, "full", "/more", "more");
+  for (const section of ["pipeline", "inventory", "tasks", "analytics"]) {
+    await shoot(browser, "full", `/${section}`, section, undefined, lightMatrix);
+  }
 });

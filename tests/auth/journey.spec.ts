@@ -57,7 +57,7 @@ test("invite, password, two-factor setup, signed in", async ({ page }) => {
   await page.getByRole("button", { name: "Finish setup" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("The foundation is ready");
+  await expect(page.locator("main h1")).toHaveText("Hello");
   expect(errors).toEqual([]);
 });
 
@@ -82,6 +82,7 @@ test("sign out, password alone is not enough, code signs in", async ({ page }) =
   await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL(/\/$/);
 
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "More", exact: true }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/");

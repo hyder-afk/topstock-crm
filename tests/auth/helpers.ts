@@ -115,3 +115,21 @@ export async function trySignup(email: string, password: string) {
   const body = (await res.json().catch(() => ({}))) as { error_code?: string; code?: string };
   return { status: res.status, code: body.error_code ?? body.code };
 }
+
+// Signs in through the UI (password, then the TOTP code in a fresh window) and returns the aal2 session state.
+export async function fullSession(browser: import("@playwright/test").Browser, email: string, password: string, secret: string) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(/\/mfa$/);
+  await nextWindow();
+  await page.getByLabel("6-digit code").fill(totp(secret));
+  await page.getByRole("button", { name: "Verify" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  const state = await context.storageState();
+  await context.close();
+  return state;
+}

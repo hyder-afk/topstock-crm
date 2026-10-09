@@ -100,6 +100,46 @@
   }
 }
 
+/* Floating layers only (DESIGN.md): frosted glass on the dock, solid where transparency is unwanted or unsupported. */
+.dock-glass {
+  background: color-mix(in oklab, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dock-glass {
+    background: var(--card);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dock-glass {
+    background: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Entrances: transform and opacity only. Page enter on every navigation; word-by-word rise for the greeting
+   (first view per tab only, see greeting.tsx). The reduced-motion block below collapses both to instant. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-page {
+  animation: rise 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-word {
+  display: inline-block;
+  animation: rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
 @media (pointer: fine) {
   html {
     overscroll-behavior: none;
