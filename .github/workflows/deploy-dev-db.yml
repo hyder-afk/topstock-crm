@@ -1,10 +1,10 @@
-# On merge to main: apply migrations and auth settings (invite-only, MFA, password rules, email templates) to the DEV project only.
+# On merge to main: apply auth settings (invite-only, MFA, password rules; custom email templates once custom SMTP exists) and migrations to the DEV project only.
 # Secrets are pasted by Haider (Cloud Workflow section 5). The production project is never reachable from this repo.
 name: deploy-dev-db
 on:
   push:
     branches: [main]
-    paths: ["supabase/migrations/**", "supabase/config.toml", "supabase/templates/**"]
+    paths: ["supabase/migrations/**", "supabase/config.toml", "supabase/templates/**", "scripts/strip-email-templates.py", ".github/workflows/deploy-dev-db.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,6 +28,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx supabase link --project-ref "$DEV_PROJECT_REF"
+      # Free Supabase projects on the default email sender refuse custom email templates (first run, 9 Oct 2026).
+      # Until TopStock has its own SMTP sender (Gate 1), dev keeps Supabase's default emails; CI's local stack
+      # keeps testing ours. Remove this step (and scripts/strip-email-templates.py) once custom SMTP is set up.
+      - name: Leave out custom email templates for dev (no custom SMTP yet)
+        run: python3 scripts/strip-email-templates.py supabase/config.toml
       # Auth settings go first: the schema makes the first new user an admin, so sign-ups must be closed
       # (and proven closed) before any migration lands.
       - name: Show auth settings diff (logged for review)
