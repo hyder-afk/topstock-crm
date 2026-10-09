@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+/* TopStock design tokens (DESIGN.md is the source of truth).
+   Ink and chalk carry the app; Signal Red fills only what you act on and the mark.
+   Status colours appear only as small dots or labelled badges. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-outfit), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--muted);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--muted);
+  --color-accent-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-destructive: var(--status-red);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--ring);
+  --color-pill: var(--pill);
+  --color-status-green: var(--status-green);
+  --color-status-amber: var(--status-amber);
+  --color-status-red: var(--status-red);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+}
+
+:root {
+  --background: #f5f3ef; /* Chalk White */
+  --foreground: #0e0e10; /* TopStock Black */
+  --card: #ffffff;
+  --muted: #ebe8e2;
+  --muted-foreground: #5a5a62; /* 6.2:1 on chalk */
+  --border: #ddd9d2;
+  --primary: #0e0e10;
+  --primary-foreground: #f5f3ef;
+  --brand: #f2203e; /* Signal Red, fills only */
+  --brand-foreground: #0e0e10; /* black on red, 4.64:1 */
+  --ring: #0e0e10;
+  --pill: #ffffff; /* selected segment */
+  --status-green: #15702f;
+  --status-amber: #7c5300;
+  --status-red: #b61c29;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0e0e10;
+  --foreground: #f5f3ef;
+  --card: #1c1c21; /* Charcoal */
+  --muted: #2a2a30;
+  --muted-foreground: #a8a8b0;
+  --border: #34343b;
+  --primary: #f5f3ef;
+  --primary-foreground: #0e0e10;
+  --ring: #f5f3ef;
+  --pill: #3a3a42;
+  --status-green: #30d158;
+  --status-amber: #ffd60a;
+  --status-red: #ff6961;
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    touch-action: manipulation;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@media (pointer: fine) {
+  html {
+    overscroll-behavior: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

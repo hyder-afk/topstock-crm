@@ -1,0 +1,30 @@
+{
+  "Metadata": {
+    "title": "TopStock CRM",
+    "description": "Sales CRM and inventory for TopStock Wholesale."
+  },
+  "Home": {
+    "greeting": "Hello",
+    "title": "The foundation is ready",
+    "body": "Next come the database, sign-in with two-factor codes, then the dock and the leads.",
+    "statusUp": "Test database reachable (Paris)",
+    "statusDown": "Test database not reachable",
+    "tagline": "Small start. Same grade. Big orders."
+  },
+  "Settings": {
+    "language": "Language",
+    "theme": "Appearance",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System"
+  },
+  "Common": {
+    "loading": "Loading…",
+    "skipToContent": "Skip to content"
+  },
+  "Error": {
+    "title": "Something went wrong",
+    "body": "Try again. If it keeps happening, tell Haider.",
+    "retry": "Try again"
+  }
+}

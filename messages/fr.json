@@ -1,0 +1,30 @@
+{
+  "Metadata": {
+    "title": "TopStock CRM",
+    "description": "CRM commercial et gestion de stock pour TopStock Wholesale."
+  },
+  "Home": {
+    "greeting": "Bonjour",
+    "title": "Les fondations sont prêtes",
+    "body": "Ensuite : la base de données, la connexion avec code à deux facteurs, puis le dock et les prospects.",
+    "statusUp": "Base de test joignable (Paris)",
+    "statusDown": "Base de test injoignable",
+    "tagline": "Small start. Same grade. Big orders."
+  },
+  "Settings": {
+    "language": "Langue",
+    "theme": "Apparence",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "themeSystem": "Système"
+  },
+  "Common": {
+    "loading": "Chargement…",
+    "skipToContent": "Aller au contenu"
+  },
+  "Error": {
+    "title": "Une erreur est survenue",
+    "body": "Réessayez. Si cela continue, prévenez Haider.",
+    "retry": "Réessayer"
+  }
+}

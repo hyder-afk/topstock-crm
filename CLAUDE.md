@@ -14,9 +14,10 @@ Supabase: dev only, fake data; production lives in a separate Supabase account C
 Next.js App Router + TypeScript, Tailwind, shadcn/ui, Motion, TanStack Query/Table/Virtual,
 React Hook Form + Zod, next-intl, Supabase (Postgres, Auth, RLS, Storage), dnd-kit, Recharts, papaparse.
 
-## Design (Apple-like)
-Black/white/greys, status colours only as tiny dots or labelled badges (text tokens: green #15702F,
-amber #7C5300, red #B61C29 in light mode). 8pt grid, radius 20/12. Spring animations (transform + opacity
+## Design (TopStock brand, Apple-like behaviour; DESIGN.md is the source of truth)
+TopStock Black / Chalk White / greys with Signal Red #F2203E as the single accent (fills only: dock bead, Call, primary button,
+logo mark; black text on red). Outfit + DM Mono, self-hosted via next/font (decided by Haider 7 Oct 2026).
+Status colours only as tiny dots or labelled badges (text tokens: green #15702F, amber #7C5300, red #B61C29 in light mode). 8pt grid, radius 20/12. Spring animations (transform + opacity
 only), respect prefers-reduced-motion. Keyboard-first: Cmd+K palette, shortcuts, context menus.
 Split views on desktop. Nav is a floating dock with a draggable bead.
 Dashboard greeting: "Hello {first_name}" (FR "Bonjour").
