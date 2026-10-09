@@ -6,7 +6,7 @@
   "Home": {
     "greeting": "Bonjour",
     "title": "Les fondations sont prêtes",
-    "body": "Vous êtes connecté avec la double authentification. Ensuite : le dock et les prospects.",
+    "body": "Connexion sécurisée par la double authentification. Ensuite : le dock et les prospects.",
     "statusUp": "Base de test joignable (Paris)",
     "statusDown": "Base de test injoignable",
     "tagline": "Small start. Same grade. Big orders.",
@@ -44,7 +44,7 @@
     "forgotDone": "Si cette adresse a un compte, un lien est en route. Il fonctionne une fois, pendant une heure.",
     "backToSignIn": "Retour à la connexion",
     "confirmTitle": "Continuer vers TopStock",
-    "confirmInviteBody": "Vous êtes invité sur TopStock CRM. Commencez par choisir votre mot de passe.",
+    "confirmInviteBody": "Une invitation à TopStock CRM vous attend. Commencez par choisir votre mot de passe.",
     "confirmRecoveryBody": "Ce lien vous permet de choisir un nouveau mot de passe.",
     "continuing": "Ouverture…",
     "setPasswordTitle": "Choisir un mot de passe",

@@ -6,7 +6,7 @@
   "Home": {
     "greeting": "Hello",
     "title": "The foundation is ready",
-    "body": "You're signed in with two-factor. Next come the dock and the leads.",
+    "body": "You’re signed in with two-factor. Next come the dock and the leads.",
     "statusUp": "Test database reachable (Paris)",
     "statusDown": "Test database not reachable",
     "tagline": "Small start. Same grade. Big orders.",
