@@ -7,12 +7,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${OUT:-/tmp/topstock-auth}"
-AUTH_VERSION="v1.11.1-0.20260922104245-ce9a8eee0cc0" # supabase/auth master, 22 Sep 2026
+GOTRUE_PIN="v1.11.1-0.20260922104245-ce9a8eee0cc0" # supabase/auth master commit ce9a8ee, 22 Sep 2026
 BIN=/usr/lib/postgresql/16/bin
 mkdir -p "$OUT"
 
 if [ ! -x "$OUT/gotrue" ]; then
-  GOFLAGS=-mod=mod go mod download -json "github.com/supabase/auth@$AUTH_VERSION" > "$OUT/mod.json"
+  GOFLAGS=-mod=mod go mod download -json "github.com/supabase/auth@$GOTRUE_PIN" > "$OUT/mod.json"
   SRC="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["Dir"])' "$OUT/mod.json")"
   rm -rf "$OUT/src" && cp -r "$SRC" "$OUT/src" && chmod -R u+w "$OUT/src"
   # The module zip omits the nested godotenv fork; the upstream release is used instead (local builds only).
