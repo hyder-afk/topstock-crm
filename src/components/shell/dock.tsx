@@ -94,9 +94,12 @@ export function Dock() {
     }
   };
 
-  // Arrow keys move between sections, Home and End jump to the ends; Enter opens (native link behaviour).
+  // Arrow keys move between sections, Home and End jump to the ends; Enter opens (native link behaviour). The order
+  // comes from the visible links themselves, not from the bead measurements, so the keys work from the first moment.
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
-    const order = slots.map((s) => links.current.get(s.id)).filter((el): el is HTMLAnchorElement => !!el);
+    const order = sections
+      .map((s) => links.current.get(s.id))
+      .filter((el): el is HTMLAnchorElement => !!el && el.offsetParent !== null);
     const index = order.indexOf(document.activeElement as HTMLAnchorElement);
     if (index < 0) return;
     const next =
