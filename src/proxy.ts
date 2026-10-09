@@ -41,10 +41,12 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request: { headers: requestHeaders } });
           cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          // A response that sets auth cookies must never be cached (Cache-Control: private, no-store, ...).
+          Object.entries(headers).forEach(([key, value]) => response.headers.set(key, value));
         },
       },
     });
@@ -58,6 +60,13 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except static files and images.
-    "/((?!_next/static|_next/image|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ttf|woff2?)$).*)",
+    {
+      source: "/((?!_next/static|_next/image|icon.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ttf|woff2?)$).*)",
+      // Prefetches do not render HTML, so they need neither a nonce nor a session refresh.
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
   ],
 };

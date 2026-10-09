@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 
 // No raw errors to users: a plain message and a way to try again.
-export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function ErrorPage({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const t = useTranslations("Error");
   return (
     <main id="main" className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 px-4">
