@@ -140,5 +140,11 @@ export async function fullSession(browser: import("@playwright/test").Browser, e
 // CI and a 20x-throttled Chromium both showed it.
 export async function appReady(page: Page) {
   await expect(page.getByTestId("dock-bead")).not.toHaveClass(/opacity-0/);
+  await twoFrames(page);
+}
+
+// Motion writes motion-value changes to the page on the next animation frame (frameloop "render" step), so a position
+// set in a React commit shows up one frame later. Waiting two frames (~33 ms) covers it.
+export async function twoFrames(page: Page) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }

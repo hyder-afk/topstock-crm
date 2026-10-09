@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession } from "./helpers";
+import { appReady, createUser, fullSession, twoFrames } from "./helpers";
 
 // The app shell and dock (Day 2): sections open by tap, keyboard and bead drag; phones show five items.
 test.describe.configure({ mode: "serial" });
@@ -107,14 +107,41 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
     const context = await browser.newContext({ storageState: state, viewport, reducedMotion: "reduce" });
     const page = await context.newPage();
     await open(page, "/");
+    const centre = async (name: string) => {
+      const box = (await dock(page).getByRole("link", { name, exact: true }).boundingBox())!;
+      return box.x + box.width / 2;
+    };
+    await beadSettledOver(page, "Home");
+    const from = await centre("Home");
+    const to = await centre("Analytics");
+    // Record where the bead is on every frame from before the click until the new page has shown. No spring means it
+    // is only ever over Home or over Analytics, never anywhere in between.
+    await page.evaluate(() => {
+      const bead = document.querySelector("[data-testid=dock-bead]")!;
+      const store = window as unknown as { beadXs: number[] | null };
+      const xs: number[] = [];
+      store.beadXs = xs;
+      const tick = () => {
+        const r = bead.getBoundingClientRect();
+        xs.push(r.x + r.width / 2);
+        if (store.beadXs === xs) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
     await dock(page).getByRole("link", { name: "Analytics", exact: true }).click();
     await expect(page).toHaveURL(/\/analytics$/);
-    const link = dock(page).getByRole("link", { name: "Analytics", exact: true });
-    // No spring: within one frame of the route change the bead is already over the new section.
     await expect(page.locator("main h1")).toHaveText("Analytics");
-    const bead = (await page.getByTestId("dock-bead").boundingBox())!;
-    const box = (await link.boundingBox())!;
-    expect(Math.abs(bead.x + bead.width / 2 - (box.x + box.width / 2))).toBeLessThan(2);
+    // Motion writes the jump on the next frame; give it two, then stop recording.
+    await twoFrames(page);
+    const xs = await page.evaluate(() => {
+      const store = window as unknown as { beadXs: number[] | null };
+      const out = store.beadXs ?? [];
+      store.beadXs = null;
+      return out;
+    });
+    expect(xs.length).toBeGreaterThan(1);
+    expect(xs.filter((x) => Math.abs(x - from) >= 2 && Math.abs(x - to) >= 2), "positions in between").toEqual([]);
+    expect(Math.abs(xs[xs.length - 1] - to)).toBeLessThan(2);
     await context.close();
   });
 
