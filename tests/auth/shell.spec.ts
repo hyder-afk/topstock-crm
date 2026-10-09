@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { createUser, fullSession } from "./helpers";
+import { appReady, createUser, fullSession } from "./helpers";
 
 // The app shell and dock (Day 2): sections open by tap, keyboard and bead drag; phones show five items.
 test.describe.configure({ mode: "serial" });
@@ -16,6 +16,7 @@ test.beforeAll(async ({ browser }) => {
 async function open(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator("main h1").first()).toBeVisible();
+  await appReady(page);
 }
 
 function dock(page: Page) {

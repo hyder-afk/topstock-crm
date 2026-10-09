@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { expect, type Page } from "@playwright/test";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
 function base32Decode(input: string) {
@@ -132,4 +133,12 @@ export async function fullSession(browser: import("@playwright/test").Browser, e
   const state = await context.storageState();
   await context.close();
   return state;
+}
+
+// The signed-in page is interactive once React has hydrated: the dock has measured its sections (the bead shows), and
+// two more frames let the remaining effects (the keyboard shortcuts) attach. Keys pressed earlier go nowhere; WebKit in
+// CI and a 20x-throttled Chromium both showed it.
+export async function appReady(page: Page) {
+  await expect(page.getByTestId("dock-bead")).not.toHaveClass(/opacity-0/);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }

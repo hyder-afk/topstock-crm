@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { createUser, nextWindow, totp } from "./helpers";
+import { appReady, createUser, nextWindow, totp } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -138,6 +138,7 @@ test("app shell: leads and more in full, the other sections in brief", async ({ 
 
 test("command menu and shortcuts list", async ({ browser }) => {
   await shoot(browser, "full", "/", "palette", async (page) => {
+    await appReady(page);
     await page.keyboard.press("Control+k");
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.waitForTimeout(250); // let the entrance settle before the shot
@@ -148,6 +149,7 @@ test("command menu and shortcuts list", async ({ browser }) => {
     "/",
     "shortcuts",
     async (page) => {
+      await appReady(page);
       await page.keyboard.press("Shift+Slash");
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.waitForTimeout(250);
