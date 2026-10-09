@@ -1,10 +1,10 @@
-# On merge to main: apply migrations and auth settings (invite-only, MFA, password rules) to the DEV project only.
+# On merge to main: apply migrations and auth settings (invite-only, MFA, password rules, email templates) to the DEV project only.
 # Secrets are pasted by Haider (Cloud Workflow section 5). The production project is never reachable from this repo.
 name: deploy-dev-db
 on:
   push:
     branches: [main]
-    paths: ["supabase/migrations/**", "supabase/config.toml"]
+    paths: ["supabase/migrations/**", "supabase/config.toml", "supabase/templates/**"]
   workflow_dispatch:
 permissions:
   contents: read

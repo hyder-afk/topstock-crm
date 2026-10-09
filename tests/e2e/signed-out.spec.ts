@@ -1,0 +1,71 @@
+import { expect, test } from "@playwright/test";
+
+// Signed-out checks. These run against placeholder Supabase values, so no request ever reaches a real project.
+// The full invite + password + two-factor journey runs against a local Supabase in tests/auth (CI job "auth").
+
+for (const locale of ["en", "fr"] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`sign-in renders (${locale}, ${scheme}) with no console errors and no sideways scroll`, async ({ page, context }) => {
+      const errors: string[] = [];
+      page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      page.on("pageerror", (e) => errors.push(e.message));
+      await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.goto("/login");
+
+      await expect(page.locator("html")).toHaveAttribute("lang", locale);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(locale === "en" ? "Sign in" : "Connexion");
+      await expect(page.getByRole("img", { name: "TopStock" })).toBeVisible();
+      await expect(page.getByLabel(locale === "en" ? "Email" : "E-mail")).toBeFocused();
+      await expect(page.getByLabel(locale === "en" ? "Password" : "Mot de passe")).toHaveAttribute("autocomplete", "current-password");
+      await expect(page.locator("html")).toHaveClass(new RegExp(scheme === "dark" ? "dark" : "light"));
+      await expect(page.getByRole("button", { name: locale === "en" ? "System" : "Système" })).toHaveAttribute("aria-pressed", "true");
+
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
+test("every app page sends a signed-out visitor to sign-in", async ({ page }) => {
+  for (const path of ["/", "/mfa", "/mfa/setup", "/set-password", "/leads"]) {
+    await page.goto(path);
+    await expect(page, `${path} should redirect`).toHaveURL(/\/login$/);
+  }
+});
+
+test("security headers are present, also on the sign-in redirect", async ({ request }) => {
+  for (const res of [await request.get("/login"), await request.get("/", { maxRedirects: 0 })]) {
+    const h = res.headers();
+    expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(h["content-security-policy"]).toMatch(/script-src 'self' 'nonce-/);
+    expect(h["x-frame-options"]).toBe("DENY");
+    expect(h["x-content-type-options"]).toBe("nosniff");
+    expect(h["x-powered-by"]).toBeUndefined();
+  }
+  const redirect = await request.get("/", { maxRedirects: 0 });
+  expect(redirect.status()).toBe(307);
+  expect(redirect.headers()["location"]).toBe("/login");
+});
+
+test("language switch sets the cookie and re-renders in French", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "FR" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Connexion");
+});
+
+test("forgot-password page links back to sign-in", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("link", { name: "Forgot your password?" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Reset your password");
+  await page.getByRole("link", { name: "Back to sign in" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+});
+
+test("an email link without a token shows a plain message, not an error page", async ({ page }) => {
+  await page.goto("/auth/confirm");
+  await expect(page.getByText("This link has expired or was already used. Ask for a new one.")).toBeVisible();
+  await page.goto("/auth/confirm?token_hash=abc&type=signup");
+  await expect(page.getByText("This link has expired or was already used. Ask for a new one.")).toBeVisible();
+});

@@ -24,6 +24,23 @@ function contentSecurityPolicy(nonce: string) {
   ].join("; ");
 }
 
+// Open to everyone: the sign-in screens and the email-link landing page.
+const publicPaths = ["/login", "/forgot-password", "/auth/confirm"];
+// Need a session, but not yet two-factor (aal1): the two-factor screens and choosing a password.
+const aal1Paths = ["/mfa", "/mfa/setup", "/set-password"];
+
+function matches(path: string, list: string[]) {
+  return list.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
+// Where the sign-in wall sends this request, or null to let it through. aal is null when there is no valid session.
+function wallTarget(path: string, aal: string | null) {
+  if (matches(path, publicPaths)) return null;
+  if (aal === null) return "/login";
+  if (aal !== "aal2" && !matches(path, aal1Paths)) return "/mfa";
+  return null;
+}
+
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = contentSecurityPolicy(nonce);
@@ -33,6 +50,8 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("Content-Security-Policy", csp);
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
+  const path = request.nextUrl.pathname;
+  let aal: string | null = null;
 
   // Refresh the Supabase session cookie on every request (authorisation still happens on the server per route).
   if (supabaseUrl && supabaseKey) {
@@ -50,7 +69,22 @@ export async function proxy(request: NextRequest) {
         },
       },
     });
-    await supabase.auth.getClaims();
+    const { data } = await supabase.auth.getClaims();
+    aal = data?.claims ? String(data.claims.aal ?? "aal1") : null;
+  }
+
+  // First line of the sign-in wall (fails closed). Every page and action checks again on the server (src/lib/auth.ts).
+  const target = wallTarget(path, aal);
+  if (target) {
+    const redirect = NextResponse.redirect(new URL(target, request.url));
+    // Keep any refreshed session cookies and their no-store headers on the redirect.
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    ["cache-control", "expires", "pragma"].forEach((key) => {
+      const value = response.headers.get(key);
+      if (value) redirect.headers.set(key, value);
+    });
+    redirect.headers.set("Content-Security-Policy", csp);
+    return redirect;
   }
 
   response.headers.set("Content-Security-Policy", csp);
