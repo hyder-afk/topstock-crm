@@ -1,0 +1,36 @@
+# On merge to main: apply migrations and auth settings (invite-only, MFA, password rules) to the DEV project only.
+# Secrets are pasted by Haider (Cloud Workflow section 5). The production project is never reachable from this repo.
+name: deploy-dev-db
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/migrations/**", "supabase/config.toml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-dev-db
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      DEV_PROJECT_REF: swhkafqlmfhvgpsgdqjp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase link --project-ref "$DEV_PROJECT_REF"
+      - name: Apply migrations to dev
+        run: npx supabase db push --yes
+      - name: Show auth settings diff (logged for review)
+        run: npx supabase config diff
+      - name: Apply auth settings to dev
+        run: npx supabase config push --yes

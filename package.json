@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "playwright test",
     "prepare": "simple-git-hooks",
-    "verify": "npm run lint && npm run typecheck && npm run build && npm run test:e2e"
+    "verify": "npm run lint && npm run typecheck && npm run build && npm run test:e2e",
+    "test:db": "bash scripts/db-test.sh"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
@@ -37,6 +38,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.0",
     "simple-git-hooks": "2.14.0",
+    "supabase": "^2.120.0",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3"
   },
