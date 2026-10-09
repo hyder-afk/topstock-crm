@@ -1,0 +1,15 @@
+<!-- TopStock CRM auth email (English + French). The link opens a page with a Continue button; the token is only used when pressed. -->
+<html>
+  <body style="margin:0;padding:32px 16px;background:#f5f3ef;color:#0e0e10;font-family:Helvetica,Arial,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;padding:32px;">
+      <p style="margin:0 0 24px;font-weight:bold;font-size:20px;"><span style="color:#f2203e;">&#9632;</span> TopStock CRM</p>
+      <h1 style="margin:0 0 8px;font-size:24px;">You're invited to TopStock CRM</h1>
+      <p style="margin:0 0 24px;line-height:1.5;">Press the button to choose your password. You will then set up two-factor sign-in with an authenticator app.</p>
+      <p style="margin:0 0 8px;"><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite" style="display:inline-block;background:#f2203e;color:#0e0e10;font-weight:bold;text-decoration:none;padding:12px 20px;border-radius:12px;">Accept the invitation / Accepter l&#39;invitation</a></p>
+      <p style="margin:0;color:#5a5a62;font-size:14px;">This link works once. / Ce lien ne fonctionne qu&#39;une fois.</p>
+      <hr style="border:none;border-top:1px solid #ddd9d2;margin:32px 0;" />
+      <h2 style="margin:0 0 8px;font-size:20px;">Votre invitation à TopStock CRM</h2>
+      <p style="margin:0;line-height:1.5;">Appuyez sur le bouton pour choisir votre mot de passe, puis activez la double authentification avec une application d&#39;authentification.</p>
+    </div>
+  </body>
+</html>

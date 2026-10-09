@@ -1,0 +1,89 @@
+{
+  "Metadata": {
+    "title": "TopStock CRM",
+    "description": "CRM commercial et gestion de stock pour TopStock Wholesale."
+  },
+  "Home": {
+    "greeting": "Bonjour",
+    "title": "Les fondations sont prêtes",
+    "body": "Connexion sécurisée par la double authentification. Ensuite : le dock et les prospects.",
+    "statusUp": "Base de test joignable (Paris)",
+    "statusDown": "Base de test injoignable",
+    "tagline": "Small start. Same grade. Big orders.",
+    "greetingName": "Bonjour {name}",
+    "signOut": "Se déconnecter"
+  },
+  "Settings": {
+    "language": "Langue",
+    "theme": "Apparence",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "themeSystem": "Système"
+  },
+  "Common": {
+    "loading": "Chargement…",
+    "skipToContent": "Aller au contenu"
+  },
+  "Error": {
+    "title": "Une erreur est survenue",
+    "body": "Réessayez. Si cela continue, prévenez Haider.",
+    "retry": "Réessayer"
+  },
+  "Auth": {
+    "signInTitle": "Connexion",
+    "signInBody": "Utilisez l’adresse e-mail à laquelle votre invitation a été envoyée.",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "signIn": "Se connecter",
+    "signingIn": "Connexion…",
+    "forgotLink": "Mot de passe oublié ?",
+    "forgotTitle": "Réinitialiser le mot de passe",
+    "forgotBody": "Saisissez votre adresse e-mail. Si elle a un compte, nous enverrons un lien pour choisir un nouveau mot de passe.",
+    "sendLink": "Envoyer le lien",
+    "sending": "Envoi…",
+    "forgotDone": "Si cette adresse a un compte, un lien est en route. Il fonctionne une fois, pendant une heure.",
+    "backToSignIn": "Retour à la connexion",
+    "confirmTitle": "Continuer vers TopStock",
+    "confirmInviteBody": "Une invitation à TopStock CRM vous attend. Commencez par choisir votre mot de passe.",
+    "confirmRecoveryBody": "Ce lien vous permet de choisir un nouveau mot de passe.",
+    "continuing": "Ouverture…",
+    "setPasswordTitle": "Choisir un mot de passe",
+    "setPasswordBody": "Au moins 12 caractères, avec minuscules, majuscules, un chiffre et un symbole.",
+    "newPassword": "Nouveau mot de passe",
+    "confirmPassword": "Répéter le mot de passe",
+    "savePassword": "Enregistrer",
+    "saving": "Enregistrement…",
+    "mfaTitle": "Saisissez votre code",
+    "mfaBody": "Ouvrez votre application d’authentification et saisissez le code à 6 chiffres de TopStock CRM.",
+    "code": "Code à 6 chiffres",
+    "verify": "Vérifier",
+    "verifying": "Vérification…",
+    "setupTitle": "Activer la double authentification",
+    "setupBody": "Chaque compte TopStock a besoin d’une application d’authentification, comme Google Authenticator, Microsoft Authenticator ou 1Password. Cela prend une minute.",
+    "showQr": "Afficher le QR code",
+    "preparing": "Préparation…",
+    "scanStep": "1. Scannez ce QR code avec votre application d’authentification.",
+    "qrAlt": "QR code pour votre application d’authentification",
+    "manualKey": "Impossible de scanner ? Saisissez plutôt cette clé dans l’application :",
+    "copy": "Copier la clé",
+    "copied": "Copiée",
+    "enterStep": "2. Saisissez le code à 6 chiffres affiché",
+    "finishSetup": "Terminer",
+    "notYou": "Ce n’est pas vous ? Se déconnecter",
+    "errors": {
+      "invalidCredentials": "Cet e-mail et ce mot de passe ne correspondent pas. Réessayez.",
+      "rateLimited": "Trop de tentatives. Attendez quelques minutes, puis réessayez.",
+      "unavailable": "La connexion est indisponible pour le moment. Réessayez dans un instant.",
+      "invalidEmail": "Saisissez une adresse e-mail valide.",
+      "linkInvalid": "Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.",
+      "passwordMismatch": "Les deux mots de passe ne correspondent pas.",
+      "passwordWeak": "Utilisez au moins 12 caractères avec minuscules, majuscules, un chiffre et un symbole.",
+      "passwordSame": "Choisissez un mot de passe différent de l’actuel.",
+      "codeInvalid": "Saisissez les 6 chiffres de votre application.",
+      "codeWrong": "Ce code n’a pas fonctionné. Les codes changent toutes les 30 secondes : utilisez celui affiché maintenant.",
+      "setupExpired": "Cette configuration a expiré. Rechargez la page pour obtenir un nouveau QR code."
+    },
+    "continueInvite": "Choisir un mot de passe",
+    "continueRecovery": "Choisir un nouveau mot de passe"
+  }
+}

@@ -1,0 +1,33 @@
+# Database checks on every PR: apply all migrations to the real Supabase Postgres (local, throwaway, no keys),
+# run the two-user RLS attack test, the Supabase advisors (splinter) and lint the SQL functions.
+name: db
+on:
+  pull_request:
+    paths: ["supabase/**", ".github/workflows/db.yml", "package.json", "package-lock.json"]
+  push:
+    branches: [main]
+    paths: ["supabase/**"]
+permissions:
+  contents: read
+jobs:
+  rls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start local Supabase (applies supabase/migrations)
+        run: npx supabase start -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Two-user RLS attack test
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_attack.sql
+      - name: Supabase security and performance advisors (fail on ERROR)
+        run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Lint SQL functions
+        run: npx supabase db lint --local --level warning --fail-on error
+      - if: always()
+        run: npx supabase stop --no-backup

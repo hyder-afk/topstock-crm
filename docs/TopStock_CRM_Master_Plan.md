@@ -121,6 +121,9 @@ Clarity, deference, depth. Content first. One primary action per screen. Everyth
 Content max width 1440px on ultra-wide with generous side margins. Multi-pane layouts on desktop, stacked on mobile.
 
 ### Colour tokens
+
+> **Superseded 7 Oct 2026 by DESIGN.md** (TopStock brand palette and fonts, decided by Haider). Kept for history.
+
 | Role | Light | Dark |
 |---|---|---|
 | Background | #FFFFFF | #000000 |
@@ -166,7 +169,7 @@ Animate only `transform` and `opacity`. Press scale 0.97. Page enter fade + 8px 
 Haider's requirement: fully responsive, skeleton loaders, very fast.
 - **Skeletons, never spinners.** Every route has a `loading.tsx` skeleton that matches the final layout (same card sizes, same row heights) so content replaces it without a jump. Every list and card has loading, empty and error states. Show a skeleton at once when there is no cached data; when cached data exists, show it at once and refresh in the background.
 - **Budgets:** first load under 2 s on Wi-Fi, route change under 200 ms perceived, every tap acknowledged within 100 ms (press state), scrolling and dragging at 60 fps, no layout shift, Lighthouse 90+ on Home, Leads and Inventory.
-- **How:** Server Components for first paint, TanStack Query cache with prefetch on hover and on dock focus, keyset pagination, virtualised tables, optimistic updates with Undo, space reserved for badges and avatars, system font stack (no web font download), Supabase and Vercel regions both in the EU.
+- **How:** Server Components for first paint, TanStack Query cache with prefetch on hover and on dock focus, keyset pagination, virtualised tables, optimistic updates with Undo, space reserved for badges and avatars, brand fonts self-hosted with next/font (no third-party font request; was "system font stack" before 7 Oct 2026), Supabase and Vercel regions both in the EU.
 - **Responsive matrix:** 375 to 430 phone (stacked, 5-item dock, horizontal snap for Kanban columns and tab strips), 744 to 1023 tablet (two columns), 1024 and up desktop (split views, 7-item dock), content max 1440 on wide monitors. Test every UI change at **390, 768, 1024, 1280, 1440 and 1728**, light and dark, EN and FR; no horizontal page scroll at any width.
 - **Prototype reference (v3.2):** skeletons on first visit to each section, sliding tab indicator, Kanban columns that snap on phone, call panel that can be dragged away.
 

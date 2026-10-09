@@ -13,6 +13,6 @@ Check each item against the screen you changed and write the finding and the fix
 7. **Calm**: no constant motion; entrances on first visit only; no hover lift on non-clickable things; skeletons rather than spinners.
 8. **Reduced motion**: `prefers-reduced-motion` removes stretch and entrance animations but keeps direct manipulation working.
 9. **Materials and depth**: translucency only on floating layers (dock, popovers), borders and tone for depth elsewhere, shadow only on floating layers.
-10. **Typography**: system stack, optical sizes, tabular numbers for money and counts, French labels up to 20 percent longer never clipped.
+10. **Typography**: brand fonts Outfit + DM Mono, self-hosted (DESIGN.md; replaced the system stack on 7 Oct 2026), DM Mono for money and counts that line up, French labels up to 20 percent longer never clipped.
 11. **Status is never colour-only**: every status carries a label or symbol; light-mode status text tokens green `#15702F`, amber `#7C5300`, red `#B61C29`.
 12. **Spatial consistency**: things come from and return to where they live; the dock stays bottom-centre on every screen size.

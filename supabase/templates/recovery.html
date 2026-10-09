@@ -1,0 +1,15 @@
+<!-- TopStock CRM auth email (English + French). The link opens a page with a Continue button; the token is only used when pressed. -->
+<html>
+  <body style="margin:0;padding:32px 16px;background:#f5f3ef;color:#0e0e10;font-family:Helvetica,Arial,sans-serif;">
+    <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:20px;padding:32px;">
+      <p style="margin:0 0 24px;font-weight:bold;font-size:20px;"><span style="color:#f2203e;">&#9632;</span> TopStock CRM</p>
+      <h1 style="margin:0 0 8px;font-size:24px;">Reset your TopStock password</h1>
+      <p style="margin:0 0 24px;line-height:1.5;">Someone asked to reset the password for this address. If it was you, press the button. If not, ignore this email: nothing changes.</p>
+      <p style="margin:0 0 8px;"><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=recovery" style="display:inline-block;background:#f2203e;color:#0e0e10;font-weight:bold;text-decoration:none;padding:12px 20px;border-radius:12px;">Choose a new password / Choisir un nouveau mot de passe</a></p>
+      <p style="margin:0;color:#5a5a62;font-size:14px;">This link works once, for one hour. / Ce lien fonctionne une fois, pendant une heure.</p>
+      <hr style="border:none;border-top:1px solid #ddd9d2;margin:32px 0;" />
+      <h2 style="margin:0 0 8px;font-size:20px;">Réinitialiser votre mot de passe TopStock</h2>
+      <p style="margin:0;line-height:1.5;">Quelqu&#39;un a demandé à réinitialiser le mot de passe de cette adresse. Si c&#39;est vous, appuyez sur le bouton. Sinon, ignorez cet e-mail : rien ne change.</p>
+    </div>
+  </body>
+</html>
