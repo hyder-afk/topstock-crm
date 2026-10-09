@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { createUser, nextWindow, totp } from "./helpers";
+import { appReady, createUser, nextWindow, totp } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -33,8 +33,22 @@ async function signIn(browser: Browser, email: string) {
   return { context, page };
 }
 
-async function shoot(browser: Browser, state: string, path: string, name: string, act?: (page: Page) => Promise<void>) {
-  for (const { locale, scheme, widths } of matrix) {
+// Placeholder sections share one component: EN light and FR dark at phone and laptop width are enough for them
+// (logged waiver, Tooling Protocol section 6 item 9; Leads, the shared template, gets the full matrix).
+const lightMatrix = [
+  { locale: "en", scheme: "light", widths: [390, 1440] },
+  { locale: "fr", scheme: "dark", widths: [390, 1440] },
+] as const;
+
+async function shoot(
+  browser: Browser,
+  state: string,
+  path: string,
+  name: string,
+  act?: (page: Page) => Promise<void>,
+  combos: readonly { locale: string; scheme: "light" | "dark"; widths: readonly number[] }[] = matrix,
+) {
+  for (const { locale, scheme, widths } of combos) {
     for (const width of widths) {
       const context = await browser.newContext({
         storageState: states[state],
@@ -44,10 +58,11 @@ async function shoot(browser: Browser, state: string, path: string, name: string
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
       const errors: string[] = [];
-      page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
       page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(path);
-      // The real screen, not the loading skeleton (which has no heading).
+      // The right page (no unexpected redirect), then the real screen, not the loading skeleton (which has no heading).
+      await expect(page).toHaveURL((url) => url.pathname === new URL(path, "http://localhost:3100").pathname);
       await expect(page.locator("main h1").first()).toBeVisible();
       if (act) await act(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -111,4 +126,33 @@ test("enter your code", async ({ browser }) => {
 
 test("home, signed in", async ({ browser }) => {
   await shoot(browser, "full", "/", "home");
+});
+
+test("app shell: leads and more in full, the other sections in brief", async ({ browser }) => {
+  await shoot(browser, "full", "/leads", "leads");
+  await shoot(browser, "full", "/more", "more");
+  for (const section of ["pipeline", "inventory", "tasks", "analytics"]) {
+    await shoot(browser, "full", `/${section}`, section, undefined, lightMatrix);
+  }
+});
+
+test("command menu and shortcuts list", async ({ browser }) => {
+  await shoot(browser, "full", "/", "palette", async (page) => {
+    await appReady(page);
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(250); // let the entrance settle before the shot
+  });
+  await shoot(
+    browser,
+    "full",
+    "/",
+    "shortcuts",
+    async (page) => {
+      await appReady(page);
+      await page.keyboard.press("Shift+Slash");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(250);
+    },
+  );
 });

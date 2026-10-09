@@ -4,14 +4,11 @@
     "description": "CRM commercial et gestion de stock pour TopStock Wholesale."
   },
   "Home": {
-    "greeting": "Bonjour",
-    "title": "Les fondations sont prêtes",
-    "body": "Connexion sécurisée par la double authentification. Ensuite : le dock et les prospects.",
-    "statusUp": "Base de test joignable (Paris)",
-    "statusDown": "Base de test injoignable",
     "tagline": "Small start. Same grade. Big orders.",
-    "greetingName": "Bonjour {name}",
-    "signOut": "Se déconnecter"
+    "hello": "Bonjour",
+    "emptyTitle": "Votre journée en un coup d’œil",
+    "emptyBody": "Les tâches du jour, les rendez-vous et votre pipeline s’afficheront ici dès qu’ils seront dans le CRM.",
+    "addName": "Ajoutez votre prénom à l’accueil"
   },
   "Settings": {
     "language": "Langue",
@@ -85,5 +82,87 @@
     },
     "continueInvite": "Choisir un mot de passe",
     "continueRecovery": "Choisir un nouveau mot de passe"
+  },
+  "More": {
+    "statusUp": "Base de test joignable (Paris)",
+    "statusDown": "Base de test injoignable",
+    "signOut": "Se déconnecter",
+    "sections": "Autres sections",
+    "settings": "Réglages",
+    "status": "Système"
+  },
+  "Nav": {
+    "label": "Sections",
+    "home": "Accueil",
+    "leads": "Prospects",
+    "pipeline": "Pipeline",
+    "inventory": "Stock",
+    "tasks": "Tâches",
+    "analytics": "Analyses",
+    "more": "Plus"
+  },
+  "Sections": {
+    "leads": {
+      "emptyTitle": "Aucun prospect pour l’instant",
+      "emptyBody": "Les prospects s’afficheront ici une fois importés, prêts à être recherchés et traités."
+    },
+    "pipeline": {
+      "emptyTitle": "Aucune affaire pour l’instant",
+      "emptyBody": "Les affaires s’afficheront ici, classées par étape."
+    },
+    "inventory": {
+      "emptyTitle": "Pas encore de stock",
+      "emptyBody": "Les produits, emplacements et niveaux de stock s’afficheront ici."
+    },
+    "tasks": {
+      "emptyTitle": "Aucune tâche pour l’instant",
+      "emptyBody": "Vos relances et choses à faire s’afficheront ici."
+    },
+    "analytics": {
+      "emptyTitle": "Aucun rapport pour l’instant",
+      "emptyBody": "Les rapports de ventes et de stock s’afficheront ici."
+    }
+  },
+  "Header": {
+    "search": "Recherche et commandes",
+    "searchHint": "Rechercher…"
+  },
+  "Palette": {
+    "title": "Menu des commandes",
+    "description": "Recherchez une section ou une action, puis appuyez sur Entrée.",
+    "placeholder": "Rechercher une section ou une action…",
+    "empty": "Aucun résultat. Essayez le nom d’une section.",
+    "goTo": "Aller à",
+    "appearance": "Apparence",
+    "themeLight": "Apparence claire",
+    "themeDark": "Apparence sombre",
+    "themeSystem": "Suivre le système",
+    "language": "Langue",
+    "help": "Aide et compte",
+    "shortcuts": "Raccourcis clavier",
+    "signOut": "Se déconnecter"
+  },
+  "Shortcuts": {
+    "title": "Raccourcis clavier",
+    "description": "Les raccourcis marchent partout, sauf pendant la saisie dans un champ. Les lettres après G suivent les noms anglais des sections.",
+    "palette": "Ouvrir le menu des commandes",
+    "search": "Rechercher",
+    "help": "Afficher cette liste",
+    "goTo": "Aller à {section}",
+    "tooltip": "G puis {key}",
+    "close": "Fermer"
+  },
+  "Profile": {
+    "title": "Votre nom",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "save": "Enregistrer le nom",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré.",
+    "errors": {
+      "invalid": "Les noms font 80 caractères au maximum.",
+      "unavailable": "Enregistrement impossible pour le moment. Réessayez.",
+      "load": "Impossible de charger votre nom pour le moment. Rechargez la page pour réessayer."
+    }
   }
 }

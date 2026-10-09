@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { expect, type Page } from "@playwright/test";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
 function base32Decode(input: string) {
@@ -114,4 +115,36 @@ export async function trySignup(email: string, password: string) {
   });
   const body = (await res.json().catch(() => ({}))) as { error_code?: string; code?: string };
   return { status: res.status, code: body.error_code ?? body.code };
+}
+
+// Signs in through the UI (password, then the TOTP code in a fresh window) and returns the aal2 session state.
+export async function fullSession(browser: import("@playwright/test").Browser, email: string, password: string, secret: string) {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(/\/mfa$/);
+  await nextWindow();
+  await page.getByLabel("6-digit code").fill(totp(secret));
+  await page.getByRole("button", { name: "Verify" }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  const state = await context.storageState();
+  await context.close();
+  return state;
+}
+
+// The signed-in page is interactive once React has hydrated: the dock has measured its sections (the bead shows), and
+// two more frames let the remaining effects (the keyboard shortcuts) attach. Keys pressed earlier go nowhere; WebKit in
+// CI and a 20x-throttled Chromium both showed it.
+export async function appReady(page: Page) {
+  await expect(page.getByTestId("dock-bead")).not.toHaveClass(/opacity-0/);
+  await twoFrames(page);
+}
+
+// Motion writes motion-value changes to the page on the next animation frame (frameloop "render" step), so a position
+// set in a React commit shows up one frame later. Waiting two frames (~33 ms) covers it.
+export async function twoFrames(page: Page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }

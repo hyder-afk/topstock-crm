@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-function contentSecurityPolicy(nonce: string) {
+function contentSecurityPolicy(nonce: string, https: boolean) {
   const isDev = process.env.NODE_ENV === "development";
   const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : "";
   const supabaseWs = supabaseOrigin.replace(/^https:/, "wss:");
@@ -20,7 +20,9 @@ function contentSecurityPolicy(nonce: string) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    ...(isDev ? [] : ["upgrade-insecure-requests"]),
+    // Only meaningful on HTTPS pages (always the case on Vercel); on the plain-HTTP local and CI servers it would
+    // make the browser retry same-origin requests over HTTPS and fail.
+    ...(isDev || !https ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
 }
 
@@ -43,7 +45,8 @@ function wallTarget(path: string, aal: string | null) {
 
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const csp = contentSecurityPolicy(nonce);
+  const https = request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
+  const csp = contentSecurityPolicy(nonce, https);
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);

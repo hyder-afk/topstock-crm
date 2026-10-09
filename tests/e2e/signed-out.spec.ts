@@ -46,10 +46,17 @@ test("security headers are present, also on the sign-in redirect", async ({ requ
     expect(h["x-frame-options"]).toBe("DENY");
     expect(h["x-content-type-options"]).toBe("nosniff");
     expect(h["x-powered-by"]).toBeUndefined();
+    // Plain-HTTP test server: no "upgrade to HTTPS" (that directive is sent on HTTPS only).
+    expect(h["content-security-policy"]).not.toContain("upgrade-insecure-requests");
   }
   const redirect = await request.get("/", { maxRedirects: 0 });
   expect(redirect.status()).toBe(307);
   expect(redirect.headers()["location"]).toBe("/login");
+});
+
+test("behind HTTPS (Vercel sets x-forwarded-proto), the CSP upgrades insecure requests", async ({ request }) => {
+  const res = await request.get("/login", { headers: { "x-forwarded-proto": "https" } });
+  expect(res.headers()["content-security-policy"]).toContain("upgrade-insecure-requests");
 });
 
 test("language switch sets the cookie and re-renders in French", async ({ page }) => {

@@ -4,14 +4,11 @@
     "description": "Sales CRM and inventory for TopStock Wholesale."
   },
   "Home": {
-    "greeting": "Hello",
-    "title": "The foundation is ready",
-    "body": "You’re signed in with two-factor. Next come the dock and the leads.",
-    "statusUp": "Test database reachable (Paris)",
-    "statusDown": "Test database not reachable",
     "tagline": "Small start. Same grade. Big orders.",
-    "greetingName": "Hello {name}",
-    "signOut": "Sign out"
+    "hello": "Hello",
+    "emptyTitle": "Your day at a glance",
+    "emptyBody": "Today’s tasks, meetings and your pipeline will show here once they’re in the CRM.",
+    "addName": "Add your first name to the greeting"
   },
   "Settings": {
     "language": "Language",
@@ -85,5 +82,87 @@
     },
     "continueInvite": "Choose a password",
     "continueRecovery": "Choose a new password"
+  },
+  "More": {
+    "statusUp": "Test database reachable (Paris)",
+    "statusDown": "Test database not reachable",
+    "signOut": "Sign out",
+    "sections": "Other sections",
+    "settings": "Settings",
+    "status": "System"
+  },
+  "Nav": {
+    "label": "Sections",
+    "home": "Home",
+    "leads": "Leads",
+    "pipeline": "Pipeline",
+    "inventory": "Inventory",
+    "tasks": "Tasks",
+    "analytics": "Analytics",
+    "more": "More"
+  },
+  "Sections": {
+    "leads": {
+      "emptyTitle": "No leads yet",
+      "emptyBody": "Leads will appear here once they’re imported, ready to search and work through."
+    },
+    "pipeline": {
+      "emptyTitle": "No deals yet",
+      "emptyBody": "Deals will appear here, grouped by stage."
+    },
+    "inventory": {
+      "emptyTitle": "No stock yet",
+      "emptyBody": "Products, locations and stock levels will appear here."
+    },
+    "tasks": {
+      "emptyTitle": "No tasks yet",
+      "emptyBody": "Your follow-ups and to-dos will appear here."
+    },
+    "analytics": {
+      "emptyTitle": "No reports yet",
+      "emptyBody": "Sales and stock reports will appear here."
+    }
+  },
+  "Header": {
+    "search": "Search and commands",
+    "searchHint": "Search…"
+  },
+  "Palette": {
+    "title": "Command menu",
+    "description": "Search sections and actions, then press Enter.",
+    "placeholder": "Search sections and actions…",
+    "empty": "No matches. Try a section name.",
+    "goTo": "Go to",
+    "appearance": "Appearance",
+    "themeLight": "Light appearance",
+    "themeDark": "Dark appearance",
+    "themeSystem": "Match the system",
+    "language": "Language",
+    "help": "Help and account",
+    "shortcuts": "Keyboard shortcuts",
+    "signOut": "Sign out"
+  },
+  "Shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Shortcuts work anywhere except while you type in a field.",
+    "palette": "Open the command menu",
+    "search": "Search",
+    "help": "Show this list",
+    "goTo": "Go to {section}",
+    "tooltip": "G then {key}",
+    "close": "Close"
+  },
+  "Profile": {
+    "title": "Your name",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "save": "Save name",
+    "saving": "Saving…",
+    "saved": "Saved.",
+    "errors": {
+      "invalid": "Names can be up to 80 characters.",
+      "unavailable": "Couldn’t save just now. Try again.",
+      "load": "Couldn’t load your name just now. Reload the page to try again."
+    }
   }
 }
