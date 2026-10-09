@@ -33,11 +33,12 @@ async function beadSettledOver(page: Page, name: string) {
     .toBeLessThan(2);
 }
 
-test.describe("desktop", () => {
-  test.use({ viewport: { width: 1440, height: 900 } });
+// Every desktop width from CLAUDE.md, in Chromium and WebKit (Safari's engine).
+for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => {
+  const viewport = { width, height: 900 };
 
   test("seven sections; tap opens one and moves the bead there", async ({ browser }) => {
-    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({ storageState: state, viewport });
     const page = await context.newPage();
     await open(page, "/");
     await expect(page.locator("main h1")).toHaveText("Hello");
@@ -60,7 +61,7 @@ test.describe("desktop", () => {
   });
 
   test("keyboard: arrows move between sections, Enter opens", async ({ browser }) => {
-    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({ storageState: state, viewport });
     const page = await context.newPage();
     await open(page, "/");
     await dock(page).getByRole("link", { name: "Home", exact: true }).focus();
@@ -78,7 +79,7 @@ test.describe("desktop", () => {
   });
 
   test("dragging the bead and letting go opens the section under it", async ({ browser }) => {
-    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({ storageState: state, viewport });
     const page = await context.newPage();
     await open(page, "/");
     await beadSettledOver(page, "Home");
@@ -102,7 +103,7 @@ test.describe("desktop", () => {
   });
 
   test("reduced motion: the bead lands at once", async ({ browser }) => {
-    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+    const context = await browser.newContext({ storageState: state, viewport, reducedMotion: "reduce" });
     const page = await context.newPage();
     await open(page, "/");
     await dock(page).getByRole("link", { name: "Analytics", exact: true }).click();
@@ -113,6 +114,23 @@ test.describe("desktop", () => {
     const bead = (await page.getByTestId("dock-bead").boundingBox())!;
     const box = (await link.boundingBox())!;
     expect(Math.abs(bead.x + bead.width / 2 - (box.x + box.width / 2))).toBeLessThan(2);
+    await context.close();
+  });
+
+  test("evidence: Home and the command menu", async ({ browser }, testInfo) => {
+    const context = await browser.newContext({ storageState: state, viewport });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    await open(page, "/");
+    await beadSettledOver(page, "Home");
+    const dir = `test-results/shell-screens/${testInfo.project.name}`;
+    await page.screenshot({ path: `${dir}/home-${width}.png` });
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog", { name: "Command menu" })).toBeVisible();
+    await page.waitForTimeout(250); // let the entrance settle before the shot
+    await page.screenshot({ path: `${dir}/palette-${width}.png` });
+    expect(errors).toEqual([]);
     await context.close();
   });
 });
@@ -151,6 +169,12 @@ test.describe("keyboard and command menu", () => {
     await expect(page).toHaveURL(/\/pipeline$/);
     await expect(dialog).toBeHidden();
 
+    // Ctrl+K again closes it (the typing field has focus while it is open).
+    await page.keyboard.press("Control+k");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Control+k");
+    await expect(dialog).toBeHidden();
+
     // "/" opens it too; Escape closes it and returns focus.
     await page.keyboard.press("/");
     await expect(dialog).toBeVisible();
@@ -166,6 +190,29 @@ test.describe("keyboard and command menu", () => {
     await context.close();
   });
 
+  test("in French, the command menu finds French words", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    await context.addCookies([{ name: "locale", value: "fr", url: "http://localhost:3100" }]);
+    const page = await context.newPage();
+    await open(page, "/");
+    await expect(page.locator("main h1")).toHaveText("Bonjour");
+    await page.keyboard.press("Control+k");
+    const dialog = page.getByRole("dialog", { name: "Menu des commandes" });
+    await expect(dialog).toBeVisible();
+    await page.keyboard.type("sombre");
+    await expect(dialog.getByRole("option", { name: "Apparence sombre" })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    // Straight away, while the menu is still fading out: Ctrl+K opens it again, with an empty search.
+    await page.keyboard.press("Control+k");
+    await expect(dialog.getByRole("combobox")).toHaveValue("");
+    await page.keyboard.type("prosp");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/leads$/);
+    await expect(page.locator("main h1")).toHaveText("Prospects");
+    await context.close();
+  });
+
   test("G then L opens Leads; ? lists the shortcuts; typing in a field never triggers them", async ({ browser }) => {
     const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
@@ -178,14 +225,29 @@ test.describe("keyboard and command menu", () => {
     const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
     await expect(help).toBeVisible();
     await expect(help.getByText("Go to Inventory")).toBeVisible();
+    // Focus starts on the list itself; Tab reaches the close button.
+    await expect(help).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(help.getByRole("button", { name: "Close" })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(help).toBeHidden();
 
     await open(page, "/more");
-    await page.getByLabel("First name").click();
-    await page.keyboard.type("gl");
-    await expect(page).toHaveURL(/\/more$/);
-    await expect(page.getByLabel("First name")).toHaveValue(/gl$/);
+    const firstName = page.getByLabel("First name");
+    if (process.env.LOCAL_AUTH_ONLY) {
+      // scripts/local-auth has no data API, so the name cannot be read: the form says so and stays locked, so saving
+      // cannot blank a name it never saw. CI (full stack) runs the typing check below instead.
+      await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+        "Couldn’t load your name just now. Reload the page to try again.",
+      );
+      await expect(firstName).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save name" })).toBeDisabled();
+    } else {
+      await firstName.click();
+      await page.keyboard.type("gl");
+      await expect(page).toHaveURL(/\/more$/);
+      await expect(firstName).toHaveValue(/gl$/);
+    }
     await context.close();
   });
 

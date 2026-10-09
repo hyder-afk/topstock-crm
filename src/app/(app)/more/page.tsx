@@ -66,7 +66,11 @@ export default async function MorePage() {
           {profileT("title")}
         </h2>
         <div className="rounded-lg bg-card p-4 sm:p-6">
-          <ProfileForm firstName={profile.data?.first_name ?? ""} lastName={profile.data?.last_name ?? ""} />
+          <ProfileForm
+            firstName={profile.data?.first_name ?? ""}
+            lastName={profile.data?.last_name ?? ""}
+            unavailable={!!profile.error}
+          />
         </div>
       </section>
 

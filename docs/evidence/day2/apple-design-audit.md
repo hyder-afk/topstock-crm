@@ -19,6 +19,9 @@ Screens: Home, five section placeholders, More (name, settings, status), the doc
 | 11 | Status never colour-only | The only status (database reachable) has its sentence | none |
 | 12 | Spatial consistency | Dock bottom-centre on every width; the bead comes from and returns to the bar; sections hidden on phones light up More | tapping the bead on More (phone, while on Tasks) now opens More |
 
-Known gaps, by plan: the notch does not yet stretch with drag velocity (Master Plan: "velocity stretch second"); page entrances are
+Known gaps: **there is no notch at all.** Master Plan 4 describes a bead sitting in a notch cut into the bar (one SVG path
+whose notch follows the bead's x and velocity). The dock instead follows the prototype Haider approved: the bead floats above a
+glass bar inside a ring of page colour ("halo"), and nothing is cut into the bar, so there is nothing to stretch either. Whether
+that look is accepted for Release 1, with the notch and its stretch moved to the Day 9 polish, is put to Haider. Also: page entrances are
 CSS keyframes (not springs) so they replay rather than reverse if you navigate mid-entrance (220 ms, judged acceptable); the command
 menu opens centred rather than from the search button (it is opened from the keyboard most of the time).

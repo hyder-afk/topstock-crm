@@ -161,7 +161,8 @@
     "saved": "Saved.",
     "errors": {
       "invalid": "Names can be up to 80 characters.",
-      "unavailable": "Couldn’t save just now. Try again."
+      "unavailable": "Couldn’t save just now. Try again.",
+      "load": "Couldn’t load your name just now. Reload the page to try again."
     }
   }
 }

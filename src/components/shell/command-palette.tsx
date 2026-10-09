@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
@@ -30,6 +30,14 @@ export function CommandPalette({
   const locale = useLocale();
   const { setTheme } = useTheme();
   const [, startTransition] = useTransition();
+  // Every opening starts with an empty search, also when it reopens while the last one is still fading out (the
+  // content is then still mounted). Adjusted during render when `open` changes (React's pattern, no effect).
+  const [search, setSearch] = useState("");
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSearch("");
+  }
 
   const run = (action: () => void) => {
     onOpenChange(false);
@@ -41,10 +49,13 @@ export function CommandPalette({
       <DialogContent>
         <DialogTitle className="sr-only">{t("title")}</DialogTitle>
         <DialogDescription className="sr-only">{t("description")}</DialogDescription>
-        <Command label={t("title")} loop className="flex flex-col">
+        {/* vimBindings off: cmdk would take Ctrl+K as "previous item" and swallow it, so Ctrl+K could not close the menu. */}
+        <Command label={t("title")} loop vimBindings={false} className="flex flex-col">
           <div className="flex items-center gap-3 border-b border-border px-4 focus-within:border-foreground/40">
             <Search aria-hidden="true" strokeWidth={1.75} className="size-5 shrink-0 text-muted-foreground" />
             <Command.Input
+              value={search}
+              onValueChange={setSearch}
               placeholder={t("placeholder")}
               autoComplete="off"
               spellCheck={false}
@@ -141,6 +152,8 @@ function Item({
   return (
     <Command.Item
       value={value}
+      // The visible label is searchable too, so French words ("sombre", "déconnecter") find French items.
+      keywords={[label]}
       onSelect={onSelect}
       className="flex min-h-11 cursor-pointer items-center gap-3 rounded-md px-3 text-foreground data-[selected=true]:bg-muted"
     >

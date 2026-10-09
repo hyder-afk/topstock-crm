@@ -144,7 +144,7 @@
   },
   "Shortcuts": {
     "title": "Raccourcis clavier",
-    "description": "Les raccourcis marchent partout, sauf pendant la saisie dans un champ.",
+    "description": "Les raccourcis marchent partout, sauf pendant la saisie dans un champ. Les lettres après G suivent les noms anglais des sections.",
     "palette": "Ouvrir le menu des commandes",
     "search": "Rechercher",
     "help": "Afficher cette liste",
@@ -161,7 +161,8 @@
     "saved": "Enregistré.",
     "errors": {
       "invalid": "Les noms font 80 caractères au maximum.",
-      "unavailable": "Enregistrement impossible pour le moment. Réessayez."
+      "unavailable": "Enregistrement impossible pour le moment. Réessayez.",
+      "load": "Impossible de charger votre nom pour le moment. Rechargez la page pour réessayer."
     }
   }
 }

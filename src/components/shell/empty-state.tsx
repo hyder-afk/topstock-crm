@@ -19,7 +19,11 @@ export function EmptyStateSkeleton() {
     <div className="flex flex-col items-start gap-3 rounded-lg bg-card p-6 sm:p-8">
       <div className="size-11 rounded-md bg-muted motion-safe:animate-pulse" />
       <div className="h-7 w-48 rounded-sm bg-muted motion-safe:animate-pulse" />
-      <div className="h-6 w-full max-w-md rounded-sm bg-muted motion-safe:animate-pulse" />
+      {/* The sentence: two lines on phones, one from tablet width up (English; French can run a line longer). */}
+      <div className="flex h-12 w-full max-w-md flex-col justify-between sm:h-6">
+        <div className="h-5 w-full rounded-sm bg-muted motion-safe:animate-pulse" />
+        <div className="h-5 w-2/3 rounded-sm bg-muted motion-safe:animate-pulse sm:hidden" />
+      </div>
     </div>
   );
 }

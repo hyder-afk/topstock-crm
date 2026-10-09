@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +14,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const t = useTranslations("Shortcuts");
   const nav = useTranslations("Nav");
   const mod = useModKey() ?? "Ctrl";
+  const panel = useRef<HTMLDivElement>(null);
   const rows: { keys: string[]; label: string }[] = [
     { keys: [mod, "K"], label: t("palette") },
     { keys: ["/"], label: t("search") },
@@ -21,7 +23,16 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-6">
+      {/* A read-only list: focus starts on the panel, not on the close button (WAI-ARIA dialog pattern). Tab reaches
+          Close, Escape closes. */}
+      <DialogContent
+        ref={panel}
+        className="p-6"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          panel.current?.focus();
+        }}
+      >
         <DialogClose
           aria-label={t("close")}
           className="absolute top-3 right-3 grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"

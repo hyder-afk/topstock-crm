@@ -33,7 +33,8 @@ async function signIn(browser: Browser, email: string) {
   return { context, page };
 }
 
-// Placeholder sections share one component: EN light and FR dark at phone and laptop width are enough for them.
+// Placeholder sections share one component: EN light and FR dark at phone and laptop width are enough for them
+// (logged waiver, Tooling Protocol section 6 item 9; Leads, the shared template, gets the full matrix).
 const lightMatrix = [
   { locale: "en", scheme: "light", widths: [390, 1440] },
   { locale: "fr", scheme: "dark", widths: [390, 1440] },
@@ -151,6 +152,5 @@ test("command menu and shortcuts list", async ({ browser }) => {
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.waitForTimeout(250);
     },
-    lightMatrix,
   );
 });

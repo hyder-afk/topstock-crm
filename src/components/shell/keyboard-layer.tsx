@@ -30,7 +30,8 @@ export function KeyboardLayer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
+      // isComposing: an accent or IME sequence is in progress (e.g. dead keys on a French keyboard), not a shortcut.
+      if (event.defaultPrevented || event.isComposing) return;
       const key = event.key.toLowerCase();
       if (key === "k" && (event.metaKey || event.ctrlKey) && !event.altKey) {
         event.preventDefault();

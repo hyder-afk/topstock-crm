@@ -15,6 +15,7 @@ env:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,11 +39,24 @@ jobs:
           name: playwright-report
           path: test-results/
           retention-days: 7
-  # The whole sign-in journey (invite email, password, two-factor wall, sign-in, reset) and the app shell (Chromium and
-  # WebKit) against a throwaway local
-  # Supabase. Uses only the local stack's built-in demo keys; no project values or secrets.
+  # The whole sign-in journey (invite email, password, two-factor wall, sign-in, reset), the evidence screenshots and the
+  # app shell against a throwaway local Supabase. Uses only the local stack's built-in demo keys; no project values or
+  # secrets. One job per engine, in parallel: Chromium runs everything; WebKit (Safari's engine) runs the shell tests.
+  # WebKit needs ~116 MB of Ubuntu packages that Chromium does not (already on the runner image); on 9 Oct the Ubuntu
+  # mirror served them at ~94 kB/s (21 minutes), hence its longer limits. The limits stop a hung run holding a runner.
   auth-journey:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - browser: chromium
+            timeout: 30
+          - browser: webkit
+            timeout: 45
+    timeout-minutes: ${{ matrix.timeout }}
+    env:
+      BROWSER: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,26 +88,36 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Build against the local stack
         run: NEXT_PUBLIC_SUPABASE_URL="$LOCAL_URL" NEXT_PUBLIC_SUPABASE_ANON_KEY="$LOCAL_ANON" npm run build
-      - run: npx playwright install --with-deps chromium webkit
-      - name: Sign-in journey
-        run: NEXT_PUBLIC_SUPABASE_URL="$LOCAL_URL" NEXT_PUBLIC_SUPABASE_ANON_KEY="$LOCAL_ANON" npx playwright test -c playwright.auth.config.ts
+      - name: Install the browser and its system libraries
+        timeout-minutes: 30
+        run: npx playwright install --with-deps "$BROWSER"
+      - name: Sign-in journey and app shell
+        run: NEXT_PUBLIC_SUPABASE_URL="$LOCAL_URL" NEXT_PUBLIC_SUPABASE_ANON_KEY="$LOCAL_ANON" npx playwright test -c playwright.auth.config.ts --project="$BROWSER"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
-          name: auth-journey-report
+          name: auth-journey-report-${{ matrix.browser }}
           path: test-results/
           retention-days: 7
-      # Evidence screenshots of the signed-in sign-in screens (fake local users only).
+      # Evidence screenshots of every screen (fake local users only; Chromium).
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: success()
+        if: success() && matrix.browser == 'chromium'
         with:
           name: auth-screens
           path: test-results/screens/
+          retention-days: 14
+      # Home and the command menu at 1280/1440/1728 in this engine (shell.spec).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success()
+        with:
+          name: shell-screens-${{ matrix.browser }}
+          path: test-results/shell-screens/
           retention-days: 14
       - if: always()
         run: npx supabase stop --no-backup
   semgrep:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

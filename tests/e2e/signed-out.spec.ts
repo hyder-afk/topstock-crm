@@ -54,6 +54,11 @@ test("security headers are present, also on the sign-in redirect", async ({ requ
   expect(redirect.headers()["location"]).toBe("/login");
 });
 
+test("behind HTTPS (Vercel sets x-forwarded-proto), the CSP upgrades insecure requests", async ({ request }) => {
+  const res = await request.get("/login", { headers: { "x-forwarded-proto": "https" } });
+  expect(res.headers()["content-security-policy"]).toContain("upgrade-insecure-requests");
+});
+
 test("language switch sets the cookie and re-renders in French", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "FR" }).click();
