@@ -28,3 +28,4 @@
 | 2026-10-07 | builder | Prototype version 5: sample stock in pieces; all 25 evidence screenshots retaken after the advisor round-1 fixes (advisor round 2 had found them stale), now including 1024 |
 | 2026-10-07 | builder | Advisor round 3 fixes, prototype version 6: lead Stock tab status follows each lot's low-stock level and is labelled in words; Inventory title row wraps so phones never scroll sideways before the brand font loads; last carton wording removed; sneakers counted in pairs |
 | 2026-10-07 | Haider | "merge it": PR #5 (prototype v4 in the TopStock brand) merged at Haider's request (merge commit 3dfbbeb). Next: Day 0 step 2, Supabase account A + `topstock-dev` in Paris |
+| 2026-10-09 | builder | Day 0 batched into one sitting for Haider (docs/day0-setup.md). Vercel Production vars use dev values until Gate 1; Supabase auth settings and Vercel region to be set from code; no Vercel Marketplace Supabase integration |
