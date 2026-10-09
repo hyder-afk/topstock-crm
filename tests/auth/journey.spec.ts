@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { confirmPathFromEmail, invite, nextWindow, totp } from "./helpers";
+import { confirmPathFromEmail, invite, nextWindow, totp, trySignup } from "./helpers";
 
 // One person, start to finish: invited -> chooses a password -> must set up two-factor -> signed in ->
 // signs out -> password alone is not enough -> code -> signed in -> resets the password (code required first).
@@ -114,4 +114,10 @@ test("an unknown address gets the same answer as a real one", async ({ page }) =
   await page.getByLabel("Email").fill("nobody@example.test");
   await page.getByRole("button", { name: "Send link" }).click();
   await expect(page.getByRole("main").getByRole("status")).toContainText("If that address has an account");
+});
+
+test("nobody can sign up: accounts come from invitations only", async () => {
+  const res = await trySignup(`walk-in-${Date.now()}@example.test`, "Walk-In-Pass-42!");
+  expect(res.status).toBeGreaterThanOrEqual(400);
+  expect(res.code).toBe("signup_disabled");
 });

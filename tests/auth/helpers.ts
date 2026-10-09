@@ -82,7 +82,7 @@ async function authFetch(path: string, init: { method?: string; token?: string; 
     headers: { apikey: key, ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), "Content-Type": "application/json" },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
-  if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+  if (!res.ok) throw new Error(`${path} failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }
 
@@ -98,4 +98,16 @@ export async function createUser(email: string, password: string, withAuthentica
     body: { challenge_id: challenge.id, code: totp(factor.totp.secret) },
   });
   return factor.totp.secret as string;
+}
+
+// Tries a public sign-up with the publishable key; returns the HTTP status and Supabase's error code.
+export async function trySignup(email: string, password: string) {
+  const key = env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const res = await fetch(`${env("SUPABASE_LOCAL_URL")}/auth/v1/signup`, {
+    method: "POST",
+    headers: { apikey: key, ...(key.startsWith("eyJ") ? { Authorization: `Bearer ${key}` } : {}), "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { error_code?: string; code?: string };
+  return { status: res.status, code: body.error_code ?? body.code };
 }
