@@ -44,7 +44,7 @@ export default async function Home() {
         </div>
       </header>
       <section className="flex flex-col gap-4 rounded-lg bg-card p-6 sm:p-8">
-        <p className="text-muted-foreground">{firstName ? t("greetingName", { name: firstName }) : t("greeting")}</p>
+        <p className="break-words text-muted-foreground">{firstName ? t("greetingName", { name: firstName }) : t("greeting")}</p>
         <h1 className="text-4xl font-bold sm:text-5xl">{t("title")}</h1>
         <p className="max-w-[60ch] text-lg text-muted-foreground">{t("body")}</p>
         <p className="inline-flex items-center gap-2 font-mono text-sm">

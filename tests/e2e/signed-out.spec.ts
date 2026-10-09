@@ -16,7 +16,10 @@ for (const locale of ["en", "fr"] as const) {
       await expect(page.locator("html")).toHaveAttribute("lang", locale);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(locale === "en" ? "Sign in" : "Connexion");
       await expect(page.getByRole("img", { name: "TopStock" })).toBeVisible();
-      await expect(page.getByLabel(locale === "en" ? "Email" : "E-mail")).toBeFocused();
+      // Desktop (fine pointer) focuses the email field; phones wait for a tap so the keyboard does not jump up.
+      const finePointer = await page.evaluate(() => window.matchMedia("(pointer: fine)").matches);
+      if (finePointer) await expect(page.getByLabel(locale === "en" ? "Email" : "E-mail")).toBeFocused();
+      else await expect(page.getByLabel(locale === "en" ? "Email" : "E-mail")).not.toBeFocused();
       await expect(page.getByLabel(locale === "en" ? "Password" : "Mot de passe")).toHaveAttribute("autocomplete", "current-password");
       await expect(page.locator("html")).toHaveClass(new RegExp(scheme === "dark" ? "dark" : "light"));
       await expect(page.getByRole("button", { name: locale === "en" ? "System" : "Système" })).toHaveAttribute("aria-pressed", "true");

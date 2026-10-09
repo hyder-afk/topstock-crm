@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -25,17 +25,38 @@ function useErrorText() {
   return (code?: string) => (code && t.has(code) ? t(code) : code ? t("unavailable") : undefined);
 }
 
+// After a failed submit, move focus to the first field marked invalid so the fix starts where the problem is.
+function useFocusOnError(error: string | undefined, attempt: unknown) {
+  const ref = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (error) ref.current?.querySelector<HTMLInputElement>("[aria-invalid='true']")?.focus();
+  }, [error, attempt]);
+  return ref;
+}
+
+// Focus the first field on desktop only; on phones the keyboard should not jump up before the person taps.
+function useDesktopFocus(enabled: boolean) {
+  return useCallback(
+    (el: HTMLInputElement | null) => {
+      if (enabled && el && window.matchMedia("(pointer: fine)").matches) el.focus();
+    },
+    [enabled],
+  );
+}
+
 function Field({
   label,
   invalid,
   describedBy,
+  desktopAutoFocus = false,
   ...input
-}: { label: string; invalid?: boolean; describedBy?: string } & React.ComponentProps<"input">) {
+}: { label: string; invalid?: boolean; describedBy?: string; desktopAutoFocus?: boolean } & React.ComponentProps<"input">) {
   const id = useId();
+  const focusRef = useDesktopFocus(desktopAutoFocus);
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} aria-invalid={invalid || undefined} aria-describedby={describedBy} {...input} />
+      <Input ref={focusRef} id={id} aria-invalid={invalid || undefined} aria-describedby={describedBy} {...input} />
     </div>
   );
 }
@@ -50,6 +71,7 @@ function CodeField({ invalid, describedBy, label }: { invalid?: boolean; describ
       autoComplete="one-time-code"
       pattern="[0-9 ]{6,7}"
       maxLength={7}
+      // The only input on the screen and the next thing to do, so it takes focus on phones too.
       autoFocus
       spellCheck={false}
       invalid={invalid}
@@ -64,8 +86,9 @@ export function LoginForm() {
   const errorText = useErrorText();
   const [state, action, pending] = useActionState<FormState, FormData>(signIn, undefined);
   const msg = useId();
+  const formRef = useFocusOnError(state?.error, state);
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} action={action} className="flex flex-col gap-4">
       <Field
         label={t("email")}
         name="email"
@@ -75,9 +98,8 @@ export function LoginForm() {
         autoCapitalize="none"
         spellCheck={false}
         defaultValue={state?.email}
-        invalid={!!state?.error}
         describedBy={msg}
-        autoFocus
+        desktopAutoFocus
       />
       <Field
         label={t("password")}
@@ -85,6 +107,7 @@ export function LoginForm() {
         type="password"
         required
         autoComplete="current-password"
+        // The password is cleared after a failed attempt, so it is the field to fix (and gets focus).
         invalid={!!state?.error}
         describedBy={msg}
       />
@@ -106,6 +129,7 @@ export function ForgotPasswordForm() {
   const errorText = useErrorText();
   const [state, action, pending] = useActionState<FormState, FormData>(requestPasswordReset, undefined);
   const msg = useId();
+  const formRef = useFocusOnError(state?.error, state);
   if (state?.done) {
     return (
       <div className="flex flex-col gap-4">
@@ -115,7 +139,7 @@ export function ForgotPasswordForm() {
     );
   }
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} action={action} className="flex flex-col gap-4">
       <Field
         label={t("email")}
         name="email"
@@ -126,7 +150,7 @@ export function ForgotPasswordForm() {
         spellCheck={false}
         invalid={!!state?.error}
         describedBy={msg}
-        autoFocus
+        desktopAutoFocus
       />
       <FormMessage id={msg} tone="error">
         {errorText(state?.error)}
@@ -164,21 +188,23 @@ export function ConfirmLinkForm({ tokenHash, type }: { tokenHash: string; type: 
         <BackToSignIn />
       ) : (
         <Button type="submit" width="full" disabled={pending} aria-describedby={msg}>
-          {pending ? t("continuing") : t("continue")}
+          {pending ? t("continuing") : type === "invite" ? t("continueInvite") : t("continueRecovery")}
         </Button>
       )}
     </form>
   );
 }
 
-export function SetPasswordForm() {
+export function SetPasswordForm({ email }: { email: string }) {
   const t = useTranslations("Auth");
   const errorText = useErrorText();
   const [state, action, pending] = useActionState<FormState, FormData>(setPassword, undefined);
   const msg = useId();
+  const formRef = useFocusOnError(state?.error, state);
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} action={action} className="flex flex-col gap-4">
       {/* Lets password managers save the new password against the right account. */}
+      <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
       <Field
         label={t("newPassword")}
         name="password"
@@ -189,7 +215,7 @@ export function SetPasswordForm() {
         autoComplete="new-password"
         invalid={!!state?.error}
         describedBy={msg}
-        autoFocus
+        desktopAutoFocus
       />
       <Field
         label={t("confirmPassword")}
@@ -217,8 +243,9 @@ export function VerifyTotpForm({ next }: { next: string }) {
   const errorText = useErrorText();
   const [state, action, pending] = useActionState<FormState, FormData>(verifyTotp, undefined);
   const msg = useId();
+  const formRef = useFocusOnError(state?.error, state);
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form ref={formRef} action={action} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
       <CodeField label={t("code")} invalid={!!state?.error} describedBy={msg} />
       <FormMessage id={msg} tone="error">
@@ -249,6 +276,7 @@ export function TotpSetup() {
   const [state, verifyAction, verifying] = useActionState<FormState, FormData>(verifyTotpEnrollment, undefined);
   const [copied, setCopied] = useState(false);
   const msg = useId();
+  const formRef = useFocusOnError(state?.error, state);
 
   if (!enroll?.factorId) {
     return (
@@ -295,7 +323,7 @@ export function TotpSetup() {
           </span>
         </div>
       </div>
-      <form action={verifyAction} className="flex flex-col gap-4">
+      <form ref={formRef} action={verifyAction} className="flex flex-col gap-4">
         <input type="hidden" name="factorId" value={enroll.factorId} />
         <CodeField label={t("enterStep")} invalid={!!state?.error} describedBy={msg} />
         <FormMessage id={msg} tone="error">

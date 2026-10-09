@@ -20,16 +20,21 @@ test("invite, password, two-factor setup, signed in", async ({ page }) => {
   await invite(email);
   const confirmPath = await confirmPathFromEmail(email, "invite");
 
-  // The link alone does nothing; the token is spent only on Continue.
+  // The link alone does nothing; the token is spent only when the button is pressed.
   await page.goto(confirmPath);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Continue to TopStock");
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Choose a password" }).click();
 
   await expect(page).toHaveURL(/\/set-password$/);
-  await page.getByLabel("New password").fill("short");
-  await page.getByLabel("Repeat password").fill("short");
+  // Long enough for the browser, but no symbol: the server's rule (same as Supabase's) rejects it.
+  await page.getByLabel("New password").fill("Abcdefghijkl1");
+  await page.getByLabel("Repeat password").fill("Abcdefghijkl1");
   await page.getByRole("button", { name: "Save password" }).click();
-  await expect(page.getByRole("alert")).toContainText("at least 12 characters");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("at least 12 characters");
+  await page.getByLabel("New password").fill(password);
+  await page.getByLabel("Repeat password").fill(`${password}x`);
+  await page.getByRole("button", { name: "Save password" }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("The two passwords don’t match.");
   await page.getByLabel("New password").fill(password);
   await page.getByLabel("Repeat password").fill(password);
   await page.getByRole("button", { name: "Save password" }).click();
@@ -47,7 +52,7 @@ test("invite, password, two-factor setup, signed in", async ({ page }) => {
 
   await page.getByLabel("2. Enter the 6-digit code it shows").fill("000000");
   await page.getByRole("button", { name: "Finish setup" }).click();
-  await expect(page.getByRole("alert")).toContainText("That code didn't work");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("That code didn’t work");
   await page.getByLabel("2. Enter the 6-digit code it shows").fill(totp(secret));
   await page.getByRole("button", { name: "Finish setup" }).click();
 
@@ -61,7 +66,7 @@ test("sign out, password alone is not enough, code signs in", async ({ page }) =
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("Wrong-Password-1!");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("alert")).toHaveText("That email and password don't match. Try again.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("That email and password don’t match. Try again.");
 
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -88,10 +93,10 @@ test("password reset asks for the code before the new password", async ({ page }
   await page.goto("/forgot-password");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Send link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that address has an account");
+  await expect(page.getByRole("main").getByRole("status")).toContainText("If that address has an account");
 
   await page.goto(await confirmPathFromEmail(email, "recovery", sentAfter));
-  await page.getByRole("button", { name: "Continue" }).click();
+  await page.getByRole("button", { name: "Choose a new password" }).click();
   await expect(page).toHaveURL(/\/mfa\?next=%2Fset-password$|\/mfa\?next=\/set-password$/);
 
   await nextWindow();
@@ -108,5 +113,5 @@ test("an unknown address gets the same answer as a real one", async ({ page }) =
   await page.goto("/forgot-password");
   await page.getByLabel("Email").fill("nobody@example.test");
   await page.getByRole("button", { name: "Send link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that address has an account");
+  await expect(page.getByRole("main").getByRole("status")).toContainText("If that address has an account");
 });

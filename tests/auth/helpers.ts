@@ -73,3 +73,29 @@ export async function confirmPathFromEmail(email: string, type: "invite" | "reco
   }
   throw new Error(`no ${type} email for ${email}`);
 }
+
+async function authFetch(path: string, init: { method?: string; token?: string; body?: unknown; admin?: boolean }) {
+  const key = init.admin ? env("SUPABASE_LOCAL_SERVICE_ROLE_KEY") : env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const bearer = init.token ?? (key.startsWith("eyJ") ? key : undefined);
+  const res = await fetch(`${env("SUPABASE_LOCAL_URL")}/auth/v1${path}`, {
+    method: init.method ?? "POST",
+    headers: { apikey: key, ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}), "Content-Type": "application/json" },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+  return res.json();
+}
+
+// Local stack only: a confirmed user with a password, optionally with a verified authenticator. Returns its TOTP secret.
+export async function createUser(email: string, password: string, withAuthenticator: boolean) {
+  await authFetch("/admin/users", { admin: true, body: { email, password, email_confirm: true } });
+  if (!withAuthenticator) return "";
+  const { access_token } = await authFetch("/token?grant_type=password", { body: { email, password } });
+  const factor = await authFetch("/factors", { token: access_token, body: { factor_type: "totp", friendly_name: "e2e", issuer: "TopStock CRM" } });
+  const challenge = await authFetch(`/factors/${factor.id}/challenge`, { token: access_token, body: {} });
+  await authFetch(`/factors/${factor.id}/verify`, {
+    token: access_token,
+    body: { challenge_id: challenge.id, code: totp(factor.totp.secret) },
+  });
+  return factor.totp.secret as string;
+}
