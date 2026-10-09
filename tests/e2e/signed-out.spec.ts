@@ -46,6 +46,8 @@ test("security headers are present, also on the sign-in redirect", async ({ requ
     expect(h["x-frame-options"]).toBe("DENY");
     expect(h["x-content-type-options"]).toBe("nosniff");
     expect(h["x-powered-by"]).toBeUndefined();
+    // Plain-HTTP test server: no "upgrade to HTTPS" (that directive is sent on HTTPS only).
+    expect(h["content-security-policy"]).not.toContain("upgrade-insecure-requests");
   }
   const redirect = await request.get("/", { maxRedirects: 0 });
   expect(redirect.status()).toBe(307);

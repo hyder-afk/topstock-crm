@@ -44,6 +44,8 @@ nohup node "$ROOT/scripts/local-auth/gateway.mjs" > "$OUT/gateway.log" 2>&1 < /d
   echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(node "$ROOT/scripts/local-auth/jwt.mjs" "$SECRET" anon)"
   echo "SUPABASE_LOCAL_URL=http://127.0.0.1:54321"
   echo "SUPABASE_LOCAL_SERVICE_ROLE_KEY=$(node "$ROOT/scripts/local-auth/jwt.mjs" "$SECRET" service_role)"
+  # Auth only: no data API (PostgREST) here, so tests that read or write tables skip themselves.
+  echo "LOCAL_AUTH_ONLY=1"
 } > "$OUT/env"
 echo "$PG" > "$OUT/pgdir"
 for _ in $(seq 1 20); do curl -fsS http://127.0.0.1:54321/auth/v1/health >/dev/null 2>&1 && break; sleep 0.5; done

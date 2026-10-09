@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { LayoutDashboard } from "lucide-react";
 import { EmptyState } from "@/components/shell/empty-state";
@@ -21,6 +22,14 @@ export default async function Home() {
       <div className="flex flex-col gap-2">
         <p className="text-sm text-muted-foreground first-letter:uppercase">{today}</p>
         <Greeting hello={t("hello")} name={firstName} />
+        {firstName ? null : (
+          <Link
+            href="/more#profile"
+            className="inline-flex min-h-11 w-fit items-center text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            {t("addName")}
+          </Link>
+        )}
       </div>
       <EmptyState icon={LayoutDashboard} title={t("emptyTitle")} body={t("emptyBody")} />
       <p className="text-sm text-muted-foreground" translate="no">

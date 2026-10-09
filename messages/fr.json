@@ -7,7 +7,8 @@
     "tagline": "Small start. Same grade. Big orders.",
     "hello": "Bonjour",
     "emptyTitle": "Votre journée en un coup d’œil",
-    "emptyBody": "Les tâches du jour, les rendez-vous et votre pipeline s’afficheront ici dès qu’ils seront dans le CRM."
+    "emptyBody": "Les tâches du jour, les rendez-vous et votre pipeline s’afficheront ici dès qu’ils seront dans le CRM.",
+    "addName": "Ajoutez votre prénom à l’accueil"
   },
   "Settings": {
     "language": "Langue",
@@ -120,6 +121,47 @@
     "analytics": {
       "emptyTitle": "Aucun rapport pour l’instant",
       "emptyBody": "Les rapports de ventes et de stock s’afficheront ici."
+    }
+  },
+  "Header": {
+    "search": "Recherche et commandes",
+    "searchHint": "Rechercher…"
+  },
+  "Palette": {
+    "title": "Menu des commandes",
+    "description": "Recherchez une section ou une action, puis appuyez sur Entrée.",
+    "placeholder": "Rechercher une section ou une action…",
+    "empty": "Aucun résultat. Essayez le nom d’une section.",
+    "goTo": "Aller à",
+    "appearance": "Apparence",
+    "themeLight": "Apparence claire",
+    "themeDark": "Apparence sombre",
+    "themeSystem": "Suivre le système",
+    "language": "Langue",
+    "help": "Aide et compte",
+    "shortcuts": "Raccourcis clavier",
+    "signOut": "Se déconnecter"
+  },
+  "Shortcuts": {
+    "title": "Raccourcis clavier",
+    "description": "Les raccourcis marchent partout, sauf pendant la saisie dans un champ.",
+    "palette": "Ouvrir le menu des commandes",
+    "search": "Rechercher",
+    "help": "Afficher cette liste",
+    "goTo": "Aller à {section}",
+    "tooltip": "G puis {key}",
+    "close": "Fermer"
+  },
+  "Profile": {
+    "title": "Votre nom",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "save": "Enregistrer le nom",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré.",
+    "errors": {
+      "invalid": "Les noms font 80 caractères au maximum.",
+      "unavailable": "Enregistrement impossible pour le moment. Réessayez."
     }
   }
 }

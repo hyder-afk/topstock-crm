@@ -57,7 +57,7 @@ async function shoot(
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
       const errors: string[] = [];
-      page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
       page.on("pageerror", (e) => errors.push(e.message));
       await page.goto(path);
       // The right page (no unexpected redirect), then the real screen, not the loading skeleton (which has no heading).
@@ -133,4 +133,24 @@ test("app shell: leads and more in full, the other sections in brief", async ({ 
   for (const section of ["pipeline", "inventory", "tasks", "analytics"]) {
     await shoot(browser, "full", `/${section}`, section, undefined, lightMatrix);
   }
+});
+
+test("command menu and shortcuts list", async ({ browser }) => {
+  await shoot(browser, "full", "/", "palette", async (page) => {
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(250); // let the entrance settle before the shot
+  });
+  await shoot(
+    browser,
+    "full",
+    "/",
+    "shortcuts",
+    async (page) => {
+      await page.keyboard.press("Shift+Slash");
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(250);
+    },
+    lightMatrix,
+  );
 });

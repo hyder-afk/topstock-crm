@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { animate, motion, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { project, springs } from "@/lib/motion";
 import { sectionForPath, sections, type SectionId } from "@/lib/nav";
+import { goKeys } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const BEAD = 56; // px, the red bead that marks the current section
@@ -18,6 +19,7 @@ type Slot = { id: SectionId; x: number };
 // opens it. Links stay real links, so keyboard, screen readers and middle-click work without the bead.
 export function Dock() {
   const t = useTranslations("Nav");
+  const tShortcut = useTranslations("Shortcuts");
   const pathname = usePathname();
   const router = useRouter();
   const reduce = useReducedMotion();
@@ -117,7 +119,7 @@ export function Dock() {
     <nav
       aria-label={t("label")}
       onKeyDown={onKeyDown}
-      className="dock-glass fixed inset-x-0 bottom-[calc(16px+env(safe-area-inset-bottom,0px))] z-30 mx-auto h-16 w-[min(440px,calc(100%-24px))] rounded-xl border border-border shadow-[0_12px_32px_rgb(14_14_16/0.14)] lg:w-[min(600px,calc(100%-48px))]"
+      className="dock-glass fixed inset-x-0 select-none bottom-[calc(16px+env(safe-area-inset-bottom,0px))] z-30 mx-auto h-16 w-[min(440px,calc(100%-24px))] rounded-xl border border-border shadow-[0_12px_32px_rgb(14_14_16/0.14)] lg:w-[min(600px,calc(100%-48px))]"
     >
       <div ref={barRef} className="relative grid h-full grid-flow-col auto-cols-fr">
         {sections.map((s) => {
@@ -132,6 +134,7 @@ export function Dock() {
                 else links.current.delete(s.id);
               }}
               aria-current={active === s.id ? "page" : undefined}
+              title={tShortcut("tooltip", { key: goKeys[s.id].toUpperCase() })}
               className={cn(
                 "group flex min-w-0 flex-col items-center justify-end gap-0.5 rounded-lg pb-2 text-[0.6875rem] tracking-[0.01em] transition-colors duration-150",
                 on ? "text-foreground" : "text-muted-foreground hover:text-foreground",

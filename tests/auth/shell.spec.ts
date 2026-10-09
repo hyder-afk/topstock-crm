@@ -134,3 +134,79 @@ test("phone: five sections, Tasks and Analytics live under More", async ({ brows
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await context.close();
 });
+
+test.describe("keyboard and command menu", () => {
+  test("Ctrl+K opens the command menu; searching and Enter opens the section", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    await open(page, "/");
+    await page.keyboard.press("Control+k");
+    const dialog = page.getByRole("dialog", { name: "Command menu" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("combobox")).toBeFocused();
+    await page.keyboard.type("pipe");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/pipeline$/);
+    await expect(dialog).toBeHidden();
+
+    // "/" opens it too; Escape closes it and returns focus.
+    await page.keyboard.press("/");
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    // Appearance from the menu.
+    await page.getByRole("button", { name: "Search and commands" }).click();
+    await page.keyboard.type("dark");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  test("G then L opens Leads; ? lists the shortcuts; typing in a field never triggers them", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    await open(page, "/");
+    await page.keyboard.press("g");
+    await page.keyboard.press("l");
+    await expect(page).toHaveURL(/\/leads$/);
+
+    await page.keyboard.press("Shift+Slash");
+    const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+    await expect(help).toBeVisible();
+    await expect(help.getByText("Go to Inventory")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(help).toBeHidden();
+
+    await open(page, "/more");
+    await page.getByLabel("First name").click();
+    await page.keyboard.type("gl");
+    await expect(page).toHaveURL(/\/more$/);
+    await expect(page.getByLabel("First name")).toHaveValue(/gl$/);
+    await context.close();
+  });
+
+  test("saving a first name puts it in the Home greeting", async ({ browser }) => {
+    test.skip(!!process.env.LOCAL_AUTH_ONLY, "scripts/local-auth has no data API; CI runs this on the full Supabase stack");
+    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    await open(page, "/");
+    await expect(page.locator("main h1")).toHaveText("Hello");
+    await page.getByRole("link", { name: "Add your first name to the greeting" }).click();
+    await expect(page).toHaveURL(/\/more#profile$/);
+    await page.getByLabel("First name").fill("Ada");
+    await page.getByLabel("Last name").fill("Lovelace");
+    await page.getByRole("button", { name: "Save name" }).click();
+    await expect(page.getByRole("main").getByRole("status")).toHaveText("Saved.");
+    await dockLink(page, "Home").click();
+    await expect(page.locator("main h1")).toHaveText("Hello Ada");
+    await context.close();
+  });
+});
+
+function dockLink(page: Page, name: string) {
+  return dock(page).getByRole("link", { name, exact: true });
+}

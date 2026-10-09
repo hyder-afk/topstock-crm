@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { ChevronRight } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { SettingsBar } from "@/components/settings-bar";
+import { ProfileForm } from "@/components/shell/profile-form";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/auth";
 import { publicEnv } from "@/lib/env";
@@ -24,8 +25,14 @@ async function databaseReachable() {
 
 // More: the sections that do not fit the phone dock, settings, status and sign-out.
 export default async function MorePage() {
-  await requireSession();
-  const [t, nav, up] = await Promise.all([getTranslations("More"), getTranslations("Nav"), databaseReachable()]);
+  const { supabase, claims } = await requireSession();
+  const [t, nav, profileT, up, profile] = await Promise.all([
+    getTranslations("More"),
+    getTranslations("Nav"),
+    getTranslations("Profile"),
+    databaseReachable(),
+    supabase.from("profiles").select("first_name, last_name").eq("id", claims.sub).maybeSingle(),
+  ]);
   const phoneOnly = sections.filter((s) => !s.phone);
   return (
     <div className="flex flex-col gap-8 pt-4">
@@ -52,6 +59,15 @@ export default async function MorePage() {
             );
           })}
         </ul>
+      </section>
+
+      <section id="profile" aria-labelledby="more-profile" className="flex scroll-mt-6 flex-col gap-3">
+        <h2 id="more-profile" className="text-lg font-bold">
+          {profileT("title")}
+        </h2>
+        <div className="rounded-lg bg-card p-4 sm:p-6">
+          <ProfileForm firstName={profile.data?.first_name ?? ""} lastName={profile.data?.last_name ?? ""} />
+        </div>
       </section>
 
       <section aria-labelledby="more-settings" className="flex flex-col gap-3">
