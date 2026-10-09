@@ -11,6 +11,8 @@ import sys
 import tomllib
 
 path = sys.argv[1] if len(sys.argv) > 1 else "supabase/config.toml"
+with open(path, "rb") as f:
+    before = tomllib.load(f)
 kept, skipping = [], False
 with open(path, encoding="utf-8") as f:
     for line in f:
@@ -22,6 +24,11 @@ with open(path, encoding="utf-8") as f:
 with open(path, "w", encoding="utf-8") as f:
     f.write("".join(kept))
 
-email = tomllib.load(open(path, "rb"))["auth"]["email"]
-assert "template" not in email and "notification" not in email, "templates still present"
+# The result must be exactly the original minus the two tables: nothing else dropped, nothing left behind.
+with open(path, "rb") as f:
+    after = tomllib.load(f)
+before["auth"]["email"].pop("template", None)
+before["auth"]["email"].pop("notification", None)
+if before != after:
+    sys.exit(f"{path}: stripping changed more than the email templates and notices; refusing to continue")
 print(f"{path}: custom email templates and notices left out for this push")
