@@ -306,12 +306,17 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Insert only (there is still no UPDATE grant on either column, so nobody can tag an existing lead into an import, and
 -- undo can only reach leads that an import added). A restrictive policy: create_lead and the add-lead form are untouched.
+-- Dates: the browser, the check and the import refuse a last activity before 1 Jan 1990 in the file's local time. That
+-- day starts at 31 Dec 1989, 10:00 UTC at the earliest (UTC+14), so the lower bound here is 31 Dec 1989, 00:00 UTC,
+-- written with its offset so it does not depend on the session's time zone: a row that passed the check can never
+-- fail this rule, and a direct insert still cannot backdate a lead before that day.
 grant insert (import_batch_id, last_activity_at) on public.companies to authenticated;
 create policy companies_import_columns on public.companies as restrictive for insert to authenticated with check (
   (import_batch_id is null and last_activity_at is null)
   or (import_batch_id is not null
       and (select private.is_admin()) and (select private.has_recent_aal2(600))
-      and (last_activity_at is null or (last_activity_at >= '1990-01-01' and last_activity_at <= now()))
+      and (last_activity_at is null
+           or (last_activity_at >= timestamptz '1989-12-31 00:00:00+00' and last_activity_at <= now()))
       and exists (select 1 from public.import_batches b
                   where b.id = companies.import_batch_id and b.kind = 'leads' and b.status = 'committing'
                     and b.uploaded_by = (select auth.uid()))));
@@ -583,9 +588,10 @@ begin
              when cardinality(s.problems) > 0 then null
              when s.db_problem is not null then s.db_problem
              when s.owner_id is not null and not s.owner_id = any (v_team) then 'owner_unknown'
+             -- Before 1 Jan 1990 in local time (as in the browser), or later than now.
              when s.last_activity_local is not null
                   and (s.last_activity_local at time zone b.source_timezone > now()
-                       or s.last_activity_local < '1990-01-01') then 'date_out_of_range'
+                       or s.last_activity_local < timestamp '1990-01-01 00:00:00') then 'date_out_of_range'
            end as reason
       from s
   ), j as materialized (
@@ -736,7 +742,7 @@ begin
            (cardinality(s.problems) > 0 or s.db_problem is not null
             or (s.last_activity_local is not null
                 and (s.last_activity_local at time zone b.source_timezone > now()
-                     or s.last_activity_local < '1990-01-01'))) as bad
+                     or s.last_activity_local < timestamp '1990-01-01 00:00:00'))) as bad
       from private.lead_import_staging s
      where s.batch_id = p_batch and s.outcome = 'ready'
      order by s.row_no

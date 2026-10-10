@@ -844,6 +844,9 @@ begin
     perform pg_temp.expect_error(format($q$insert into public.companies (name, import_batch_id, last_activity_at)
                                            values ('Probe', %L, %s)$q$, batch, bad_date), '42501');
   end loop;
+  -- The earliest instant that is 1 Jan 1990 somewhere (00:00 at UTC+14) is accepted (the probe is undone).
+  perform pg_temp.expect_ok(format($q$insert into public.companies (name, import_batch_id, last_activity_at)
+                                      values ('Probe', %L, '1989-12-31 10:00:00+00')$q$, batch));
   perform pg_temp.as_user('00000000-0000-0000-0000-00000000000b', 'aal2', 30);
   perform pg_temp.expect_error(format($q$insert into public.companies (name, import_batch_id) values ('Sneak', %L)$q$, batch),
                                '42501');
@@ -851,6 +854,35 @@ begin
   if (public.rollback_lead_import(batch) ->> 'status') <> 'rolled_back' then
     raise exception 'FAIL: undo of held.csv';
   end if;
+end $$;
+
+-- 1 Jan 1990 at midnight passes the check and imports: in Paris (31 Dec 1989, 23:00 UTC) and at UTC+14 (10:00 UTC),
+-- the earliest instant any time zone reaches that day.
+do $$
+declare
+  zone text;
+  batch uuid;
+  r jsonb;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  foreach zone in array array['Europe/Paris', 'Etc/GMT-14'] loop
+    batch := public.create_lead_import('new-year-1990.csv', null, 2, 3, zone);
+    perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "New Year 1990", "lead_status": "cold",
+      "last_activity": "1990-01-01T00:00:00"}, {"row_no": 3, "name": "Year 2020", "lead_status": "cold",
+      "last_activity": "2020-01-01T00:00:00"}]');
+    r := public.validate_lead_import(batch);
+    if (r ->> 'ready')::integer <> 2 then raise exception 'FAIL: 1 Jan 1990 in % should pass the check %', zone, r; end if;
+    r := public.commit_lead_import(batch);
+    if (r ->> 'status') <> 'imported' or (r ->> 'imported_now')::integer <> 2 then
+      raise exception 'FAIL: 1 Jan 1990 in % should import %', zone, r;
+    end if;
+    if (select last_activity_at from public.companies where import_batch_id = batch and name = 'New Year 1990')
+       <> (case zone when 'Europe/Paris' then timestamptz '1989-12-31 23:00:00+00' else timestamptz '1989-12-31 10:00:00+00' end) then
+      raise exception 'FAIL: 1 Jan 1990 in % stored as %', zone,
+        (select last_activity_at from public.companies where import_batch_id = batch and name = 'New Year 1990');
+    end if;
+    perform public.rollback_lead_import(batch);
+  end loop;
 end $$;
 
 -- Superuser view: no closed import keeps working rows.
