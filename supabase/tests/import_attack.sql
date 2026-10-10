@@ -108,6 +108,10 @@ begin
       (private.lead_phone_key('0033 6 12 34 56 78'), '612345678'),
       (private.lead_phone_key('1234567'), null),
       (private.lead_phone_key('+33 6 12 34 56 78 / +33 6 98 76 54 32'), null),
+      -- Known limit (design open question 7): US/Canada numbers whose area codes end in the same two digits and that
+      -- share the 7-digit local number give the same key, so the second one is skipped as a repeat (shown at Check).
+      (private.lead_phone_key('+1 212-555-0149'), '125550149'),
+      (private.lead_phone_key('+1 312-555-0149'), '125550149'),
       (private.lead_name_key('Café Gamma S.A.R.L.', 'Lyon', 'FR'), 'cafegamma|lyon|FR'),
       (private.lead_name_key('CAFE GAMMA', 'LYON', 'FR'), 'cafegamma|lyon|FR'),
       (private.lead_name_key('Łódź Trading Ltd', 'Łódź', 'PL'), 'lodztrading|lodz|PL'),

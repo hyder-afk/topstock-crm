@@ -78,6 +78,7 @@ plpgsql is used because a SQL function with a SET clause is re-planned on every 
 - `null` if fewer than 8 or more than 15 digits; more than 15 means two numbers in one cell.
 - Otherwise `right(digits, 9)`, so `+33 (0)6 12 34 56 78`, `06.12.34.56.78` and `0033 6 12 34 56 78` all give `612345678`, and UK and US national and international forms match too.
 - Belgian 8-digit numbers do not match across formats (accepted).
+- **Known limit, US and Canada** (open question 7): a 10-digit North American number loses the first digit of its area code, so `+1 212-555-0149` and `+1 312-555-0149` give the same key and the second is skipped as a repeat. A wrong match needs the same 7-digit local number *and* area codes ending in the same two digits; the row is listed at Check with the row or lead it matched, before anything is written. Test rows: section 0 of `import_attack.sql` and `sample.spec.ts`. The fake sample shows it more often than real data would, because its US numbers use only 100 local numbers (`555-0100` to `555-0199`): 2 of its 10 phone repeats are this case.
 - The browser accepts a phone of 6 or 7 digits (`minPhoneDigits: 6`), but such a number gives **no phone key** (too few digits to match two numbers reliably), so it never makes two rows the same company. The row still *has* a phone, so the name rule below does not apply to it either: two "Joe's Pizza, Springfield, US" rows with `555-0123` and `555-0199` are both imported, as open question 2 recommends for chain stores; a third "Joe's Pizza" row with no email and no phone repeats the first. Attack test: `rules.csv` in section 8 of `import_attack.sql`.
 
 **`private.lead_name_key(name text, city text, country text)`**
@@ -855,6 +856,7 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 4. **Undo**: keep every lead someone worked on (call, note, contact, deal or any change, including a new owner), with no time limit. Any admin may undo; only the person who started an import can continue it. OK?
 5. **Dates in your export**: day first (31/12/2024), in Paris time, and a date without a time counts as midnight Paris? Please confirm.
 6. **Before the real import (Day 8)**: Henri and Kais sign in once and set their names, so the owner names in the sheet match. Otherwise their leads come in unassigned and you reassign them in bulk.
+7. **Phone matching for US and Canadian numbers: keep the last-9-digits rule for Release 1** (recommended): for French numbers the rule is exact, and a wrong match needs two North American numbers with the same 7-digit local number and area codes ending in the same two digits (212 and 312, for example). Such a row is not lost silently: Check lists it as "Same phone as row N" before anything is imported, and it is in the "rows not imported" file. The alternative is to make the phone key country-aware now (full 10 digits for US and Canada); it changes the key function, the stored keys and the tests, about half a day. If your sheet has many US or Canadian leads, say so and I will do it before Day 8.
 
 ## 10 Deferred (out of scope, with reason)
 
@@ -863,7 +865,7 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 - **Time zone from country** (7.8): there is no timezone field on leads yet; it belongs with the Day 4 work queue.
 - **Contacts import** (7.6): Haider's sheet has no contact-person columns.
 - **Merging or upserting duplicates**: skip only (question 3); merging would make Undo unsafe.
-- **E.164 phone rewriting and libphonenumber** (7.4): Day 3a decided phones stay as written; dedupe uses the last 9 digits.
+- **E.164 phone rewriting and libphonenumber** (7.4): Day 3a decided phones stay as written; dedupe uses the last 9 digits (US and Canada limit: open question 7).
 - **Domain-based dedupe** (7.4): no website column in the sheet; name + city replaces it.
 - **A separate `source` field**: `import_batch_id` plus the audited batch records each lead's origin.
 - **XLSX import**: CSV only, with a "save as CSV" message.

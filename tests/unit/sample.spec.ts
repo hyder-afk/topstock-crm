@@ -311,6 +311,8 @@ test.describe("the TypeScript copy of the SQL keys (design 6A key tables)", () =
     expect(phoneKey("+44 20 7946 0123")).toBe(phoneKey("020 7946 0123"));
     expect(phoneKey("1234567")).toBeNull();
     expect(phoneKey("+33 6 12 34 56 78 / +33 1 99 00 00 01")).toBeNull();
+    // Known limit (design open question 7): two US numbers that differ only in the area code's first digit match.
+    expect(phoneKey("+1 212-555-0149")).toBe(phoneKey("+1 312-555-0149"));
     expect(nameKey("Łódź Trading", "Łódź", "PL")).toBe("lodztrading|lodz|PL");
     expect(nameKey("Négoce Morvan S.A.R.L.", "Saint-Étienne", "FR")).toBe(nameKey("NEGOCE MORVAN", "saint etienne", "FR"));
     expect(nameKey("SARL", "Lyon", "FR")).toBe("sarl|lyon|FR");
