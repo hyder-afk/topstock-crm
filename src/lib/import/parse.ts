@@ -78,6 +78,34 @@ function guessDelimiter(Papa: PapaModule, text: string): Delimiter {
   return !failed && DELIMITERS.includes(found) ? found : ",";
 }
 
+type Newline = "\r\n" | "\n" | "\r";
+
+// papaparse guesses the line ending from the first slice only, which a small slice can get wrong (no line break in it
+// yet, or one inside a quoted cell). The whole file uses the first line break outside quotes, read field by field
+// (a quote only opens a field at its start, a doubled quote inside is a literal one); papaparse's own guess over the
+// first 256 K characters when there is none.
+function detectNewline(Papa: PapaModule, text: string, delimiter: Delimiter): Newline {
+  const end = Math.min(text.length, PARSE_CHUNK_CHARS);
+  let i = 0;
+  while (i < end) {
+    if (text[i] === '"') {
+      for (i++; i < end; i++) {
+        if (text[i] !== '"') continue;
+        if (text[i + 1] !== '"') break;
+        i++;
+      }
+      i++;
+    }
+    while (i < end && text[i] !== delimiter && text[i] !== "\n" && text[i] !== "\r") i++;
+    if (i >= end) break;
+    if (text[i] === "\n") return "\n";
+    if (text[i] === "\r") return text[i + 1] === "\n" ? "\r\n" : "\r";
+    i++; // the delimiter: the next field starts
+  }
+  const sample = Papa.parse<string[]>(text.slice(0, PARSE_CHUNK_CHARS), { header: false, preview: 1, delimiter });
+  return sample.meta.linebreak as Newline;
+}
+
 function firstQuoteError(errors: readonly ParseError[], rowsInSlice: number): ParseError | undefined {
   // An error on the unfinished last row of a slice (row === rowsInSlice) is reported again, correctly, by the next
   // slice once the row is complete; only errors on rows this slice returned are real.
@@ -90,6 +118,7 @@ export async function parseCsvText(text: string, options: ParseOptions = {}): Pr
   const Papa = await loadPapa();
   if (options.signal?.aborted) throw new ImportFileError("aborted");
   const delimiter = options.sepHint ?? guessDelimiter(Papa, text);
+  const newline = detectNewline(Papa, text, delimiter);
   const schedule = options.schedule ?? ((resume: () => void) => void setTimeout(resume, 0));
 
   return new Promise<ParsedCsv>((resolve, reject) => {
@@ -158,6 +187,7 @@ export async function parseCsvText(text: string, options: ParseOptions = {}): Pr
       dynamicTyping: false,
       skipEmptyLines: false,
       delimiter,
+      newline,
       delimitersToGuess: [...DELIMITERS],
       chunkSize: options.chunkSize ?? PARSE_CHUNK_CHARS,
       chunk(results: ParseResult<string[]>, parser: Parser) {

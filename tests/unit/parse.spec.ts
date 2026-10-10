@@ -143,6 +143,26 @@ test.describe("parse", () => {
     expect(sliced.records[199].cells[0]).toBe("Société Générale d'Électricité 199 😀");
   });
 
+  test("CRLF file in tiny slices: the line ending is detected once for the whole file", async () => {
+    // A quoted first cell with a comma: the first slice can end before the first line break, or inside the quotes.
+    const rows = Array.from({ length: 40 }, (_, i) => `"Dupont, Fils & Cie ${i}",Lyon,"a\r\nb"`);
+    const text = `"Company, name",City,Note\r\n${rows.join("\r\n")}\r\n`;
+    const whole = await parseCsvText(text);
+    expect(whole.headers).toEqual(["Company, name", "City", "Note"]);
+    expect(whole.records[0].cells).toEqual(["Dupont, Fils & Cie 0", "Lyon", "a\r\nb"]);
+    for (const chunkSize of [18, 30, 37]) {
+      const sliced = await parseCsvText(text, { chunkSize });
+      expect(sliced.headers, `chunkSize ${chunkSize}`).toEqual(whole.headers);
+      expect(sliced.records, `chunkSize ${chunkSize}`).toEqual(whole.records);
+      expect(sliced.records).toHaveLength(40);
+    }
+    // Lone CR (old Mac) and LF files, with the first line break after a quoted cell holding the other kind.
+    const cr = await parseCsvText(`"Name\nwith LF",City\r"A",Lyon\r"B",Paris\r`, { chunkSize: 9 });
+    expect(cr.records.map((r) => r.cells)).toEqual([["A", "Lyon"], ["B", "Paris"]]);
+    const lf = await parseCsvText(`"Name\r\nwith CRLF",City\n"A",Lyon\n"B",Paris\n`, { chunkSize: 9 });
+    expect(lf.records.map((r) => r.cells)).toEqual([["A", "Lyon"], ["B", "Paris"]]);
+  });
+
   test("yields between slices through the scheduler and reports progress", async () => {
     let yields = 0;
     let last = { done: 0, total: 0, rows: 0 };
