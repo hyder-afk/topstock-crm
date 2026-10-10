@@ -72,6 +72,19 @@ test.describe("row schema", () => {
     expect(valid({ ...staged, email: "a\u0000@example.com" })).toBe(false);
   });
 
+  test("bidi marks, the Mongolian vowel separator, annotation marks and tag characters are refused too", () => {
+    for (const bad of ["Ba\u061Czar", "Ba\u180Ezar", "Ba\uFFF9zar", "Bazar\uFFFB", "Bazar\u{E0041}", "\u{E007F}Bazar"]) {
+      expect(valid({ ...staged, name: bad }), JSON.stringify(bad)).toBe(false);
+      expect(valid({ ...staged, city: bad }), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  test("a filler-only name has the right shape: like the database, Zod checks length only", () => {
+    // The browser rules turn such a cell into name_missing (normalise.spec.ts); a crafted request still meets the
+    // database's own rule (1 to 200 characters), so the two layers agree.
+    expect(valid({ ...staged, name: "\u3164" })).toBe(true);
+  });
+
   test("lengths are counted in characters, as Postgres does", () => {
     expect(valid({ ...staged, name: "😀".repeat(200) })).toBe(true);
     expect(valid({ ...staged, name: "😀".repeat(201) })).toBe(false);

@@ -2,9 +2,11 @@
 import { FORMULA_START } from "./csv-out";
 
 // Removed from every cell: C0 and C1 controls (tab and newlines are turned into spaces first), zero-width characters
-// and joiners, the BOM, and bidi embeddings, overrides and isolates (U+202A-E, U+2066-9), so a name cannot hide text
-// or reverse what follows it on screen.
-export const INVISIBLE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
+// and joiners, the BOM, bidi marks, embeddings, overrides and isolates (U+061C, U+200E-F, U+202A-E, U+2066-9), the
+// Mongolian vowel separator (U+180E), interlinear annotation marks (U+FFF9-B) and the invisible tag characters
+// (U+E0000-U+E007F), so a name cannot hide text or reverse what follows it on screen.
+export const INVISIBLE_CHARS =
+  /[\u0000-\u001F\u007F-\u009F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB\u{E0000}-\u{E007F}]/u;
 const INVISIBLE_ALL = new RegExp(INVISIBLE_CHARS.source, "gu");
 const NEWLINES = /\r\n|[\r\n\u0085\u2028\u2029]/g;
 // Tab and every Unicode space separator (NBSP, narrow NBSP, figure and thin spaces, ideographic space...).
@@ -65,10 +67,16 @@ export const PLACEHOLDERS: ReadonlySet<string> = new Set([
   "tbd",
 ]);
 
-/** cleanText plus the placeholder rule: "n/a", "-", "inconnu"... become empty. */
+// Characters that show as nothing: the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the soft hyphen and the blank
+// braille pattern (U+2800). A cell made only of them (and spaces) looks empty, so it is empty: a lead name made of
+// them is name_missing. The database only checks that a name is not empty, so this rule lives here.
+const FILLER_ONLY = /^[ \u00AD\u115F\u1160\u2800\u3164\uFFA0]+$/;
+
+/** cleanText plus the placeholder rule: "n/a", "-", "inconnu"... and blank-looking cells become empty. */
 export function cleanCell(raw: string | undefined | null): string {
   const s = cleanText(raw);
   if (s.length > 0 && s.length <= 7 && PLACEHOLDERS.has(fold(s))) return "";
+  if (FILLER_ONLY.test(s)) return "";
   return s;
 }
 

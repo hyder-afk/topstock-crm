@@ -17,7 +17,7 @@ import {
 } from "../../src/lib/import/normalise";
 import { ImportFileError, ImportRulesError } from "../../src/lib/import/rules";
 import { importRowSchema } from "../../src/lib/import/schema";
-import { cleanCell, cleanText, codePointLength } from "../../src/lib/import/text";
+import { cleanCell, cleanText, codePointLength, isCleanString } from "../../src/lib/import/text";
 
 const NOW = new Date("2026-10-10T12:00:00Z"); // 14:00 in Paris (summer time)
 const paris = (order: "dmy" | "mdy" = "dmy"): DateContext => ({
@@ -41,6 +41,26 @@ test.describe("cell cleaning", () => {
   test("zero-width characters and the BOM are removed", () => {
     expect(cleanText("\uFEFFAtelier\u200BAzur\u200D\u2060")).toBe("AtelierAzur");
     expect(cleanText("\u200B")).toBe("");
+  });
+
+  test("Arabic letter mark, Mongolian vowel separator, annotation marks and tag characters are removed", () => {
+    expect(cleanText("A\u061CB\u180EC\uFFF9D\uFFFAE\uFFFBF")).toBe("ABCDEF");
+    // Tag characters can spell hidden text ("\u{E0041}\u{E0042}" is an invisible "AB").
+    expect(cleanText("Atelier\u{E0041}\u{E0042}\u{E007F} Azur")).toBe("Atelier Azur");
+    expect(cleanText("\u{E0001}\u{E0020}\u{E007F}")).toBe("");
+    expect(isCleanString("a\u061Cb")).toBe(false);
+    expect(isCleanString("a\u{E0041}b")).toBe(false);
+    expect(isCleanString("a\u{E0080}b")).toBe(true); // a variation selector supplement, not a tag
+    // Emoji outside the tag block are untouched.
+    expect(cleanText("Caf\u00E9 \uD83D\uDE00 \u{1F1EB}\u{1F1F7}")).toBe("Caf\u00E9 \uD83D\uDE00 \u{1F1EB}\u{1F1F7}");
+  });
+
+  test("a cell made only of filler characters is empty", () => {
+    for (const filler of ["\u3164", "\u115F", "\u1160", "\uFFA0", "\u00AD", "\u2800", "\u3164 \u3164", " \u2800\u00AD "]) {
+      expect(cleanCell(filler), JSON.stringify(filler)).toBe("");
+    }
+    expect(cleanCell("\u3164Atelier")).toBe("\u3164Atelier");
+    expect(cleanCell("Super\u00ADmarch\u00E9")).toBe("Super\u00ADmarch\u00E9");
   });
 
   test("NFC", () => {
@@ -99,6 +119,10 @@ test.describe("name", () => {
     expect(normaliseName(" ")).toEqual({ value: "", problem: "name_missing" });
     expect(normaliseName("\u00A0\u200B")).toEqual({ value: "", problem: "name_missing" });
     expect(normaliseName("n/a").problem).toBe("name_missing");
+    // Blank-looking names: Hangul fillers, soft hyphen, blank braille pattern, tag characters.
+    for (const blank of ["\u3164", "\u115F\u1160", "\uFFA0 \u3164", "\u00AD", "\u2800\u2800", "\u{E0041}\u{E0042}"]) {
+      expect(normaliseName(blank), JSON.stringify(blank)).toEqual({ value: "", problem: "name_missing" });
+    }
     expect(normaliseName("x".repeat(200))).toEqual({ value: "x".repeat(200), problem: null });
     expect(normaliseName("x".repeat(201)).problem).toBe("name_too_long");
     // 200 emoji are 400 UTF-16 units but 200 characters for Postgres.
@@ -423,6 +447,18 @@ test.describe("rows", () => {
   test("hidden characters never reach the payload", () => {
     const [r] = normaliseRecords([row(["\u202EBazar\u0007 Lumière\u200B", ...good.slice(1)])], base);
     expect(r.payload).toMatchObject({ name: "Bazar Lumière" });
+    expect(importRowSchema.safeParse(r.payload).success).toBe(true);
+    const [tagged] = normaliseRecords([row(["Bazar\u061C\u{E0041} Lumière\u180E", ...good.slice(1)])], base);
+    expect(tagged.payload).toMatchObject({ name: "Bazar Lumière" });
+    expect(importRowSchema.safeParse(tagged.payload).success).toBe(true);
+  });
+
+  test("a filler-only name is rejected as name_missing in the browser", () => {
+    // The database and the Zod schema only check that a name is 1 to 200 characters, so "\u3164" would pass both:
+    // the browser rules are what reject it.
+    const [r] = normaliseRecords([row(["\u3164", ...good.slice(1)])], base);
+    expect(r.rejected).toBe(true);
+    expect(r.payload).toEqual({ row_no: 2, problems: ["name_missing"] });
     expect(importRowSchema.safeParse(r.payload).success).toBe(true);
   });
 
