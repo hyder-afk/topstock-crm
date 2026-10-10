@@ -98,8 +98,7 @@ begin
   end loop;
   foreach t in array array['select * from public.list_leads()', 'select public.count_leads()',
                            'select public.get_lead(gen_random_uuid())', 'select * from public.list_team()',
-                           $q$select public.create_lead('x')$q$, $q$select * from public.list_saved_views('leads')$q$,
-                           $q$select * from private.search_lead_ids('%co%')$q$] loop
+                           $q$select public.create_lead('x')$q$, $q$select * from public.list_saved_views('leads')$q$] loop
     begin
       execute t;
       raise exception 'FAIL: anon could call %', t;
@@ -117,7 +116,6 @@ do $$ begin
   if (select count(*) from public.contacts) <> 0 then raise exception 'FAIL: aal1 session can read contacts'; end if;
   if (select count(*) from public.profiles) <> 0 then raise exception 'FAIL: aal1 session can read profiles'; end if;
   if (select count(*) from public.list_leads()) <> 0 then raise exception 'FAIL: aal1 session can list leads'; end if;
-  if exists (select 1 from private.search_lead_ids('%co%')) then raise exception 'FAIL: aal1 session can search leads'; end if;
   if public.get_lead('30000000-0000-0000-0000-0000000000a1') is not null then
     raise exception 'FAIL: aal1 session can read a lead';
   end if;
@@ -365,13 +363,12 @@ begin
      or public.count_leads(p_search => '%%') <> 0 then
     raise exception 'FAIL: search text was treated as a pattern';
   end if;
-  -- The search helper runs as its owner (so the trigram indexes work) but keeps to the caller's org: "c1" is only in
-  -- the other org's lead ("Co c1") and contact ("Person c1").
-  if (select count(*) from private.search_lead_ids('%co%')) <> 2 then
-    raise exception 'FAIL: search helper should find the 2 leads of the org';
+  -- Search ignores letter case, in lead and contact fields alike; "c1" is only in the other org's lead and contact.
+  if (select count(*) from public.list_leads(p_search => 'cO B1')) <> 1 or public.count_leads(p_search => 'PERSON b1') <> 1 then
+    raise exception 'FAIL: search should ignore letter case';
   end if;
-  if exists (select 1 from private.search_lead_ids('%c1%')) then
-    raise exception 'FAIL: search helper returned another org''s lead';
+  if (select count(*) from public.list_leads(p_search => 'c1')) <> 0 or public.count_leads(p_search => 'c1') <> 0 then
+    raise exception 'FAIL: search found another org''s lead';
   end if;
 end $$;
 
@@ -421,6 +418,12 @@ begin
   begin
     perform public.list_leads(p_sort => 'name; drop table x');
     raise exception 'FAIL: unknown sort accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  -- A cursor that is not a time, on a sort by time, is refused as a bad request (the API answers 400).
+  begin
+    perform public.list_leads(p_sort => 'created', p_after_value => 'not a time', p_after_id => gen_random_uuid());
+    raise exception 'FAIL: cursor that is not a time accepted';
   exception when invalid_parameter_value then null;
   end;
 end $$;

@@ -26,12 +26,15 @@ alter table public.companies add constraint companies_country_check check (count
 create index companies_status_idx on public.companies (org_id, lead_status);
 create index companies_country_idx on public.companies (org_id, country);
 create index companies_import_batch_idx on public.companies (import_batch_id);
--- Search looks in name, email, phone and city at once: one trigram index over the four joined by line breaks (a line
--- break cannot be typed in the search box, so a search from the app never spans two fields). Replaces the name index.
+-- Search looks in name, email, phone and city at once, in this lowercase copy kept by the database (fields joined by
+-- line breaks, which cannot be typed in the search box, so a search from the app never spans two fields). Searching is
+-- a plain LIKE on it. Under row level security no LIKE can use an index (LIKE is not "leakproof", so PostgreSQL must
+-- run the RLS checks first), so search reads every lead of the org: about 20 ms at 30k leads with this copy, against
+-- about 65 ms for ILIKE on the joined fields (docs/evidence/day3a/perf.md). The name trigram index could never be used
+-- under RLS, so it goes.
+alter table public.companies add column search_text text generated always as (
+  lower(name || E'\n' || coalesce(email, '') || E'\n' || coalesce(phone, '') || E'\n' || coalesce(city, ''))) stored;
 drop index public.companies_name_trgm_idx;
-create index companies_search_trgm_idx on public.companies using gin (
-  (name || E'\n' || coalesce(email, '') || E'\n' || coalesce(phone, '') || E'\n' || coalesce(city, ''))
-  extensions.gin_trgm_ops);
 -- Keyset pagination for the three sort orders of the leads list.
 create index companies_activity_keyset_idx
   on public.companies (org_id, (coalesce(last_activity_at, '-infinity'::timestamptz)) desc, id desc);
@@ -59,11 +62,10 @@ alter table public.contacts
 create trigger enforce_org_and_owner before insert or update on public.contacts
   for each row execute function private.enforce_org_and_owner();
 create index contacts_org_idx on public.contacts (org_id);
--- Same for the people at a lead: full name, email and phone in one trigram index (replaces the name and email ones).
+-- Same for the people at a lead: full name, email and phone (their trigram indexes go for the same reason).
+alter table public.contacts add column search_text text generated always as (
+  lower(first_name || ' ' || last_name || E'\n' || coalesce(email, '') || E'\n' || coalesce(phone, ''))) stored;
 drop index public.contacts_name_trgm_idx, public.contacts_email_trgm_idx;
-create index contacts_search_trgm_idx on public.contacts using gin (
-  (first_name || ' ' || last_name || E'\n' || coalesce(email, '') || E'\n' || coalesce(phone, ''))
-  extensions.gin_trgm_ops);
 
 -- ---------------------------------------------------------------------------
 -- Activities belong to a lead (optionally to one of its contacts and a deal)
@@ -276,39 +278,11 @@ language sql immutable set search_path = '' as $$
               then '%' || private.like_escape(left(btrim(value), max_len)) || '%' end
 $$;
 
--- Ids of the caller's leads whose name, email, phone or city, or one of whose contacts' name, email or phone, contain the
--- search pattern. Why this runs as the definer: row level security evaluates its own checks before any condition that is
--- not leakproof, and ILIKE is not, so under RLS the trigram indexes cannot be used and every search read all 30k leads
--- (about 100 ms, docs/evidence/day3a/perf.md); here the indexes answer in a few ms. It applies the same rule as the
--- companies_select and contacts_select policies itself (the caller's org, with two-factor) and returns ids only; the
--- calling query reads the leads under row level security as usual. Not reachable from the API (private schema).
-create function private.search_lead_ids(p_pattern text) returns setof uuid
-language plpgsql stable security definer rows 100 set search_path = '' as $$
-declare
-  v_org uuid := private.current_org_id();
-begin
-  if v_org is null or not private.has_aal2() or p_pattern is null then
-    return;
-  end if;
-  return query execute $q$
-    select s.id from public.companies s
-     where s.org_id = $1
-       and (s.name || E'\n' || coalesce(s.email, '') || E'\n' || coalesce(s.phone, '') || E'\n' || coalesce(s.city, ''))
-           ilike $2
-    union
-    select k.company_id from public.contacts k
-     where k.org_id = $1
-       and (k.first_name || ' ' || k.last_name || E'\n' || coalesce(k.email, '') || E'\n' || coalesce(k.phone, ''))
-           ilike $2
-  $q$ using v_org, p_pattern;
-end;
-$$;
-
 -- The leads filter, written once for list_leads and count_leads. It is constant SQL text with positional parameters
 -- only ($1 search pattern, $2 statuses, $3 owners, $4 unowned, $5 countries, $6 city pattern, $7 inactive days). The two
 -- functions run it with EXECUTE ... USING, so values never become SQL and each call is planned with its real values:
--- the keyset indexes stay usable (a set-returning SQL function with a SET clause is never inlined). Search goes through
--- private.search_lead_ids above.
+-- the keyset indexes stay usable (a set-returning SQL function with a SET clause is never inlined). The search pattern
+-- arrives lowercased, to match search_text.
 create function private.lead_filter_sql() returns text
 language sql immutable set search_path = '' as $f$
   select $q$
@@ -318,7 +292,8 @@ language sql immutable set search_path = '' as $f$
     and ($6::text is null or c.city ilike $6)
     and ($7::integer is null or c.last_activity_at is null
          or c.last_activity_at < now() - make_interval(days => greatest($7, 0)))
-    and ($1::text is null or c.id = any (array(select private.search_lead_ids($1))))
+    and ($1::text is null or c.search_text like $1
+         or c.id in (select k.company_id from public.contacts k where k.search_text like $1))
   $q$
 $f$;
 
@@ -368,6 +343,9 @@ begin
   if (p_after_value is null) <> (p_after_id is null) then
     raise exception 'cursor needs both value and id' using errcode = '22023';
   end if;
+  if p_sort <> 'name' and not pg_input_is_valid(p_after_value, 'timestamptz') then
+    raise exception 'cursor value must be a time for this sort' using errcode = '22023';
+  end if;
   sort_key := case p_sort
     when 'name' then 'lower(c.name)'
     when 'created' then 'c.created_at'
@@ -391,7 +369,7 @@ begin
         order by %1$s %4$s, c.id %4$s
         limit $10$q$,
     sort_key, private.lead_filter_sql(), after_cond, direction)
-  using private.like_pattern(p_search, 100, 2), p_statuses, p_owners, coalesce(p_unowned, false), p_countries,
+  using lower(private.like_pattern(p_search, 100, 2)), p_statuses, p_owners, coalesce(p_unowned, false), p_countries,
         private.like_pattern(p_city, 120, 1), p_inactive_days, p_after_value, p_after_id, p_limit;
 end;
 $$;
@@ -412,7 +390,7 @@ declare
 begin
   execute format('select count(*) from public.companies c where %s', private.lead_filter_sql())
     into n
-    using private.like_pattern(p_search, 100, 2), p_statuses, p_owners, coalesce(p_unowned, false), p_countries,
+    using lower(private.like_pattern(p_search, 100, 2)), p_statuses, p_owners, coalesce(p_unowned, false), p_countries,
           private.like_pattern(p_city, 120, 1), p_inactive_days;
   return n;
 end;
@@ -578,9 +556,9 @@ $$;
 -- Function privileges: the API functions run as the caller, so authenticated needs the private helpers they use.
 -- ---------------------------------------------------------------------------
 revoke all on function private.like_escape(text), private.like_pattern(text, integer, integer),
-  private.lead_filter_sql(), private.search_lead_ids(text), private.touch_company_activity() from public, anon;
+  private.lead_filter_sql(), private.touch_company_activity() from public, anon;
 grant execute on function private.like_escape(text), private.like_pattern(text, integer, integer),
-  private.lead_filter_sql(), private.search_lead_ids(text) to authenticated;
+  private.lead_filter_sql() to authenticated;
 revoke all on function private.touch_company_activity() from authenticated;
 revoke all on function private.set_activity_time() from public, anon, authenticated;
 

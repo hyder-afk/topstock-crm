@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     : null;
   if (cursor && !cursor.success) return NextResponse.json({ error: "invalid" }, { status: 400 });
   const page = await fetchLeadPage(session.supabase, parseFilters(params), cursor?.data ?? null);
+  if (page === "invalid") return NextResponse.json({ error: "invalid" }, { status: 400 });
   if (!page) return NextResponse.json({ error: "unavailable" }, { status: 502 });
   return NextResponse.json(page, { headers: { "Cache-Control": "private, no-store" } });
 }

@@ -12,12 +12,13 @@ import {
 } from "@/lib/leads";
 
 // One page of leads for these filters (keyset). Shared by the leads page (first page, server-rendered) and
-// GET /api/leads (next pages and filter changes). Returns null when the database could not answer.
+// GET /api/leads (next pages and filter changes). Returns "invalid" when the database refuses the request itself
+// (a cursor that does not fit the sort), null when it could not answer.
 export async function fetchLeadPage(
   supabase: SupabaseClient,
   filters: LeadFilters,
   cursor: { after_value: string; after_id: string } | null,
-): Promise<LeadPage | null> {
+): Promise<LeadPage | "invalid" | null> {
   const args = rpcFilterArgs(filters);
   const [list, count] = await Promise.all([
     supabase.rpc("list_leads", {
@@ -29,6 +30,7 @@ export async function fetchLeadPage(
     }),
     cursor ? Promise.resolve(null) : supabase.rpc("count_leads", args),
   ]);
+  if (list.error?.code === "22023") return "invalid";
   if (list.error || count?.error) return null;
   const rows = (list.data ?? []) as LeadRow[];
   const hasMore = rows.length > pageSize;

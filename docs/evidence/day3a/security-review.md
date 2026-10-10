@@ -21,7 +21,7 @@ Checked:
   every table; leads and contacts are readable org-wide (Haider, 10 Oct) and changeable by the owner, managers and admins;
   deletes need a two-factor code from the last 10 minutes; owners must belong to the caller's org (trigger), only managers
   and admins assign them; org_id is always server-set. Attack test: all checks pass. Deliberate breaks are all caught:
-  8 in the first round, plus the column grant and the search helper's two checks.
+  8 in the first round, plus the column grant.
 - **Injection:** `list_leads` and `count_leads` use `EXECUTE format(...) USING ...` so each call is planned with its real
   values (keyset indexes). Every piece of SQL text in them is a constant: the filter (`private.lead_filter_sql()`) and the
   sort key, cursor condition and direction, which are picked from fixed strings by the whitelisted sort name. User values
@@ -33,14 +33,17 @@ Checked:
   the form fields: companies (name, website, industry, owner_id, lead_status, phone, email, city, country) and contacts
   (company_id, first_name, last_name, title, email, phone). Attack tests: a rep and an admin get `insufficient_privilege`
   on each server-kept column; removing the revoke makes them fail.
-- **The one new SECURITY DEFINER function, `private.search_lead_ids`:** it exists only for speed. Under row level security
-  `ILIKE` cannot use the trigram indexes, so a search read all 30k leads; see perf.md. It has `search_path = ''`. It
-  applies the read policies' own rule (the caller's org, with two-factor) and returns lead ids only. The list and count
-  then read the leads under row level security, so even a wrong id would not show. It lives in the private schema, which
-  the API cannot reach, and anon cannot execute it. Attack tests: anon refused, aal1 gets nothing, rep A never gets
-  the other org's lead or contact match. Removing the org check or the two-factor check each makes a test fail.
-- **Route handlers and proxy:** `/api/leads` and `/api/leads/[id]` require an aal2 session (`apiSession`, JWT verified by
-  `getClaims`); signed-out API calls get JSON 401 (tested); responses are `private, no-store`.
+- **Search stays under row level security:**
+  - search is a plain `LIKE` on `search_text`, a lowercase copy of the searchable fields kept by the database. It is a
+    generated column, so nobody can write it, and it is not in the column grants;
+  - no SECURITY DEFINER code is involved. A round-2 definer helper was removed after the advisor measured it slow for
+    broad searches; see perf.md;
+  - attack tests: search ignores letter case, and finds nothing of the other org's lead or contact.
+- **Route handlers and proxy:**
+  - `/api/leads` and `/api/leads/[id]` require an aal2 session (`apiSession`, JWT verified by `getClaims`);
+  - signed-out API calls get JSON 401 (tested);
+  - a paging cursor that does not fit the sort gets 400, not 502 (tested);
+  - responses are `private, no-store`.
 - **Data exposure:** list, detail and team return same-org rows only; saved views only the caller's own (tested).
 - **Client:** no `dangerouslySetInnerHTML`. `tel:` links keep digits only. `mailto:` links percent-encode the address, so
   a "?" or "&" in a stored or imported address cannot add a subject, a body or more recipients (tested). Saved views

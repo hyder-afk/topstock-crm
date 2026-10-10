@@ -46,6 +46,9 @@ select count(*) from public.list_leads(p_sort => 'created', p_limit => 51);
 \echo '--- 4. search with no match, list then count'
 select count(*) from public.list_leads(p_search => 'zzqx', p_limit => 51);
 select public.count_leads(p_search => 'zzqx');
+\echo '--- 5. search matching every lead, list (A to Z) then count'
+select count(*) from public.list_leads(p_search => 'example.com', p_sort => 'name', p_limit => 51);
+select public.count_leads(p_search => 'example.com');
 reset role; -- auto_explain settings need the superuser; the claims stay set
 set auto_explain.log_min_duration = -1;
 set role authenticated;
@@ -67,8 +70,15 @@ declare
     ['search "benali4" (contact name), list', $q$select count(*) from public.list_leads(p_search => 'benali4', p_limit => 51)$q$],
     ['search with no match, list', $q$select count(*) from public.list_leads(p_search => 'zzqx', p_limit => 51)$q$],
     ['search with no match, count', $q$select public.count_leads(p_search => 'zzqx')$q$],
-    ['search "ly" (2 letters: no trigram), list', $q$select count(*) from public.list_leads(p_search => 'ly', p_limit => 51)$q$],
-    ['search "ly" (2 letters: no trigram), count', $q$select public.count_leads(p_search => 'ly')$q$],
+    ['search "example.com" (every lead), list', $q$select count(*) from public.list_leads(p_search => 'example.com', p_limit => 51)$q$],
+    ['search "example.com" (every lead), list A to Z', $q$select count(*) from public.list_leads(p_search => 'example.com', p_sort => 'name', p_limit => 51)$q$],
+    ['search "example.com" (every lead), count', $q$select public.count_leads(p_search => 'example.com')$q$],
+    ['search "+33 6" (every lead), list A to Z', $q$select count(*) from public.list_leads(p_search => '+33 6', p_sort => 'name', p_limit => 51)$q$],
+    ['search "+33 6" (every lead), count', $q$select public.count_leads(p_search => '+33 6')$q$],
+    ['search "ly" (2 letters), list', $q$select count(*) from public.list_leads(p_search => 'ly', p_limit => 51)$q$],
+    ['search "ly" (2 letters), count', $q$select public.count_leads(p_search => 'ly')$q$],
+    ['search "éé" (2 letters, no match), list', $q$select count(*) from public.list_leads(p_search => 'éé', p_limit => 51)$q$],
+    ['search "verdane" + status customer, list', $q$select count(*) from public.list_leads(p_search => 'verdane', p_statuses => array['customer'], p_limit => 51)$q$],
     ['city filter "lyon", list', $q$select count(*) from public.list_leads(p_city => 'lyon', p_limit => 51)$q$]
   ];
   i int;
@@ -94,7 +104,7 @@ begin
       execute q;
       total := total + extract(epoch from clock_timestamp() - t0) * 1000;
     end loop;
-    raise notice '% : % ms', rpad(cases[i][1], 42), round(total / 5, 1);
+    raise notice '% : % ms', rpad(cases[i][1], 48), round(total / 5, 1);
   end loop;
 end $$;
 reset role;

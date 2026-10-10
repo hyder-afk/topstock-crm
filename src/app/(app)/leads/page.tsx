@@ -13,7 +13,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   return (
     <LeadsWorkspace
       initialKey={filtersToParams(filters).toString()}
-      initialPage={page}
+      initialPage={page === "invalid" ? null : page}
       team={team ?? []}
       initialViews={views ?? []}
       me={{ id: claims.sub, role }}

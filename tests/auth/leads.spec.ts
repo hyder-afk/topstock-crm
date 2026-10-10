@@ -207,7 +207,7 @@ test.describe("desktop", () => {
   });
 });
 
-test("saved views with bad filters are tidied or left out; email links cannot add mail fields; long cursors page", async ({
+test("saved views with bad filters are tidied or left out; email links cannot add mail fields; cursors are checked", async ({
   browser,
 }) => {
   sql(`insert into public.saved_views (org_id, user_id, section, name, filters_json)
@@ -238,6 +238,9 @@ test("saved views with bad filters are tidied or left out; email links cannot ad
   expect((await context.request.get(cursor("é".repeat(150)))).status()).toBe(200);
   expect((await context.request.get(cursor("😀".repeat(200)))).status()).toBe(200);
   expect((await context.request.get(cursor("a".repeat(401)))).status()).toBe(400);
+  // On a sort by time the cursor must be a time: anything else is a bad request, not a server failure.
+  const timeCursor = `/api/leads?sort=created&after_value=not-a-time&after_id=${afterId}`;
+  expect((await context.request.get(timeCursor)).status()).toBe(400);
   expect(errors).toEqual([]);
   await context.close();
 });
