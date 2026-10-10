@@ -3,7 +3,7 @@
 # Builds Supabase Auth (GoTrue) from source at a pinned commit via the Go module proxy, runs it on a throwaway
 # PostgreSQL 16 with the app's migrations, and puts a tiny gateway on :54321: /auth/v1/* goes to Supabase Auth and
 # /rest/v1/* to a minimal PostgREST stand-in (gateway.mjs + local-api.sql) that runs requests as the caller's role,
-# so row level security applies as on Supabase.
+# so row level security applies as on Supabase. Gateway smoke test (big RPC bodies): node scripts/local-auth/smoke-large-rpc.mjs
 # Fake users only. The JWT secret is random per run. Writes the env to use into $OUT/env (default /tmp/topstock-auth).
 # CI does not use this: it runs the real Supabase stack (`supabase start`).
 set -euo pipefail

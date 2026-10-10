@@ -87,3 +87,22 @@ end;
 $$;
 
 grant execute on all functions in schema local_api to anon, authenticated, service_role;
+
+-- LOCAL ONLY probe for scripts/local-auth/smoke-large-rpc.mjs (never in supabase/migrations): reports what reached the
+-- database (byte size and md5 of p_payload->>'blob', the role and JWT role the call ran as), or raises an error with
+-- a detail and a hint when p_payload has a "raise" key. Executable by service_role only, so an anon call must fail.
+create or replace function public.local_gateway_probe(p_payload jsonb) returns jsonb
+language plpgsql stable set search_path = '' as $$
+begin
+  if p_payload ? 'raise' then
+    raise exception 'local probe refused' using errcode = '22023', detail = 'local probe detail', hint = 'local_probe_hint';
+  end if;
+  return jsonb_build_object(
+    'bytes', octet_length(p_payload->>'blob'),
+    'md5', md5(p_payload->>'blob'),
+    'role', current_user,
+    'jwt_role', current_setting('request.jwt.claims', true)::jsonb->>'role');
+end;
+$$;
+revoke all on function public.local_gateway_probe(jsonb) from public, anon, authenticated;
+grant execute on function public.local_gateway_probe(jsonb) to service_role;

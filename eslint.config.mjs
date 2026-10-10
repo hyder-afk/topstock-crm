@@ -5,6 +5,11 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // Import code handles lead data: it never logs (design section 4, threat 13).
+  {
+    files: ["src/lib/import/**", "src/components/import/**"],
+    rules: { "no-console": "error" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

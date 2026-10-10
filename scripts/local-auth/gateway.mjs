@@ -3,14 +3,43 @@
 //   /rest/v1/*  -> the few PostgREST behaviours the app uses (rpc calls; table GET/PATCH with eq filters), run by
 //                  psql against the throwaway database as the caller's API role with the caller's JWT claims, so row
 //                  level security decides exactly as on Supabase. Anything else answers 400 instead of guessing.
+// The SQL reaches psql through stdin, never argv (Linux caps one argument at 128 KB, and an import chunk is ~750 KB).
+// Every value is written into that SQL text only as a dollar-quoted literal with a random per-request tag; a value
+// containing the tag is refused. Names are checked against NAME here and quoted with %I in local-api.sql.
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const SECRET = process.env.GOTRUE_JWT_SECRET;
 const PG = { host: "127.0.0.1", port: process.env.LOCAL_PG_PORT || "54330" };
+const PORT = Number(process.env.LOCAL_GATEWAY_PORT || 54321);
 const ROLES = new Set(["anon", "authenticated", "service_role"]);
 const NAME = /^[a-z_][a-z0-9_]{0,62}$/;
+export const MAX_BODY = 2 * 1024 * 1024;
+
+class LocalError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const localBody = (message) => ({ code: "LOCAL", message: `local gateway: ${message}`, details: null, hint: null });
+
+// A fresh tag per request: 16 random bytes, so a client cannot know it before sending its values.
+export function newTag() {
+  return `tag_${randomBytes(16).toString("hex")}`;
+}
+
+// $tag_<hex>$value$tag_<hex>$. Inside it nothing is escaped or interpolated, by PostgreSQL or by psql (no :variables,
+// no backslash commands), so the only way out is the closing tag: any value containing the tag is refused.
+export function literal(tag, value) {
+  const text = String(value);
+  if (text.includes(tag)) throw new LocalError(400, "a value contains the quoting tag");
+  return `$${tag}$${text}$${tag}$`;
+}
 
 function verify(token) {
   const [h, p, s] = (token || "").split(".");
@@ -23,8 +52,8 @@ function verify(token) {
   return ROLES.has(claims.role) ? claims : null;
 }
 
-function send(res, status, body) {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+function send(res, status, body, headers = {}) {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...headers });
   res.end(body === undefined ? "" : typeof body === "string" ? body : JSON.stringify(body));
 }
 
@@ -36,42 +65,88 @@ function httpStatus(code, role) {
   return 400;
 }
 
-function runSql(claims, statement, vars) {
+// statement(lit) returns the SQL to run, with every value passed through lit().
+function runSql(claims, statement) {
+  const tag = newTag();
+  const lit = (value) => literal(tag, value);
   const script = [
     "\\set ON_ERROR_STOP 1",
     "\\set VERBOSITY verbose",
+    "\\set SHOW_CONTEXT never",
     "begin;",
-    "select set_config('role', :'role', true) \\g /dev/null",
-    "select set_config('request.jwt.claims', :'claims', true) \\g /dev/null",
-    "select set_config('request.jwt.claim.sub', :'sub', true) \\g /dev/null",
-    "select set_config('request.jwt.claim.role', :'role', true) \\g /dev/null",
-    `${statement};`,
+    `select set_config('role', ${lit(claims.role)}, true) \\g /dev/null`,
+    `select set_config('request.jwt.claims', ${lit(JSON.stringify(claims))}, true) \\g /dev/null`,
+    `select set_config('request.jwt.claim.sub', ${lit(claims.sub || "")}, true) \\g /dev/null`,
+    `select set_config('request.jwt.claim.role', ${lit(claims.role)}, true) \\g /dev/null`,
+    `${statement(lit)};`,
     "commit;",
   ].join("\n");
   const args = ["-h", PG.host, "-p", PG.port, "-U", "postgres", "-d", "postgres", "-X", "-q", "-A", "-t"];
-  const all = { role: claims.role, claims: JSON.stringify(claims), sub: claims.sub || "", ...vars };
-  for (const [k, v] of Object.entries(all)) args.push("-v", `${k}=${v}`);
   return new Promise((resolve) => {
-    const child = spawn("psql", args, { stdio: ["pipe", "pipe", "pipe"] });
-    let out = "";
-    let err = "";
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (err += d));
-    child.on("close", (status) => resolve({ status, out: out.trim(), err }));
+    const child = spawn("psql", args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { PATH: process.env.PATH, PGCLIENTENCODING: "UTF8" },
+    });
+    const out = [];
+    const err = [];
+    child.stdout.on("data", (d) => out.push(d));
+    child.stderr.on("data", (d) => err.push(d));
+    // psql can exit before reading all of stdin (database down); its exit status and stderr say why.
+    child.stdin.on("error", () => {});
+    child.on("error", () => resolve({ status: -1, out: "", err: "" }));
+    child.on("close", (status) =>
+      resolve({ status, out: Buffer.concat(out).toString("utf8").trim(), err: Buffer.concat(err).toString("utf8") }),
+    );
     child.stdin.end(script);
   });
 }
 
-function sqlError(err, role) {
-  const m = err.match(/ERROR:\s+([0-9A-Z]{5}):\s+([^\n]*)/);
+// psql prints "psql:<stdin>:N: ERROR:  <SQLSTATE>: <message>", then DETAIL:, HINT:, QUERY: and LOCATION: lines.
+// The hint is the first HINT: line of that error. Message and details are passed on as before (details stay null).
+export function sqlError(stderr, role) {
+  const lines = stderr.split("\n");
+  const at = lines.findIndex((l) => /ERROR:\s+[0-9A-Z]{5}:\s/.test(l));
+  const m = at >= 0 ? lines[at].match(/ERROR:\s+([0-9A-Z]{5}):\s+(.*)$/) : null;
+  let hint = null;
+  if (m) {
+    for (const line of lines.slice(at + 1)) {
+      if (/^(psql:|QUERY:|CONTEXT:|LOCATION:)/.test(line)) break;
+      const h = line.match(/^HINT:\s+(.*)$/);
+      if (h) {
+        hint = h[1];
+        break;
+      }
+    }
+  }
   const code = m ? m[1] : "XX000";
-  return { status: httpStatus(code, role), body: { code, message: m ? m[2] : "database error", details: null, hint: null } };
+  return { status: httpStatus(code, role), body: { code, message: m ? m[2] : "database error", details: null, hint } };
 }
 
-async function readBody(req) {
-  let raw = "";
-  for await (const chunk of req) raw += chunk;
-  return raw ? JSON.parse(raw) : {};
+// The whole body as UTF-8 JSON, at most MAX_BODY bytes (413 above that).
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    if (Number(req.headers["content-length"] || 0) > MAX_BODY) {
+      reject(new LocalError(413, "request body over 2 MB"));
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= MAX_BODY) chunks.push(chunk);
+      else chunks.length = 0;
+    });
+    req.on("error", reject);
+    req.on("end", () => {
+      if (size > MAX_BODY) return reject(new LocalError(413, "request body over 2 MB"));
+      const raw = Buffer.concat(chunks).toString("utf8");
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        reject(new LocalError(400, "invalid JSON body"));
+      }
+    });
+  });
 }
 
 async function rest(req, res) {
@@ -84,7 +159,7 @@ async function rest(req, res) {
   let r;
   if (parts[0] === "rpc" && NAME.test(parts[1] || "") && req.method === "POST") {
     const body = await readBody(req);
-    r = await runSql(claims, "select local_api.rpc(:'fn', :'args'::jsonb)", { fn: parts[1], args: JSON.stringify(body) });
+    r = await runSql(claims, (lit) => `select local_api.rpc(${lit(parts[1])}, ${lit(JSON.stringify(body))}::jsonb)`);
     if (r.status !== 0) {
       const e = sqlError(r.err, claims.role);
       return send(res, e.status, e.body);
@@ -98,18 +173,22 @@ async function rest(req, res) {
     for (const [k, v] of url.searchParams) {
       if (k === "select") cols = v.split(",").map((c) => c.trim());
       else if (NAME.test(k) && v.startsWith("eq.")) filters[k] = v.slice(3);
-      else return send(res, 400, { code: "LOCAL", message: `local gateway: unsupported query ${k}=${v}`, details: null, hint: null });
+      else return send(res, 400, localBody(`unsupported query ${k}=${v}`));
     }
     if (req.method === "GET") {
-      if (!cols || !cols.every((c) => NAME.test(c))) return send(res, 400, { code: "LOCAL", message: "local gateway: list the columns", details: null, hint: null });
-      r = await runSql(claims, "select local_api.select_rows(:'tbl', string_to_array(:'cols', ','), :'filters'::jsonb)", {
-        tbl: parts[0], cols: cols.join(","), filters: JSON.stringify(filters),
-      });
+      if (!cols || !cols.every((c) => NAME.test(c))) return send(res, 400, localBody("list the columns"));
+      r = await runSql(
+        claims,
+        (lit) =>
+          `select local_api.select_rows(${lit(parts[0])}, string_to_array(${lit(cols.join(","))}, ','), ${lit(JSON.stringify(filters))}::jsonb)`,
+      );
     } else {
       const body = await readBody(req);
-      r = await runSql(claims, "select local_api.update_rows(:'tbl', :'vals'::jsonb, :'filters'::jsonb)", {
-        tbl: parts[0], vals: JSON.stringify(body), filters: JSON.stringify(filters),
-      });
+      r = await runSql(
+        claims,
+        (lit) =>
+          `select local_api.update_rows(${lit(parts[0])}, ${lit(JSON.stringify(body))}::jsonb, ${lit(JSON.stringify(filters))}::jsonb)`,
+      );
     }
     if (r.status !== 0) {
       const e = sqlError(r.err, claims.role);
@@ -118,25 +197,44 @@ async function rest(req, res) {
     return req.method === "GET" ? send(res, 200, r.out) : send(res, 204);
   }
 
-  return send(res, 400, { code: "LOCAL", message: `local gateway: unsupported ${req.method} ${url.pathname}`, details: null, hint: null });
+  return send(res, 400, localBody(`unsupported ${req.method} ${url.pathname}`));
 }
 
-http
-  .createServer((req, res) => {
-    if (req.url.startsWith("/rest/v1/")) {
-      rest(req, res).catch(() => send(res, 500, { code: "LOCAL", message: "local gateway error", details: null, hint: null }));
-      return;
-    }
-    if (!req.url.startsWith("/auth/v1/")) return send(res, 404, {});
-    const path = req.url.slice("/auth/v1".length);
-    const up = http.request({ host: "127.0.0.1", port: 9999, path, method: req.method, headers: req.headers }, (r) => {
-      res.writeHead(r.statusCode, r.headers);
-      r.pipe(res);
-    });
-    up.on("error", () => {
-      res.writeHead(502);
-      res.end();
-    });
-    req.pipe(up);
-  })
-  .listen(54321, "127.0.0.1");
+function serve() {
+  http
+    .createServer((req, res) => {
+      if (req.url.startsWith("/rest/v1/")) {
+        rest(req, res).catch((e) => {
+          if (res.headersSent) return;
+          // A too-large Content-Length is refused before the body is read, so a 413 closes the connection.
+          if (e instanceof LocalError) {
+            return send(res, e.status, localBody(e.message), e.status === 413 ? { connection: "close" } : {});
+          }
+          send(res, 500, { code: "LOCAL", message: "local gateway error", details: null, hint: null });
+        });
+        return;
+      }
+      if (!req.url.startsWith("/auth/v1/")) return send(res, 404, {});
+      const path = req.url.slice("/auth/v1".length);
+      const up = http.request({ host: "127.0.0.1", port: 9999, path, method: req.method, headers: req.headers }, (r) => {
+        res.writeHead(r.statusCode, r.headers);
+        r.pipe(res);
+      });
+      up.on("error", () => {
+        res.writeHead(502);
+        res.end();
+      });
+      req.pipe(up);
+    })
+    .listen(PORT, "127.0.0.1");
+}
+
+// Started by start.sh (`node gateway.mjs`); the smoke test imports literal() and sqlError() without starting a server.
+function isMain() {
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+}
+if (isMain()) serve();

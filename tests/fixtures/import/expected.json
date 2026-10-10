@@ -1,0 +1,3192 @@
+{
+  "file": "leads-500-fake.csv",
+  "generator": "scripts/make-fake-leads.mjs --seed 20261010",
+  "header": [
+    "Company name",
+    "Company owner",
+    "Phone Number",
+    "Email",
+    "Lead Status",
+    "Last Activity Date",
+    "City",
+    "Country/Region"
+  ],
+  "delimiter": ",",
+  "encoding": "utf-8",
+  "row_count": 500,
+  "last_row_no": 504,
+  "blank_row_nos": [
+    122,
+    262,
+    392
+  ],
+  "assumptions": {
+    "existing": "existing-20.csv is already in the CRM (imported first)",
+    "team": [
+      "Haider Test",
+      "Henri Test",
+      "Kais Test"
+    ],
+    "status_choices": {
+      "Hot lead": "warm",
+      "Prospect": "cold"
+    },
+    "blank_status": "cold",
+    "date_order": "dmy",
+    "time_zone": "Europe/Paris",
+    "bad_field_policy": "reject_row"
+  },
+  "totals": {
+    "ready": 400,
+    "duplicate_file": 30,
+    "duplicate_existing": 20,
+    "rejected": 50,
+    "ignored": 3,
+    "duplicate_file_by": {
+      "email": 12,
+      "phone": 10,
+      "name": 8
+    },
+    "duplicate_existing_by": {
+      "email": 10,
+      "phone": 5,
+      "name": 5
+    },
+    "problems": {
+      "city_too_long": 3,
+      "columns_extra": 3,
+      "date_future": 3,
+      "date_invalid": 6,
+      "date_too_old": 2,
+      "email_invalid": 12,
+      "name_missing": 10,
+      "name_too_long": 3,
+      "phone_invalid": 5,
+      "phone_mangled": 2,
+      "phone_too_long": 1
+    },
+    "fixes": {
+      "country_dropped": 2,
+      "owner_unassigned": 6
+    }
+  },
+  "blank_field_totals": {
+    "ready": 434,
+    "duplicate_file": 30,
+    "duplicate_existing": 20,
+    "rejected": 16
+  },
+  "rows": [
+    {
+      "row_no": 2,
+      "expect": "ready"
+    },
+    {
+      "row_no": 3,
+      "expect": "ready"
+    },
+    {
+      "row_no": 4,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 5,
+      "expect": "ready"
+    },
+    {
+      "row_no": 6,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 7,
+      "expect": "ready"
+    },
+    {
+      "row_no": 8,
+      "expect": "ready"
+    },
+    {
+      "row_no": 9,
+      "expect": "ready"
+    },
+    {
+      "row_no": 10,
+      "expect": "ready"
+    },
+    {
+      "row_no": 11,
+      "expect": "ready"
+    },
+    {
+      "row_no": 12,
+      "expect": "ready"
+    },
+    {
+      "row_no": 13,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 14,
+      "expect": "ready"
+    },
+    {
+      "row_no": 15,
+      "expect": "ready"
+    },
+    {
+      "row_no": 16,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 17,
+      "expect": "ready"
+    },
+    {
+      "row_no": 18,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name",
+        "phone_reused_later"
+      ]
+    },
+    {
+      "row_no": 19,
+      "expect": "ready",
+      "tags": [
+        "name_only",
+        "same_name_no_city"
+      ]
+    },
+    {
+      "row_no": 20,
+      "expect": "rejected",
+      "problems": [
+        "phone_invalid"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 21,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 31,
+      "tags": [
+        "no_contact_before_contact"
+      ]
+    },
+    {
+      "row_no": 22,
+      "expect": "ready"
+    },
+    {
+      "row_no": 23,
+      "expect": "ready",
+      "tags": [
+        "owner_blank",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 24,
+      "expect": "ready",
+      "fixes": [
+        "country_dropped"
+      ],
+      "tags": [
+        "atlantis"
+      ]
+    },
+    {
+      "row_no": 25,
+      "expect": "ready"
+    },
+    {
+      "row_no": 26,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 27,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 28,
+      "expect": "ready"
+    },
+    {
+      "row_no": 29,
+      "expect": "ready"
+    },
+    {
+      "row_no": 30,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 31,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "contact_after_no_contact"
+      ]
+    },
+    {
+      "row_no": 32,
+      "expect": "ready"
+    },
+    {
+      "row_no": 33,
+      "expect": "rejected",
+      "problems": [
+        "columns_extra"
+      ],
+      "tags": [
+        "extra_columns"
+      ]
+    },
+    {
+      "row_no": 34,
+      "expect": "ready"
+    },
+    {
+      "row_no": 35,
+      "expect": "ready"
+    },
+    {
+      "row_no": 36,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 37,
+      "expect": "ready"
+    },
+    {
+      "row_no": 38,
+      "expect": "ready"
+    },
+    {
+      "row_no": 39,
+      "expect": "ready"
+    },
+    {
+      "row_no": 40,
+      "expect": "ready",
+      "tags": [
+        "formula_name"
+      ]
+    },
+    {
+      "row_no": 41,
+      "expect": "ready"
+    },
+    {
+      "row_no": 42,
+      "expect": "ready"
+    },
+    {
+      "row_no": 43,
+      "expect": "ready",
+      "tags": [
+        "excel_serial"
+      ]
+    },
+    {
+      "row_no": 44,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email",
+        "formula_name"
+      ]
+    },
+    {
+      "row_no": 45,
+      "expect": "ready"
+    },
+    {
+      "row_no": 46,
+      "expect": "ready",
+      "tags": [
+        "xss"
+      ]
+    },
+    {
+      "row_no": 47,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 48,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 49,
+      "expect": "ready"
+    },
+    {
+      "row_no": 50,
+      "expect": "rejected",
+      "problems": [
+        "columns_extra"
+      ],
+      "tags": [
+        "extra_columns"
+      ]
+    },
+    {
+      "row_no": 51,
+      "expect": "rejected",
+      "problems": [
+        "city_too_long"
+      ],
+      "tags": [
+        "long_city"
+      ]
+    },
+    {
+      "row_no": 52,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 53,
+      "expect": "duplicate_existing",
+      "match_key": "name",
+      "match_existing_row_no": 8,
+      "tags": [
+        "existing_name"
+      ]
+    },
+    {
+      "row_no": 54,
+      "expect": "ready"
+    },
+    {
+      "row_no": 55,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 56,
+      "expect": "ready"
+    },
+    {
+      "row_no": 57,
+      "expect": "duplicate_existing",
+      "match_key": "phone",
+      "match_existing_row_no": 4,
+      "tags": [
+        "existing_phone"
+      ]
+    },
+    {
+      "row_no": 58,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 59,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 12,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 60,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 58,
+      "tags": [
+        "repeat_phone",
+        "phone_zero_zero"
+      ]
+    },
+    {
+      "row_no": 61,
+      "expect": "ready",
+      "tags": [
+        "bell",
+        "country_blank",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 62,
+      "expect": "ready"
+    },
+    {
+      "row_no": 63,
+      "expect": "ready"
+    },
+    {
+      "row_no": 64,
+      "expect": "ready"
+    },
+    {
+      "row_no": 65,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 66,
+      "expect": "ready"
+    },
+    {
+      "row_no": 67,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email",
+        "email_over_254"
+      ]
+    },
+    {
+      "row_no": 68,
+      "expect": "ready"
+    },
+    {
+      "row_no": 69,
+      "expect": "ready"
+    },
+    {
+      "row_no": 70,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 71,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 72,
+      "expect": "ready"
+    },
+    {
+      "row_no": 73,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 74,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 75,
+      "expect": "ready"
+    },
+    {
+      "row_no": 76,
+      "expect": "duplicate_existing",
+      "match_key": "name",
+      "match_existing_row_no": 10,
+      "tags": [
+        "existing_name"
+      ]
+    },
+    {
+      "row_no": 77,
+      "expect": "ready",
+      "tags": [
+        "hot_lead"
+      ]
+    },
+    {
+      "row_no": 78,
+      "expect": "ready"
+    },
+    {
+      "row_no": 79,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 80,
+      "expect": "ready"
+    },
+    {
+      "row_no": 81,
+      "expect": "ready"
+    },
+    {
+      "row_no": 82,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 4,
+      "tags": [
+        "repeat_phone",
+        "phone_dots"
+      ]
+    },
+    {
+      "row_no": 83,
+      "expect": "rejected",
+      "problems": [
+        "date_future"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 84,
+      "expect": "ready"
+    },
+    {
+      "row_no": 85,
+      "expect": "ready"
+    },
+    {
+      "row_no": 86,
+      "expect": "ready"
+    },
+    {
+      "row_no": 87,
+      "expect": "ready"
+    },
+    {
+      "row_no": 88,
+      "expect": "rejected",
+      "problems": [
+        "phone_invalid"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 89,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 90,
+      "expect": "ready",
+      "tags": [
+        "status_blank",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 91,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 92,
+      "expect": "ready"
+    },
+    {
+      "row_no": 93,
+      "expect": "ready"
+    },
+    {
+      "row_no": 94,
+      "expect": "ready"
+    },
+    {
+      "row_no": 95,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 96,
+      "expect": "ready"
+    },
+    {
+      "row_no": 97,
+      "expect": "ready"
+    },
+    {
+      "row_no": 98,
+      "expect": "ready"
+    },
+    {
+      "row_no": 99,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 16,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 100,
+      "expect": "ready"
+    },
+    {
+      "row_no": 101,
+      "expect": "ready",
+      "fixes": [
+        "owner_unassigned"
+      ],
+      "tags": [
+        "former_rep"
+      ]
+    },
+    {
+      "row_no": 102,
+      "expect": "ready"
+    },
+    {
+      "row_no": 103,
+      "expect": "ready"
+    },
+    {
+      "row_no": 104,
+      "expect": "ready"
+    },
+    {
+      "row_no": 105,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 106,
+      "expect": "ready"
+    },
+    {
+      "row_no": 107,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 108,
+      "expect": "ready",
+      "tags": [
+        "zero_width"
+      ]
+    },
+    {
+      "row_no": 109,
+      "expect": "ready"
+    },
+    {
+      "row_no": 110,
+      "expect": "ready",
+      "fixes": [
+        "owner_unassigned"
+      ],
+      "tags": [
+        "apostrophe_phone",
+        "former_rep"
+      ]
+    },
+    {
+      "row_no": 111,
+      "expect": "ready"
+    },
+    {
+      "row_no": 112,
+      "expect": "ready"
+    },
+    {
+      "row_no": 113,
+      "expect": "ready"
+    },
+    {
+      "row_no": 114,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 245,
+      "tags": [
+        "no_contact_before_contact"
+      ]
+    },
+    {
+      "row_no": 115,
+      "expect": "ready",
+      "tags": [
+        "iso_offset"
+      ]
+    },
+    {
+      "row_no": 116,
+      "expect": "ready"
+    },
+    {
+      "row_no": 117,
+      "expect": "ready"
+    },
+    {
+      "row_no": 118,
+      "expect": "rejected",
+      "problems": [
+        "phone_invalid"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 119,
+      "expect": "ready"
+    },
+    {
+      "row_no": 120,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 121,
+      "expect": "ready"
+    },
+    {
+      "row_no": 123,
+      "expect": "ready"
+    },
+    {
+      "row_no": 124,
+      "expect": "ready",
+      "tags": [
+        "hot_lead"
+      ]
+    },
+    {
+      "row_no": 125,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 126,
+      "expect": "ready"
+    },
+    {
+      "row_no": 127,
+      "expect": "duplicate_existing",
+      "match_key": "phone",
+      "match_existing_row_no": 2,
+      "tags": [
+        "existing_phone"
+      ]
+    },
+    {
+      "row_no": 128,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 129,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 130,
+      "expect": "ready"
+    },
+    {
+      "row_no": 131,
+      "expect": "ready"
+    },
+    {
+      "row_no": 132,
+      "expect": "ready"
+    },
+    {
+      "row_no": 133,
+      "expect": "ready"
+    },
+    {
+      "row_no": 134,
+      "expect": "ready"
+    },
+    {
+      "row_no": 135,
+      "expect": "ready",
+      "tags": [
+        "emoji"
+      ]
+    },
+    {
+      "row_no": 136,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 137,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email",
+        "formula_name"
+      ]
+    },
+    {
+      "row_no": 138,
+      "expect": "ready"
+    },
+    {
+      "row_no": 139,
+      "expect": "ready",
+      "fixes": [
+        "owner_unassigned"
+      ],
+      "tags": [
+        "bidi",
+        "former_rep"
+      ]
+    },
+    {
+      "row_no": 140,
+      "expect": "ready"
+    },
+    {
+      "row_no": 141,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 142,
+      "expect": "ready"
+    },
+    {
+      "row_no": 143,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 144,
+      "expect": "ready"
+    },
+    {
+      "row_no": 145,
+      "expect": "ready"
+    },
+    {
+      "row_no": 146,
+      "expect": "ready"
+    },
+    {
+      "row_no": 147,
+      "expect": "ready"
+    },
+    {
+      "row_no": 148,
+      "expect": "rejected",
+      "problems": [
+        "name_too_long"
+      ],
+      "tags": [
+        "long_name"
+      ]
+    },
+    {
+      "row_no": 149,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 150,
+      "expect": "ready"
+    },
+    {
+      "row_no": 151,
+      "expect": "ready"
+    },
+    {
+      "row_no": 152,
+      "expect": "ready"
+    },
+    {
+      "row_no": 153,
+      "expect": "ready",
+      "tags": [
+        "name_only",
+        "same_name_no_city"
+      ]
+    },
+    {
+      "row_no": 154,
+      "expect": "ready",
+      "tags": [
+        "quoted_comma"
+      ]
+    },
+    {
+      "row_no": 155,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 156,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 157,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 158,
+      "expect": "rejected",
+      "problems": [
+        "phone_too_long"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 159,
+      "expect": "ready"
+    },
+    {
+      "row_no": 160,
+      "expect": "ready",
+      "fixes": [
+        "owner_unassigned"
+      ],
+      "tags": [
+        "former_rep"
+      ]
+    },
+    {
+      "row_no": 161,
+      "expect": "ready"
+    },
+    {
+      "row_no": 162,
+      "expect": "ready"
+    },
+    {
+      "row_no": 163,
+      "expect": "ready"
+    },
+    {
+      "row_no": 164,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 165,
+      "expect": "ready"
+    },
+    {
+      "row_no": 166,
+      "expect": "ready"
+    },
+    {
+      "row_no": 167,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 168,
+      "expect": "ready"
+    },
+    {
+      "row_no": 169,
+      "expect": "duplicate_existing",
+      "match_key": "phone",
+      "match_existing_row_no": 3,
+      "tags": [
+        "existing_phone"
+      ]
+    },
+    {
+      "row_no": 170,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 167,
+      "tags": [
+        "repeat_phone",
+        "phone_national"
+      ]
+    },
+    {
+      "row_no": 171,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 172,
+      "expect": "ready",
+      "tags": [
+        "hot_lead",
+        "iso_offset"
+      ]
+    },
+    {
+      "row_no": 173,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email",
+        "formula_name"
+      ]
+    },
+    {
+      "row_no": 174,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 175,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "no_contact",
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 176,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 177,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 79,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 178,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 18,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 179,
+      "expect": "ready"
+    },
+    {
+      "row_no": 180,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "no_contact",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 181,
+      "expect": "ready",
+      "tags": [
+        "newline_city"
+      ]
+    },
+    {
+      "row_no": 182,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 183,
+      "expect": "ready"
+    },
+    {
+      "row_no": 184,
+      "expect": "ready"
+    },
+    {
+      "row_no": 185,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 186,
+      "expect": "rejected",
+      "problems": [
+        "phone_mangled"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 187,
+      "expect": "ready"
+    },
+    {
+      "row_no": 188,
+      "expect": "ready"
+    },
+    {
+      "row_no": 189,
+      "expect": "ready"
+    },
+    {
+      "row_no": 190,
+      "expect": "ready"
+    },
+    {
+      "row_no": 191,
+      "expect": "ready",
+      "fixes": [
+        "owner_unassigned"
+      ],
+      "tags": [
+        "former_rep"
+      ]
+    },
+    {
+      "row_no": 192,
+      "expect": "rejected",
+      "problems": [
+        "columns_extra"
+      ],
+      "tags": [
+        "extra_columns"
+      ]
+    },
+    {
+      "row_no": 193,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 194,
+      "expect": "rejected",
+      "problems": [
+        "city_too_long"
+      ],
+      "tags": [
+        "long_city"
+      ]
+    },
+    {
+      "row_no": 195,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 196,
+      "expect": "ready"
+    },
+    {
+      "row_no": 197,
+      "expect": "ready",
+      "tags": [
+        "chain_store",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 198,
+      "expect": "ready",
+      "tags": [
+        "formula_name"
+      ]
+    },
+    {
+      "row_no": 199,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 200,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 201,
+      "expect": "ready"
+    },
+    {
+      "row_no": 202,
+      "expect": "ready"
+    },
+    {
+      "row_no": 203,
+      "expect": "ready"
+    },
+    {
+      "row_no": 204,
+      "expect": "ready"
+    },
+    {
+      "row_no": 205,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 74,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 206,
+      "expect": "ready"
+    },
+    {
+      "row_no": 207,
+      "expect": "ready"
+    },
+    {
+      "row_no": 208,
+      "expect": "ready"
+    },
+    {
+      "row_no": 209,
+      "expect": "ready"
+    },
+    {
+      "row_no": 210,
+      "expect": "ready"
+    },
+    {
+      "row_no": 211,
+      "expect": "rejected",
+      "problems": [
+        "phone_invalid"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 212,
+      "expect": "ready"
+    },
+    {
+      "row_no": 213,
+      "expect": "ready"
+    },
+    {
+      "row_no": 214,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 215,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 216,
+      "expect": "rejected",
+      "problems": [
+        "date_future"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 217,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 218,
+      "expect": "ready"
+    },
+    {
+      "row_no": 219,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 220,
+      "expect": "ready"
+    },
+    {
+      "row_no": 221,
+      "expect": "ready"
+    },
+    {
+      "row_no": 222,
+      "expect": "ready",
+      "tags": [
+        "status_blank",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 223,
+      "expect": "rejected",
+      "problems": [
+        "date_invalid"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 224,
+      "expect": "ready"
+    },
+    {
+      "row_no": 225,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 226,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 227,
+      "expect": "ready"
+    },
+    {
+      "row_no": 228,
+      "expect": "ready",
+      "tags": [
+        "spaces"
+      ]
+    },
+    {
+      "row_no": 229,
+      "expect": "ready"
+    },
+    {
+      "row_no": 230,
+      "expect": "ready"
+    },
+    {
+      "row_no": 231,
+      "expect": "rejected",
+      "problems": [
+        "date_invalid"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 232,
+      "expect": "ready"
+    },
+    {
+      "row_no": 233,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 234,
+      "expect": "ready"
+    },
+    {
+      "row_no": 235,
+      "expect": "ready"
+    },
+    {
+      "row_no": 236,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 237,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 21,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 238,
+      "expect": "ready"
+    },
+    {
+      "row_no": 239,
+      "expect": "duplicate_existing",
+      "match_key": "name",
+      "match_existing_row_no": 11,
+      "tags": [
+        "existing_name"
+      ]
+    },
+    {
+      "row_no": 240,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 241,
+      "expect": "ready"
+    },
+    {
+      "row_no": 242,
+      "expect": "ready"
+    },
+    {
+      "row_no": 243,
+      "expect": "ready"
+    },
+    {
+      "row_no": 244,
+      "expect": "ready",
+      "tags": [
+        "country_blank",
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 245,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "contact_after_no_contact",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 246,
+      "expect": "ready"
+    },
+    {
+      "row_no": 247,
+      "expect": "ready"
+    },
+    {
+      "row_no": 248,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 175,
+      "tags": [
+        "repeat_name",
+        "city_spelling"
+      ]
+    },
+    {
+      "row_no": 249,
+      "expect": "ready"
+    },
+    {
+      "row_no": 250,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 251,
+      "expect": "ready"
+    },
+    {
+      "row_no": 252,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 302,
+      "tags": [
+        "no_contact_before_contact"
+      ]
+    },
+    {
+      "row_no": 253,
+      "expect": "ready"
+    },
+    {
+      "row_no": 254,
+      "expect": "ready",
+      "tags": [
+        "name_200_chars"
+      ]
+    },
+    {
+      "row_no": 255,
+      "expect": "ready"
+    },
+    {
+      "row_no": 256,
+      "expect": "ready"
+    },
+    {
+      "row_no": 257,
+      "expect": "ready"
+    },
+    {
+      "row_no": 258,
+      "expect": "ready"
+    },
+    {
+      "row_no": 259,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 260,
+      "expect": "ready"
+    },
+    {
+      "row_no": 261,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 14,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 263,
+      "expect": "ready"
+    },
+    {
+      "row_no": 264,
+      "expect": "ready"
+    },
+    {
+      "row_no": 265,
+      "expect": "ready"
+    },
+    {
+      "row_no": 266,
+      "expect": "ready"
+    },
+    {
+      "row_no": 267,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 268,
+      "expect": "ready"
+    },
+    {
+      "row_no": 269,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 270,
+      "expect": "rejected",
+      "problems": [
+        "date_invalid"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 271,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 272,
+      "expect": "ready"
+    },
+    {
+      "row_no": 273,
+      "expect": "ready"
+    },
+    {
+      "row_no": 274,
+      "expect": "ready"
+    },
+    {
+      "row_no": 275,
+      "expect": "ready"
+    },
+    {
+      "row_no": 276,
+      "expect": "ready"
+    },
+    {
+      "row_no": 277,
+      "expect": "ready"
+    },
+    {
+      "row_no": 278,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 279,
+      "expect": "ready"
+    },
+    {
+      "row_no": 280,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 281,
+      "expect": "ready",
+      "tags": [
+        "accents"
+      ]
+    },
+    {
+      "row_no": 282,
+      "expect": "ready"
+    },
+    {
+      "row_no": 283,
+      "expect": "rejected",
+      "problems": [
+        "phone_invalid"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 284,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 285,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 286,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 287,
+      "expect": "ready",
+      "tags": [
+        "dst_gap"
+      ]
+    },
+    {
+      "row_no": 288,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 289,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 290,
+      "expect": "ready",
+      "tags": [
+        "same_name_other_city"
+      ]
+    },
+    {
+      "row_no": 291,
+      "expect": "ready"
+    },
+    {
+      "row_no": 292,
+      "expect": "ready"
+    },
+    {
+      "row_no": 293,
+      "expect": "ready"
+    },
+    {
+      "row_no": 294,
+      "expect": "ready"
+    },
+    {
+      "row_no": 295,
+      "expect": "ready",
+      "tags": [
+        "prospect"
+      ]
+    },
+    {
+      "row_no": 296,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 297,
+      "expect": "ready"
+    },
+    {
+      "row_no": 298,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 299,
+      "expect": "ready",
+      "fixes": [
+        "country_dropped"
+      ],
+      "tags": [
+        "atlantis"
+      ]
+    },
+    {
+      "row_no": 300,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 301,
+      "expect": "ready"
+    },
+    {
+      "row_no": 302,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "contact_after_no_contact"
+      ]
+    },
+    {
+      "row_no": 303,
+      "expect": "ready"
+    },
+    {
+      "row_no": 304,
+      "expect": "ready",
+      "tags": [
+        "nbsp"
+      ]
+    },
+    {
+      "row_no": 305,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 306,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "no_contact"
+      ]
+    },
+    {
+      "row_no": 307,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 308,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 5,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 309,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 310,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 217,
+      "tags": [
+        "repeat_phone",
+        "phone_dashes"
+      ]
+    },
+    {
+      "row_no": 311,
+      "expect": "ready",
+      "tags": [
+        "xss",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 312,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 7,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 313,
+      "expect": "ready"
+    },
+    {
+      "row_no": 314,
+      "expect": "ready"
+    },
+    {
+      "row_no": 315,
+      "expect": "ready"
+    },
+    {
+      "row_no": 316,
+      "expect": "ready"
+    },
+    {
+      "row_no": 317,
+      "expect": "ready",
+      "tags": [
+        "ambiguous_date"
+      ]
+    },
+    {
+      "row_no": 318,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 319,
+      "expect": "rejected",
+      "problems": [
+        "date_too_old"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 320,
+      "expect": "ready"
+    },
+    {
+      "row_no": 321,
+      "expect": "ready"
+    },
+    {
+      "row_no": 322,
+      "expect": "ready"
+    },
+    {
+      "row_no": 323,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 324,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 325,
+      "expect": "ready"
+    },
+    {
+      "row_no": 326,
+      "expect": "ready"
+    },
+    {
+      "row_no": 327,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 20,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 328,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 329,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 330,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 331,
+      "expect": "ready"
+    },
+    {
+      "row_no": 332,
+      "expect": "ready"
+    },
+    {
+      "row_no": 333,
+      "expect": "ready"
+    },
+    {
+      "row_no": 334,
+      "expect": "ready"
+    },
+    {
+      "row_no": 335,
+      "expect": "ready"
+    },
+    {
+      "row_no": 336,
+      "expect": "ready"
+    },
+    {
+      "row_no": 337,
+      "expect": "ready"
+    },
+    {
+      "row_no": 338,
+      "expect": "ready",
+      "tags": [
+        "status_blank",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 339,
+      "expect": "ready",
+      "tags": [
+        "owner_blank",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 340,
+      "expect": "ready",
+      "tags": [
+        "cjk"
+      ]
+    },
+    {
+      "row_no": 341,
+      "expect": "ready"
+    },
+    {
+      "row_no": 342,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 343,
+      "expect": "ready"
+    },
+    {
+      "row_no": 344,
+      "expect": "ready"
+    },
+    {
+      "row_no": 345,
+      "expect": "ready"
+    },
+    {
+      "row_no": 346,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 347,
+      "expect": "rejected",
+      "problems": [
+        "date_invalid"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 348,
+      "expect": "duplicate_existing",
+      "match_key": "name",
+      "match_existing_row_no": 9,
+      "tags": [
+        "existing_name"
+      ]
+    },
+    {
+      "row_no": 349,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 225,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 350,
+      "expect": "ready"
+    },
+    {
+      "row_no": 351,
+      "expect": "ready",
+      "tags": [
+        "quotes"
+      ]
+    },
+    {
+      "row_no": 352,
+      "expect": "ready"
+    },
+    {
+      "row_no": 353,
+      "expect": "ready"
+    },
+    {
+      "row_no": 354,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 355,
+      "expect": "ready"
+    },
+    {
+      "row_no": 356,
+      "expect": "ready",
+      "fixes": [
+        "owner_unassigned"
+      ],
+      "tags": [
+        "former_rep"
+      ]
+    },
+    {
+      "row_no": 357,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 358,
+      "expect": "ready"
+    },
+    {
+      "row_no": 359,
+      "expect": "ready"
+    },
+    {
+      "row_no": 360,
+      "expect": "ready"
+    },
+    {
+      "row_no": 361,
+      "expect": "ready"
+    },
+    {
+      "row_no": 362,
+      "expect": "ready"
+    },
+    {
+      "row_no": 363,
+      "expect": "duplicate_existing",
+      "match_key": "phone",
+      "match_existing_row_no": 17,
+      "tags": [
+        "existing_phone"
+      ]
+    },
+    {
+      "row_no": 364,
+      "expect": "ready"
+    },
+    {
+      "row_no": 365,
+      "expect": "ready"
+    },
+    {
+      "row_no": 366,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 367,
+      "expect": "ready"
+    },
+    {
+      "row_no": 368,
+      "expect": "ready"
+    },
+    {
+      "row_no": 369,
+      "expect": "ready"
+    },
+    {
+      "row_no": 370,
+      "expect": "ready"
+    },
+    {
+      "row_no": 371,
+      "expect": "ready"
+    },
+    {
+      "row_no": 372,
+      "expect": "ready"
+    },
+    {
+      "row_no": 373,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 284,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 374,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 6,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 375,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 306,
+      "tags": [
+        "repeat_name",
+        "case"
+      ]
+    },
+    {
+      "row_no": 376,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 13,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 377,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "no_contact"
+      ]
+    },
+    {
+      "row_no": 378,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 185,
+      "tags": [
+        "repeat_phone",
+        "phone_trunk"
+      ]
+    },
+    {
+      "row_no": 379,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 380,
+      "expect": "duplicate_existing",
+      "match_key": "phone",
+      "match_existing_row_no": 19,
+      "tags": [
+        "existing_phone"
+      ]
+    },
+    {
+      "row_no": 381,
+      "expect": "ready"
+    },
+    {
+      "row_no": 382,
+      "expect": "rejected",
+      "problems": [
+        "date_future"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 383,
+      "expect": "rejected",
+      "problems": [
+        "name_too_long"
+      ],
+      "tags": [
+        "long_name"
+      ]
+    },
+    {
+      "row_no": 384,
+      "expect": "ready"
+    },
+    {
+      "row_no": 385,
+      "expect": "ready"
+    },
+    {
+      "row_no": 386,
+      "expect": "ready"
+    },
+    {
+      "row_no": 387,
+      "expect": "rejected",
+      "problems": [
+        "date_invalid"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 388,
+      "expect": "ready",
+      "tags": [
+        "prospect"
+      ]
+    },
+    {
+      "row_no": 389,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 390,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 391,
+      "expect": "ready"
+    },
+    {
+      "row_no": 393,
+      "expect": "rejected",
+      "problems": [
+        "name_too_long"
+      ],
+      "tags": [
+        "long_name"
+      ]
+    },
+    {
+      "row_no": 394,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 395,
+      "expect": "ready"
+    },
+    {
+      "row_no": 396,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 397,
+      "expect": "ready"
+    },
+    {
+      "row_no": 398,
+      "expect": "ready"
+    },
+    {
+      "row_no": 399,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 400,
+      "expect": "ready"
+    },
+    {
+      "row_no": 401,
+      "expect": "ready"
+    },
+    {
+      "row_no": 402,
+      "expect": "ready",
+      "tags": [
+        "status_blank",
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 403,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 404,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email",
+        "formula_name"
+      ]
+    },
+    {
+      "row_no": 405,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 180,
+      "tags": [
+        "repeat_name",
+        "punctuation"
+      ]
+    },
+    {
+      "row_no": 406,
+      "expect": "ready"
+    },
+    {
+      "row_no": 407,
+      "expect": "ready"
+    },
+    {
+      "row_no": 408,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 409,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 410,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 411,
+      "expect": "ready"
+    },
+    {
+      "row_no": 412,
+      "expect": "ready"
+    },
+    {
+      "row_no": 413,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 414,
+      "expect": "duplicate_existing",
+      "match_key": "email",
+      "match_existing_row_no": 6,
+      "tags": [
+        "existing_email"
+      ]
+    },
+    {
+      "row_no": 415,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 413,
+      "tags": [
+        "repeat_phone",
+        "phone_dots"
+      ]
+    },
+    {
+      "row_no": 416,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 417,
+      "expect": "ready"
+    },
+    {
+      "row_no": 418,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 419,
+      "expect": "ready"
+    },
+    {
+      "row_no": 420,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 296,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 421,
+      "expect": "ready",
+      "tags": [
+        "dst_gap"
+      ]
+    },
+    {
+      "row_no": 422,
+      "expect": "ready"
+    },
+    {
+      "row_no": 423,
+      "expect": "ready"
+    },
+    {
+      "row_no": 424,
+      "expect": "ready"
+    },
+    {
+      "row_no": 425,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 426,
+      "expect": "ready"
+    },
+    {
+      "row_no": 427,
+      "expect": "ready",
+      "tags": [
+        "injection"
+      ]
+    },
+    {
+      "row_no": 428,
+      "expect": "ready"
+    },
+    {
+      "row_no": 429,
+      "expect": "ready"
+    },
+    {
+      "row_no": 430,
+      "expect": "ready",
+      "tags": [
+        "owner_blank"
+      ]
+    },
+    {
+      "row_no": 431,
+      "expect": "ready"
+    },
+    {
+      "row_no": 432,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 377,
+      "tags": [
+        "repeat_name",
+        "legal_form"
+      ]
+    },
+    {
+      "row_no": 433,
+      "expect": "ready"
+    },
+    {
+      "row_no": 434,
+      "expect": "ready",
+      "tags": [
+        "repeats_rejected_row"
+      ]
+    },
+    {
+      "row_no": 435,
+      "expect": "ready"
+    },
+    {
+      "row_no": 436,
+      "expect": "ready"
+    },
+    {
+      "row_no": 437,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 438,
+      "expect": "ready"
+    },
+    {
+      "row_no": 439,
+      "expect": "ready"
+    },
+    {
+      "row_no": 440,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 441,
+      "expect": "rejected",
+      "problems": [
+        "phone_mangled"
+      ],
+      "tags": [
+        "bad_phone"
+      ]
+    },
+    {
+      "row_no": 442,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 342,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 443,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 444,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 445,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 446,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 443,
+      "tags": [
+        "repeat_phone",
+        "phone_trunk"
+      ]
+    },
+    {
+      "row_no": 447,
+      "expect": "rejected",
+      "problems": [
+        "city_too_long"
+      ],
+      "tags": [
+        "long_city"
+      ]
+    },
+    {
+      "row_no": 448,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 449,
+      "expect": "ready"
+    },
+    {
+      "row_no": 450,
+      "expect": "ready",
+      "tags": [
+        "owner_blank",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 451,
+      "expect": "ready"
+    },
+    {
+      "row_no": 452,
+      "expect": "ready"
+    },
+    {
+      "row_no": 453,
+      "expect": "ready",
+      "tags": [
+        "chain_store"
+      ]
+    },
+    {
+      "row_no": 454,
+      "expect": "ready",
+      "tags": [
+        "country_blank"
+      ]
+    },
+    {
+      "row_no": 455,
+      "expect": "ready"
+    },
+    {
+      "row_no": 456,
+      "expect": "ready"
+    },
+    {
+      "row_no": 457,
+      "expect": "ready"
+    },
+    {
+      "row_no": 458,
+      "expect": "ready",
+      "tags": [
+        "injection"
+      ]
+    },
+    {
+      "row_no": 459,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 460,
+      "expect": "ready"
+    },
+    {
+      "row_no": 461,
+      "expect": "ready"
+    },
+    {
+      "row_no": 462,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 425,
+      "tags": [
+        "repeat_phone",
+        "phone_zero_zero"
+      ]
+    },
+    {
+      "row_no": 463,
+      "expect": "rejected",
+      "problems": [
+        "date_invalid"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 464,
+      "expect": "ready"
+    },
+    {
+      "row_no": 465,
+      "expect": "ready"
+    },
+    {
+      "row_no": 466,
+      "expect": "ready"
+    },
+    {
+      "row_no": 467,
+      "expect": "ready"
+    },
+    {
+      "row_no": 468,
+      "expect": "ready",
+      "tags": [
+        "excel_serial"
+      ]
+    },
+    {
+      "row_no": 469,
+      "expect": "ready",
+      "tags": [
+        "country_blank",
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 470,
+      "expect": "ready"
+    },
+    {
+      "row_no": 471,
+      "expect": "ready"
+    },
+    {
+      "row_no": 472,
+      "expect": "rejected",
+      "problems": [
+        "email_invalid"
+      ],
+      "tags": [
+        "bad_email"
+      ]
+    },
+    {
+      "row_no": 473,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 474,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 27,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 475,
+      "expect": "ready"
+    },
+    {
+      "row_no": 476,
+      "expect": "ready",
+      "tags": [
+        "keeper",
+        "no_contact"
+      ]
+    },
+    {
+      "row_no": 477,
+      "expect": "ready"
+    },
+    {
+      "row_no": 478,
+      "expect": "duplicate_existing",
+      "match_key": "name",
+      "match_existing_row_no": 15,
+      "tags": [
+        "existing_name"
+      ]
+    },
+    {
+      "row_no": 479,
+      "expect": "ready"
+    },
+    {
+      "row_no": 480,
+      "expect": "ready"
+    },
+    {
+      "row_no": 481,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 71,
+      "tags": [
+        "repeat_phone",
+        "phone_dashes"
+      ]
+    },
+    {
+      "row_no": 482,
+      "expect": "rejected",
+      "problems": [
+        "date_too_old"
+      ],
+      "tags": [
+        "bad_date"
+      ]
+    },
+    {
+      "row_no": 483,
+      "expect": "ready"
+    },
+    {
+      "row_no": 484,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 448,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 485,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 437,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 486,
+      "expect": "ready",
+      "tags": [
+        "status_blank"
+      ]
+    },
+    {
+      "row_no": 487,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 280,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 488,
+      "expect": "ready"
+    },
+    {
+      "row_no": 489,
+      "expect": "ready"
+    },
+    {
+      "row_no": 490,
+      "expect": "ready",
+      "tags": [
+        "name_only"
+      ]
+    },
+    {
+      "row_no": 491,
+      "expect": "ready",
+      "tags": [
+        "date_empty"
+      ]
+    },
+    {
+      "row_no": 492,
+      "expect": "ready"
+    },
+    {
+      "row_no": 493,
+      "expect": "ready"
+    },
+    {
+      "row_no": 494,
+      "expect": "duplicate_file",
+      "match_key": "name",
+      "match_row_no": 476,
+      "tags": [
+        "repeat_name",
+        "accents"
+      ]
+    },
+    {
+      "row_no": 495,
+      "expect": "rejected",
+      "problems": [
+        "name_missing"
+      ],
+      "tags": [
+        "missing_name"
+      ]
+    },
+    {
+      "row_no": 496,
+      "expect": "ready"
+    },
+    {
+      "row_no": 497,
+      "expect": "ready"
+    },
+    {
+      "row_no": 498,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 499,
+      "expect": "ready"
+    },
+    {
+      "row_no": 500,
+      "expect": "ready",
+      "tags": [
+        "same_name_other_city"
+      ]
+    },
+    {
+      "row_no": 501,
+      "expect": "ready"
+    },
+    {
+      "row_no": 502,
+      "expect": "duplicate_file",
+      "match_key": "email",
+      "match_row_no": 498,
+      "tags": [
+        "repeat_email"
+      ]
+    },
+    {
+      "row_no": 503,
+      "expect": "ready",
+      "tags": [
+        "keeper"
+      ]
+    },
+    {
+      "row_no": 504,
+      "expect": "duplicate_file",
+      "match_key": "phone",
+      "match_row_no": 503,
+      "tags": [
+        "repeat_phone",
+        "phone_national"
+      ]
+    }
+  ]
+}
