@@ -453,7 +453,9 @@
       "needsChoice": "needs a choice",
       "back": "Choose another file",
       "preparing": "Preparing…",
-      "check": "Check file"
+      "check": "Check file",
+      "previewCounts": "{ready, plural, one {{readyFormatted} row ready to check} other {{readyFormatted} rows ready to check}} · {fix, plural, one {{fixFormatted} needs fixing} other {{fixFormatted} need fixing}}",
+      "previewCounting": "Counting the rows…"
     },
     "check": {
       "checkingTitle": "Checking your file",

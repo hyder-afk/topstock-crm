@@ -25,7 +25,7 @@ import { MatchStep, type MatchState } from "@/components/import/match-step";
 import type { LoadedFile } from "@/components/import/read-file";
 import { ImportStopped, attempt, type Runner } from "@/components/import/run";
 import { Stepper, type StepId } from "@/components/import/stepper";
-import { autoMap, iterChunks, normaliseInSlices, type ImportRow, type NormalisedRecord } from "@/lib/import";
+import { autoMap, iterChunks, normaliseInSlices, type ImportRow, type NormaliseOptions, type NormalisedRecord } from "@/lib/import";
 import type { ImportBatch, ImportErrorCode, ImportIssue } from "@/lib/import-server";
 import type { TeamMember } from "@/lib/leads";
 
@@ -125,6 +125,14 @@ export function ImportWorkspace({
   const mounted = useRef(false);
   const session = useRef(0);
   const isLive = useCallback((token: number) => mounted.current && session.current === token, []);
+  // The import on screen, for answers that arrive after the person moved on (a discard, a file chosen again).
+  const shownBatch = useRef<OpenBatch | null>(null);
+  useEffect(() => {
+    shownBatch.current = batch;
+  }, [batch]);
+  // Imports from checks that failed and could not be thrown away at once (the connection was down, or no code): the
+  // next Check throws them away first, so they never pile up against the limit of 3 unfinished imports.
+  const leftovers = useRef(new Set<string>());
 
   const runner: Runner = useMemo(() => ({ requireFresh: stepUp.requireFresh }), [stepUp.requireFresh]);
   const n = useCallback((value: number) => format.number(value), [format]);
@@ -230,6 +238,17 @@ export function ImportWorkspace({
       const token = session.current;
       if (!(await stepUp.ensureFresh(180)) || !isLive(token)) return;
       setError(null);
+      for (const id of [...leftovers.current]) {
+        try {
+          await attempt(runner, () => discardImport({ batchId: id }));
+          leftovers.current.delete(id);
+        } catch (cause) {
+          // Gone already, or no longer a check (someone imported or discarded it): nothing left to throw away.
+          if (cause instanceof ImportStopped && ["not_found", "not_ready", "bad_transition"].includes(cause.code)) {
+            leftovers.current.delete(id);
+          }
+        }
+      }
       const payloads: ImportRow[] = rows.map((r) => r.payload);
       const total = payloads.length;
       const sendingProgress = progressAnnouncer(announce);
@@ -275,7 +294,10 @@ export function ImportWorkspace({
         void loadIssues(created.batchId);
       } catch (cause) {
         if (isLive(token)) fail(cause, { kind: "match" });
-        if (batchId) await discardImport({ batchId }).catch(() => null);
+        if (batchId) {
+          const thrown = await discardImport({ batchId }).catch(() => null);
+          if (!thrown?.ok) leftovers.current.add(batchId);
+        }
       } finally {
         if (batchId) endRun(batchId);
         void refreshImports();
@@ -337,7 +359,15 @@ export function ImportWorkspace({
       } catch (cause) {
         if (isLive(token)) {
           const progress = last ? { imported: last.imported_total, remaining: last.remaining } : target.progress;
-          setBatch(back.batch && back.batch.id === target.id ? { ...back.batch, progress } : back.batch);
+          const before = back.batch;
+          if (before && before.id === target.id) {
+            // The same import: keep what loaded meanwhile (its rows), with how far the import got.
+            setBatch((b) => (b && b.id === target.id ? { ...b, progress } : { ...before, progress }));
+          } else {
+            // Back to another import: its rows may have arrived while this one was shown, so load them again.
+            setBatch(before);
+            if (before && before.issues === null && !before.issuesError) void loadIssues(before.id);
+          }
           fail(cause, back.phase);
         }
       } finally {
@@ -345,7 +375,7 @@ export function ImportWorkspace({
         void refreshImports();
       }
     },
-    [runner, stepUp, isLive, announce, t, n, focusHeading, queryClient, refreshImports, fail],
+    [runner, stepUp, isLive, announce, t, n, focusHeading, queryClient, refreshImports, loadIssues, fail],
   );
 
   const startOver = useCallback(() => {
@@ -369,7 +399,7 @@ export function ImportWorkspace({
         await attempt(runner, () => discardImport({ batchId }));
         if (!mounted.current) return;
         toast.show(t("toast.discarded"));
-        if (batch?.id === batchId) startOver();
+        if (shownBatch.current?.id === batchId) startOver();
       } catch (cause) {
         if (!mounted.current) return;
         const code = cause instanceof ImportStopped ? cause.code : "unavailable";
@@ -378,7 +408,7 @@ export function ImportWorkspace({
         void refreshImports();
       }
     },
-    [batch, runner, stepUp, toast, t, refreshImports, startOver],
+    [runner, stepUp, toast, t, refreshImports, startOver],
   );
 
   // From the history: review a checked import (rows without the file; choosing it again adds the names), or resume
@@ -405,6 +435,13 @@ export function ImportWorkspace({
       }
     },
     [phase, batch, runImport, loadIssues, stepUp, isLive, focusHeading],
+  );
+
+  // Stable, so the matching screen's live counts only start again when a choice changes.
+  const normaliseFile = useCallback(
+    (options: NormaliseOptions, signal: AbortSignal) =>
+      file ? normaliseInSlices(file.parsed.records, options, { sliceSize: 500, signal }) : Promise.resolve([]),
+    [file],
   );
 
   const sameFileBefore = useMemo(
@@ -457,7 +494,7 @@ export function ImportWorkspace({
             onStateChange={setMatchState}
             onBack={startOver}
             onCheck={(rows, zone) => void runCheck(rows, zone)}
-            normalise={(options, signal) => normaliseInSlices(file.parsed.records, options, { sliceSize: 500, signal })}
+            normalise={normaliseFile}
           />
         ) : null}
         {phase.kind !== "choose" && phase.kind !== "match" ? (
@@ -481,6 +518,8 @@ export function ImportWorkspace({
             onRetryIssues={() => batch && void loadIssues(batch.id)}
             onStartOver={startOver}
             onFileChosen={(loaded) => {
+              // Only for the import still on screen (a late read for another one is dropped).
+              if (shownBatch.current?.fileSha256 !== loaded.sha256) return;
               setFile(loaded);
               setMatchState(null);
             }}

@@ -113,6 +113,8 @@ export function CheckStep({
   if (!batch) return null;
   return (
     <Results
+      // One instance per import: switching to another one drops this one's filter and stops its file read.
+      key={batch.id}
       heading={heading}
       batch={batch}
       file={file}
@@ -157,6 +159,7 @@ function Results({
   // After an import that stopped part way, the button imports what is left.
   const toImport = batch.progress ? batch.progress.remaining : ready;
   const [filter, setFilter] = useState<Filter>("all");
+  const rowsHeadingRef = useRef<HTMLHeadingElement>(null);
 
   // Company names: from the rows cleaned for this check, or else read from the file itself (after choosing it again).
   const names = useMemo(() => {
@@ -239,7 +242,9 @@ function Results({
       {notImported > 0 || fixes.length > 0 ? (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="font-bold">{t("rowsTitle")}</h3>
+            <h3 ref={rowsHeadingRef} tabIndex={-1} className="font-bold focus:outline-none">
+              {t("rowsTitle")}
+            </h3>
             {file && batch.issues ? (
               <Button variant="quiet" onClick={download} disabled={notImported === 0}>
                 <Download aria-hidden="true" strokeWidth={1.75} className="size-4" />
@@ -252,7 +257,16 @@ function Results({
           ) : (
             <div className="flex flex-col items-start gap-3">
               <p className="text-sm text-muted-foreground">{t("noFile")}</p>
-              {batch.fileSha256 ? <ChooseSameFile expectedSha256={batch.fileSha256} onChosen={onFileChosen} /> : null}
+              {batch.fileSha256 ? (
+                <ChooseSameFile
+                  expectedSha256={batch.fileSha256}
+                  onChosen={(loaded) => {
+                    onFileChosen(loaded);
+                    // The button that had the focus goes away with the file chosen: the rows' heading takes it.
+                    requestAnimationFrame(() => rowsHeadingRef.current?.focus());
+                  }}
+                />
+              ) : null}
             </div>
           )}
           <div role="group" aria-label={t("filterLabel")} className="flex flex-wrap gap-2">
@@ -305,9 +319,13 @@ function Results({
         ) : (
           <p className="text-muted-foreground">{t("nothingNew")}</p>
         )}
-        <Button variant="quiet" onClick={onDiscard}>
-          {t("discard")}
-        </Button>
+        {/* An import that has started (some leads already added) is not a check to throw away: Import goes on, and
+            Undo in Past imports takes it back. */}
+        {batch.progress || batch.summary.status === "committing" ? null : (
+          <Button variant="quiet" onClick={onDiscard}>
+            {t("discard")}
+          </Button>
+        )}
       </div>
     </div>
   );

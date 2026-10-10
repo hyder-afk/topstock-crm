@@ -50,8 +50,9 @@ jobs:
           fi
           echo "Dev sign-ups closed."
       # Staged lead rows live in the private schema and stay off the REST API only because the API exposes nothing but
-      # public (config.toml: api.schemas = ["public"]). Read back what dev really exposes, so dashboard changes or config
-      # drift stop the deploy before any migration lands. The answer also carries the project's JWT secret: only the
+      # public (config.toml: api.schemas = ["public"]). Read back what dev exposes after the config push above (which
+      # also undoes a dashboard change), so a config.toml change that exposes more, or a push that did not take effect,
+      # stops the deploy before any migration lands. The answer also carries the project's JWT secret: only the
       # schema list is taken out of it (jq), and the token and the answer are never printed.
       - name: Prove the dev REST API exposes only the public schema (stops the job otherwise)
         shell: bash

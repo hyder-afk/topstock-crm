@@ -177,6 +177,8 @@ test("the 500-row sample: two status words chosen, results match expected.json, 
   await expect(page.getByText("2 status words still need a choice")).toBeVisible();
   await page.getByLabel("Status for “Hot lead”").selectOption("warm");
   await page.getByLabel("Status for “Prospect”").selectOption("cold");
+  // Live counts from the rows cleaned in this browser (repeats are found by the check).
+  await expect(page.getByText("450 rows ready to check · 50 need fixing")).toBeVisible();
   // "Former Rep" is not in the team (comes in unassigned); "Atlantis" is not a country (left blank).
   await expect(page.getByText("We matched 3 of 4 owner names to your team.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Owner for “Former Rep”")).toHaveValue("");
@@ -273,7 +275,8 @@ test("a check that fails part way is thrown away, and every choice on Match stay
     return route.continue();
   });
   await checkButton(page).click();
-  await expect(page.locator("main").getByRole("alert")).toContainText("Connection lost.");
+  // Each step is retried 3 times (0.5 + 1 + 2 s) before it gives up.
+  await expect(page.locator("main").getByRole("alert")).toContainText("Connection lost.", { timeout: 15_000 });
   // Back on Match, focus on its heading, with every choice as it was.
   await expect(page.getByRole("heading", { name: "Match your columns" })).toBeFocused();
   await expect(page.getByLabel("Status for “Hot lead”")).toHaveValue("warm");
@@ -410,10 +413,19 @@ test("a checked import can be reviewed later (its file chosen again), and a paus
   await expect(rows.getByRole("listitem").first()).toContainText("Email address doesn’t look right");
   await expect(page.getByRole("button", { name: "Download rows not imported (CSV)" })).toBeVisible();
 
-  // The tab closed mid-import (the import is "committing"): Resume finishes it, nothing added twice.
-  sql(`update public.import_batches set status = 'committing' where id = '${batchId("reprise-5.csv", "dry_run")}'`);
+  // The tab closed after 2 of the 5 leads went in (one import call as the admin, outside the screen): Past imports
+  // shows the 2, and Resume finishes the import without adding anything twice.
+  const id = batchId("reprise-5.csv", "dry_run");
+  sql(`begin;
+       select set_config('request.jwt.claims', json_build_object('sub', ${profileOf(adminEmail)}, 'role', 'authenticated',
+         'aal', 'aal2', 'amr', json_build_array(json_build_object('method', 'totp',
+         'timestamp', extract(epoch from now())::bigint)))::text, true);
+       set local role authenticated;
+       select public.commit_lead_import('${id}', 2);
+       commit;`);
   await openImport(page);
   await expect(historyItem(page, "reprise-5.csv")).toContainText("Paused");
+  await expect(historyItem(page, "reprise-5.csv")).toContainText("2 added");
   await historyItem(page, "reprise-5.csv").getByRole("button", { name: "Resume" }).click();
   // The count is the import's total (from the database), also after a pause.
   await expect(page.getByRole("heading", { name: "5 leads added" })).toBeVisible();

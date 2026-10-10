@@ -15,6 +15,7 @@ import {
   normaliseDate,
   suggestDateOrder,
   suggestStatus,
+  tally,
   type DateOrder,
   type NormaliseOptions,
   type NormalisedRecord,
@@ -67,6 +68,21 @@ function zoneLabel(zone: string, locale: string, countries: Intl.DisplayNames | 
   const place = (code ? countries?.of(code) : null) ?? zoneName(zone, locale, "longGeneric") ?? zone.replace(/_/g, " ");
   const offset = zoneName(zone, locale, "shortOffset");
   return offset ? `${place} (${offset})` : place;
+}
+
+// Two sets of choices are the same when every part is the same value (state keeps each part's identity until it
+// changes).
+function sameChoices(a: NormaliseOptions, b: NormaliseOptions) {
+  return (
+    a.mapping === b.mapping &&
+    a.team === b.team &&
+    a.dateOrder === b.dateOrder &&
+    a.timeZone === b.timeZone &&
+    a.statusChoices === b.statusChoices &&
+    a.defaultStatus === b.defaultStatus &&
+    a.ownerChoices === b.ownerChoices &&
+    a.countryChoices === b.countryChoices
+  );
 }
 
 // Step 2: which column feeds which lead field, then the values that need a decision (owners who are not CRM users,
@@ -164,6 +180,39 @@ export function MatchStep({
   const blocked = nameMissing ? t("needName") : unknownStatuses.length > 0 ? t("needStatus", { count: unknownStatuses.length }) : null;
   const ownersMatched = owners.filter((o) => matchOwner(o.label)).length;
 
+  // Everything the cleaning depends on.
+  const options: NormaliseOptions = { mapping, team, dateOrder: order, timeZone, statusChoices, defaultStatus, ownerChoices, countryChoices };
+  // The latest choices, for a check that is already preparing (a change made meanwhile is used, not lost).
+  const latest = useRef({ options, blocked });
+  useEffect(() => {
+    latest.current = { options, blocked };
+  });
+
+  // Live counts ("Ready to check · Need fixing"): every row is cleaned again, in slices, a moment after the last
+  // change; a newer change stops the run before it. Check file uses these rows when the choices have not changed since.
+  const [preview, setPreview] = useState<{ options: NormaliseOptions; rows: NormalisedRecord[]; ready: number; fix: number } | null>(null);
+  useEffect(() => {
+    if (blocked) return;
+    const choices: NormaliseOptions = { mapping, team, dateOrder: order, timeZone, statusChoices, defaultStatus, ownerChoices, countryChoices };
+    const run = new AbortController();
+    const timer = setTimeout(() => {
+      normalise(choices, run.signal)
+        .then((rows) => {
+          if (run.signal.aborted) return;
+          const counts = tally(rows);
+          setPreview({ options: choices, rows, ready: counts.staged, fix: counts.rejected });
+        })
+        .catch(() => {
+          // Stopped by a newer change, or the step was left: nothing to show.
+        });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      run.abort();
+    };
+  }, [blocked, normalise, mapping, team, order, timeZone, statusChoices, defaultStatus, ownerChoices, countryChoices]);
+  const counted = preview && sameChoices(preview.options, options) ? preview : null;
+
   // Up to three example values per column, read once per file (stops as soon as every column has three).
   const examples = useMemo(() => {
     const found: string[][] = headers.map(() => []);
@@ -183,19 +232,27 @@ export function MatchStep({
 
   const check = async () => {
     if (blocked || preparingRun.current) return;
-    saveMapping(file.headerKey, mapping);
     const run = new AbortController();
     preparingRun.current = run;
     setPreparing(true);
     try {
-      // Cleans every row in slices, letting the page answer in between (tens of thousands of rows take a moment).
-      const rows = await normalise(
-        { mapping, team, dateOrder: order, timeZone, statusChoices, defaultStatus, ownerChoices, countryChoices },
-        run.signal,
-      );
+      // The rows of the live counts when they match these choices; else every row is cleaned now, in slices, letting
+      // the page answer in between (tens of thousands of rows take a moment).
+      let wanted = options;
+      let rows = counted ? counted.rows : await normalise(wanted, run.signal);
+      // A choice changed while the rows were being cleaned: clean them again with it (or stop, if it now needs one).
+      while (!run.signal.aborted && !sameChoices(latest.current.options, wanted)) {
+        if (latest.current.blocked) {
+          setPreparing(false);
+          return;
+        }
+        wanted = latest.current.options;
+        rows = await normalise(wanted, run.signal);
+      }
       if (run.signal.aborted) return;
+      saveMapping(file.headerKey, wanted.mapping);
       setPreparing(false);
-      onCheck(rows, timeZone);
+      onCheck(rows, wanted.timeZone);
     } catch {
       if (!run.signal.aborted) setPreparing(false);
     } finally {
@@ -389,7 +446,20 @@ export function MatchStep({
             {preparing ? t("preparing") : t("check")}
             {modKey ? <Kbd className="max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
           </Button>
-          {blocked ? <p className="text-sm text-muted-foreground">{blocked}</p> : null}
+          {blocked ? (
+            <p className="text-sm text-muted-foreground">{blocked}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {counted
+                ? t("previewCounts", {
+                    ready: counted.ready,
+                    readyFormatted: format.number(counted.ready),
+                    fix: counted.fix,
+                    fixFormatted: format.number(counted.fix),
+                  })
+                : t("previewCounting")}
+            </p>
+          )}
         </div>
       </div>
     </div>

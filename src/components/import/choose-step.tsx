@@ -34,7 +34,9 @@ export function ChooseStep({
   useEffect(() => () => reading.current?.abort(), []);
 
   const read = async (picked: File | undefined) => {
-    if (!picked || reading.current) return;
+    if (!picked) return;
+    // A new pick replaces the file still being read (quickly correcting a wrong pick loads the right one).
+    reading.current?.abort();
     const controller = new AbortController();
     reading.current = controller;
     try {
@@ -52,7 +54,7 @@ export function ChooseStep({
       if (cause instanceof ImportFileError) setState({ kind: "error", code: cause.code, rowNo: cause.rowNo });
       else setState({ kind: "error", code: "unreadable", rowNo: null });
     } finally {
-      reading.current = null;
+      if (reading.current === controller) reading.current = null;
       if (inputRef.current) inputRef.current.value = "";
     }
   };
@@ -96,7 +98,7 @@ export function ChooseStep({
           <span className="text-sm text-muted-foreground">{t("limits", { rows: format.number(50000) })}</span>
           <span className="text-sm text-muted-foreground">{t("excelHint")}</span>
         </span>
-        {/* Never disabled while reading (a disabled field would drop the keyboard focus); a second pick waits. */}
+        {/* Never disabled while reading (a disabled field would drop the keyboard focus); a second pick replaces the first. */}
         <input
           ref={inputRef}
           id={inputId}

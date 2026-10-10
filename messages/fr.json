@@ -453,7 +453,9 @@
       "needsChoice": "un choix est nécessaire",
       "back": "Choisir un autre fichier",
       "preparing": "Préparation…",
-      "check": "Vérifier le fichier"
+      "check": "Vérifier le fichier",
+      "previewCounts": "{ready, plural, one {{readyFormatted} ligne prête à vérifier} other {{readyFormatted} lignes prêtes à vérifier}} · {fix, plural, one {{fixFormatted} à corriger} other {{fixFormatted} à corriger}}",
+      "previewCounting": "Comptage des lignes…"
     },
     "check": {
       "checkingTitle": "Vérification de votre fichier",
