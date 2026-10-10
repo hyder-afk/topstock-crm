@@ -46,6 +46,7 @@ export type ImportBatch = {
   status: "staged" | "dry_run" | "committing" | "imported" | "rolling_back" | "rolled_back" | "discarded";
   row_count: number;
   last_row_no: number;
+  /** Leads added; while 'committing' or 'rolling_back', the running number of leads tagged with the import. */
   imported: number;
   duplicates: number;
   rejected: number;
