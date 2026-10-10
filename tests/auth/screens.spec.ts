@@ -283,6 +283,8 @@ test("lead import: choose, match, results, undo, confirm it's you, done", async 
     await results(page);
     await page.getByRole("button", { name: /^(Import 5 leads|Importer 5 prospects)/ }).click();
     await heading(page, /^(5 leads added|5 prospects ajoutés)$/);
+    // Past imports refreshes right after: wait for it to show the import as done.
+    await expect(page.getByRole("complementary").getByRole("listitem").first()).toContainText(/Imported|Importé/);
   }, matrix, clean);
   clean();
 
