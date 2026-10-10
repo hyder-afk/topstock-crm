@@ -447,6 +447,8 @@
       "dmy": "Day first",
       "mdy": "Month first",
       "dateReadsAs": "So {raw} is {date}.",
+      "dateNotInOrder": "{raw} is not a date in this order.",
+      "dayOne": "1",
       "timeZone": "Time zone",
       "rowsCount": "{count, plural, one {{formatted} row} other {{formatted} rows}}",
       "needsChoice": "needs a choice",

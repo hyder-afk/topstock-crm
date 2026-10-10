@@ -177,13 +177,20 @@ test("the 500-row sample: two status words chosen, results match expected.json, 
   await expect(page.getByText("2 status words still need a choice")).toBeVisible();
   await page.getByLabel("Status for “Hot lead”").selectOption("warm");
   await page.getByLabel("Status for “Prospect”").selectOption("cold");
-  // Live counts from the rows cleaned in this browser (repeats are found by the check).
-  await expect(page.getByText("450 rows ready to check · 50 need fixing")).toBeVisible();
+  // Live counts from the rows cleaned in this browser (repeats are found by the check), in a status line that also
+  // describes the Check button.
+  await expect(page.getByRole("status").filter({ hasText: "450 rows ready to check · 50 need fixing" })).toBeVisible();
+  await expect(checkButton(page)).toHaveAccessibleDescription("450 rows ready to check · 50 need fixing");
   // "Former Rep" is not in the team (comes in unassigned); "Atlantis" is not a country (left blank).
   await expect(page.getByText("We matched 3 of 4 owner names to your team.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Owner for “Former Rep”")).toHaveValue("");
   await expect(page.getByLabel("Country for “Atlantis”")).toHaveValue("");
   await expect(page.getByLabel("Date order")).toHaveValue("dmy");
+  // The example under the menu is its description and follows the choice.
+  await expect(page.getByLabel("Date order")).toHaveAccessibleDescription("So 01/09/2023 is September 1, 2023.");
+  await page.getByLabel("Date order").selectOption("mdy");
+  await expect(page.getByLabel("Date order")).toHaveAccessibleDescription("So 01/09/2023 is January 9, 2023.");
+  await page.getByLabel("Date order").selectOption("dmy");
   await expect(page.getByLabel("Time zone")).toHaveValue("Europe/Paris");
   await checkButton(page).click();
 

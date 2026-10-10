@@ -12,7 +12,7 @@ import {
   autoMap,
   createOwnerMatcher,
   matchCountry,
-  normaliseDate,
+  readDateParts,
   suggestDateOrder,
   suggestStatus,
   tally,
@@ -127,13 +127,17 @@ export function MatchStep({
   const zoneOptions = [...new Set([defaultTimeZone, ...TIME_ZONES])].map((zone) => ({ zone, label: zoneLabel(zone, locale) }));
 
   // "So 01/09/2023 is 1 September 2023.": a date from the file, read in the chosen order (shown under the choice, so
-  // the menu itself stays short).
+  // the menu itself stays short), or why it does not read that way. French writes the first of a month "1er".
+  const dateHintId = useId();
   const readsAs = (() => {
-    if (!sample) return undefined;
-    const read = normaliseDate(sample, { order, timeZone: "UTC", nowLocal: "9999-12-31T23:59:59" });
-    const m = read.value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(read.value) : null;
-    if (!m) return undefined;
-    const date = format.dateTime(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))), { dateStyle: "long", timeZone: "UTC" });
+    if (!sample) return "";
+    const parts = readDateParts(sample, order);
+    if (!parts) return t("dateNotInOrder", { raw: sample });
+    const [year, month, day] = parts;
+    const date = new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone: "UTC" })
+      .formatToParts(new Date(Date.UTC(year, month - 1, day)))
+      .map((part) => (part.type === "day" && day === 1 ? t("dayOne") : part.value))
+      .join("");
     return t("dateReadsAs", { raw: sample, date });
   })();
 
@@ -176,6 +180,21 @@ export function MatchStep({
     };
   }, [blocked, normalise, mapping, team, order, timeZone, statusChoices, defaultStatus, ownerChoices, countryChoices]);
   const counted = preview && sameChoices(preview.options, options) ? preview : null;
+  // One status line, always in the page so screen readers hear each settled change: what blocks the check, else the
+  // counts. While a change is counted the last counts stay (no flicker); "Counting the rows…" shows only at first.
+  const countsId = useId();
+  const recounting = !blocked && preview !== null && counted === null;
+  const shown = counted ?? preview;
+  const statusLine =
+    blocked ??
+    (shown
+      ? t("previewCounts", {
+          ready: shown.ready,
+          readyFormatted: format.number(shown.ready),
+          fix: shown.fix,
+          fixFormatted: format.number(shown.fix),
+        })
+      : t("previewCounting"));
 
   // Up to three example values per column, read once per file (stops as soon as every column has three).
   const examples = useMemo(() => {
@@ -243,7 +262,7 @@ export function MatchStep({
         <h2 ref={headingRef} id="import-step-heading" tabIndex={-1} className="text-xl font-bold tracking-[-0.03em] text-balance focus:outline-none">
           {t("title")}
         </h2>
-        <p className="text-muted-foreground wrap-anywhere">
+        <p className="max-w-[65ch] text-muted-foreground wrap-anywhere">
           {t("fileLine", {
             file: file.name,
             rows: file.parsed.rowCount,
@@ -263,7 +282,7 @@ export function MatchStep({
             })}
           </Notice>
         ) : null}
-        {restored ? <p className="text-sm text-muted-foreground">{t("restored")}</p> : null}
+        {restored ? <p className="max-w-[65ch] text-sm text-muted-foreground">{t("restored")}</p> : null}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -375,8 +394,13 @@ export function MatchStep({
 
       {dateGuess ? (
         <ValueSection title={t("dateTitle")} hint={dateGuess.order === "mixed" ? t("dateMixed") : t("dateHint")}>
-          <ValueRow label={t("dateOrder")} count={null} hint={readsAs}>
-            <Select aria-label={t("dateOrder")} value={order} onChange={(e) => setDateOrder(e.target.value as DateOrder)}>
+          <ValueRow label={t("dateOrder")} count={null} hint={readsAs} hintId={sample ? dateHintId : undefined}>
+            <Select
+              aria-label={t("dateOrder")}
+              aria-describedby={sample ? dateHintId : undefined}
+              value={order}
+              onChange={(e) => setDateOrder(e.target.value as DateOrder)}
+            >
               <option value="dmy">{t("dmy")}</option>
               <option value="mdy">{t("mdy")}</option>
             </Select>
@@ -405,25 +429,15 @@ export function MatchStep({
             onClick={() => void check()}
             disabled={Boolean(blocked)}
             aria-disabled={preparing || undefined}
+            aria-describedby={countsId}
             className={cn(preparing && "opacity-60")}
           >
             {preparing ? t("preparing") : t("check")}
             {modKey ? <Kbd className="max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
           </Button>
-          {blocked ? (
-            <p className="text-sm text-muted-foreground">{blocked}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {counted
-                ? t("previewCounts", {
-                    ready: counted.ready,
-                    readyFormatted: format.number(counted.ready),
-                    fix: counted.fix,
-                    fixFormatted: format.number(counted.fix),
-                  })
-                : t("previewCounting")}
-            </p>
-          )}
+          <p id={countsId} role="status" aria-atomic="true" aria-busy={recounting || undefined} className="text-sm text-muted-foreground">
+            {statusLine}
+          </p>
         </div>
       </div>
     </div>
@@ -446,21 +460,25 @@ function ColumnRow({
   const t = useTranslations("Import.match");
   const id = useId();
   return (
-    <li className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_248px] sm:items-center">
-      <div className="flex min-w-0 items-center gap-2">
-        <label htmlFor={id} className="truncate font-bold" title={header}>
-          {header}
-        </label>
-        {matched ? (
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm bg-muted px-2 py-0.5 text-xs">
-            <span aria-hidden="true" className="size-1.5 rounded-full bg-status-green" />
-            {t("matched")}
-          </span>
-        ) : null}
+    // Three columns (header, examples, menu) only where the header has room (xl); narrower, the examples sit under
+    // the header. The header wraps rather than being cut.
+    <li className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_248px] sm:items-center xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_248px]">
+      <div className="flex min-w-0 flex-col gap-1 xl:contents">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <label htmlFor={id} className="min-w-0 font-bold wrap-anywhere">
+            {header}
+          </label>
+          {matched ? (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm bg-muted px-2 py-0.5 text-xs">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-status-green" />
+              {t("matched")}
+            </span>
+          ) : null}
+        </div>
+        <p className="min-w-0 truncate text-sm text-muted-foreground" title={examples.join(" · ")}>
+          {examples.length ? examples.join(" · ") : t("emptyColumn")}
+        </p>
       </div>
-      <p className="min-w-0 truncate text-sm text-muted-foreground" title={examples.join(" · ")}>
-        {examples.length ? examples.join(" · ") : t("emptyColumn")}
-      </p>
       <Select id={id} value={value} onChange={(e) => onChange(e.target.value as Target)}>
         {TARGETS.map((target) => (
           <option key={target} value={target}>
@@ -477,7 +495,7 @@ function ValueSection({ title, hint, children }: { title: string; hint: string; 
     <section className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h3 className="font-bold">{title}</h3>
-        <p className="text-sm text-muted-foreground">{hint}</p>
+        <p className="max-w-[65ch] text-sm text-muted-foreground">{hint}</p>
       </div>
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">{children}</ul>
     </section>
@@ -490,14 +508,16 @@ function ValueRow({
   needsChoice = false,
   amber = false,
   hint,
+  hintId,
   children,
 }: {
   label: string;
   count: number | null;
   needsChoice?: boolean;
   amber?: boolean;
-  /** A line under the label that says what the choice means. */
+  /** A line under the choice that says what it means; with `hintId` it stays in the page and is announced when it changes. */
   hint?: string;
+  hintId?: string;
   children: React.ReactNode;
 }) {
   const t = useTranslations("Import.match");
@@ -517,8 +537,8 @@ function ValueRow({
         {needsChoice ? <span className="sr-only">{t("needsChoice")}</span> : null}
       </div>
       {children}
-      {hint ? (
-        <p className="text-sm text-muted-foreground sm:col-span-2" aria-live="polite">
+      {hintId ? (
+        <p id={hintId} className="max-w-[65ch] text-sm text-muted-foreground sm:col-span-2" aria-live="polite">
           {hint}
         </p>
       ) : null}

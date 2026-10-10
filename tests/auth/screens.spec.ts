@@ -255,6 +255,16 @@ test("lead import: choose, match, results, undo, done, discard, confirm it's you
     await pick(page, "leads-500-fake.csv");
   }, matrix, clean);
   await fresh();
+  // Every choice made: the live counts line under Check file.
+  await shoot(browser, "importer", "/leads/import", "import-match-ready", async (page) => {
+    await pick(page, "leads-500-fake.csv");
+    for (const status of ["warm", "cold"]) {
+      const open = page.locator('select[aria-invalid="true"]').first();
+      if (await open.count()) await open.selectOption(status);
+    }
+    await expect(page.getByRole("status").filter({ hasText: /^450 / })).toBeVisible();
+  }, matrix, clean);
+  await fresh();
   await shoot(browser, "importer", "/leads/import", "import-results", async (page) => {
     await pick(page, "leads-500-fake.csv");
     await checkFile(page);

@@ -423,6 +423,8 @@ export function ImportWorkspace({
       }
       session.current += 1;
       const token = session.current;
+      // Opened on purpose: a check that seemed to fail is no longer thrown away at the next Check.
+      leftovers.current.delete(item.id);
       setBatch(openBatchOf(item));
       setFile((f) => (f && f.sha256 === item.file_sha256 ? f : null));
       setPhase({ kind: "review" });

@@ -9,6 +9,7 @@ import {
   normaliseName,
   normalisePhone,
   normaliseRecords,
+  readDateParts,
   supportedTimeZones,
   tally,
   toLocalDateTime,
@@ -319,6 +320,16 @@ test.describe("last activity dates", () => {
   test("blank is no date", () => {
     expect(normaliseDate("", paris())).toEqual({ value: null, problem: null });
     expect(normaliseDate("n/a", paris())).toEqual({ value: null, problem: null });
+  });
+
+  test("the date order example reads the same way, with no range check", () => {
+    expect(readDateParts("01/09/2023", "dmy")).toEqual([2023, 9, 1]);
+    expect(readDateParts("01/09/2023", "mdy")).toEqual([2023, 1, 9]);
+    expect(readDateParts("28-12-24", "dmy")).toEqual([2024, 12, 28]);
+    expect(readDateParts("26/04/2021", "mdy")).toBeNull();
+    expect(readDateParts("31/02/2024", "dmy")).toBeNull();
+    // Before 1990 the row is refused, but the example still shows how the order reads it.
+    expect(readDateParts("01/09/1985", "dmy")).toEqual([1985, 9, 1]);
   });
 });
 

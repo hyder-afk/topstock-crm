@@ -216,7 +216,7 @@ function Results({
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         {heading(t("resultsTitle"))}
-        <p className="text-muted-foreground wrap-anywhere">
+        <p className="max-w-[65ch] text-muted-foreground wrap-anywhere">
           {t("resultsBody", { file: batch.filename, rows: batch.summary.row_count, rowsFormatted: n(batch.summary.row_count) })}
         </p>
       </div>
@@ -253,10 +253,10 @@ function Results({
             ) : null}
           </div>
           {file ? (
-            notImported > 0 ? <p className="text-sm text-muted-foreground">{t("downloadNow")}</p> : null
+            notImported > 0 ? <p className="max-w-[65ch] text-sm text-muted-foreground">{t("downloadNow")}</p> : null
           ) : (
             <div className="flex flex-col items-start gap-3">
-              <p className="text-sm text-muted-foreground">{t("noFile")}</p>
+              <p className="max-w-[65ch] text-sm text-muted-foreground">{t("noFile")}</p>
               {batch.fileSha256 ? (
                 <ChooseSameFile
                   expectedSha256={batch.fileSha256}

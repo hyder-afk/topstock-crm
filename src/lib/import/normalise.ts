@@ -211,6 +211,12 @@ function readDate(s: string, order: DateOrder, timeZone: string): Parts | "inval
   return "invalid";
 }
 
+/** Year, month and day of a date read in the given order, with no range check (the date order example). */
+export function readDateParts(raw: string, order: DateOrder): [year: number, month: number, day: number] | null {
+  const parts = readDate(cleanCell(raw), order, "UTC");
+  return typeof parts === "string" ? null : [parts[0], parts[1], parts[2]];
+}
+
 /**
  * Last activity in the source time zone as "YYYY-MM-DDTHH:MM:SS". A date without a time is 00:00 local; a time with
  * an offset is converted into the source time zone. A spring-gap time (02:30 on the DST night) is kept as written:

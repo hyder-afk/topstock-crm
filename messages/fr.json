@@ -447,6 +447,8 @@
       "dmy": "Jour en premier",
       "mdy": "Mois en premier",
       "dateReadsAs": "Donc {raw} est le {date}.",
+      "dateNotInOrder": "{raw} n’est pas une date dans cet ordre.",
+      "dayOne": "1er",
       "timeZone": "Fuseau horaire",
       "rowsCount": "{count, plural, one {{formatted} ligne} other {{formatted} lignes}}",
       "needsChoice": "un choix est nécessaire",
