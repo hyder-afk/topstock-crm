@@ -322,7 +322,7 @@ export function ImportWorkspace({
             onChange={setChoices}
             onBack={startOver}
             onCheck={(rows) => void runCheck(rows)}
-            normalise={(c) => normaliseInSlices(file.parsed.records, c)}
+            normalise={(c) => normaliseInSlices(file.parsed.records, c, { sliceSize: 500 })}
           />
         ) : null}
         {phase.kind !== "choose" && phase.kind !== "match" ? (
