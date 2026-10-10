@@ -1,4 +1,4 @@
--- Leads list at Release 1 size (Master Plan: 30k leads): 30,000 made-up companies and 10,000 contacts, then the list
+-- Leads list at Release 1 size (Master Plan: 30k leads): 30,015 made-up companies and 10,015 contacts, then the list
 -- and count functions as a signed-in rep with two-factor (row level security on), timed and with their inner plans
 -- (auto_explain prints the statements the functions run). Used by scripts/db-perf.sh on a throwaway database.
 \set ON_ERROR_STOP 1
@@ -23,6 +23,13 @@ select c.org_id, c.id, (array['Inès','Malik','Sofia','Théo','Amina','Lucas'])[
        'person' || n || '@example.com', '+33 7 00 ' || lpad((n % 100)::text, 2, '0') || ' 00 00'
 from (select c.*, row_number() over (order by c.id) as n from public.companies c) c
 where c.n % 3 = 0;
+-- 15 more leads that sort last in every order (no activity, oldest, names after every other name in byte order), found
+-- only by their city or by their one contact: a search with few matches, all at the end, reads every lead first.
+insert into public.companies (org_id, name, lead_status, city, country, created_at)
+select (select id from public.orgs limit 1), 'žž tail ' || i, 'cold', 'Zermatt', 'CH', now() - interval '20 years'
+from generate_series(1, 15) i;
+insert into public.contacts (org_id, company_id, first_name, last_name)
+select c.org_id, c.id, 'Quaxley', 'Tail' from public.companies c where c.name like 'žž tail %';
 vacuum analyze public.companies; -- vacuum also moves the new rows into the trigram indexes, as autovacuum does after an import
 vacuum analyze public.contacts;
 
@@ -78,6 +85,11 @@ declare
     ['search "ly" (2 letters), list', $q$select count(*) from public.list_leads(p_search => 'ly', p_limit => 51)$q$],
     ['search "ly" (2 letters), count', $q$select public.count_leads(p_search => 'ly')$q$],
     ['search "éé" (2 letters, no match), list', $q$select count(*) from public.list_leads(p_search => 'éé', p_limit => 51)$q$],
+    ['search "zermatt" (15 leads sorting last), list', $q$select count(*) from public.list_leads(p_search => 'zermatt', p_limit => 51)$q$],
+    ['search "zermatt" (15 leads sorting last), A to Z', $q$select count(*) from public.list_leads(p_search => 'zermatt', p_sort => 'name', p_limit => 51)$q$],
+    ['search "zermatt" (15 leads sorting last), newest', $q$select count(*) from public.list_leads(p_search => 'zermatt', p_sort => 'created', p_limit => 51)$q$],
+    ['search "zermatt" (15 leads sorting last), count', $q$select public.count_leads(p_search => 'zermatt')$q$],
+    ['search "quaxley" (15 contacts, leads last), A to Z', $q$select count(*) from public.list_leads(p_search => 'quaxley', p_sort => 'name', p_limit => 51)$q$],
     ['search "verdane" + status customer, list', $q$select count(*) from public.list_leads(p_search => 'verdane', p_statuses => array['customer'], p_limit => 51)$q$],
     ['city filter "lyon", list', $q$select count(*) from public.list_leads(p_city => 'lyon', p_limit => 51)$q$]
   ];

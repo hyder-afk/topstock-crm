@@ -38,7 +38,9 @@ Checked:
     generated column, so nobody can write it, and it is not in the column grants;
   - no SECURITY DEFINER code is involved. A round-2 definer helper was removed after the advisor measured it slow for
     broad searches; see perf.md;
-  - attack tests: search ignores letter case, and finds nothing of the other org's lead or contact.
+  - attack tests: search ignores letter case, and finds nothing of the other org's lead or contact;
+  - the audit log never stores `search_text`, so there is no second copy of names, emails and phones to erase later.
+    Tested on lead insert and delete and on contact insert and update; removing either exclusion fails the test.
 - **Route handlers and proxy:**
   - `/api/leads` and `/api/leads/[id]` require an aal2 session (`apiSession`, JWT verified by `getClaims`);
   - signed-out API calls get JSON 401 (tested);

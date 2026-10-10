@@ -157,11 +157,12 @@ $$;
 create trigger set_activity_time before insert or update on public.activities
   for each row execute function private.set_activity_time();
 
--- The audit log skips updates that only move the last-activity date (the activity itself is audited).
+-- The audit log skips updates that only move the last-activity date (the activity itself is audited), and never
+-- stores search_text (a lowercase copy of fields it already records: no second copy of names, emails and phones).
 create or replace function private.audit_row() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
-  rec jsonb := case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end;
+  rec jsonb := (case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end) - 'search_text';
   diff jsonb;
 begin
   if tg_op = 'UPDATE' then
@@ -169,7 +170,7 @@ begin
       into diff
       from jsonb_each(to_jsonb(new)) n
       join jsonb_each(to_jsonb(old)) o using (key)
-     where n.value is distinct from o.value and n.key not in ('updated_at', 'last_activity_at');
+     where n.value is distinct from o.value and n.key not in ('updated_at', 'last_activity_at', 'search_text');
     if diff is null then
       return new;
     end if;

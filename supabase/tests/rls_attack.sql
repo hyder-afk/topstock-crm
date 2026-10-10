@@ -640,6 +640,17 @@ begin
   if not exists (select 1 from public.audit_log where table_name = 'contacts' and action = 'insert') then
     raise exception 'FAIL: contact insert not audited';
   end if;
+  -- The lowercase search copy never reaches the audit log (inserts, updates and deletes of leads and contacts).
+  perform public.update_contact('10000000-0000-0000-0000-0000000000a1', 'Person', 'a1 renamed', null, null, null);
+  if exists (select 1 from public.audit_log where table_name in ('companies', 'contacts')
+             and (diff_json ? 'search_text' or diff_json -> 'new' ? 'search_text' or diff_json -> 'old' ? 'search_text')) then
+    raise exception 'FAIL: search_text copied into the audit log';
+  end if;
+  if not exists (select 1 from public.audit_log where table_name = 'companies' and action = 'insert')
+     or not exists (select 1 from public.audit_log where table_name = 'companies' and action = 'delete')
+     or not exists (select 1 from public.audit_log where table_name = 'contacts' and action = 'update') then
+    raise exception 'FAIL: expected lead insert/delete and contact update rows in the audit log';
+  end if;
   if exists (select 1 from public.audit_log where org_id = '00000000-0000-0000-0000-0000000000cc') then
     raise exception 'FAIL: admin can read another org audit log';
   end if;
