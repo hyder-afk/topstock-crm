@@ -314,7 +314,7 @@ $$;
 -- Dates: the browser, the check and the import refuse a last activity before 1 Jan 1990 in the file's local time. That
 -- day starts at 31 Dec 1989, 10:00 UTC at the earliest (UTC+14), so the lower bound here is 31 Dec 1989, 00:00 UTC,
 -- written with its offset so it does not depend on the session's time zone: a row that passed the check can never
--- fail this rule, and a direct insert still cannot backdate a lead before that day.
+-- fail this rule, and a direct insert still cannot date a lead earlier than that instant or in the future.
 grant insert (import_batch_id, last_activity_at) on public.companies to authenticated;
 create policy companies_import_columns on public.companies as restrictive for insert to authenticated with check (
   (import_batch_id is null and last_activity_at is null)
