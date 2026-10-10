@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { chunkRows } from "../../src/lib/import/chunk";
+import { chunkRows, iterChunks, utf8Length } from "../../src/lib/import/chunk";
 import { ImportRulesError, LIMITS } from "../../src/lib/import/rules";
 import { importChunkSchema, type ImportRow } from "../../src/lib/import/schema";
 
@@ -56,5 +56,23 @@ test.describe("chunks", () => {
   test("empty input gives no chunks; a row bigger than the limit is a programming error", () => {
     expect(chunkRows([])).toEqual([]);
     expect(() => chunkRows([stagedRow(2, "abc")], { maxBytes: 20 })).toThrow(ImportRulesError);
+  });
+});
+
+test.describe("measuring without encoding", () => {
+  test("utf8Length equals TextEncoder's byte count", () => {
+    const encoder = new TextEncoder();
+    for (const s of ["", "Acme", "Épicerie Hélène", "東京商事", "🙂 Café", "a\uD800b", "\uDC00", "\u00A0\u2028€", '"quoted"\n']) {
+      expect(utf8Length(s), JSON.stringify(s)).toBe(encoder.encode(s).length);
+    }
+  });
+
+  test("iterChunks gives the same groups as chunkRows, one at a time", () => {
+    const rows: ImportRow[] = Array.from({ length: 2_345 }, (_, i) => ({ row_no: i + 2, problems: ["email_invalid"] }));
+    const lazy = iterChunks(rows);
+    const first = lazy.next();
+    expect(first.done).toBe(false);
+    expect(first.value).toHaveLength(1_000);
+    expect([first.value, ...lazy]).toEqual(chunkRows(rows));
   });
 });

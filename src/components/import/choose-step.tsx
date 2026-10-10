@@ -4,8 +4,9 @@ import { useId, useRef, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { prepareAnalysis } from "@/components/import/analysis";
 import { ProgressBar } from "@/components/import/progress";
-import { ImportFileError, checkFileMeta, decodeBytes, parseCsvText, sha256Hex, type ParsedCsv } from "@/lib/import";
+import { ImportFileError, checkFileMeta, decodeBytes, parseCsvText, prepareCountryNames, sha256Hex, type ParsedCsv } from "@/lib/import";
 import type { ImportBatch } from "@/lib/import-server";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,8 @@ export function ChooseStep({
       setState({ kind: "reading", done: 0, total: picked.size });
       const bytes = new Uint8Array(await picked.arrayBuffer());
       const decoded = decodeBytes(bytes);
+      // The matching screen needs the country names: build them while the file is read, between parsing slices.
+      setTimeout(prepareCountryNames, 0);
       const sha256 = await sha256Hex(bytes);
       if (resume && resume.file_sha256 && resume.file_sha256 !== sha256) {
         setState({ kind: "error", code: "not_same_file", rowNo: null });
@@ -55,6 +58,7 @@ export function ChooseStep({
         sepHint: decoded.sepHint,
         onProgress: (p) => setState({ kind: "reading", done: p.done, total: p.total }),
       });
+      await prepareAnalysis(parsed.headers, parsed.records);
       setState({ kind: "idle" });
       onLoaded({ name: picked.name, size: picked.size, sha256, encoding: decoded.encoding, parsed });
     } catch (cause) {

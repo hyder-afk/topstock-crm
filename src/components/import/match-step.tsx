@@ -10,14 +10,9 @@ import {
   TARGETS,
   assignTarget,
   autoMap,
-  countryKey,
   createOwnerMatcher,
-  detectDateOrder,
-  distinctValues,
   headerFingerprint,
   matchCountry,
-  ownerKey,
-  statusKey,
   suggestDateOrder,
   suggestStatus,
   type DateOrder,
@@ -27,6 +22,7 @@ import {
 } from "@/lib/import";
 import type { ImportBatch } from "@/lib/import-server";
 import { leadStatuses, personName, type LeadStatus, type TeamMember } from "@/lib/leads";
+import { columnDateOrder, columnValues } from "@/components/import/analysis";
 import type { LoadedFile } from "@/components/import/choose-step";
 import { useModKey } from "@/lib/use-platform";
 
@@ -107,13 +103,11 @@ export function MatchStep({
   const ownerCol = mapping.indexOf("owner");
   const countryCol = mapping.indexOf("country");
   const dateCol = mapping.indexOf("last_activity");
-  const statuses = useMemo(() => distinctValues(records, statusCol, statusKey), [records, statusCol]);
-  const owners = useMemo(() => distinctValues(records, ownerCol, ownerKey), [records, ownerCol]);
-  const countries = useMemo(() => distinctValues(records, countryCol, countryKey), [records, countryCol]);
-  const dateGuess = useMemo(
-    () => (dateCol < 0 ? null : detectDateOrder(records.map((r) => r.cells[dateCol]))),
-    [records, dateCol],
-  );
+  // Usually prepared while the file was read (analysis.ts); a column matched by hand is worked out here.
+  const statuses = columnValues(records, statusCol, "status");
+  const owners = columnValues(records, ownerCol, "owner");
+  const countries = columnValues(records, countryCol, "country");
+  const dateGuess = columnDateOrder(records, dateCol);
   const countryOptions = useMemo(() => countriesByName(locale), [locale]);
   const [dateOrder, setDateOrder] = useState<DateOrder | null>(null);
   const order: DateOrder = dateOrder ?? (dateGuess ? suggestDateOrder(dateGuess) : "dmy");

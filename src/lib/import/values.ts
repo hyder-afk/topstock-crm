@@ -114,6 +114,18 @@ export const COUNTRY_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["Macédoine", "MK"],
   ["Palestine", "PS"],
   ["State of Palestine", "PS"],
+  ["Hong Kong SAR", "HK"],
+  ["Korea, Republic of", "KR"],
+  ["République tchèque", "CZ"],
+  ["Guyane", "GF"],
+  ["Cabo Verde", "CV"],
+  ["Russian Federation", "RU"],
+  ["Democratic Republic of the Congo", "CD"],
+  ["DR Congo", "CD"],
+  ["RDC", "CD"],
+  ["République démocratique du Congo", "CD"],
+  ["Republic of the Congo", "CG"],
+  ["République du Congo", "CG"],
 ];
 
 let countryIndex: Map<string, string> | null = null;
@@ -131,7 +143,10 @@ function getCountryIndex(): Map<string, string> {
     const names = new Intl.DisplayNames([locale], { type: "region", fallback: "none" });
     for (const code of countryCodes) {
       try {
-        add(names.of(code), code);
+        const name = names.of(code);
+        add(name, code);
+        // "Bosnia & Herzegovina", "St. Lucia": also as people write them, with "and"/"et" and "Saint".
+        add(name?.replace(/\s*&\s*/g, locale === "fr" ? " et " : " and ").replace(/\bSt\.\s*/g, "Saint "), code);
       } catch {
         // an engine without data for this region: the code and aliases still match
       }
@@ -139,6 +154,11 @@ function getCountryIndex(): Map<string, string> {
   }
   countryIndex = index;
   return index;
+}
+
+/** Builds the country name index now (about 15 ms), so the matching screen does not pay for it when it first shows. */
+export function prepareCountryNames(): void {
+  getCountryIndex();
 }
 
 export function countryKey(raw: string | null | undefined): string {
@@ -172,7 +192,9 @@ export function detectDateOrder(values: Iterable<string | null | undefined>): Da
   let mdy = 0;
   let ambiguous = 0;
   for (const raw of values) {
-    const m = NUMERIC_DATE.exec(cleanCell(raw));
+    // Most cells are plain dates: read the trimmed text first and clean only the others (same result, far less work
+    // on tens of thousands of cells).
+    const m = NUMERIC_DATE.exec(raw?.trim() ?? "") ?? NUMERIC_DATE.exec(cleanCell(raw));
     if (!m) continue;
     const a = Number(m[1]);
     const b = Number(m[3]);
@@ -201,9 +223,15 @@ export function distinctValues(
 ): DistinctValue[] {
   const seen = new Map<string, DistinctValue>();
   if (column < 0) return [];
+  // A column holds few different spellings (tens of thousands of rows, a dozen statuses): clean each one once.
+  const keys = new Map<string, string>();
   for (const record of records) {
     const raw = record.cells[column] ?? "";
-    const key = keyOf(raw);
+    let key = keys.get(raw);
+    if (key === undefined) {
+      key = keyOf(raw);
+      keys.set(raw, key);
+    }
     if (!key) continue;
     const entry = seen.get(key);
     if (entry) entry.count++;

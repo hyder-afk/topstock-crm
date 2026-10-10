@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import { countryCodes } from "../../src/lib/countries";
 import { leadStatuses } from "../../src/lib/leads";
 import { STATUS_ALIASES } from "../../src/lib/import/rules";
+import { cleanCell } from "../../src/lib/import/text";
 import {
   COUNTRY_ALIASES,
   createOwnerMatcher,
@@ -197,10 +198,36 @@ test.describe("country matching", () => {
       ["Macédoine du Nord", "MK"],
       ["Palestine", "PS"],
       ["Territoires palestiniens", "PS"],
+      ["Hong Kong SAR", "HK"],
+      ["Korea, Republic of", "KR"],
+      ["République tchèque", "CZ"],
+      ["Guyane", "GF"],
+      ["Cabo Verde", "CV"],
+      ["Russian Federation", "RU"],
+      ["Democratic Republic of the Congo", "CD"],
+      ["RDC", "CD"],
+      ["Republic of the Congo", "CG"],
     ];
     for (const [raw, code] of expected) expect(matchCountry(raw), raw).toBe(code);
+    for (const [, code] of COUNTRY_ALIASES) expect(countryCodes).toContain(code);
     // Every code an alias gives is one the database accepts (two capital letters, in the list the UI offers).
     for (const [, code] of COUNTRY_ALIASES) expect(code).toMatch(/^[A-Z]{2}$/);
+  });
+
+  test("names Intl writes with & or St. also match with and, et and Saint", () => {
+    const expected: Array<[string, string]> = [
+      ["Bosnia and Herzegovina", "BA"],
+      ["Bosnia & Herzegovina", "BA"],
+      ["Trinidad and Tobago", "TT"],
+      ["Antigua and Barbuda", "AG"],
+      ["Saint Kitts and Nevis", "KN"],
+      ["Sao Tome and Principe", "ST"],
+      ["Saint Lucia", "LC"],
+      ["St. Lucia", "LC"],
+      ["Saint Helena", "SH"],
+      ["Trinité-et-Tobago", "TT"],
+    ];
+    for (const [raw, code] of expected) expect(matchCountry(raw), raw).toBe(code);
   });
 
   test("unknown or blank countries give null", () => {
@@ -212,6 +239,11 @@ test.describe("country matching", () => {
 });
 
 test.describe("date order detection", () => {
+  test("cells with spaces or invisible characters count exactly as their cleaned text", () => {
+    const cells = [" 15/03/2025 ", "\u00A015/03/2025", "\u200B15/03/2025", "15/03/2025\u00A010:00", "\t03/15/2025\t", "\u202E03/04/2025"];
+    for (const cell of cells) expect(detectDateOrder([cell]), JSON.stringify(cell)).toEqual(detectDateOrder([cleanCell(cell)]));
+  });
+
   test("a first part above 12 means DMY", () => {
     const guess = detectDateOrder(["15/03/2025", "03/04/2025", "", "2025-03-15", "1.2.2024"]);
     expect(guess).toEqual({ order: "dmy", dmy: 1, mdy: 0, ambiguous: 2 });

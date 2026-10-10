@@ -20,7 +20,7 @@ import { ImportHistory } from "@/components/import/import-history";
 import { MatchStep, type MatchChoices } from "@/components/import/match-step";
 import { ImportStopped, attempt, type Runner } from "@/components/import/run";
 import { Stepper, type StepId } from "@/components/import/stepper";
-import { chunkRows, normaliseInSlices, type ImportRow, type NormalisedRecord } from "@/lib/import";
+import { iterChunks, normaliseInSlices, type ImportRow, type NormalisedRecord } from "@/lib/import";
 import type { ImportBatch, ImportErrorCode, ImportIssue } from "@/lib/import-server";
 import type { TeamMember } from "@/lib/leads";
 
@@ -146,7 +146,6 @@ export function ImportWorkspace({
       setError(null);
       records.current = rows;
       const payloads: ImportRow[] = rows.map((r) => r.payload);
-      const chunks = chunkRows(payloads);
       setPhase({ kind: "sending", done: 0, total: payloads.length });
       focusHeading();
       try {
@@ -164,7 +163,8 @@ export function ImportWorkspace({
             )
           ).batchId;
         let sent = 0;
-        for (const chunk of chunks) {
+        // Each group is measured just before it is sent, so the page never pauses to measure them all.
+        for (const chunk of iterChunks(payloads)) {
           await attempt(runner, () => stageRows({ batchId, rows: chunk }));
           sent += chunk.length;
           setPhase({ kind: "sending", done: sent, total: payloads.length });
