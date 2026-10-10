@@ -627,7 +627,7 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
   - statuses with counts;
   - unrecognised countries (picker or "Leave blank");
   - date order with live examples, and time zone.
-- Live preview: "Ready to check: 29,410 · Need fixing: 590".
+- Live preview: "Ready to check: 29,410 · Need fixing: 590" (built as "29,410 rows ready to check · 590 need fixing": the rows are cleaned again in slices 0.4 s after the last change, a newer change stops the run, and Check file reuses those rows when nothing changed since; a choice changed while Check is preparing is used).
 - "Check file" (⌘↩) stays disabled with the reason ("2 status values still need a choice").
 
 **Step 3, Check**
@@ -642,12 +642,12 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 - A virtualised list (Row | Company | What happened) with filter chips (All / Can't import / Repeated / Already in CRM / Changed).
   - Without the file in memory, the Company column says "Choose the same file to see names".
 - "Download rows not imported (CSV)" with the line "Download it now: we don't keep a copy after the import."
-- Primary (Signal Red, black text; the one accent on the screen): "Import 28,410 leads" (⌘↩). Quiet "Discard".
+- Primary (Signal Red, black text; the one accent on the screen): "Import 28,410 leads" (⌘↩). Quiet "Discard", which asks first ("Nothing was added to your CRM"; a bottom sheet on phones) and is not offered once an import has added leads (Undo in Past imports takes those back).
 - With nothing to add, the primary is disabled: "Nothing new to import."
 
 **Step 4, Import**
 - "Imported 12,000 of 28,410 · Keep this tab open."
-- Connection lost: "Connection lost. Nothing was added twice." Automatic retries, then Continue.
+- Connection lost: "Connection lost. Nothing was added twice." Automatic retries (0.5, 1, 2 s), then the person tries again: a failed Check's import is thrown away (at once, or at the start of the next Check if the connection was still down), a paused Import resumes from Past imports with the database's running count.
 - Done: "28,410 leads added", with "See newest leads" (`/leads?sort=created`), the problems download (while in memory) and a quiet "Undo import". TanStack `['leads']` queries are invalidated.
 
 **Past imports** (history rail)
