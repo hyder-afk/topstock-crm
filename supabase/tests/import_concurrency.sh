@@ -59,4 +59,27 @@ contacts=$(as_admin "select count(*) from public.contacts where company_id = '$l
 [ "$kept" = "1" ] && [ "$contacts" = "1" ] || fail "undo removed a lead that got a contact meanwhile ($result)"
 case "$result" in *'"kept": 1'*) ;; *) fail "undo should report 1 kept lead ($result)" ;; esac
 
+# 3. Undo while a teammate deletes one of the leads -------------------------------------------------------------------
+batch3=$(as_admin "select public.create_lead_import('undo-race.csv', null, 3, 4);")
+as_admin "select public.stage_lead_import_rows('$batch3', '[{\"row_no\": 2, \"name\": \"Undo Race 1\", \"lead_status\": \"cold\"},
+  {\"row_no\": 3, \"name\": \"Undo Race 2\", \"lead_status\": \"cold\"}, {\"row_no\": 4, \"name\": \"Undo Race 3\", \"lead_status\": \"cold\"}]') \g /dev/null
+select public.validate_lead_import('$batch3') \g /dev/null
+select public.commit_lead_import('$batch3') \g /dev/null"
+first=$(as_admin "select id from public.companies where import_batch_id = '$batch3' order by id limit 1;")
+# Session A deletes the first lead the undo will pick and holds its transaction open for 3 seconds.
+as_admin "begin;
+delete from public.companies where id = '$first';
+select pg_sleep(3) \g /dev/null
+commit;" & pa=$!
+sleep 1
+# Session B undoes 2 leads meanwhile: it waits for A, finds the first lead gone, removes the second, and carries on
+# (a short chunk does not mean the end while an untouched lead is left).
+result=$(as_admin "select public.rollback_lead_import('$batch3', 2);") || fail "undo chunk failed while a lead was deleted"
+wait $pa || fail "delete session failed"
+case "$result" in *'"status": "rolling_back"'*'"removed_now": 1'*) ;; *) fail "first undo chunk ($result)" ;; esac
+result=$(as_admin "select public.rollback_lead_import('$batch3', 2);")
+case "$result" in *'"status": "rolled_back"'*) ;; *) fail "undo did not finish ($result)" ;; esac
+left=$(as_admin "select count(*) from public.companies where import_batch_id = '$batch3';")
+[ "$left" = "0" ] || fail "undo left $left leads"
+
 echo 'import_concurrency: all checks passed'

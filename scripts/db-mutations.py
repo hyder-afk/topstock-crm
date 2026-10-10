@@ -72,6 +72,8 @@ MUTATIONS = [
     ("Undo: no second look before deleting (race with a new contact)",
      [("   where c.id = any (v_ids) and c.id in (select private.lead_import_untouched(p_batch, p_max_rows));",
        "   where c.id = any (v_ids);")]),
+    ("Undo: a short chunk counts as the end (race with a deleted lead)",
+     [(" and not exists (select 1 from private.lead_import_untouched(p_batch, 1));", ";")]),
     ("Import: no re-check for leads added meanwhile",
      [("case when not p.bad and p.email_key is not null then\n             (select c.id from public.companies c where c.org_id = b.org_id and c.email_key = p.email_key\n               order by c.created_at, c.id limit 1) end as ex_email,",
        "null::uuid as ex_email,")]),

@@ -876,7 +876,9 @@ begin
   delete from public.companies c
    where c.id = any (v_ids) and c.id in (select private.lead_import_untouched(p_batch, p_max_rows));
   get diagnostics v_removed = row_count;
-  v_done := cardinality(v_ids) < p_max_rows;
+  -- A short chunk is the end only when no untouched lead is left: a candidate a teammate deleted while statement A
+  -- waited also makes it short (the next call removes the rest instead of this one failing with not_ready).
+  v_done := cardinality(v_ids) < p_max_rows and not exists (select 1 from private.lead_import_untouched(p_batch, 1));
   if v_done then
     update public.import_batches set status = 'rolled_back' where id = p_batch returning * into b;
   end if;
