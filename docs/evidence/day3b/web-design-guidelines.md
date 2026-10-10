@@ -7,7 +7,9 @@ src/components/shell, messages/{en,fr}.json (Import, StepUp, NotFound).
 Plan overrides (docs/preflight.md): no spinners (skeletons, progress bars and press states instead); sentence case, not
 Title Case.
 Reviewed by the design and accessibility reviewer and the copy reviewer of the final review workflow; each finding was
-re-checked by a skeptic before it was fixed.
+re-checked by a skeptic before it was fixed. Refreshed for the final screens: a last review of everything changed after
+that (live counts on Match, the date order example, 248 px menus, the full-width wizard, zone labels), again with a
+skeptic per finding; its fixes are the last block below.
 
 ## Found and fixed
 
@@ -24,8 +26,18 @@ src/components/import/progress.tsx - announced every chunk, and a full bar while
 src/components/import/import-history.tsx - Past imports' error state had no way to retry → Try again
 src/components/import/choose-step.tsx - weak focus indicator on the drop zone, no press state → focus-visible ring and press state
 src/app/(app)/leads/import/loading.tsx, src/app/(app)/leads/loading.tsx - skeletons did not match the final layouts (and the leads header showed one button where admins see two) → match
-src/components/import/match-step.tsx - time zones shown as raw IANA ids, date order with fixed sample dates → readable localised names (Intl), a real date from the file in both options
+src/components/import/match-step.tsx - time zones shown as raw IANA ids, date order with fixed sample dates → readable localised names (Intl), a real date from the file read in the chosen order, once, under the menu ("So 01/09/2023 is September 1, 2023.")
 messages/{en,fr}.json - missing plurals ("1 rows"), French at 0 and 1 in the Undo sentence, ordinary spaces before : ; ? ! in French, error copy for importing reused in Undo → plurals everywhere, narrow no-break spaces and typographic apostrophes (unit test), Undo's own wording
+
+Final review (after the first audit):
+
+src/components/import/match-step.tsx - the live counts were not announced (a plain paragraph, swapped with the "blocked" message) → one status line always in the page (`role="status"`, `aria-atomic`), `aria-busy` while a change is counted, and the Check button's description
+src/components/import/match-step.tsx - the counts line showed "Counting the rows…" and back on every choice → the last counts stay until the new ones land
+src/components/import/match-step.tsx - the date order example was not linked to its menu, and its live region appeared only when there was an example → `aria-describedby` on the menu, the region stays in the page, and "01/09/2023 is not a date in this order" replaces a silent gap
+src/components/import/match-step.tsx - column headers cut to one letter at 1024 and five at 768 with 248 px menus → three columns only from 1280, examples under the header below that, headers wrap instead of truncating
+src/components/import/match-step.tsx, check-step.tsx - hints and result lines ran about 150 characters once the wizard filled the width → `max-w-[65ch]` on the hints, the file line and the result lines
+messages/fr.json, match-step.tsx - "le 1 septembre 2023" → "le 1er septembre 2023" (the day part of the Intl date, from the messages)
+src/components/import/import-workspace.tsx - a check that seemed to fail (connection lost) was discarded at the next Check even after it was opened from Past imports → opening it keeps it
 
 ## Checked, no change
 
@@ -38,9 +50,11 @@ messages/{en,fr}.json - missing plurals ("1 rows"), French at 0 and 1 in the Und
 - Content: empty, loading and error states for Past imports and for the rows list; truncation with `min-w-0` where text is cut.
 - Performance: the rows list is virtualised (up to 50,000 rows); value lists and the date guess are worked out once per column.
 - Dates and numbers through next-intl (Intl), Europe/Paris on server and client; native selects have explicit colours in both themes.
+- Final review: the counts run 400 ms after the last choice and only menus feed them (nothing per keystroke); "Counting the rows…" uses the ellipsis character; zone and country names come from Intl and are cached per locale; the Match step renders only in the browser, so `new Date()` in zone labels cannot break hydration; muted text is 6.8:1 (light) and 7.2:1 (dark); no sideways scroll in any Match or Results shot; Results hides Discard once an import has started.
 - Touch: `touch-action: manipulation`, tap highlight and `color-scheme` set globally (Day 1); `overscroll-behavior: contain` on the rows list and the sheets.
 
 ## Accepted, noted
 
 - Leaving the page within the app during a check or an import gives no warning (only closing or reloading the tab does): the work keeps running while the tab is open and Past imports shows its real state on return.
 - The step-up and Undo dialogs keep their short CSS settle-in on desktop (too short to grab, as in Day 2).
+- The English time zone menu shows "GMT+2" offsets and "Coordinated Universal Time" for UTC, as Intl writes them (unchanged since the first audit).

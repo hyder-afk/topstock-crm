@@ -24,7 +24,7 @@ and each fix was re-checked by another skeptic. Earlier rounds did the same for 
 | aal1 and stale sessions | `require_mfa` on `import_batches`, staging and `companies`; server actions redirect any session below aal2 |
 | CSV formula injection | `csvCell` guards every cell of the problems file (= + - @ tab CR, full-width forms, leading spaces and NBSP) and drops NUL; the importer undoes exactly that guard (round-trip tested on the whole sample and 3,000 random rows) |
 | XSS | No `dangerouslySetInnerHTML`, `innerHTML` or `eval` in `src`; links use database UUIDs only; the e2e test imports a lead named `<script>alert("x")</script>` and checks it shows as text with no dialog |
-| Logging | No `console.*` in import or server code; the lint rule now covers every server file that receives lead rows |
+| Logging | No `console.*` in import or server code; the lint rule covers the import actions, the API routes and the server libraries (there is no `console` call anywhere in `src`) |
 | Secrets | Only fake local test passwords in tests; no keys; `npm audit --omit=dev`: 0 vulnerabilities |
 
 ## Confirmed findings and what was done

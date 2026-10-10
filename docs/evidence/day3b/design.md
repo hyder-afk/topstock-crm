@@ -621,14 +621,14 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 - Success line: "leads.csv · 30,214 rows · 8 columns · separated by ;".
 
 **Step 2, Match**
-- Table: Column in your file | 3 example values | Goes to (select). Auto-matches carry a "Matched" badge.
+- Table: Column in your file | 3 example values | Goes to (select). Auto-matches carry a "Matched" badge. Built: three columns from 1280; narrower, the examples sit under the header (which wraps, never cut); menus 248 px from 640, full width on phones.
 - Required: "Choose the column with the company name."
 - **Values to check** (only sections that need attention):
   - owners ("We matched 3 of 4 owner names." "Former Rep, 6 leads → Unassigned"; hint: "Invite them first, or reassign later from Leads");
   - statuses with counts;
   - unrecognised countries (picker or "Leave blank");
-  - date order with live examples, and time zone.
-- Live preview: "Ready to check: 29,410 · Need fixing: 590" (built as "29,410 rows ready to check · 590 need fixing": the rows are cleaned again in slices 0.4 s after the last change, a newer change stops the run, and Check file reuses those rows when nothing changed since; a choice changed while Check is preparing is used).
+  - date order with live examples, and time zone (built: "Day first" / "Month first", with one example under the menu that is also its description: "So 01/09/2023 is September 1, 2023.", or "… is not a date in this order").
+- Live preview: "Ready to check: 29,410 · Need fixing: 590" (built as "29,410 rows ready to check · 590 need fixing": the rows are cleaned again in slices 0.4 s after the last change, a newer change stops the run, and Check file reuses those rows when nothing changed since; a choice changed while Check is preparing is used. It is one status line, always in the page, heard once per settled change and read as the Check button's description; the last counts stay while a change is counted).
 - "Check file" (⌘↩) stays disabled with the reason ("2 status values still need a choice").
 
 **Step 3, Check**
