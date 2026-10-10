@@ -95,8 +95,9 @@ export async function parseCsvText(text: string, options: ParseOptions = {}): Pr
   return new Promise<ParsedCsv>((resolve, reject) => {
     let settled = false;
     let recordIndex = 0; // index of the next record in the whole file; record 0 is the header (row 1)
-    let headers: string[] | null = null;
-    let rawHeaders: string[] = [];
+    let headerCells: string[] | null = null; // the header row as written, trailing empty cells included
+    let named = 0; // header columns up to the last one with a name
+    let used = 0; // header columns up to the last one with a name or a value in some data row
     const records: ParsedRecord[] = [];
     let blankRows = 0;
     let pendingBlank = 0;
@@ -109,21 +110,37 @@ export async function parseCsvText(text: string, options: ParseOptions = {}): Pr
       reject(error);
     };
 
+    // Excel pads rows with trailing separators, so empty header cells at the end of the header row are dropped, but
+    // only once the whole file is read: a column without a name whose data rows hold values stays, as an empty header
+    // ("Column N (no name)", not imported), rather than making every row columns_extra.
     const takeHeader = (cells: string[]) => {
       if (isBlankRecord(cells)) throw new ImportFileError("no_header");
       let n = cells.length;
-      while (n > 0 && cleanText(cells[n - 1]) === "") n--; // Excel pads rows with trailing separators
+      while (n > 0 && cleanText(cells[n - 1]) === "") n--;
       if (n > LIMITS.maxColumns) throw new ImportFileError("too_many_columns");
-      rawHeaders = cells.slice(0, n);
-      const cleaned = rawHeaders.map((h) => cleanText(h));
-      if (cleaned.some((h) => codePointLength(h) > LIMITS.maxHeaderChars)) throw new ImportFileError("header_too_long");
-      headers = dedupeHeaders(cleaned);
+      if (cells.some((h) => codePointLength(cleanText(h)) > LIMITS.maxHeaderChars)) {
+        throw new ImportFileError("header_too_long");
+      }
+      headerCells = cells;
+      named = n;
+      used = n;
+    };
+
+    // Widens `used` to the last unnamed header column that holds a value in this row (one past the column limit is
+    // enough to refuse the file).
+    const noteUsedColumns = (cells: readonly string[], header: readonly string[]) => {
+      for (let i = Math.min(cells.length, header.length, LIMITS.maxColumns + 1) - 1; i >= used; i--) {
+        if (cleanText(cells[i]) !== "") {
+          used = i + 1;
+          return;
+        }
+      }
     };
 
     const takeRecord = (cells: string[]) => {
       const rowNo = recordIndex + 1;
       recordIndex++;
-      if (headers === null) return takeHeader(cells);
+      if (headerCells === null) return takeHeader(cells);
       if (isBlankRecord(cells)) {
         pendingBlank++;
         return;
@@ -131,6 +148,7 @@ export async function parseCsvText(text: string, options: ParseOptions = {}): Pr
       if (rowNo > LIMITS.maxRowNo) throw new ImportFileError("too_many_rows", rowNo);
       blankRows += pendingBlank;
       pendingBlank = 0;
+      noteUsedColumns(cells, headerCells);
       records.push({ row_no: rowNo, cells });
       lastRowNo = rowNo;
     };
@@ -160,11 +178,14 @@ export async function parseCsvText(text: string, options: ParseOptions = {}): Pr
       },
       complete() {
         if (settled) return;
-        if (headers === null) return fail(new ImportFileError("no_header"));
+        if (headerCells === null) return fail(new ImportFileError("no_header"));
         if (records.length === 0) return fail(new ImportFileError("no_rows"));
+        const width = Math.max(named, used);
+        if (width > LIMITS.maxColumns) return fail(new ImportFileError("too_many_columns"));
+        const rawHeaders = headerCells.slice(0, width);
         settled = true;
         resolve({
-          headers,
+          headers: dedupeHeaders(rawHeaders.map((h) => cleanText(h))),
           rawHeaders,
           records,
           blankRows,

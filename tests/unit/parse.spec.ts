@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { decodeBytes } from "../../src/lib/import/decode";
+import { autoMap } from "../../src/lib/import/headers";
+import { normaliseRecords } from "../../src/lib/import/normalise";
 import { parseCsvText } from "../../src/lib/import/parse";
 import { ImportFileError, LIMITS } from "../../src/lib/import/rules";
 
@@ -63,6 +65,37 @@ test.describe("parse", () => {
     const parsed = await parseCsvText("Email,Company,email,,\nx,y,z,,\n");
     expect(parsed.headers).toEqual(["Email", "Company", "email (2)"]);
     expect(parsed.rawHeaders).toEqual(["Email", "Company", "email"]);
+  });
+
+  test("a trailing column without a name but with values stays, as an empty header that is not imported", async () => {
+    const options = { team: [], dateOrder: "dmy" as const, timeZone: "Europe/Paris" };
+    const withNote = await parseCsvText("Company name,City,\nA,Lyon,note\nB,Paris,\n");
+    expect(withNote.headers).toEqual(["Company name", "City", ""]);
+    expect(withNote.rawHeaders).toEqual(["Company name", "City", ""]);
+    const mapping = autoMap(withNote.headers).targets;
+    expect(mapping).toEqual(["name", "city", "ignore"]);
+    const rows = normaliseRecords(withNote.records, { ...options, mapping });
+    expect(rows.map((r) => [r.rejected, r.problems])).toEqual([
+      [false, []],
+      [false, []],
+    ]);
+
+    const padded = await parseCsvText("Company name,City,\nA,Lyon,\n");
+    expect(padded.headers).toEqual(["Company name", "City"]);
+    // Only the columns up to the last one with a value are kept; a value past the header row is still extra.
+    const middle = await parseCsvText("Company name,,,\nA,x,,\nB,,,\n");
+    expect(middle.headers).toEqual(["Company name", ""]);
+    const beyond = await parseCsvText("Company name,City\nA,Lyon,note\n");
+    expect(beyond.headers).toEqual(["Company name", "City"]);
+    const extra = normaliseRecords(beyond.records, { ...options, mapping: autoMap(beyond.headers).targets });
+    expect(extra[0].problems).toEqual(["columns_extra"]);
+  });
+
+  test("an unnamed column with values past the column limit is too many columns", async () => {
+    const named = Array.from({ length: LIMITS.maxColumns }, (_, i) => `c${i}`).join(",");
+    expect((await parseCsvText(`${named},\n1\n`)).headers).toHaveLength(LIMITS.maxColumns);
+    const row = `${Array(LIMITS.maxColumns).fill("x").join(",")},y`;
+    expect((await fileError(parseCsvText(`${named},\n${row}\n`))).code).toBe("too_many_columns");
   });
 
   test("sep=; first line and BOM (through decodeBytes)", async () => {
