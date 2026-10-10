@@ -114,10 +114,10 @@ const TRICKY_CELLS = [
   "-",
   "@x",
   " =1",
-  "＝1+1",
-  "'＝1",
-  " =1",
-  "' =1",
+  "\uFF1D1+1",
+  "'\uFF1D1",
+  "\u00A0=1",
+  "'\u00A0=1",
   "+33 6 39 98 00 01",
   "'+33 6 39 98 00 01",
   "=\"x\",\"y\"",
@@ -151,7 +151,7 @@ test.describe("the problems file re-imports to the same rows", () => {
   });
 
   test("a few thousand random short cells (fixed seed)", async () => {
-    const alphabet = ["'", "=", "+", "-", "@", " ", "\t", "\r", "\n", "a", " ", "＝", "\"", ","];
+    const alphabet = ["'", "=", "+", "-", "@", " ", "\t", "\r", "\n", "a", "\u00A0", "\uFF1D", "\"", ","];
     const next = random(20261010);
     const cell = () => Array.from({ length: Math.floor(next() * 7) }, () => alphabet[Math.floor(next() * alphabet.length)]).join("");
     const rows: string[][] = [];

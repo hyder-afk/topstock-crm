@@ -41,7 +41,7 @@ test.describe("csvCell", () => {
 
 test.describe("stripFormulaGuard", () => {
   test("undoes csvCell's guard and nothing else", () => {
-    const values = ["=1", " =1", " @x", "\t", "\r", "\r\n", "\t=1", "＝1", "+33 6 39 98 00 01", "' text", "'", "", "plain"];
+    const values = ["=1", " =1", "\u00A0@x", "\t", "\r", "\r\n", "\t=1", "\uFF1D1", "+33 6 39 98 00 01", "' text", "'", "", "plain"];
     for (const value of values) {
       const written = csvCell(value).slice(1, -1).replace(/""/g, "\"");
       expect(stripFormulaGuard(written), JSON.stringify(value)).toBe(value);
