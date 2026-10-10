@@ -2,17 +2,18 @@
 // The gateway used to hand RPC arguments to psql as `-v` arguments; Linux caps one argument at 128 KB, so a ~700 KB
 // import chunk failed. It now writes the SQL to psql's stdin, with every value as a dollar-quoted literal.
 //
-// Run with the local stack up (bash scripts/local-auth/start.sh applies the probe function from local-api.sql):
+// Run with the local stack up (bash scripts/local-auth/start.sh applies the probe function and row from local-api.sql):
 //   node scripts/local-auth/smoke-large-rpc.mjs
 // It reads SUPABASE_LOCAL_URL, SUPABASE_LOCAL_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_LOCAL_DB_URL
 // from the stack's env file ($OUT/env, default /tmp/topstock-auth/env), which wins over the shell (the shell may hold
 // the dev project's anon key); without the file, from the shell. Both URLs must point at 127.0.0.1 or localhost.
+// Sections 8 and 9 check how errors pass through and that a failed call writes nothing (probe row in local-api.sql).
 // Prints one line per check and exits 1 if any check fails.
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { MAX_BODY, literal, newTag, sqlError } from "./gateway.mjs";
+import { MAX_BODY, literal, newTag, sqlResult } from "./gateway.mjs";
 
 const envFile = `${process.env.OUT || "/tmp/topstock-auth"}/env`;
 if (existsSync(envFile)) {
@@ -36,6 +37,7 @@ const DB = env("SUPABASE_LOCAL_DB_URL");
 const SERVICE = env("SUPABASE_LOCAL_SERVICE_ROLE_KEY");
 const ANON = env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 const PROBE = `${BASE}/rest/v1/rpc/local_gateway_probe`;
+const ROWS = `${BASE}/rest/v1/local_gateway_probe_rows`;
 
 let failed = 0;
 function check(name, ok, info = "") {
@@ -46,8 +48,8 @@ function check(name, ok, info = "") {
 const md5 = (s) => createHash("md5").update(s, "utf8").digest("hex");
 const auth = (key) => ({ apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" });
 
-async function call(key, body) {
-  const res = await fetch(PROBE, { method: "POST", headers: auth(key), body });
+async function request(method, url, key, body) {
+  const res = await fetch(url, { method, headers: auth(key), body });
   const text = await res.text();
   let json = null;
   try {
@@ -55,8 +57,12 @@ async function call(key, body) {
   } catch {
     // not JSON: the check below reports the status
   }
-  return { status: res.status, json };
+  return { status: res.status, text, json };
 }
+const call = (key, body) => request("POST", PROBE, key, body);
+const setNote = (note) => request("PATCH", `${ROWS}?id=eq.1`, SERVICE, JSON.stringify({ note }));
+const getNote = async () => (await request("GET", `${ROWS}?select=note&id=eq.1`, SERVICE)).json?.[0]?.note;
+const shown = (r) => `HTTP ${r.status} ${r.text.length > 300 ? `${r.text.slice(0, 300)}...` : r.text}`;
 
 function psql(script) {
   return new Promise((resolve) => {
@@ -96,21 +102,28 @@ function psql(script) {
   check("tricky values round-trip through psql stdin", r.status === 0 && JSON.stringify(got) === JSON.stringify(want), r.err.trim());
 }
 
-// 2. Error parsing: the hint of the error is kept, a NOTICE's hint before it is not.
+// 2. Answer parsing: the error's fields come from local_gateway.run's JSON line on stdout, never from psql's stderr
+//    text (a NOTICE there is ignored). When psql itself fails, only the SQLSTATE is taken from stderr: a HINT line
+//    there is not read, and stdout is ignored.
 {
-  const e = sqlError(
-    [
-      "psql:<stdin>:3: NOTICE:  00000: unrelated",
-      "HINT:  not_this_one",
-      "psql:<stdin>:8: ERROR:  22023: refused",
-      "DETAIL:  some detail",
-      "HINT:  step_up",
-      "LOCATION:  exec_stmt_raise, pl_exec.c:3911",
-    ].join("\n"),
+  const e = sqlResult(
+    { status: 0, out: 'error\n{"code": "22023", "hint": "step_up", "message": "refused"}\n', err: "NOTICE:  00000\n" },
     "authenticated",
   );
-  check("hint parsed from the error", e.status === 400 && e.body.code === "22023" && e.body.message === "refused" && e.body.hint === "step_up");
-  check("no hint when the error has none", sqlError("psql:<stdin>:8: ERROR:  42501: permission denied\n", "anon").body.hint === null);
+  check(
+    "hint read from the error's JSON",
+    !e.ok && e.status === 400 && e.body.code === "22023" && e.body.message === "refused" && e.body.hint === "step_up" && e.body.details === null,
+  );
+  const f = sqlResult({ status: 3, out: "ok\n[]\n", err: "psql:<stdin>:8: ERROR:  42501\nHINT:  step_up\n" }, "anon");
+  check(
+    "psql failure: SQLSTATE only, no hint read from stderr",
+    !f.ok && f.status === 401 && f.body.code === "42501" && f.body.message === "database error" && f.body.hint === null,
+  );
+  const g = sqlResult({ status: 2, out: "", err: "psql: error: connection to server failed\n" }, "authenticated");
+  check("no SQLSTATE at all: XX000", !g.ok && g.status === 400 && g.body.code === "XX000");
+  const ok = sqlResult({ status: 0, out: 'ok\n{"a": 1}\n', err: "" }, "authenticated");
+  const none = sqlResult({ status: 0, out: "ok\n", err: "" }, "authenticated");
+  check("results pass on as text; SQL null is empty", ok.ok && ok.out === '{"a": 1}' && none.ok && none.out === "");
 }
 
 // 3. A ~700 KB argument reaches the database intact, as the caller's role.
@@ -191,6 +204,45 @@ function psql(script) {
   });
   const p = await patch.json().catch(() => null);
   check("table PATCH with a tricky body runs as the caller (403, 42501)", denied(patch, p), `HTTP ${patch.status} ${JSON.stringify(p)}`);
+}
+
+// 8. Error fields arrive whole: a line break in a message or detail cannot forge a hint, a multi-line hint keeps every
+//    line, the NOTICE raise_with sends first (with its own hint) is not the error, and a value quoted by a 22P02
+//    message (as an imported cell would be) stays inside the message.
+{
+  const raise = (fields) => call(SERVICE, JSON.stringify({ p_payload: { raise_with: fields } }));
+  const a = await raise({ message: "refused", detail: "row 7\nHINT:  forged", hint: "step_up" });
+  check(
+    "a HINT line forged in the detail is ignored; the real hint arrives",
+    a.status === 400 && a.json?.code === "22023" && a.json?.message === "refused" && a.json?.hint === "step_up",
+    shown(a),
+  );
+  const b = await raise({ message: "refused\nHINT:  forged" });
+  check(
+    "a HINT line forged in the message stays in the message; hint null",
+    b.status === 400 && b.json?.message === "refused\nHINT:  forged" && b.json?.hint === null,
+    shown(b),
+  );
+  const hint = "first line\nsecond line\nHINT:  third line";
+  const c = await raise({ message: "refused", hint });
+  check("a multi-line hint arrives whole", c.status === 400 && c.json?.hint === hint, shown(c));
+  const d = await call(SERVICE, JSON.stringify({ p_payload: { cast: "12\nHINT:  step_up" } }));
+  check(
+    "22P02 quoting a value: whole message, no hint",
+    d.status === 400 && d.json?.code === "22P02" && d.json?.message === 'invalid input syntax for type integer: "12\nHINT:  step_up"' && d.json?.hint === null,
+    shown(d),
+  );
+}
+
+// 9. Transactions: a call that writes and then fails leaves nothing written; a call that succeeds is committed.
+{
+  const reset = await setNote("before");
+  const bad = await call(SERVICE, JSON.stringify({ p_payload: { write: "after", raise: true } }));
+  const kept = await getNote();
+  check("a failed call writes nothing", reset.status === 204 && bad.status === 400 && kept === "before", `${shown(bad)}, note ${JSON.stringify(kept)}`);
+  const good = await call(SERVICE, JSON.stringify({ p_payload: { write: "after" } }));
+  const now = await getNote();
+  check("a successful call is committed", good.status === 200 && now === "after", `${shown(good)}, note ${JSON.stringify(now)}`);
 }
 
 console.log(failed ? `${failed} check(s) failed` : "all checks passed");

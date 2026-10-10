@@ -3,6 +3,9 @@
 //   /rest/v1/*  -> the few PostgREST behaviours the app uses (rpc calls; table GET/PATCH with eq filters), run by
 //                  psql against the throwaway database as the caller's API role with the caller's JWT claims, so row
 //                  level security decides exactly as on Supabase. Anything else answers 400 instead of guessing.
+// Each request is one call of local_gateway.run (local-api.sql), which switches to that role, runs the request and
+// prints the outcome on stdout: the result, or the error's SQLSTATE, message and hint as JSON. No text is read from
+// psql's stderr, where a line break in an error message could pose as a hint.
 // The SQL reaches psql through stdin, never argv (Linux caps one argument at 128 KB, and an import chunk is ~750 KB).
 // Every value is written into that SQL text only as a dollar-quoted literal with a random per-request tag; a value
 // containing the tag is refused. Names are checked against NAME here and quoted with %I in local-api.sql.
@@ -65,20 +68,23 @@ function httpStatus(code, role) {
   return 400;
 }
 
-// statement(lit) returns the SQL to run, with every value passed through lit().
-function runSql(claims, statement) {
+// One request as one call of local_gateway.run, in a transaction with the caller's JWT claims set; the role switch
+// (set_config('role', ..., true)) happens inside that function. call is { kind: "rpc" | "select" | "update", name,
+// body, cols, filters }, with body and filters as JSON text.
+function runCall(claims, call) {
   const tag = newTag();
   const lit = (value) => literal(tag, value);
+  const values = [claims.role, call.kind, call.name, call.body ?? "", call.cols ?? "", call.filters ?? "{}"];
   const script = [
     "\\set ON_ERROR_STOP 1",
-    "\\set VERBOSITY verbose",
-    "\\set SHOW_CONTEXT never",
+    // An error local_gateway.run cannot catch (no connection, a failed commit, a cancelled statement) then prints only
+    // its SQLSTATE: no message, detail, hint or notice text reaches stderr.
+    "\\set VERBOSITY sqlstate",
     "begin;",
-    `select set_config('role', ${lit(claims.role)}, true) \\g /dev/null`,
     `select set_config('request.jwt.claims', ${lit(JSON.stringify(claims))}, true) \\g /dev/null`,
     `select set_config('request.jwt.claim.sub', ${lit(claims.sub || "")}, true) \\g /dev/null`,
     `select set_config('request.jwt.claim.role', ${lit(claims.role)}, true) \\g /dev/null`,
-    `${statement(lit)};`,
+    `select local_gateway.run(${values.map(lit).join(", ")});`,
     "commit;",
   ].join("\n");
   const args = ["-h", PG.host, "-p", PG.port, "-U", "postgres", "-d", "postgres", "-X", "-q", "-A", "-t"];
@@ -95,31 +101,33 @@ function runSql(claims, statement) {
     child.stdin.on("error", () => {});
     child.on("error", () => resolve({ status: -1, out: "", err: "" }));
     child.on("close", (status) =>
-      resolve({ status, out: Buffer.concat(out).toString("utf8").trim(), err: Buffer.concat(err).toString("utf8") }),
+      resolve({ status, out: Buffer.concat(out).toString("utf8"), err: Buffer.concat(err).toString("utf8") }),
     );
     child.stdin.end(script);
   });
 }
 
-// psql prints "psql:<stdin>:N: ERROR:  <SQLSTATE>: <message>", then DETAIL:, HINT:, QUERY: and LOCATION: lines.
-// The hint is the first HINT: line of that error. Message and details are passed on as before (details stay null).
-export function sqlError(stderr, role) {
-  const lines = stderr.split("\n");
-  const at = lines.findIndex((l) => /ERROR:\s+[0-9A-Z]{5}:\s/.test(l));
-  const m = at >= 0 ? lines[at].match(/ERROR:\s+([0-9A-Z]{5}):\s+(.*)$/) : null;
-  let hint = null;
-  if (m) {
-    for (const line of lines.slice(at + 1)) {
-      if (/^(psql:|QUERY:|CONTEXT:|LOCATION:)/.test(line)) break;
-      const h = line.match(/^HINT:\s+(.*)$/);
-      if (h) {
-        hint = h[1];
-        break;
-      }
+// What psql's answer means: { ok: true, out } with the result's JSON text ("" for SQL null), or { ok: false, status,
+// body } with PostgREST's error body. local_gateway.run prints "ok" or "error" on the first line and the JSON on the
+// next; the error fields come from GET STACKED DIAGNOSTICS, so they arrive whole and nothing can forge them. When
+// psql itself fails (an error the function could not catch), stdout is ignored and stderr holds only the SQLSTATE
+// (VERBOSITY sqlstate), so the message is a fixed text and there is no hint. Details stay null, as before.
+export function sqlResult({ status, out, err }, role) {
+  if (status === 0) {
+    const text = out.endsWith("\n") ? out.slice(0, -1) : out;
+    const at = text.indexOf("\n");
+    const head = at < 0 ? text : text.slice(0, at);
+    const rest = at < 0 ? "" : text.slice(at + 1);
+    if (head === "ok") return { ok: true, out: rest };
+    if (head === "error") {
+      const e = JSON.parse(rest);
+      const body = { code: e.code, message: e.message, details: null, hint: e.hint };
+      return { ok: false, status: httpStatus(e.code, role), body };
     }
   }
+  const m = err.match(/^(?:psql:\S+ )?(?:ERROR|FATAL): {2}([0-9A-Z]{5})$/m);
   const code = m ? m[1] : "XX000";
-  return { status: httpStatus(code, role), body: { code, message: m ? m[2] : "database error", details: null, hint } };
+  return { ok: false, status: httpStatus(code, role), body: { code, message: "database error", details: null, hint: null } };
 }
 
 // The whole body as UTF-8 JSON, at most MAX_BODY bytes (413 above that).
@@ -156,15 +164,11 @@ async function rest(req, res) {
   if (!claims) return send(res, 401, { code: "PGRST301", message: "JWT invalid", details: null, hint: null });
   const parts = url.pathname.replace(/^\/rest\/v1\/?/, "").split("/");
 
-  let r;
   if (parts[0] === "rpc" && NAME.test(parts[1] || "") && req.method === "POST") {
     const body = await readBody(req);
-    r = await runSql(claims, (lit) => `select local_api.rpc(${lit(parts[1])}, ${lit(JSON.stringify(body))}::jsonb)`);
-    if (r.status !== 0) {
-      const e = sqlError(r.err, claims.role);
-      return send(res, e.status, e.body);
-    }
-    return r.out === "" ? send(res, 204) : send(res, 200, r.out);
+    const a = sqlResult(await runCall(claims, { kind: "rpc", name: parts[1], body: JSON.stringify(body) }), claims.role);
+    if (!a.ok) return send(res, a.status, a.body);
+    return a.out === "" ? send(res, 204) : send(res, 200, a.out);
   }
 
   if (parts.length === 1 && NAME.test(parts[0]) && (req.method === "GET" || req.method === "PATCH")) {
@@ -175,26 +179,17 @@ async function rest(req, res) {
       else if (NAME.test(k) && v.startsWith("eq.")) filters[k] = v.slice(3);
       else return send(res, 400, localBody(`unsupported query ${k}=${v}`));
     }
+    const call = { name: parts[0], filters: JSON.stringify(filters) };
+    let r;
     if (req.method === "GET") {
       if (!cols || !cols.every((c) => NAME.test(c))) return send(res, 400, localBody("list the columns"));
-      r = await runSql(
-        claims,
-        (lit) =>
-          `select local_api.select_rows(${lit(parts[0])}, string_to_array(${lit(cols.join(","))}, ','), ${lit(JSON.stringify(filters))}::jsonb)`,
-      );
+      r = await runCall(claims, { ...call, kind: "select", cols: cols.join(",") });
     } else {
-      const body = await readBody(req);
-      r = await runSql(
-        claims,
-        (lit) =>
-          `select local_api.update_rows(${lit(parts[0])}, ${lit(JSON.stringify(body))}::jsonb, ${lit(JSON.stringify(filters))}::jsonb)`,
-      );
+      r = await runCall(claims, { ...call, kind: "update", body: JSON.stringify(await readBody(req)) });
     }
-    if (r.status !== 0) {
-      const e = sqlError(r.err, claims.role);
-      return send(res, e.status, e.body);
-    }
-    return req.method === "GET" ? send(res, 200, r.out) : send(res, 204);
+    const a = sqlResult(r, claims.role);
+    if (!a.ok) return send(res, a.status, a.body);
+    return req.method === "GET" ? send(res, 200, a.out) : send(res, 204);
   }
 
   return send(res, 400, localBody(`unsupported ${req.method} ${url.pathname}`));
@@ -229,7 +224,7 @@ function serve() {
     .listen(PORT, "127.0.0.1");
 }
 
-// Started by start.sh (`node gateway.mjs`); the smoke test imports literal() and sqlError() without starting a server.
+// Started by start.sh (`node gateway.mjs`); the smoke test imports literal() and sqlResult() without starting a server.
 function isMain() {
   try {
     return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
