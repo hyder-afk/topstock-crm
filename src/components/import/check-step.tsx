@@ -307,7 +307,7 @@ function ReasonList({ title, items }: { title: string; items: { key: string; cou
       <h3 className="font-bold">{title}</h3>
       <ul className="flex flex-col gap-1.5">
         {items.map((item) => (
-          <li key={item.key} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 text-sm">
+          <li key={item.key} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-3 text-sm">
             <span className="text-right font-mono">{item.count}</span>
             <span>{item.text}</span>
           </li>

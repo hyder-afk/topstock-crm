@@ -4,10 +4,11 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { verifyStepUp } from "@/app/(app)/step-up-actions";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 // "Confirm it's you" (step-up MFA): before an action that changes many records at once (imports today; stock
 // adjustments, exports and deletes later), a fresh authenticator code is asked for when the last one is older than
@@ -98,7 +99,7 @@ function StepUpDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? null : onCancel())}>
-      <DialogContent className="max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-[24px] max-sm:pb-[env(safe-area-inset-bottom)] sm:w-[min(440px,calc(100%-32px))]">
+      <DialogContent className={cn(phoneSheet, "sm:w-[min(440px,calc(100%-32px))]")}>
         <form
           className="flex flex-col gap-5 p-6"
           onSubmit={(event) => {

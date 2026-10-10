@@ -27,6 +27,11 @@
     "body": "Try again. If it keeps happening, tell Haider.",
     "retry": "Try again"
   },
+  "NotFound": {
+    "title": "This page isn’t here",
+    "body": "It may have moved, or it isn’t open to your account.",
+    "home": "Go to Home"
+  },
   "Auth": {
     "signInTitle": "Sign in",
     "signInBody": "Use the email address your invitation was sent to.",

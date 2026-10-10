@@ -27,6 +27,11 @@
     "body": "Réessayez. Si cela continue, prévenez Haider.",
     "retry": "Réessayer"
   },
+  "NotFound": {
+    "title": "Cette page n’est pas ici",
+    "body": "Elle a peut-être été déplacée, ou elle n’est pas ouverte à votre compte.",
+    "home": "Aller à l’accueil"
+  },
   "Auth": {
     "signInTitle": "Connexion",
     "signInBody": "Utilisez l’adresse e-mail à laquelle votre invitation a été envoyée.",

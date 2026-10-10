@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { previewUndo, undoImportStep, type UndoPreview } from "@/app/(app)/leads/import/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { ProgressBar } from "@/components/import/progress";
 import { ImportStopped, attempt, type Runner } from "@/components/import/run";
 import type { ImportBatch, ImportErrorCode } from "@/lib/import-server";
@@ -221,7 +221,7 @@ function UndoDialog({
   const running = state.kind === "running";
   return (
     <Dialog open={batch !== null} onOpenChange={(open) => (!open && !running ? onClose() : null)}>
-      <DialogContent className="sm:w-[min(520px,calc(100%-32px))]">
+      <DialogContent className={cn(phoneSheet, "sm:w-[min(520px,calc(100%-32px))]")}>
         <div className="flex flex-col gap-5 p-6">
           <DialogTitle className="text-xl font-bold tracking-[-0.03em] text-balance">{t("title")}</DialogTitle>
           <DialogDescription className="text-muted-foreground">

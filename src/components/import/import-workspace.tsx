@@ -20,7 +20,7 @@ import { ImportHistory } from "@/components/import/import-history";
 import { MatchStep, type MatchChoices } from "@/components/import/match-step";
 import { ImportStopped, attempt, type Runner } from "@/components/import/run";
 import { Stepper, type StepId } from "@/components/import/stepper";
-import { chunkRows, normaliseRecords, type ImportRow, type NormalisedRecord } from "@/lib/import";
+import { chunkRows, normaliseInSlices, type ImportRow, type NormalisedRecord } from "@/lib/import";
 import type { ImportBatch, ImportErrorCode, ImportIssue } from "@/lib/import-server";
 import type { TeamMember } from "@/lib/leads";
 
@@ -322,7 +322,7 @@ export function ImportWorkspace({
             onChange={setChoices}
             onBack={startOver}
             onCheck={(rows) => void runCheck(rows)}
-            normalise={(c) => normaliseRecords(file.parsed.records, c)}
+            normalise={(c) => normaliseInSlices(file.parsed.records, c)}
           />
         ) : null}
         {phase.kind !== "choose" && phase.kind !== "match" ? (

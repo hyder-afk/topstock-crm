@@ -79,7 +79,7 @@ export function MatchStep({
   onChange: (choices: MatchChoices) => void;
   onBack: () => void;
   onCheck: (rows: NormalisedRecord[]) => void;
-  normalise: (options: NormaliseOptions) => NormalisedRecord[];
+  normalise: (options: NormaliseOptions) => Promise<NormalisedRecord[]>;
 }) {
   const t = useTranslations("Import.match");
   const ts = useTranslations("Leads.status");
@@ -124,35 +124,44 @@ export function MatchStep({
   const nameMissing = !mapping.includes("name");
   const blocked = nameMissing ? t("needName") : unknownStatuses.length > 0 ? t("needStatus", { count: unknownStatuses.length }) : null;
 
-  const examples = (column: number) =>
-    records
-      .map((r) => r.cells[column]?.trim() ?? "")
-      .filter(Boolean)
-      .slice(0, 3);
+  // Up to three example values per column, read once per file (stops as soon as every column has three).
+  const examples = useMemo(() => {
+    const found: string[][] = headers.map(() => []);
+    let missing = headers.length;
+    for (const record of records) {
+      if (missing === 0) break;
+      found.forEach((values, column) => {
+        if (values.length === 3) return;
+        const value = record.cells[column]?.trim();
+        if (!value) return;
+        values.push(value);
+        if (values.length === 3) missing--;
+      });
+    }
+    return found;
+  }, [headers, records]);
 
-  const check = () => {
+  const check = async () => {
     if (blocked || preparing) return;
     saveMapping(fingerprint, mapping);
     setPreparing(true);
-    // Let the "Preparing" state paint before cleaning every row (tens of thousands of rows take a moment).
-    setTimeout(() => {
-      const rows = normalise({
-        mapping,
-        team,
-        dateOrder: order,
-        timeZone,
-        statusChoices,
-        defaultStatus,
-        ownerChoices,
-        countryChoices,
-      });
-      setPreparing(false);
-      onCheck(rows);
-    }, 30);
+    // Cleans every row in slices of 1,000, letting the page answer in between (tens of thousands of rows take a moment).
+    const rows = await normalise({
+      mapping,
+      team,
+      dateOrder: order,
+      timeZone,
+      statusChoices,
+      defaultStatus,
+      ownerChoices,
+      countryChoices,
+    });
+    setPreparing(false);
+    onCheck(rows);
   };
 
   // Cmd/Ctrl+Enter: the step's main action.
-  const onShortcut = useEffectEvent(() => check());
+  const onShortcut = useEffectEvent(() => void check());
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !document.querySelector("[role=dialog]")) {
@@ -197,7 +206,7 @@ export function MatchStep({
             <ColumnRow
               key={`${i}-${header}`}
               header={header || t("noHeader", { n: i + 1 })}
-              examples={examples(i)}
+              examples={examples[i]}
               value={mapping[i]}
               matched={suggested.matched[i] && suggested.targets[i] === mapping[i] && mapping[i] !== "ignore"}
               onChange={(target) => setMapping((m) => assignTarget(m, i, target))}
@@ -317,7 +326,7 @@ export function MatchStep({
           {t("back")}
         </Button>
         <div className="flex flex-col gap-2 sm:items-end">
-          <Button variant="neutral" onClick={check} disabled={Boolean(blocked) || preparing}>
+          <Button variant="neutral" onClick={() => void check()} disabled={Boolean(blocked) || preparing}>
             {preparing ? t("preparing") : t("check")}
             {modKey ? <Kbd className="max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
           </Button>
