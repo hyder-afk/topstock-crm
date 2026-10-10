@@ -53,6 +53,8 @@ export const filterParams = z.object({
     .optional()
     .catch(undefined),
   sort: z.enum(leadSorts).optional().catch(undefined),
+  // Leads added by one import (the link from an import's result and from Past imports).
+  batch: uuid.optional().catch(undefined),
 });
 export type LeadFilters = z.infer<typeof filterParams>;
 
@@ -70,6 +72,7 @@ export function parseFilters(params: URLSearchParams | Record<string, string | s
     city: get("city"),
     inactive: get("inactive"),
     sort: get("sort"),
+    batch: get("batch"),
   });
 }
 
@@ -82,11 +85,12 @@ export function filtersToParams(f: LeadFilters): URLSearchParams {
   if (f.city) p.set("city", f.city);
   if (f.inactive) p.set("inactive", String(f.inactive));
   if (f.sort && f.sort !== "activity") p.set("sort", f.sort);
+  if (f.batch) p.set("batch", f.batch);
   return p;
 }
 
 export function activeFilterCount(f: LeadFilters) {
-  return [f.status?.length, f.owner?.length, f.country?.length, f.city, f.inactive].filter(Boolean).length;
+  return [f.status?.length, f.owner?.length, f.country?.length, f.city, f.inactive, f.batch].filter(Boolean).length;
 }
 
 // Arguments for the list_leads / count_leads database functions (all values travel as parameters).
@@ -100,6 +104,7 @@ export function rpcFilterArgs(f: LeadFilters) {
     p_countries: f.country?.length ? f.country : null,
     p_city: f.city ?? null,
     p_inactive_days: f.inactive ?? null,
+    p_import_batch: f.batch ?? null,
   };
 }
 

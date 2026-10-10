@@ -4,11 +4,16 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 
 // shadcn-style dialog on TopStock tokens. A floating layer: shadow allowed, solid card (DESIGN.md), opacity + scale
-// entrance only, focus trapped and returned by Radix.
+// entrance only (a bottom sheet rises from the bottom edge instead), focus trapped and returned by Radix.
 export const Dialog = DialogPrimitive.Root;
 export const DialogTitle = DialogPrimitive.Title;
 export const DialogDescription = DialogPrimitive.Description;
 export const DialogClose = DialogPrimitive.Close;
+
+// On phones a short confirmation sits at the bottom of the screen like a sheet, within reach of the thumb, and rises
+// from the bottom edge (globals.css, .phone-sheet).
+export const phoneSheet =
+  "phone-sheet max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-[24px] max-sm:pb-[env(safe-area-inset-bottom)]";
 
 export function DialogContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
   return (

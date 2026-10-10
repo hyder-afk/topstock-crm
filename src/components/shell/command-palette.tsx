@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { Keyboard, Languages, LogOut, Monitor, Moon, Search, Sun, type LucideIcon } from "lucide-react";
+import { Keyboard, Languages, LogOut, Monitor, Moon, Search, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -19,10 +19,12 @@ export function CommandPalette({
   open,
   onOpenChange,
   onShowShortcuts,
+  isAdmin = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onShowShortcuts: () => void;
+  isAdmin?: boolean;
 }) {
   const t = useTranslations("Palette");
   const nav = useTranslations("Nav");
@@ -77,6 +79,17 @@ export function CommandPalette({
                 />
               ))}
             </Group>
+
+            {isAdmin ? (
+              <Group heading={t("actions")}>
+                <Item
+                  value="import leads csv spreadsheet importer prospects"
+                  icon={Upload}
+                  label={t("importLeads")}
+                  onSelect={() => run(() => router.push("/leads/import"))}
+                />
+              </Group>
+            ) : null}
 
             <Group heading={t("appearance")}>
               <Item value="theme light" icon={Sun} label={t("themeLight")} onSelect={() => run(() => setTheme("light"))} />

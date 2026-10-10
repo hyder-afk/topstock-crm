@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
+import { ageStepUp, appReady, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -47,6 +48,7 @@ async function shoot(
   name: string,
   act?: (page: Page) => Promise<void>,
   combos: readonly { locale: string; scheme: "light" | "dark"; widths: readonly number[] }[] = matrix,
+  before?: () => void,
 ) {
   for (const { locale, scheme, widths } of combos) {
     for (const width of widths) {
@@ -60,6 +62,7 @@ async function shoot(
       const errors: string[] = [];
       page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
       page.on("pageerror", (e) => errors.push(e.message));
+      before?.();
       await page.goto(path);
       // The right page (no unexpected redirect), then the real screen, not the loading skeleton (which has no heading).
       await expect(page).toHaveURL((url) => url.pathname === new URL(path, "http://localhost:3100").pathname);
@@ -181,3 +184,142 @@ test("command menu and shortcuts list", async ({ browser }) => {
     },
   );
 });
+
+// Lead import (Day 3b). The owners named in the sample files are people in this team, so the owner matching looks
+// real, and existing-20.csv is imported once so the 500-row sample shows leads already in the CRM. Every shot does
+// its own steps from a clean slate (unfinished and discarded imports removed; at most 3 may be open). The "Confirm it's you" shots use a
+// session whose code was made to look 15 minutes old.
+test("lead import: choose, match, results, undo, done, discard, confirm it's you", async ({ browser }) => {
+  test.setTimeout(1_500_000);
+  sql(`delete from public.import_batches;
+       update public.profiles set last_name = 'Earlier run'
+       where last_name = 'Test' and first_name in ('Haider', 'Henri', 'Kais')`);
+  for (const first of ["Haider", "Henri", "Kais"]) {
+    const email = `screens-${first.toLowerCase()}-${Date.now()}@example.test`;
+    await createUser(email, password, false);
+    sql(`update public.profiles set first_name = '${first}', last_name = 'Test'
+         where id = (select id from auth.users where email = '${email}')`);
+  }
+  // Each import step needs a code from the last 10 minutes (the screen asks again with fewer than 3 left).
+  let signedAt = 0;
+  const fresh = async () => {
+    if (Date.now() - signedAt < 120_000) return;
+    states.importer = await fullSession(browser, withFactor, password, secret);
+    signedAt = Date.now();
+  };
+  const fixture = (name: string) => path.join(__dirname, "..", "fixtures", "import", name);
+  // Runs before each page load.
+  const clean = () => {
+    sql(`delete from public.companies where name like 'Reprise %';
+         delete from public.import_batches where filename = 'reprise-5.csv';
+         delete from public.import_batches where status in ('staged', 'dry_run', 'discarded')`);
+  };
+  const heading = (page: Page, text: RegExp) => expect(page.locator("#import-step-heading")).toHaveText(text);
+  const pick = async (page: Page, file: string | { name: string; mimeType: string; buffer: Buffer }) => {
+    await appReady(page);
+    await page.locator('input[type="file"]').setInputFiles(typeof file === "string" ? fixture(file) : file);
+    await heading(page, /^(Match your columns|Associez vos colonnes)$/);
+  };
+  const checkFile = async (page: Page) => {
+    // Status words with no obvious meaning ("Hot lead", "Prospect") get a choice first.
+    for (const status of ["warm", "cold"]) {
+      const open = page.locator('select[aria-invalid="true"]').first();
+      if (await open.count()) await open.selectOption(status);
+    }
+    await page.getByRole("button", { name: /^(Check file|Vérifier le fichier)/ }).click();
+  };
+  const results = async (page: Page) => {
+    await heading(page, /^(Check results|Résultat de la vérification)$/);
+    await expect(page.locator("dl > div")).toHaveCount(4);
+  };
+
+  await fresh();
+  {
+    const context = await browser.newContext({ storageState: states.importer, viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    await page.goto("/leads/import");
+    await pick(page, "existing-20.csv");
+    await checkFile(page);
+    await results(page);
+    await page.getByRole("button", { name: /^Import 20 leads/ }).click();
+    await heading(page, /^20 leads added$/);
+    await context.close();
+  }
+
+  await shoot(browser, "importer", "/leads/import", "import-choose", async (page) => {
+    await heading(page, /^(Choose your file|Choisissez votre fichier)$/);
+    await expect(page.getByRole("complementary").getByRole("listitem")).toHaveCount(1);
+  }, matrix, clean);
+  await fresh();
+  await shoot(browser, "importer", "/leads/import", "import-match", async (page) => {
+    await pick(page, "leads-500-fake.csv");
+  }, matrix, clean);
+  await fresh();
+  // Every choice made: the live counts line under Check file.
+  await shoot(browser, "importer", "/leads/import", "import-match-ready", async (page) => {
+    await pick(page, "leads-500-fake.csv");
+    for (const status of ["warm", "cold"]) {
+      const open = page.locator('select[aria-invalid="true"]').first();
+      if (await open.count()) await open.selectOption(status);
+    }
+    await expect(page.getByRole("status").filter({ hasText: /^450 / })).toBeVisible();
+  }, matrix, clean);
+  await fresh();
+  await shoot(browser, "importer", "/leads/import", "import-results", async (page) => {
+    await pick(page, "leads-500-fake.csv");
+    await checkFile(page);
+    await results(page);
+    await expect(page.getByRole("listitem").filter({ hasText: /^13/ }).first()).toBeVisible();
+  }, matrix, clean);
+  await fresh();
+  await shoot(browser, "importer", "/leads/import", "import-undo", async (page) => {
+    await appReady(page);
+    const item = page.getByRole("complementary").getByRole("listitem").filter({ hasText: "existing-20.csv" });
+    await item.getByRole("button", { name: /^(Undo import|Annuler l’import)$/ }).click();
+    await expect(page.getByRole("dialog").getByRole("button")).toHaveCount(2);
+    await page.waitForTimeout(400); // phone sheets rise in 320 ms
+  }, matrix, clean);
+  await fresh();
+  const reprise = {
+    name: "reprise-5.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      ["Société,Ville,Pays,Courriel", ...["Alpha", "Brio", "Cendre", "Dune", "Écume"].map((n, i) => `Reprise ${n},Lyon,France,reprise${i}@example.test`)].join("\r\n"),
+    ),
+  };
+  await shoot(browser, "importer", "/leads/import", "import-done", async (page) => {
+    await pick(page, reprise);
+    await checkFile(page);
+    await results(page);
+    await page.getByRole("button", { name: /^(Import 5 leads|Importer 5 prospects)/ }).click();
+    await heading(page, /^(5 leads added|5 prospects ajoutés)$/);
+    // Past imports refreshes right after: wait for it to show the import as done.
+    await expect(page.getByRole("complementary").getByRole("listitem").first()).toContainText(/Imported|Importé/);
+  }, matrix, clean);
+  await fresh();
+  await shoot(browser, "importer", "/leads/import", "import-discard", async (page) => {
+    await pick(page, "existing-20.csv");
+    await checkFile(page);
+    await results(page);
+    await page.getByRole("button", { name: /^(Discard|Abandonner)$/ }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(400);
+  }, matrix, clean);
+  clean();
+
+  // Last: back-dating the code rotates this session.
+  {
+    const context = await browser.newContext({ storageState: states.importer });
+    await ageStepUp(context, 900);
+    states.stale = await context.storageState();
+    await context.close();
+  }
+  await shoot(browser, "stale", "/leads/import", "import-step-up", async (page) => {
+    await pick(page, "existing-20.csv");
+    await page.getByRole("button", { name: /^(Check file|Vérifier le fichier)/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(400); // phone sheets rise in 320 ms
+  }, matrix, clean);
+  clean();
+});
+

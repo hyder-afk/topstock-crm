@@ -30,7 +30,7 @@ select (select id from public.orgs limit 1), 'žž tail ' || i, 'cold', 'Zermatt
 from generate_series(1, 15) i;
 insert into public.contacts (org_id, company_id, first_name, last_name)
 select c.org_id, c.id, 'Quaxley', 'Tail' from public.companies c where c.name like 'žž tail %';
-vacuum analyze public.companies; -- vacuum also moves the new rows into the trigram indexes, as autovacuum does after an import
+vacuum analyze public.companies; -- fresh statistics, as autovacuum gives after an import
 vacuum analyze public.contacts;
 
 load 'auto_explain';

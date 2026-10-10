@@ -1,0 +1,505 @@
+﻿Company name,Company owner,Phone Number,Email,Lead Status,Last Activity Date,City,Country/Region
+Droguerie Verdane,Haider Test,,ventes.droguerie-verdane.296@example.org,Warm (In Progress),26/04/2021,Berlin,Deutschland
+Galerie des Halles,Henri Test,(617) 555-0141,achats.galerie-des-halles.297@example.org,DO NOT CONTACT,2023-08-28 10:42:58,Seattle,États-Unis
+Distribution Beaulieu,Haider Test,+33 6 39 98 23 46,achats.distribution-beaulieu.23@example.com,IN_PROGRESS,01/09/2023,Chicago,États-Unis
+Comptoir Jonquille,Henri Test,+1 312-555-0149,sales.comptoir-jonquille.207@example.com,Disqualified,28-12-24,Seattle,USA
+Négoce Clairval,,+44 20 7946 0374,sales.negoce-clairval.19@example.org,cool off,28.06.2024,London,UK
+Import Ventadour,kais test,,achats.import-ventadour.139@example.com,Cool off,27.06.2022,Paris,FR
+Comptoir Vauclair,Haider Test,06 39 98 19 68,achats.comptoir-vauclair.235@example.net,negotiation,16.04.2021,Nantes,fr
+Marché Vauclair,Henri Test,+33 6 39 98 31 10,hello.marche-vauclair.331@example.org,Do not contact,16.01.2025,Berlin,Deutschland
+Fromagerie Valmont,kais test,01 99 00 45 02,,cool off,14/03/2021 17:34,Berlin,Deutschland
+Marché des Halles,kais test,+33 6 39 98 01 88,commandes.marche-des-halles.147@example.net,Warm (in progress),13-08-24,München,Deutschland
+Import Morvan,Henri Test,01 99 00 08 49,achats.import-morvan.93@example.com,cool off,2026-08-25 08:37:13,Abidjan,Côte d'Ivoire
+Quincaillerie Peyrac,kais test,+1 617-555-0118,a@b@example.net,dnc,20/02/2024 13:32,New York,États-Unis
+Fromagerie Rosalie,kais test,+33 1 99 00 00 46,,cool off,26/08/2024,Rennes,France
+Épicerie Marbeuf,Henri Test,01 99 00 36 28,bonjour.epicerie-marbeuf.109@example.org,Customer,2026-05-14 15:29:31,Casablanca,Maroc
+Trading Peyrac,,01 99 00 37 39,hello.trading-peyrac.226@example.net,COLD,18/03/2023 10:29,Montpellier,fr
+Comptoir Ventadour,Haider Test,+33 1 99 00 45 07,ventes.comptoir-ventadour.245@example.org,negotiation,2022-03-27 13:49:11,Yamoussoukro,Côte d'Ivoire
+,Henri Test,+33 6 39 98 18 63,,dnc,25/11/2022,Rabat,Maroc
+Épicerie Azur Marine,,,,,,,
+Marché Castelnau,Henri Test,12345,achats.marche-castelnau.47@example.org,Warm (In Progress),22/11/2025,Chicago,USA
+Librairie Castelnau Centre,kais test,,,DISQUALIFIED,18-11-22,Dijon,France
+Bazar Castelnau,Henri Test,(718) 555-0145,hello.bazar-castelnau.200@example.com,Cool-off,17/07/2023 14:29,New York,États-Unis
+Galerie Ussel,,,bonjour.galerie-ussel.157@example.com,Cool off,,Reims,fr
+Studio Lumière,kais test,+33 6 39 98 41 81,hello.studio-lumiere.320@example.net,Customer,2022-05-16 10:28:21,Poseidonia,Atlantis
+Épicerie Roussel,kais test,01 99 00 16 16,bonjour.epicerie-roussel.232@example.com,dnc,19-11-21,Toulouse,FR
+Négoce Lumière,Haider Test,+33 1 99 00 11 21,contact.negoce-lumiere.91@example.net,Cold,2023-10-22 09:14:18,Angers,
+Galerie Falaise,,+44 7700 900404,hello.galerie-falaise.16@example.org,Customer,21.01.2024,Bristol,UK
+Dépôt Lavandière,kais test,(312) 555-0193,,Do not contact,2024-01-15,Boston,États-Unis
+Boulangerie Clairval,Henri Test,+44 20 7946 0755,bonjour.boulangerie-clairval.312@example.org,COLD,13/10/2022,London,Royaume-Uni
+Brasserie Willemin,,06 39 98 43 16,ventes.brasserie-willemin.122@example.org,Cool-off,19/07/2026 15:20,Paris,France
+Librairie Castelnau Centre,Haider Test,01 99 00 30 48,,Warm (In Progress),14/11/2021,Dijon,FR
+Épicerie Garrigue,Haider Test,,achats.epicerie-garrigue.221@example.com,negotiation,17.04.2022,New York,USA
+Épicerie Iris,kais test,+33 1 99 00 09 37,hello.epicerie-iris.63@example.org,Disqualified,2021-02-17 16:31:58,Valencia,España,x,y
+Import Orion,kais test,(202) 555-0198,achats.import-orion.189@example.org,Cold,21.10.2023,Chicago,États-Unis
+Brasserie Lavandière,Haider Test,01 99 00 25 19,ventes.brasserie-lavandiere.306@example.com,Cool-off,17-11-24,Rabat,Maroc
+Marché Roussel,Haider Test,,sales.marche-roussel.87@example.net,dnc,2026-08-23 13:49:29,Bordeaux,
+Galerie Azur,Haider Test,020 7946 0527,achats.galerie-azur.322@example.com,Cool off,22/07/2026 16:09,Leeds,UK
+Boulangerie Marbeuf,Haider Test,(213) 555-0157,,Cool-off,24.08.2023,Chicago,USA
+Maison Montclar,Haider Test,,sales.maison-montclar.217@example.net,Unqualified,24.05.2026,Manchester,Royaume-Uni
+'@Home Déco,Henri Test,06 39 98 14 77,commandes.home-deco.82@example.org,Disqualified,2023-09-17,Abidjan,Côte d'Ivoire
+Fromagerie Fontenelle,Haider Test,+1 202-555-0113,commandes.fromagerie-fontenelle.283@example.net,cool off,18/11/2021 11:00,Seattle,USA
+Quincaillerie Jonquille,Haider Test,+1 718-555-0184,ventes.quincaillerie-jonquille.126@example.com,Do not contact,14/04/2022,New York,USA
+Fromagerie Tarnac,Henri Test,+44 7700 900856,hello.fromagerie-tarnac.212@example.com,Unqualified,45731,Bristol,UK
+"=HYPERLINK(""http://example.invalid"")",kais test,06 39 98 17 19,contact@example,Cool-off,24/04/2022 11:56,Nantes,France
+Boulangerie Tarnac,kais test,(202) 555-0122,commandes.boulangerie-tarnac.249@example.com,Cold,2023-10-28,Boston,USA
+"<script>alert(""x"")</script>",kais test,06 39 98 10 76,achats.script-alert-x-script.80@example.com,DO NOT CONTACT,2026-04-14,Valencia,España
+Atelier Mirabel,Haider Test,+33 1 99 00 13 83,,,14/10/2024,München,Deutschland
+​,Henri Test,,commandes.lead.32@example.org,Warm (in progress),16.11.2023,Rennes,fr
+Fromagerie Falaise,kais test,+44 20 7946 0935,,cool off,25/08/2021,Bristol,Royaume-Uni
+Librairie Morvan,Henri Test,01 99 00 49 98,sales.librairie-morvan.62@example.net,Do not contact,22-06-23,Liège,Belgique,,oops
+Galerie Lavandière,Haider Test,01 99 00 15 94,contact.galerie-lavandiere.64@example.org,COLD,16/07/2022,Saint-Rémy-de-la-Vallée-Rémy-de-la-Vallée-Rémy-de-la-Vallée-Rémy-de-la-Vallée-Rémy-de-la-Vallée-Rémy-de-la-Vallée-Rémy-de-la-Vallée-Haute,France
+Studio Montclar,Henri Test,(718) 555-0154,hello.studio-montclar.254@example.net,,2022-02-20,Boston,États-Unis
+Societe Ecluse Neuve,Haider Test,,,Do not contact,2022-02-17 09:02:21,NICE,fr
+Studio Lavandière,kais test,,hello.studio-lavandiere.186@example.com,Cold,2025-01-23 11:41:05,Barcelona,España
+Galerie du Port,,+33 6 39 98 40 43,,Cold,16/08/2022 09:09,Nantes,fr
+Librairie Castelnau,Henri Test,(415) 555-0150,bonjour.librairie-castelnau.325@example.net,IN_PROGRESS,2021-02-21 09:26:20,Chicago,USA
+Marché Sauvigny,Haider Test,+33 1 99 00 11 34,,DISQUALIFIED,2022-11-18,Bruxelles,Belgique
+Quincaillerie Rosalie,Haider Test,+33 6 39 98 15 66,,IN_PROGRESS,26.03.2021,Seattle,USA
+Distribution Garrigue,Haider Test,,MAILTO:CONTACT.DISTRIBUTION-GARRIGUE.5@EXAMPLE.NET,Warm (In Progress),2024-03-26,Dijon,fr
+Studio Vauclair,Haider Test,0033 6 39 98 15 66,,Warm (in progress),2024-06-20,Bristol,Royaume-Uni
+Négoce Mirabel,Henri Test,01 99 00 25 72,sales.negoce-mirabel.73@example.net,IN_PROGRESS,,Manchester,
+Atelier Lavandière,kais test,01 99 00 44 97,sales.atelier-lavandiere.205@example.net,Warm (in progress),22/03/2026 08:24,Dijon,FR
+Négoce du Port,Henri Test,+1 718-555-0113,commandes.negoce-du-port.178@example.net,Negotiation,26-06-24,Chicago,États-Unis
+Fromagerie Peyrac,Haider Test,+33 6 39 98 45 94,ventes.fromagerie-peyrac.166@example.net,cool off,2024-04-28,Angers,fr
+Dépôt du Port,,(718) 555-0100,,DO NOT CONTACT,16.03.2022,Seattle,USA
+Atelier Ventadour,kais test,+33 1 99 00 48 04,sales.atelier-ventadour.197@example.org,Cold,2026-04-26 09:14:55,Abidjan,Côte d'Ivoire
+Fromagerie Hautecombe,Henri Test,+33 6 39 98 08 36,tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.tres.long.adresse.x@example.com,Customer,13/03/2023,Rabat,Maroc
+Cave des Halles,Haider Test,,bonjour.cave-des-halles.295@example.org,Cold,25.06.2022,Toulouse,FR
+Trading Écluse,Henri Test,+33 1 99 00 17 71,achats.trading-ecluse.262@example.org,IN_PROGRESS,18/01/2024,Bordeaux,fr
+Comptoir Clairval,Henri Test,01 99 00 45 65,commandes.comptoir-clairval.176@example.org,dnc,06/10/2024,Grenoble,FR
+Librairie Écluse,kais test,+33 6 39 98 28 49,,negotiation,17.11.2021,Gand,Belgique
+Comptoir Orion,Haider Test,06 39 98 29 78,,Warm (In Progress),17.04.2024,Berlin,Deutschland
+Comptoir Lavandière,kais test,,commandes.comptoir-lavandiere.123@example.org,,2023-01-15,Liège,Belgique
+Dépôt Valmont,Henri Test,01 99 00 28 22,info.depot-valmont.15@example.com, customer ,20-10-23,Liège,Belgique
+Distribution Saint-Clair,kais test,01 99 00 24 75,,Negotiation,16/03/2022 12:02,Gand,Belgique
+FROMAGERIE VALMONT HAUTE,kais test,,,Warm (in progress),21/12/2022 10:17,reims,fr
+Quincaillerie Ussel,Henri Test,+33 1 99 00 28 16,ventes.quincaillerie-ussel.280@example.net,Hot lead,13/01/2026 12:32,München,Deutschland
+Galerie Lumière,kais test,+1 202-555-0190,achats.galerie-lumiere.138@example.org,DO NOT CONTACT,27/06/2023 14:59,Chicago,États-Unis
+Atelier Valmont,Haider Test,(202) 555-0117,ventes.atelier-valmont.18@example.com,,2025-05-28 18:28:43,Chicago,USA
+Import Vauclair,Haider Test,+33 1 99 00 13 56,hello.import-vauclair.318@example.org,Warm (in progress),24/08/2026,Yamoussoukro,Côte d'Ivoire
+Dépôt Iris,Henri Test,,,Warm (in progress),2023-12-26 09:41:10,Barcelona,España
+Maison Douce Vallée,kais test,06.39.98.23.46,,Cold,25/02/2026 10:40,Rennes,fr
+Cave Saint-Clair,kais test,+44 20 7946 0075,hello.cave-saint-clair.57@example.com,Cold,2030-01-01,London,Royaume-Uni
+Fromagerie Ussel,Haider Test,+33 1 99 00 06 09,,DO NOT CONTACT,26/09/2022,Yamoussoukro,Côte d'Ivoire
+Comptoir Héron,Haider Test,(202) 555-0121,sales.comptoir-heron.275@example.com,cool off,15/03/2023 10:41,Seattle,USA
+Bazar Azur,kais test,,contact.bazar-azur.247@example.net,Negotiation,28-05-24,Nantes,FR
+Fromagerie Jonquille,Henri Test,,,IN_PROGRESS,24/07/2024 16:20,London,UK
+Dépôt Cèdre,kais test,+33 6 39 98 12 34 poste 5,ventes.depot-cedre.48@example.org,IN_PROGRESS,15/03/2026 10:00,Seattle,États-Unis
+Librairie Mirabel,Haider Test,,hello.librairie-mirabel.230@example.org,,23-05-23,Montpellier,FR
+Négoce des Halles,,,info.negoce-des-halles.145@example.org,,26/11/2023 11:58,München,Deutschland
+NULL,Haider Test,,info.null.37@example.com,Disqualified,2023-01-24,Berlin,Deutschland
+Librairie Falaise,Henri Test,,bonjour.librairie-falaise.269@example.org,Client,2026-02-28,Chicago,USA
+Quincaillerie Falaise,Henri Test,,commandes.quincaillerie-falaise.319@example.com,DO NOT CONTACT,25-05-25,Chicago,USA
+Maison Jonquille,Haider Test,,hello.maison-jonquille.121@example.net,Warm (in progress),26/07/2026 13:34,Gand,Belgique
+Trading Quillan,Henri Test,020 7946 0719,commandes.trading-quillan.161@example.com,COLD,09/06/2023,Leeds,UK
+Studio Beaulieu,Henri Test,01 99 00 01 81,sales.studio-beaulieu.303@example.com, customer ,18.11.2021,Yamoussoukro,Côte d'Ivoire
+Distribution Hautecombe,Henri Test,01 99 00 13 50,info.distribution-hautecombe.133@example.org,Customer,21/08/2026,Abidjan,Côte d'Ivoire
+Marché Belle Rive,kais test,+33 6 39 98 34 65,hello.marche-belle-rive.209@example.com,DISQUALIFIED,16/10/2023,Dijon,France
+Comptoir Beaulieu,Haider Test,,  info.comptoir-beaulieu.2@example.com  ,Disqualified,2024-12-20 10:26:15,Rabat,Maroc
+Trading Verdane,Haider Test,,achats.trading-verdane.321@example.net,negotiation,25-05-23,Casablanca,Maroc
+Distribution Belle Rive,Former Rep,06 39 98 26 92,contact.distribution-belle-rive.305@example.org,Do not contact,2022-03-18 09:02:20,Grenoble,FR
+Import Mirabel,Haider Test,+33 6 39 98 04 00,,Cold,2026-01-25 08:04:28,Liège,Belgique
+Studio Mirabel,kais test,+33 6 39 98 29 81,hello.studio-mirabel.323@example.com,Warm (In Progress),24/02/2023 15:08,Berlin,Deutschland
+Cave Tarnac,Henri Test,06 39 98 12 36,,Cold,2024-03-27 09:38:47,Dijon,France
+Studio Belle Rive,Haider Test,,info.studio-belle-rive.228@example.org,Client,04/03/2022,Hamburg,Deutschland
+Négoce Grandpré,Haider Test,+33 1 99 00 07 84,hello.negoce-grandpre.115@example.com,Cool-off,2021-08-17 10:09:13,Madrid,España
+Maison Héron,kais test,,info.maison-heron.257@example.org,Warm (In Progress),,Leeds,UK
+Gal​erie Beaulieu,Haider Test,(718) 555-0149,contact.gal-erie-beaulieu.71@example.com,Cool off,22-10-23,Seattle,USA
+Bazar Belle Rive,kais test,,achats.bazar-belle-rive.160@example.com,Client,2022-01-25,Madrid,España
+Librairie Grandpré,Former Rep,'+33 6 39 98 17 06,,Cold,18/05/2022,Liège,Belgique
+Distribution Quillan,Henri Test,(213) 555-0166,ventes.distribution-quillan.284@example.com,negotiation,25/11/2021,New York,États-Unis
+Trading Morvan,kais test,07700 900332,,Do not contact,2023-06-20 13:11:47,London,UK
+Atelier Vauclair,Henri Test,+33 6 39 98 23 49,ventes.atelier-vauclair.107@example.net,Cool-off,25/06/2026 11:51,Rennes,France
+QUINCAILLERIE MIRABEL NORD,Henri Test,,,negotiation,24.08.2025,Grenoble,France
+Atelier Verdane,Henri Test,+1 312-555-0135,contact.atelier-verdane.300@example.net,Do not contact,2024-11-20T08:05:00.000Z,Chicago,États-Unis
+Cave Écluse,Haider Test,+33 1 99 00 23 59,sales.cave-ecluse.204@example.com,negotiation,23/06/2026 12:13,Rabat,Maroc
+Quincaillerie Douce Vallée,Haider Test,07700 900824,achats.quincaillerie-douce-vallee.132@example.net,DISQUALIFIED,27.11.2024,Leeds,Royaume-Uni
+Négoce Garrigue,Haider Test,06 39 98 AB CD,bonjour.negoce-garrigue.43@example.net,Do not contact,2022-07-13,Toulouse,FR
+Librairie Bruyère,kais test,06 39 98 36 46,sales.librairie-bruyere.211@example.com,COLD,2025-08-22,Bordeaux,fr
+Trading Saint-Clair,,+33 1 99 00 47 95,commandes.trading-saint-clair.167@example.net,Client,2023-11-17 12:18:40,Gand,Belgique
+Librairie Lavandière,Haider Test,+33 1 99 00 19 22,hello.librairie-lavandiere.301@example.com,Cool-off,2024-06-21,Hamburg,Deutschland
+,,,,,,,
+Quincaillerie Ardoise,Henri Test,01 99 00 45 47,sales.quincaillerie-ardoise.255@example.com,Cold,14/03/2023,Reims,fr
+Maison Écluse,Haider Test,,bonjour.maison-ecluse.237@example.com,Hot lead,19/01/2024 09:30,Boston,États-Unis
+Dépôt Peyrac,Haider Test,+33 6 39 98 24 66,contact@,Negotiation,2026-03-22 10:23:29,Abidjan,Côte d'Ivoire
+Studio Peyrac,Henri Test,,commandes.studio-peyrac.148@example.net,negotiation,2026-03-15 08:42:44,Nice,France
+Boulangerie Mirabel,kais test,0199003105,,dnc,13-03-23,Abidjan,Côte d'Ivoire
+Librairie Valmont,,,,,,,
+Import Peyrac,Haider Test,,,Warm (In Progress),,Boston,États-Unis
+Boulangerie Garrigue,kais test,06 39 98 09 13,commandes.boulangerie-garrigue.271@example.net,negotiation,2023-09-26 11:19:56,Hamburg,Deutschland
+Bazar Cèdre,Henri Test,06 39 98 10 71,ventes.bazar-cedre.171@example.net,dnc,27/02/2023,Angers,fr
+Brasserie Quillan,Henri Test,01 99 00 31 46,,Cool off,15.05.2025,Liège,Belgique
+Trading Belle Rive,Haider Test,020 7946 0395,info.trading-belle-rive.270@example.com,DISQUALIFIED,28.05.2023,Bristol,Royaume-Uni
+Trading Falaise,Haider Test,06 39 98 19 63,bonjour.trading-falaise.98@example.net,Warm (in progress),28-01-21,Rennes,France
+Café ☕ Croissant 🥐,kais test,+33 1 99 00 08 47,bonjour.cafe-croissant.74@example.org,Do not contact,2023-05-18,Yamoussoukro,Côte d'Ivoire
+-,Henri Test,,contact.lead.35@example.net,Cool off,14/02/2025,New York,USA
+@cmd,kais test,020 7946 0359,@example.com,negotiation,16-02-23,Leeds,Royaume-Uni
+Négoce Héron,kais test,06 39 98 22 80,,Negotiation,19/07/2026,Lille,France
+‮Quincaillerie Verdane,Former Rep,+1 718-555-0110,commandes.quincaillerie-verdane.72@example.org,DISQUALIFIED,27.07.2026,Chicago,USA
+Comptoir Azur,Henri Test,+33 6 39 98 17 87,,Customer,2025-07-25,Casablanca,Maroc
+Droguerie Montclar,,,,,,,
+Brasserie Peyrac,kais test,+33 6 39 98 05 58,achats.brasserie-peyrac.149@example.org,Warm (in progress),2025-10-13 08:59:26,Yamoussoukro,Côte d'Ivoire
+Studio Falaise,Henri Test,,sales.studio-falaise.329@example.com,Cool-off,,Valencia,España
+Atelier Orion,kais test,,hello.atelier-orion.259@example.net,COLD,2025-11-24,Toulouse,fr
+Boulangerie Orion,kais test,,contact.boulangerie-orion.188@example.com,Unqualified,23-03-24,Hamburg,Deutschland
+Galerie Rosalie,kais test,+33 1 99 00 37 69,info.galerie-rosalie.264@example.com,Warm (In Progress),23-01-25,Montpellier,FR
+Import Quillan,Haider Test,,hello.import-quillan.96@example.net,Cool off,2024-12-24 18:39:01,Madrid,España
+Comptoir des Délices 🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓🍓,kais test,+33 6 39 98 12 91,bonjour.comptoir-des-delices.39@example.com, customer ,20-12-23,Valencia,España
+Épicerie Castelnau,,,,Warm (in progress),16/05/2026,Abidjan,Côte d'Ivoire
+Distribution Héron,Haider Test,,hello.distribution-heron.114@example.com,Warm (in progress),2021-12-14 13:19:51,Rabat,Maroc
+Cave Falaise,Henri Test,+44 7700 900515,achats.cave-falaise.248@example.org,Unqualified,23.10.2022,Leeds,Royaume-Uni
+Brasserie Garrigue,Henri Test,+33 6 39 98 49 78,bonjour.brasserie-garrigue.131@example.com,DISQUALIFIED,15/08/2023 13:39,Grenoble,fr
+Épicerie Azur Marine,,,,,,,
+"Dupont, Fils & Cie",Haider Test,(617) 555-0100,bonjour.dupont-fils-cie.67@example.org,IN_PROGRESS,28-12-22,Chicago,USA
+Galerie Willemin,,+44 20 7946 0284,hello.galerie-willemin.220@example.org,Unqualified,22/07/2024,London,UK
+Librairie Garrigue,Haider Test,06 39 98 13 16,bonjour.librairie-garrigue.193@example.com,,20/11/2022 08:41,Paris,France
+Galerie Hautecombe,,,,negotiation,16-08-22,Bristol,UK
+Brasserie Saint-Clair,Haider Test,+33 1 99 00 12 34 / +33 6 39 98 12 34 / 1,contact.brasserie-saint-clair.46@example.net, customer ,2023-01-16 13:37:25,Leeds,UK
+Import Iris,kais test,01 99 00 06 11,info.import-iris.298@example.com,Client,2026-07-17,Lyon,FR
+Maison Sauvigny,Former Rep,01 99 00 19 01,,Do not contact,22-11-25,Bordeaux,fr
+Galerie Montclar,Haider Test,(312) 555-0196,bonjour.galerie-montclar.256@example.net,dnc,2021-03-23,Boston,États-Unis
+Trading Marbeuf,Haider Test,06 39 98 15 59,,Disqualified,2026-01-17 08:34:35,Barcelona,España
+Cave Valmont,Haider Test,+33 6 39 98 38 50,bonjour.cave-valmont.239@example.com,DISQUALIFIED,17.06.2022,Liège,Belgique
+Droguerie Vauclair,,+33 6 39 98 20 85,, customer ,26.12.2022,Paris,FR
+Atelier Héron,kais test,06 39 98 44 04,ventes.atelier-heron.313@example.org,Cool off,28/05/2022 08:04,Rabat,Maroc
+Droguerie des Halles,kais test,+1 718-555-0169,contact.droguerie-des-halles.164@example.com,Customer,18.10.2023,Boston,États-Unis
+Quincaillerie Castelnau,Henri Test,+33 6 39 98 10 25,commandes.quincaillerie-castelnau.25@example.org,DISQUALIFIED,14-10-25,Leeds,UK
+Cave Morvan,Henri Test,06 39 98 47 57,achats.cave-morvan.267@example.net,Client,27/01/2022,Casablanca,Maroc
+Distribution Montclar,Henri Test,+1 202-555-0170,,Cold,24/03/2024,Nantes,France
+Épicerie Montclar,Haider Test,06 39 98 10 25,,Cool off,2023-06-14 14:55:03,Seattle,États-Unis
+Boulangerie Grandpré,,06 39 98 06 95,commandes.boulangerie-grandpre.130@example.org,IN_PROGRESS,2024-03-24,Rabat,Maroc
+Boulangerie Castelnau,kais test,,,Hot lead,2025-03-15T13:32:00Z,Grenoble,France
+-2+3,Henri Test,01 99 00 25 58,contact@@example.com,DO NOT CONTACT,13.09.2024,Bordeaux,fr
+Atelier Montclar,Henri Test,,info.atelier-montclar.307@example.org,Disqualified,,Hamburg,Deutschland
+Brasserie Peyrac Sud SAS,Henri Test,,, customer ,01/07/2023,Saint-Étienne,France
+Boulangerie Peyrac,kais test,,hello.boulangerie-peyrac.136@example.net,,2026-05-22 10:05:03,Abidjan,Côte d'Ivoire
+Atelier Valmont,kais test,,mailto:ventes.atelier-valmont.18@example.com,DO NOT CONTACT,20/02/2023 11:15,Bruxelles,Belgique
+Quincaillerie Marbeuf,Haider Test,,mailto:commandes.quincaillerie-marbeuf.8@example.net,cool off,2021-11-13 10:29:18,Chicago,USA
+Marché Beaulieu,Haider Test,01 99 00 48 48,info.marche-beaulieu.291@example.com,COLD,2024-11-25 08:35:33,Rennes,FR
+Cave Saint-Clair Ouest,,,,Cool-off,20.01.2026,Bordeaux,France
+Brasserie Belle Rive,kais test,+33 1 99 00 01 04,ventes.brasserie-belle-rive.69@example.com,Warm (In Progress),15/03/2021 09:21,"Saint-Denis
+La Plaine",France
+Dépôt Rosalie,,+44 20 7946 0752,contact.depot-rosalie.163@example.net,Cool off,2022-05-26,London,UK
+Maison Castelnau,kais test,+1 617-555-0186,,Disqualified,14/10/2025,New York,États-Unis
+Maison Lumière,Haider Test,,achats.maison-lumiere.310@example.org,Warm (In Progress),26/02/2021,Strasbourg,France
+Librairie Héron,kais test,+33 6 39 98 02 69,,Unqualified,15.04.2023,Toulouse,FR
+Dépôt Lumière,Henri Test,3.36E+11,contact.depot-lumiere.44@example.org,Disqualified,25.01.2026,Strasbourg,fr
+Comptoir Saint-Clair,Henri Test,+44 20 7946 0701,achats.comptoir-saint-clair.181@example.net,Do not contact,2024-02-13,London,Royaume-Uni
+Droguerie Beaulieu,Henri Test,+33 6 39 98 22 36,contact.droguerie-beaulieu.196@example.net, customer ,2025-05-15 17:10:43,Lille,FR
+Négoce Orion,kais test,+44 7700 900702,ventes.negoce-orion.258@example.com,Negotiation,22/10/2023,Leeds,Royaume-Uni
+Dépôt Verdane,Haider Test,01 99 00 19 57,bonjour.depot-verdane.159@example.net,cool off,2025-06-25 14:15:03,Abidjan,Côte d'Ivoire
+Galerie Héron,Former Rep,01 99 00 22 90,,DISQUALIFIED,19/03/2026 09:18,Yamoussoukro,Côte d'Ivoire
+Cave Marbeuf,Haider Test,01 99 00 05 94,bonjour.cave-marbeuf.61@example.org,Cool off,20.05.2026,Hamburg,Deutschland,Note libre
+   ,kais test,,hello.lead.30@example.net,Unqualified,22/05/2023 18:01,Bordeaux,France
+Comptoir Peyrac,kais test,06 39 98 22 55,info.comptoir-peyrac.66@example.org,Warm (In Progress),2025-10-14,Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch Llanfairpwllgwyngyllgogerychwyrndrobwllllantysiliogogogoch,France
+Studio Écluse,,+33 1 99 00 16 21,achats.studio-ecluse.327@example.net,DISQUALIFIED,2024-09-23 12:08:22,München,Deutschland
+Trading Douce Vallée,kais test,+33 1 99 00 44 74,,Disqualified,26/01/2025 10:31,Abidjan,Côte d'Ivoire
+Supérette Bellevue Express,Haider Test,01 99 00 48 79,,Disqualified,,Paris,France
+=1+1 Négoce,Haider Test,01 99 00 32 86,ventes.1-1-negoce.81@example.com,Unqualified,15-07-26,Casablanca,Maroc
+Trading Fontenelle,Henri Test,01 99 00 24 45,ventes.trading-fontenelle.102@example.org,Negotiation,12/02/2025,Hamburg,Deutschland
+Comptoir Fontenelle,kais test,,commandes.comptoir-fontenelle.110@example.net,Customer,,Manchester,UK
+Dépôt Belle Rive,Haider Test,+44 7700 900188,achats.depot-belle-rive.308@example.org,Do not contact,23/07/2026 14:26,Leeds,UK
+Comptoir Belle Rive,Henri Test,+33 6 39 98 03 11,,IN_PROGRESS,26/03/2024 11:39,Nice,fr
+Maison Mirabel,Haider Test,06 39 98 00 54,achats.maison-mirabel.105@example.net,Cold,2022-05-22,Paris,France
+Galerie Iris,Henri Test,,contact.galerie-iris.172@example.org,cool off,13/12/2023,Nantes,FR
+Dépôt Castelnau,kais test,,MAILTO:INFO.DEPOT-VALMONT.15@EXAMPLE.COM,IN_PROGRESS,26-06-26,Chicago,USA
+Marché Quillan,Haider Test,+1 213-555-0148,,Do not contact,26.07.2024,Boston,États-Unis
+Dépôt Sauvigny,kais test,,commandes.depot-sauvigny.112@example.net,Negotiation,2023-09-16,Hamburg,Deutschland
+Négoce Hautecombe,Henri Test,06 39 98 17 15,,Warm (in progress),2023-05-16,Strasbourg,FR
+Atelier Morvan,Haider Test,+44 20 7946 0434,commandes.atelier-morvan.168@example.net,DISQUALIFIED,21.11.2021,London,Royaume-Uni
+Négoce Lavandière,Henri Test,01 99 00 46 66,,Warm (in progress),20-04-21,Nantes,France
+Brasserie Falaise,Haider Test,06 39 98 12 34 #2,ventes.brasserie-falaise.49@example.net,Cool-off,2023-02-16,München,Deutschland
+Épicerie Grandpré,Henri Test,,bonjour.epicerie-grandpre.154@example.net,DISQUALIFIED,2025-02-25,Madrid,España
+Droguerie Orion,Haider Test,,info.droguerie-orion.129@example.net,Do not contact,13.10.2024,Yamoussoukro,Côte d'Ivoire
+Studio Clairval,,,,,,,
+Quincaillerie Azur,kais test,01 99 00 00 12,,Unqualified,03/01/2022,Reims,fr
+Librairie Willemin,Haider Test,020 7946 0556,bonjour.librairie-willemin.58@example.org,Warm (in progress),28/12/2035 14:00,London,UK
+Bazar Willemin,Haider Test,+33 6 39 98 47 31,commandes.bazar-willemin.27@example.net,Disqualified,22/05/2021 13:50,New York,
+Bazar Hautecombe,kais test,+33 1 99 00 32 06,ventes.bazar-hautecombe.273@example.org,Warm (In Progress),21-06-24,Gand,Belgique
+Bazar Verdane,Haider Test,,achats.bazar-verdane.330@example.com,,2024-01-18 12:50:10,New York,USA
+Marché Willemin,Henri Test,(202) 555-0164,info.marche-willemin.279@example.org,DO NOT CONTACT,2021-12-19 15:11:52,Seattle,USA
+Boulangerie du Port,Haider Test,+33 6 39 98 19 69,commandes.boulangerie-du-port.227@example.net,DO NOT CONTACT,13.05.2021,Grenoble,France
+Librairie Rosalie,,06 39 98 07 22,,,18-10-23,Gand,Belgique
+Studio Orion,Henri Test,06 39 98 22 83,achats.studio-orion.53@example.net,DISQUALIFIED,12/2023,Casablanca,Maroc
+Épicerie Saint-Clair,kais test,(213) 555-0198,achats.epicerie-saint-clair.165@example.org,Unqualified,22-11-22,Chicago,États-Unis
+Quincaillerie Fontenelle,kais test,+33 1 99 00 37 56,hello.quincaillerie-fontenelle.11@example.org,Negotiation,2023-08-23,Rabat,Maroc
+Import Clairval,kais test,,,COLD,,Leeds,UK
+Fromagerie Beaulieu,kais test,,,DISQUALIFIED,27.02.2026,Valencia,España
+  Fromagerie Ventadour  ,kais test,06 39 98 43 00,hello.fromagerie-ventadour.84@example.org,Negotiation,2024-10-16 09:05:37,Casablanca,Maroc
+Studio Fontenelle,kais test,06 39 98 30 60,bonjour.studio-fontenelle.224@example.com, customer ,13.07.2022,Strasbourg,FR
+Épicerie Sauvigny,kais test,,commandes.epicerie-sauvigny.182@example.com,negotiation,2023-02-22 15:13:10,Liège,Belgique
+Dépôt Mirabel,Haider Test,01 99 00 45 36,achats.depot-mirabel.55@example.net,dnc,yesterday,Lyon,FR
+Quincaillerie Mirabel,Henri Test,+33 1 99 00 14 64,contact.quincaillerie-mirabel.218@example.com, customer ,18/03/2026 18:29,Liège,Belgique
+Brasserie Héron,,(213) 555-0169,sales.brasserie-heron.332@example.com,negotiation,2024-11-28,New York,États-Unis
+Trading Mirabel,kais test,+44 7700 900741,ventes.trading-mirabel.117@example.com,dnc,2025-01-27,Manchester,Royaume-Uni
+Boulangerie Montclar,Haider Test,+33 6 39 98 28 79,contact.boulangerie-montclar.179@example.net,Client,26.08.2026,Abidjan,Côte d'Ivoire
+Brasserie Beaulieu,,,,DO NOT CONTACT,2023-08-13,Grenoble,fr
+Librairie Ardoise,Henri Test,,Info.librairie-ardoise.9@example.org,DO NOT CONTACT,24/03/2023,New York,États-Unis
+Brasserie Bruyère,Haider Test,+33 6 39 98 21 67,bonjour.brasserie-bruyere.244@example.com,COLD,19/06/2025 15:02,Abidjan,Côte d'Ivoire
+Galerie Clairval Sud.,kais test,,,Cool off,28-01-26,Marseille,FR
+Marché Ussel,Henri Test,07700 900770,,,24-11-25,Manchester,Royaume-Uni
+Épicerie Héron,Henri Test,+44 20 7946 0685,commandes.epicerie-heron.173@example.org,Cool-off,19-09-25,Manchester,Royaume-Uni
+Comptoir Castelnau,Henri Test,06 39 98 18 95,achats.comptoir-castelnau.156@example.com,Negotiation,14.05.2022,Reims,France
+Cave Orion,Henri Test,,, customer ,19/09/2023,Rabat,Maroc
+Négoce Beaulieu,Haider Test,,,Client,06/03/2023,Reims,
+Quincaillerie Mirabel Nord,kais test,,hello.quincaillerie-mirabel-nord.28@example.com,Disqualified,,Grenoble,France
+Boulangerie Saint-Clair,kais test,+33 6 39 98 40 83,,Do not contact,2026-04-28,Valencia,España
+Brasserie Grandpré,Henri Test,06 39 98 37 80,,Warm (In Progress),2026-02-22,Nice,fr
+Brasserie Peyrac Sud,Haider Test,,,DO NOT CONTACT,2025-10-27,Saint Etienne,FR
+Studio Grandpré,Henri Test,06 39 98 39 54,ventes.studio-grandpre.95@example.net,dnc,2024-03-23,Liège,Belgique
+Cave Garrigue,kais test,+33 6 39 98 41 99,contact@.example.org,Warm (in progress),22-07-25,Barcelona,España
+Fromagerie Clairval,Haider Test,(415) 555-0126,info.fromagerie-clairval.203@example.net,Disqualified,25/07/2021,Chicago,USA
+Droguerie Fontenelle-Gare,Haider Test,,,Client,2021-12-24 13:48:09,Angers,FR
+Atelier Lumière,kais test,,,Warm (In Progress),20/04/2026 14:58,Lyon,fr
+Comptoir des Saveurs 🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰🍰,Henri Test,+33 6 39 98 43 67,bonjour.comptoir-des-saveurs.83@example.net,Customer,13/08/2025 13:03,Toulouse,FR
+Atelier Ardoise,Haider Test,+1 312-555-0155,contact.atelier-ardoise.238@example.com,Do not contact,16/04/2024 11:56,Seattle,USA
+Maison Saint-Clair,Henri Test,,,negotiation,2026-07-22 13:13:26,Strasbourg,France
+Droguerie Castelnau,Haider Test,020 7946 0417,bonjour.droguerie-castelnau.135@example.org,Disqualified,2026-08-20 16:38:08,Leeds,Royaume-Uni
+Trading Cèdre,Henri Test,020 7946 0790,,Customer,24/10/2023 14:35,London,UK
+Dépôt Tarnac,kais test,+33 6 39 98 03 77,commandes.depot-tarnac.180@example.com,dnc,16.01.2026,Casablanca,
+Trading Vauclair,kais test,,ventes.trading-vauclair.253@example.com,negotiation,2026-07-25,Paris,fr
+Fromagerie Castelnau,Henri Test,,mailto:commandes.fromagerie-castelnau.3@example.net,COLD,14/01/2026,Marseille,France
+
+Dépôt Bruyère,Haider Test,01 99 00 39 77,commandes.depot-bruyere.302@example.com,DO NOT CONTACT,27/02/2025,Casablanca,Maroc
+Cave Douce Vallée,kais test,(718) 555-0141,info.cave-douce-vallee.125@example.org,Unqualified,26-01-21,Seattle,États-Unis
+Fromagerie Vauclair,kais test,06 39 98 16 38,,Warm (in progress),2022-09-27,Rabat,Maroc
+Fromagerie Belle Rive,kais test,+33 6 39 98 38 81,commandes.fromagerie-belle-rive.142@example.net,Negotiation,24/08/2026 10:19,Marseille,France
+Négoce Écluse,Haider Test,+33 1 99 00 02 33,,Negotiation,07/04/2024,Bruxelles,Belgique
+Épicerie Valmont,kais test,,,IN_PROGRESS,15/01/2022,Nantes,France
+Bazar Clairval,Henri Test,(415) 555-0198,jean dupont@example.org,Client,28/11/2021,Boston,USA
+Import Douce Vallée,Haider Test,06 39 98 43 30,ventes.import-douce-vallee.52@example.org,negotiation,00/00/0000,Yamoussoukro,Côte d'Ivoire
+Bazar des Halles,,,,,,,
+Galerie Ventadour,Henri Test,01 99 00 41 84,bonjour.galerie-ventadour.292@example.org,Cool-off,15/07/2021,Rabat,Maroc
+Cave Iris,Henri Test,01 99 00 08 59,,Disqualified,2026-06-14 09:10:38,Abidjan,Côte d'Ivoire
+Bazar Marbeuf,Haider Test,06 39 98 33 44,achats.bazar-marbeuf.263@example.com,Warm (in progress),17/07/2022,Toulouse,France
+Droguerie Hautecombe,Haider Test,,ventes.droguerie-hautecombe.288@example.net,Cool off,17/07/2025,Strasbourg,France
+Droguerie Saint-Clair,Henri Test,,info.droguerie-saint-clair.328@example.com,dnc,20.01.2021,Manchester,Royaume-Uni
+Atelier Marbeuf,Haider Test,,,Cool-off,2024-05-26,Valencia,España
+Fromagerie Lumière,,,,,,,
+Boulangerie Lumière,Henri Test,,info.boulangerie-lumiere.155@example.org,negotiation,14.02.2022,Bristol,Royaume-Uni
+Droguerie Grandpré,Henri Test,01 99 00 19 65,contact.droguerie-grandpre.17@example.com,Customer,23.05.2022,Lille,
+Œnothèque Ångström Façade,Henri Test,01 99 00 35 45,achats.notheque-angstrom-facade.76@example.com,Cold,22-12-21,Yamoussoukro,Côte d'Ivoire
+Galerie Ardoise,kais test,01 99 00 13 74,contact.galerie-ardoise.213@example.org, customer ,2025-09-20,München,Deutschland
+Maison Ussel,kais test,ext 12,sales.maison-ussel.42@example.com,Cool off,24/04/2023 15:19,Rennes,France
+Comptoir Grandpré,Haider Test,(617) 555-0171,hello.comptoir-grandpre.21@example.net,Warm (In Progress),,Seattle,États-Unis
+Négoce Saint-Clair,Haider Test,,contact.negoce-saint-clair.124@example.org,dnc,16/02/2026 13:22,Rennes,
+Marché Cèdre,kais test,+44 7700 900825,contact.marche-cedre.92@example.net,cool off,,Leeds,UK
+Cave Sauvigny,Henri Test,06 39 98 01 41,,Cold,29/03/2026 02:15,Liège,Belgique
+Fromagerie Azur,Haider Test,+1 415-555-0175,hello.fromagerie-azur.108@example.com,Cool-off,,New York,États-Unis
+Droguerie Jonquille,Haider Test,,,,15/07/2026,Madrid,España
+Boulangerie Lavandière Est,Henri Test,,, customer ,2024-07-24,Bordeaux,France
+Bazar Tarnac,kais test,01 99 00 09 47,,Cool off,13/04/2023 12:50,Montpellier,FR
+Maison Bruyère,Haider Test,+33 1 99 00 21 09,hello.maison-bruyere.153@example.org,DO NOT CONTACT,17/02/2026,Valencia,España
+Brasserie Rosalie,Haider Test,(202) 555-0177,bonjour.brasserie-rosalie.162@example.net,Customer,17/02/2026,Chicago,États-Unis
+Épicerie Ardoise,Haider Test,01 99 00 19 15,,cool off,17/06/2021,Valencia,España
+Cave Mirabel,Henri Test,+33 1 99 00 24 90,contact.cave-mirabel.85@example.org,Prospect,2024-12-23 13:55:15,Reims,FR
+Négoce Sauvigny,Henri Test,+44 20 7946 0301,contact.negoce-sauvigny.22@example.org,Warm (in progress),2021-03-27,Manchester,UK
+Galerie Cèdre,Henri Test,+44 20 7946 0813,,Cool off,2021-03-27,London,Royaume-Uni
+Import Beaulieu,Haider Test,01 99 00 09 26,hello.import-beaulieu.201@example.com,,15.09.2025,Gand,Belgique
+Bazar Falaise,Haider Test,01 99 00 32 12,ventes.bazar-falaise.243@example.net,cool off,26-04-23,Poseidonia,Atlantis
+Boulangerie Azur,Henri Test,+33 6 39 98 21 23,sales.boulangerie-azur.116@example.com,Client,,Casablanca,Maroc
+Cave Vauclair,Henri Test,,ventes.cave-vauclair.143@example.net,COLD,2022-01-18,Boston,États-Unis
+Droguerie Fontenelle Gare,kais test,06 39 98 02 82,achats.droguerie-fontenelle-gare.29@example.org,Unqualified,26.08.2025,Angers,fr
+Maison Tarnac,kais test,+33 6 39 98 07 26,,Client,2021-01-22,Dijon,FR
+Galerie Marbeuf,Henri Test,06 39 98 49 19,contact.galerie-marbeuf.70@example.net, customer ,14-01-25,Yamoussoukro,Côte d'Ivoire
+Boulangerie Valmont,,,,,,,
+Maison Ventadour Frères,Haider Test,,,Customer,28/03/2025,Nantes,France
+Librairie des Halles,,+33 6 39 98 25 29,commandes.librairie-des-halles.94@example.org, customer ,13.03.2025,Bordeaux,fr
+Droguerie Douce Vallée,Henri Test,,HELLO.DROGUERIE-DOUCE-VALLEE.6@EXAMPLE.ORG,IN_PROGRESS,16.08.2026,Leeds,Royaume-Uni
+Atelier Azur,Haider Test,,bonjour.atelier-azur.104@example.org,DO NOT CONTACT,18-05-24,Grenoble,
+Trading Castelnau,Henri Test,06-39-98-47-31,, customer ,16.05.2025,Yamoussoukro,Côte d'Ivoire
+<img src=x onerror=alert(1)>,Haider Test,06 39 98 42 70,info.img-src-x-onerror-alert-1.79@example.org,cool off,,Yamoussoukro,Côte d'Ivoire
+Maison du Port,kais test,,Info.maison-du-port.4@example.net, customer ,27/06/2023 08:05,Strasbourg,FR
+Cave Peyrac,Henri Test,,achats.cave-peyrac.287@example.net,Warm (in progress),2022-11-17 17:56:26,Marseille,France
+Cave Rosalie,Henri Test,020 7946 0843,achats.cave-rosalie.120@example.net,Cool off,24.12.2022,Bristol,Royaume-Uni
+Dépôt Ventadour,Henri Test,01 99 00 29 85,info.depot-ventadour.290@example.org,Client,2021-07-14 11:08:17,Valencia,España
+Dépôt Grandpré,kais test,01 99 00 48 84,contact.depot-grandpre.252@example.com,negotiation,26.06.2026,Berlin,Deutschland
+Droguerie Ardoise,Henri Test,,info.droguerie-ardoise.304@example.net,IN_PROGRESS,01/11/2025,Bristol,Royaume-Uni
+n/a,Haider Test,,contact.n-a.34@example.org,Customer,2024-02-15 16:56:01,Manchester,UK
+Marché Verdane,Henri Test,+1 718-555-0134,sales.marche-verdane.59@example.com,Negotiation,15/06/1985,Boston,USA
+Librairie Azur,Henri Test,,contact.librairie-azur.118@example.org,dnc,19-11-23,Casablanca,Maroc
+Maison Morvan,kais test,,sales.maison-morvan.192@example.net,Do not contact,26/01/2023 18:14,Abidjan,Côte d'Ivoire
+Import Bruyère,kais test,+33 1 99 00 02 71,hello.import-bruyere.311@example.net,COLD,22-02-23,Valencia,España
+Trading Montclar,Haider Test,06 39 98 12 88,sales.trading-montclar.266@example.org,Negotiation,2024-02-17 11:22:23,Paris,
+Épicerie Orion,kais test,+33 1 99 00 09 64,bonjour.epicerie-orion.140@example.com,,2023-08-28 14:45:05,Montpellier,fr
+Quincaillerie Vauclair,Haider Test,+1 213-555-0118,commandes.quincaillerie-vauclair.285@example.org,IN_PROGRESS,27.02.2026,Chicago,USA
+Maison Grandpré,Henri Test,020 7946 0623,sales.maison-grandpre.106@example.net,DISQUALIFIED,2025-11-25 14:53:00,Bristol,Royaume-Uni
+Brasserie des Halles,kais test,,HELLO.BRASSERIE-DES-HALLES.1@EXAMPLE.COM,Do not contact,17-09-25,Yamoussoukro,Côte d'Ivoire
+Trading Héron,Haider Test,020 7946 0524,info@example..com,DISQUALIFIED,2026-07-25 12:39:50,Bristol,UK
+Comptoir Ussel,kais test,01 99 00 17 09,,COLD,,Lille,FR
+ ​ ,kais test,,sales.lead.33@example.com,Negotiation,28-03-26,Bristol,Royaume-Uni
+Droguerie Sauvigny,Henri Test,020 7946 0013,commandes.droguerie-sauvigny.170@example.org,DISQUALIFIED,22-03-25,Bristol,Royaume-Uni
+Maison Lavandière,Henri Test,+1 415-555-0112,achats.maison-lavandiere.206@example.com,Client,28-07-22,New York,USA
+Distribution Marbeuf,Henri Test,,bonjour.distribution-marbeuf.146@example.com,Customer,23/09/2021,Gand,Belgique
+Bazar Rosalie,kais test,06 39 98 43 11,ventes.bazar-rosalie.199@example.org,cool off,25-10-22,Yamoussoukro,Côte d'Ivoire
+Droguerie Bruyère,Henri Test,+44 7700 900767,sales.droguerie-bruyere.299@example.net,Unqualified,25/02/2024,Manchester,UK
+Trading des Halles,kais test,,sales.trading-des-halles.282@example.com,Client,26/01/2024 17:16,Lyon,fr
+Épicerie Verdane,Henri Test,,achats.epicerie-verdane.184@example.net,IN_PROGRESS,18/12/2025,Casablanca,Maroc
+Épicerie Ussel,Haider Test,+33 6 39 98 24 60,sales.epicerie-ussel.90@example.org,,,Marseille,France
+Comptoir Rosalie,,06 39 98 11 05,,Client,,Hamburg,Deutschland
+東京貿易 Trading,kais test,+33 6 39 98 48 46,hello.trading.75@example.net,DISQUALIFIED,21/10/2022 08:10,Strasbourg,France
+Distribution Bruyère,kais test,,sales.distribution-bruyere.216@example.com,Warm (In Progress),15/08/2021,New York,États-Unis
+Boulangerie Roussel,,01 99 00 17 94,hello.boulangerie-roussel.20@example.net,Customer,23/06/2021 15:14,Valencia,España
+Distribution Lavandière,Henri Test,06 39 98 01 89,,Customer,28-03-25,Montpellier,FR
+Quincaillerie Orion,Henri Test,,,Client,21/05/2021 12:20,Seattle,États-Unis
+Librairie Cèdre,Haider Test,,info.librairie-cedre.277@example.org,Disqualified,13-03-25,Toulouse,fr
+Fromagerie Écluse,Henri Test,01 99 00 47 87,achats.fromagerie-ecluse.315@example.org,Negotiation,,Valencia,España
+Marché Marbeuf,kais test,01 99 00 05 62,sales.marche-marbeuf.51@example.org,DO NOT CONTACT,32/01/2023,Madrid,España
+Comptoir Marbeuf,Henri Test,,,Customer,28.03.2026,London,Royaume-Uni
+Boulangerie Iris,Henri Test,,HELLO.QUINCAILLERIE-FONTENELLE.11@EXAMPLE.ORG,Disqualified,19/05/2025,Paris,FR
+Quincaillerie Bruyère,kais test,+44 7700 900444,contact.quincaillerie-bruyere.251@example.org,Unqualified,20/11/2024,Bristol,Royaume-Uni
+"Le ""Petit"" Marché Gourmand",kais test,020 7946 0375,contact.le-petit-marche-gourmand.68@example.com,DO NOT CONTACT,26-04-26,Bristol,UK
+Droguerie Lavandière,kais test,+33 1 99 00 30 57,ventes.droguerie-lavandiere.134@example.org,Customer,19-10-23,Toulouse,France
+Atelier Bruyère,Haider Test,+33 1 99 00 43 40,ventes.atelier-bruyere.183@example.net,Cool-off,2023-08-28 11:26:17,Casablanca,Maroc
+Brasserie Lumière,kais test,01 99 00 20 66,hello.brasserie-lumiere.141@example.net,Cool-off,2022-06-28,Liège,
+Studio Hautecombe,Henri Test,+33 6 39 98 16 97,hello.studio-hautecombe.240@example.org,COLD,20.08.2026,Valencia,España
+Studio Sauvigny,Former Rep,+33 6 39 98 14 79,ventes.studio-sauvigny.265@example.com,Client,21.05.2026,München,Deutschland
+Droguerie Valmont,,+44 7700 900477,ventes.droguerie-valmont.89@example.net,COLD,27.01.2025,Manchester,UK
+Distribution Fontenelle,kais test,01 99 00 06 98,hello.distribution-fontenelle.225@example.net,Warm (in progress),27/04/2024,Barcelona,España
+Dépôt Willemin,Haider Test,01 99 00 23 33,,Negotiation,24-04-24,Casablanca,Maroc
+Atelier Falaise,Haider Test,+33 1 99 00 16 06,info.atelier-falaise.278@example.net,COLD,2025-03-26,Bordeaux,France
+Fromagerie Ardoise,kais test,01 99 00 42 13,hello.fromagerie-ardoise.100@example.net,Disqualified,25/01/2023,Bruxelles,Belgique
+Galerie Sauvigny,Henri Test,+1 213-555-0152,contact.galerie-sauvigny.191@example.net,Client,16/02/2023 18:18,Chicago,USA
+Quincaillerie Cèdre,Haider Test,+44 20 7946 0030,,Unqualified,2022-12-21 11:56:48,Rabat,Maroc
+Librairie Douce Vallée,kais test,07700 900171,ventes.librairie-douce-vallee.151@example.org,DO NOT CONTACT,17-10-23,Manchester,UK
+Studio Cèdre,Henri Test,+33 6 39 98 15 79,,Cool off,14/08/2025,Rabat,Maroc
+Galerie Roussel,Haider Test,+44 20 7946 0314,info.galerie-roussel.317@example.net,cool off,,London,UK
+Trading Lavandière,kais test,+33 1 99 00 32 63,,Cool off,16/06/2023 08:28,Marseille,France
+Bazar Mirabel,Haider Test,06 39 98 16 60,contact.bazar-mirabel.246@example.net,Customer,2021-07-20,Abidjan,Côte d'Ivoire
+Comptoir du Port,kais test,,info.comptoir-du-port.127@example.org,DO NOT CONTACT,19/10/2021,Dijon,fr
+Bazar Vauclair,Haider Test,01 99 00 07 43,ventes.bazar-vauclair.324@example.org,Unqualified,2022-09-24 16:20:11,Liège,Belgique
+Distribution Sauvigny,Haider Test,+33 6 39 98 38 86,commandes.distribution-sauvigny.214@example.org,IN_PROGRESS,28-09-21,Casablanca,Maroc
+Distribution Ventadour,Haider Test,+33 1 99 00 21 74,,Do not contact,22.07.2023,Rabat,Maroc
+Boulangerie Écluse,kais test,,HELLO.COMPTOIR-GRANDPRE.21@EXAMPLE.NET,Client,13-06-25,Rabat,Maroc
+Brasserie Morvan,Haider Test,,Sales.negoce-clairval.19@example.org,negotiation,2025-12-17,Valencia,España
+MAISON VENTADOUR FRÈRES,Haider Test,,,IN_PROGRESS,2026-06-22 08:43:59,nantes,fr
+Bazar Ventadour,kais test,,MAILTO:SALES.BAZAR-VENTADOUR.10@EXAMPLE.ORG,negotiation,18/04/2026 18:13,Berlin,Deutschland
+Négoce Morvan Est,Haider Test,,,Negotiation,2026-02-20,Lille,FR
+Marché Clairval,Haider Test,+33 (0)6 39 98 02 69,,COLD,2023-09-24,Valencia,España
+Studio Castelnau,Henri Test,06 39 98 49 49,,COLD,,Rabat,Maroc
+Négoce Willemin,Henri Test,+33 (0)1 99 00 05 88,,Client,14.02.2021,Barcelona,España
+Fromagerie Bruyère,Haider Test,+44 20 7946 0278,commandes.fromagerie-bruyere.222@example.com, customer ,21-01-24,Leeds,UK
+Épicerie Ventadour,Henri Test,+33 6 39 98 21 31,achats.epicerie-ventadour.56@example.net,Unqualified,15/06/2031,Bordeaux,fr
+Distribution Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationale Internationa,Haider Test,06 39 98 14 50,ventes.distribution-internationale-.40@example.com,Warm (In Progress),2025-09-27 18:41:20,Abidjan,Côte d'Ivoire
+Trading Bruyère,Haider Test,,achats.trading-bruyere.274@example.com,dnc,24/07/2026 13:54,Strasbourg,fr
+Comptoir Garrigue,Haider Test,,contact.comptoir-garrigue.236@example.net,Cold,2023-09-25 13:32:35,Abidjan,Côte d'Ivoire
+Quincaillerie Beaulieu,kais test,06 39 98 33 70,sales.quincaillerie-beaulieu.111@example.org,Cool-off,26/03/2022 08:18,München,Deutschland
+Négoce Ardoise,kais test,06 39 98 46 91,achats.negoce-ardoise.54@example.org,Client,2024-13-01,Paris,France
+Dépôt Azur,Henri Test,+44 7700 900041,,Prospect,18.01.2026,London,UK
+Bazar Ussel,Haider Test,+1 415-555-0164,ventes.bazar-ussel.231@example.net,,2025-12-17 10:57:27,Seattle,USA
+Quincaillerie Garrigue,,+33 1 99 00 05 13,contact.quincaillerie-garrigue.219@example.net,Cool off,21/04/2026,Nice,France
+Studio Ventadour,Henri Test,+44 20 7946 0235,commandes.studio-ventadour.185@example.org,negotiation,2025-12-27,Bristol,Royaume-Uni
+ , , 
+Négociants Associés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés Épices et Thés,Henri Test,+33 1 99 00 47 22,hello.negociants-associes-epices-e.41@example.com,IN_PROGRESS,22/12/2024,Casablanca,Maroc
+Quincaillerie Hautecombe,,+1 213-555-0142,ventes.quincaillerie-hautecombe.229@example.net,Client,28-02-25,Seattle,USA
+Marché Lumière,kais test,06 39 98 08 86,,DISQUALIFIED,14/05/2023,Toulouse,FR
+Comptoir des Halles,Henri Test,01 99 00 27 50,contact@example.org;achats@example.net,Cold,18.01.2024,Liège,Belgique
+Épicerie Clairval,Haider Test,(415) 555-0118,commandes.epicerie-clairval.314@example.com,Warm (In Progress),16.03.2025,Chicago,États-Unis
+Quincaillerie Quillan,Henri Test,+44 20 7946 0349,,IN_PROGRESS,27/05/2026,London,UK
+Marché Saint-Clair,,,,,,,
+Boulangerie Quillan,kais test,+33 6 39 98 49 61,contact.boulangerie-quillan.97@example.com,Do not contact,21/06/2021,Casablanca,Maroc
+Marché Hautecombe,kais test,,sales.marche-hautecombe.234@example.net,Cool off,2024-10-26,London,Royaume-Uni
+Distribution Rosalie,,01 99 00 48 37,ventes.distribution-rosalie.113@example.net,,22/02/2023 14:56,Paris,fr
+Galerie Bruyère,kais test,06 39 98 04 39,contact.galerie-bruyere.86@example.net,Disqualified,,Rennes,fr
+"+SUM(1,1)",Haider Test,06 39 98 02 87,ventes.example.com,cool off,2024-06-14,Bordeaux,FR
+Cave Saint Clair Ouest!!,kais test,,,cool off,19/02/2025 13:19,Bordeaux,France
+Distribution Morvan,Haider Test,020 7946 0484,,COLD,2021-08-18,Bristol,UK
+Import Belle Rive,kais test,+33 1 99 00 48 14,sales.import-belle-rive.293@example.net,DO NOT CONTACT,27-11-22,Abidjan,Côte d'Ivoire
+Brasserie Jonquille,Haider Test,+1 312-555-0131,hello.brasserie-jonquille.175@example.net,,2023-10-17,New York,États-Unis
+Dépôt Ussel,Haider Test,07700 900699,sales.depot-ussel.326@example.com, customer ,,London,Royaume-Uni
+Droguerie Falaise,,+33 6 39 98 37 48,commandes.droguerie-falaise.233@example.org,Disqualified,24/09/2024 13:58,Strasbourg,FR
+Brasserie Sauvigny,Henri Test,,,dnc,16/11/2024,Valencia,España
+Comptoir Écluse,kais test,+33 1 99 00 38 04,commandes.comptoir-ecluse.242@example.com,dnc,2021-12-17 15:57:57,Hamburg,Deutschland
+Brasserie Roussel,Haider Test,+33 6 39 98 32 23,,DO NOT CONTACT,,Barcelona,España
+Librairie Verdane,kais test,,  commandes.librairie-verdane.7@example.org  ,Cool-off,13-02-24,London,UK
+Comptoir Falaise,Henri Test,06.39.98.32.23,,Do not contact,22/01/2022,München,Deutschland
+Épicerie Beaulieu,kais test,+33 6 39 98 24 48,sales.epicerie-beaulieu.281@example.com,COLD,23.12.2024,Leeds,
+Cave Héron,Henri Test,+33 6 39 98 48 02,achats.cave-heron.241@example.net,cool off,26.02.2025,Bruxelles,Belgique
+	,kais test,,hello.lead.36@example.net,Do not contact,23/07/2025 12:25,New York,États-Unis
+Droguerie Ventadour,Henri Test,+33 6 39 98 46 81,info.droguerie-ventadour.128@example.com,dnc,2025-06-17 14:27:14,Bordeaux,France
+Négoce Sauvigny,Haider Test,,  contact.negoce-sauvigny.22@example.org  ,dnc,2026-01-24 16:29:51,Toulouse,France
+Librairie Marbeuf,Henri Test,+33 6 39 98 14 57,,COLD,30/03/2025 02:30,Rabat,Maroc
+Studio Valmont,Haider Test,020 7946 0743,contact.studio-valmont.198@example.org,Customer,20.11.2025,London,Royaume-Uni
+Maison Verdane,kais test,+33 6 39 98 18 29,,Cool off,2025-12-23,Liège,Belgique
+Bazar du Port,Henri Test,06 39 98 34 97,contact.bazar-du-port.294@example.org,Unqualified,2022-11-24,Lille,fr
+Bazar Beaulieu,kais test,+33 6 39 98 16 06,bonjour.bazar-beaulieu.26@example.org,Disqualified,17-03-21,Berlin,Deutschland
+Librairie Hautecombe,kais test,+33 1 99 00 43 96,sales.librairie-hautecombe.309@example.com,IN_PROGRESS,19-02-22,Valencia,España
+"),id.eq.",Henri Test,06 39 98 37 17,bonjour.id-eq.78@example.org,Client,13/02/2026 14:58,Hamburg,Deutschland
+Import Falaise,Haider Test,+33 1 99 00 20 87,, customer ,16/03/2024 08:54,Nice,fr
+Comptoir Tarnac,kais test,01 99 00 04 14,,Cold,13/07/2026 13:21,Gand,Belgique
+Atelier Ussel,,,ventes.atelier-ussel.210@example.net,cool off,24-01-23,Strasbourg,FR
+Négoce Tarnac,Haider Test,+33 6 39 98 25 98,contact.negoce-tarnac.261@example.net,Negotiation,24/05/2025,Hamburg,Deutschland
+Négoce Morvan Est S.A.R.L.,Henri Test,,,Cool-off,17/07/2025,Lille,France
+Dépôt Hautecombe,Haider Test,+1 213-555-0102,hello.depot-hautecombe.177@example.com,dnc,19/07/2026,Chicago,USA
+Atelier Beaulieu,Henri Test,06 39 98 18 63,,Warm (In Progress),17/09/2021 11:08,Hamburg,Deutschland
+Distribution Ussel,Henri Test,06 39 98 11 25,sales.distribution-ussel.174@example.com,Cool off,25/10/2021 17:47,Rabat,Maroc
+Atelier Clairval,Haider Test,,achats.atelier-clairval.316@example.net,dnc,19-07-23,Paris,fr
+Galerie Tarnac,Haider Test,07700 900362,hello.galerie-tarnac.12@example.net,Negotiation,18/09/2024 10:45,Bristol,Royaume-Uni
+Bazar Bruyère,Henri Test,07700 900641,contact.bazar-bruyere.276@example.net,cool off,2026-02-18 09:17:02,London,UK
+Galerie Jonquille,kais test,,commandes.galerie-jonquille.103@example.com,Cool-off,18.07.2021,Yamoussoukro,Côte d'Ivoire
+Dépôt Héron,Henri Test,+33 1 99 00 16 83,,,19-01-23,Liège,Belgique
+Studio Quillan,kais test,6.12345678E+8,info.studio-quillan.45@example.com,COLD,15-08-26,Leeds,Royaume-Uni
+Boulangerie Roussel,Henri Test,,MAILTO:HELLO.BOULANGERIE-ROUSSEL.20@EXAMPLE.NET,DISQUALIFIED,15.06.2026,Yamoussoukro,Côte d'Ivoire
+Dépôt Écluse,Henri Test,+33 6 39 98 47 45,bonjour.depot-ecluse.24@example.net,Negotiation,2021-01-27,Nice,FR
+ ,Haider Test,,hello.lead.31@example.net,Cold,2023-04-18,Lille,FR
+Comptoir Sauvigny,kais test,01 99 00 21 25,hello.comptoir-sauvigny.99@example.net,DISQUALIFIED,2022-07-17,Rabat,
+Droguerie Iris,Henri Test,+33 (0)6 39 98 47 45,,Negotiation,25.07.2021,Bristol,UK
+Boulangerie Jonquille,Henri Test,06 39 98 43 34,contact.boulangerie-jonquille.65@example.net, customer ,28/11/2022 11:26,Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Ville Nouvelle Centre,France
+Fromagerie Sauvigny,kais test,+33 1 99 00 03 08,ventes.fromagerie-sauvigny.14@example.com,DO NOT CONTACT,,Yamoussoukro,Côte d'Ivoire
+Brasserie Azur,Henri Test,,,Cold,27-05-25,Berlin,Deutschland
+Dépôt Jonquille,,+33 1 99 00 23 79,contact.depot-jonquille.137@example.com,Customer,,Valencia,España
+Négoce Cèdre,kais test,,achats.negoce-cedre.215@example.org,dnc,19.04.2025,Nantes,France
+Négoce Valmont,Haider Test,,hello.negoce-valmont.208@example.com, customer ,16.08.2024,Dijon,fr
+Supérette Bellevue Express,kais test,+33 1 99 00 17 62,, customer ,2024-02-17 18:00:33,Paris,FR
+Galerie Morvan,kais test,,ventes.galerie-morvan.194@example.net,Cool-off,2025-05-15,Rabat,
+Studio Ardoise,Henri Test,+33 6 39 98 18 55,hello.studio-ardoise.88@example.org,Cold,2022-03-26,Casablanca,Maroc
+Droguerie Clairval,kais test,06 39 98 17 63,bonjour.droguerie-clairval.190@example.com,Unqualified,2022-12-17 08:29:38,Liège,Belgique
+Comptoir Quillan,Henri Test,020 7946 0763,,Disqualified,21-12-22,Leeds,UK
+'); drop table companies; --,Henri Test,01 99 00 37 92,ventes.drop-table-companies.77@example.net,Cool-off,15/03/2023,Gand,Belgique
+Librairie Ussel,Henri Test,06 39 98 31 88,info.librairie-ussel.195@example.net,DO NOT CONTACT,,Valencia,España
+Librairie Sauvigny,Haider Test,(312) 555-0142,,Cool off,2024-10-18,Seattle,USA
+Librairie Peyrac,Haider Test,06 39 98 30 73,, customer ,2025-12-17 10:31:44,Montpellier,France
+Trading Roussel,kais test,0033 6 39 98 16 06,,Disqualified,20/05/2026 10:13,Liège,Belgique
+Librairie Fontenelle,Henri Test,+33 6 39 98 13 29,bonjour.librairie-fontenelle.50@example.org,cool off,31/02/2024,Bruxelles,Belgique
+Distribution Peyrac,Henri Test,,hello.distribution-peyrac.101@example.net,COLD,2025-01-14 10:37:23,Casablanca,Maroc
+Atelier Hautecombe,Haider Test,+33 1 99 00 39 76,achats.atelier-hautecombe.286@example.net,DISQUALIFIED,18.04.2026,Marseille,FR
+Boulangerie Falaise,Henri Test,+44 7700 900931,info.boulangerie-falaise.202@example.net,Unqualified,25-07-25,Manchester,UK
+Cave Hautecombe,kais test,,,negotiation,2024-05-19,Hamburg,Deutschland
+Import Azur,Haider Test,+33 6 39 98 45 41,bonjour.import-azur.169@example.org,Cool off,45000.5,Toulouse,FR
+Brasserie Fontenelle,Haider Test,,hello.brasserie-fontenelle.260@example.org,Unqualified,,Lille,
+Fromagerie Saint-Clair,kais test,01 99 00 23 02,sales.fromagerie-saint-clair.272@example.net,negotiation,2022-06-19 17:37:40,Valencia,España
+Boulangerie Vauclair,kais test,+1 202-555-0192,,IN_PROGRESS,26/04/2022,Chicago,USA
+Librairie Roussel,Haider Test,+33 1 99 00 03 28,"contact@example.com, ventes@example.com",Unqualified,2023-06-22,Berlin,Deutschland
+Épicerie Lumière,Henri Test,,,DISQUALIFIED,,Leeds,Royaume-Uni
+Galerie Falaise,Haider Test,,HELLO.GALERIE-FALAISE.16@EXAMPLE.ORG,Cool-off,2024-04-26 17:10:08,Seattle,États-Unis
+Trading Beaulieu,kais test,+44 20 7946 0020,ventes.trading-beaulieu.158@example.com,Warm (in progress),2021-11-24,Leeds,Royaume-Uni
+Épicerie Fine Bruyère,kais test,,,IN_PROGRESS,20-06-21,Lyon,France
+Trading Sauvigny,Henri Test,06 39 98 09 99,achats.trading-sauvigny.250@example.org,Warm (In Progress),13/12/2022,Valencia,España
+Atelier Heron Bleu SARL,Haider Test,,,Negotiation,2024-07-17,Toulouse,France
+Cave Belle Rive,Henri Test,,contact.cave-belle-rive.268@example.com,Warm (in progress),23.04.2025,Seattle,États-Unis
+Studio Roussel,kais test,+1 202-555-0145,bonjour.studio-roussel.119@example.com,Cold,24.05.2026,Boston,USA
+Cave Jonquille,kais test,06-39-98-28-49,,Customer,27-12-25,Boston,USA
+Marché Jonquille,kais test,(202) 555-0191,bonjour.marche-jonquille.60@example.com,Customer,01/01/1970,Seattle,États-Unis
+Épicerie Fontenelle,Henri Test,+44 7700 900439,,Do not contact,15/07/2022 16:42,Bristol,Royaume-Uni
+Fromagerie Sauvigny,Henri Test,,Ventes.fromagerie-sauvigny.14@example.com,Warm (In Progress),22.10.2022,Manchester,UK
+Galerie Tarnac,kais test,,  hello.galerie-tarnac.12@example.net  ,COLD,19/10/2021 16:22,Nantes,fr
+Quincaillerie Lumière,Haider Test,+33 1 99 00 01 01,hello.quincaillerie-lumiere.152@example.com,,2021-11-21,Liège,Belgique
+Fromagerie Mirabel,Henri Test,,  contact.droguerie-grandpre.17@example.com  ,cool off,28/08/2022,Hamburg,Deutschland
+Distribution Vauclair,kais test,06 39 98 04 92,,Do not contact,19-08-26,Valencia,España
+Comptoir Hautecombe,Haider Test,+1 415-555-0154,ventes.comptoir-hautecombe.144@example.com,Warm (in progress),25/03/2026 13:33,Seattle,États-Unis
+Distribution Clairval,,,,,,,
+Trading du Port,kais test,06 39 98 12 69,,dnc,,Grenoble,FR
+Studio Iris,kais test,+33 1 99 00 02 20,hello.studio-iris.223@example.org,Unqualified,2025-04-16 12:57:40,Abidjan,Côte d'Ivoire
+Import Tarnac,Haider Test,(718) 555-0109,, customer ,2026-04-24 15:07:17,New York,USA
+Epicerie Fine Bruyere,kais test,,,Warm (In Progress),28-11-25,Lyon,FR
+ ​ ​ ,Henri Test,,achats.lead.38@example.com,COLD,27.12.2025,Bruxelles,Belgique
+Librairie Orion,Henri Test,,achats.librairie-orion.289@example.com,Warm (In Progress),13/06/2022,Liège,Belgique
+Boulangerie Héron,kais test,+33 6 39 98 19 75,,Warm (in progress),15-02-26,Gand,Belgique
+Marché Morvan,Haider Test,06 39 98 32 12,sales.marche-morvan.13@example.org,IN_PROGRESS,22-10-24,Berlin,Deutschland
+Bazar Quillan,kais test,+1 213-555-0130,hello.bazar-quillan.187@example.net,Customer,17/03/2025,Seattle,États-Unis
+Boulangerie Lavandière Est,kais test,,,Negotiation,18/03/2021 11:02,Lyon,France
+Cave Beaulieu,kais test,+44 7700 900372,achats.cave-beaulieu.150@example.net,Warm (In Progress),2021-02-22 15:34:12,Leeds,Royaume-Uni
+Négoce Quillan,Haider Test,,mailto:sales.marche-morvan.13@example.org, customer ,2025-01-16,Manchester,Royaume-Uni
+Import Jonquille,Henri Test,+33 6 39 98 42 51,,Disqualified,2025-11-15,Madrid,España
+Maison Falaise,Henri Test,06 39 98 42 51,,Unqualified,24/08/2023,Dijon,FR

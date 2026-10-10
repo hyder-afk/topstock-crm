@@ -1,4 +1,5 @@
-# On merge to main: apply auth settings (invite-only, MFA, password rules; custom email templates once custom SMTP exists) and migrations to the DEV project only.
+# On merge to main: apply auth settings (invite-only, MFA, password rules; custom email templates once custom SMTP exists) to the DEV project only,
+# prove sign-ups are closed and the REST API exposes only the public schema, then apply migrations.
 # Secrets are pasted by Haider (Cloud Workflow section 5). The production project is never reachable from this repo.
 name: deploy-dev-db
 on:
@@ -48,5 +49,24 @@ jobs:
             exit 1
           fi
           echo "Dev sign-ups closed."
+      # Staged lead rows live in the private schema and stay off the REST API only because the API exposes nothing but
+      # public (config.toml: api.schemas = ["public"]). Read back what dev exposes after the config push above (which
+      # also undoes a dashboard change), so a config.toml change that exposes more, or a push that did not take effect,
+      # stops the deploy before any migration lands. The answer also carries the project's JWT secret: only the
+      # schema list is taken out of it (jq), and the token and the answer are never printed.
+      - name: Prove the dev REST API exposes only the public schema (stops the job otherwise)
+        shell: bash
+        run: |
+          if ! schemas=$(curl -fsS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+              "https://api.supabase.com/v1/projects/$DEV_PROJECT_REF/postgrest" \
+              | jq -er '.db_schema | strings | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "")) | unique | join(",")'); then
+            echo "::error::Could not read which schemas the dev REST API exposes. Migrations were not applied."
+            exit 1
+          fi
+          if [ "$schemas" != "public" ]; then
+            echo "::error::The dev REST API exposes '$schemas'; only public is allowed (supabase/config.toml). Migrations were not applied."
+            exit 1
+          fi
+          echo "Dev REST API exposes only: $schemas"
       - name: Apply migrations to dev
         run: npx supabase db push --yes

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { expect, type Page } from "@playwright/test";
+import { expect, type BrowserContext, type Page } from "@playwright/test";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
 function base32Decode(input: string) {
@@ -197,4 +197,35 @@ export function seedLeads(ownerEmails: string[], count = 120) {
     from (select c.*, row_number() over (order by c.created_at desc) as n from public.companies c) c
     where c.n % 3 = 1;
   `);
+}
+
+// Local stack only: makes this browser's last authenticator code look `seconds` old, as if it was entered that long
+// ago, so the "Confirm it's you" step can be tested without waiting 10 minutes. It back-dates the code in the auth
+// database for this browser's session only, then refreshes the session and writes it back to the auth cookie (the
+// format @supabase/ssr reads: "base64-" + base64url JSON, split into .0, .1, ... above 3180 characters).
+export async function ageStepUp(context: BrowserContext, seconds: number) {
+  const cookies = (await context.cookies()).filter((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name));
+  if (cookies.length === 0) throw new Error("no auth cookie in this browser");
+  const key = cookies[0].name.replace(/\.\d+$/, "");
+  if (!/^sb-[a-z0-9-]+-auth-token$/.test(key)) throw new Error(`unexpected auth cookie ${key}`);
+  const whole = cookies.find((c) => c.name === key);
+  const raw =
+    whole?.value ??
+    cookies
+      .map((c) => ({ i: Number(c.name.slice(key.length + 1)), value: c.value }))
+      .sort((a, b) => a.i - b.i)
+      .map((c) => c.value)
+      .join("");
+  const session = JSON.parse(raw.startsWith("base64-") ? Buffer.from(raw.slice(7), "base64url").toString("utf8") : raw);
+  const sessionId = JSON.parse(Buffer.from(session.access_token.split(".")[1], "base64url").toString("utf8")).session_id;
+  if (!/^[0-9a-f-]{36}$/.test(sessionId) || !Number.isInteger(seconds)) throw new Error("bad session or age");
+  sql(`update auth.mfa_amr_claims set created_at = now() - make_interval(secs => ${seconds}),
+       updated_at = now() - make_interval(secs => ${seconds})
+       where authentication_method = 'totp' and session_id = '${sessionId}'`);
+  const fresh = await authFetch("/token?grant_type=refresh_token", { body: { refresh_token: session.refresh_token } });
+  const value = `base64-${Buffer.from(JSON.stringify(fresh)).toString("base64url")}`;
+  const chunks = value.length <= 3180 ? [{ name: key, value }] : value.match(/.{1,3180}/g)!.map((v, i) => ({ name: `${key}.${i}`, value: v }));
+  const { domain, path, expires, httpOnly, secure, sameSite } = cookies[0];
+  await context.clearCookies({ name: new RegExp(`^${key}(\\.\\d+)?$`) });
+  await context.addCookies(chunks.map((c) => ({ ...c, domain, path, expires, httpOnly, secure, sameSite })));
 }

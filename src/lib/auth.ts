@@ -1,5 +1,5 @@
 import "server-only";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 // Where a session stands on the way in: no session, password done but no authenticator yet,
@@ -44,4 +44,32 @@ export async function apiSession() {
   const state = await getGate();
   if (state.gate !== "ok" || !state.claims) return null;
   return { supabase: state.supabase, claims: state.claims };
+}
+
+// Step-up MFA (Master Plan F3): imports, exports, deletes and role changes need an authenticator code entered in the last
+// 10 minutes; the database checks the same window (private.has_recent_aal2(600)).
+export const STEP_UP_SECONDS = 600;
+
+// Seconds left before the code in this session stops counting as fresh, with a 30 s margin so an action started now
+// still finishes inside the window. Read from the verified JWT (amr), on the server, so the browser clock never matters.
+export function stepUpSecondsLeft(claims: Record<string, unknown>, nowMs = Date.now()): number {
+  const amr = Array.isArray(claims.amr) ? claims.amr : [];
+  const times = amr
+    .filter((m): m is { method: string; timestamp: number } => typeof m === "object" && m !== null && "method" in m)
+    .filter((m) => m.method === "totp" && Number.isInteger(m.timestamp))
+    .map((m) => m.timestamp);
+  if (claims.aal !== "aal2" || times.length === 0) return 0;
+  return Math.max(0, Math.floor(Math.max(...times) + STEP_UP_SECONDS - nowMs / 1000 - 30));
+}
+
+// Admin-only pages: everyone else gets the standard 404 (the database refuses them too; this only hides the page).
+export async function requireAdmin() {
+  const session = await requireSession();
+  const { data, error } = await session.supabase
+    .from("profiles")
+    .select("role, timezone")
+    .eq("id", session.claims.sub)
+    .maybeSingle();
+  if (error || data?.role !== "admin") notFound();
+  return { ...session, timezone: typeof data.timezone === "string" && data.timezone ? data.timezone : "Europe/Paris" };
 }

@@ -32,3 +32,9 @@ yarn-error.log*
 .pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent worktrees (local, never committed)
+.claude/worktrees/
+
+# Large generated perf files (scripts/make-fake-leads.mjs --rows N --out DIR) are never committed.
+leads-*-perf.csv

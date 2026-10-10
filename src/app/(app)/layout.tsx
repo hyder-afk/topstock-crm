@@ -9,11 +9,13 @@ import { requireSession } from "@/lib/auth";
 // Everything behind the sign-in wall: a slim top bar, the page, and the floating dock.
 // Each page also calls requireSession() (layouts are not re-run on client navigation, and prefetches skip the proxy).
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  await requireSession();
+  const { supabase, claims } = await requireSession();
+  // Admin-only commands (Import leads) appear in the command menu; the pages and the database check again.
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", claims.sub).maybeSingle();
   return (
     <QueryProvider>
       <ToastProvider>
-        <KeyboardLayer>
+        <KeyboardLayer isAdmin={profile?.role === "admin"}>
           <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col px-4 sm:px-8">
             <header className="flex h-[72px] shrink-0 items-center justify-between gap-4">
               <Logo className="h-auto w-[184px] text-foreground" />

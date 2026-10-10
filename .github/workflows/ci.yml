@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Pure import rules in Node (playwright.unit.config.ts): no browser, no server.
+      - run: npm run test:unit
       - run: npm audit --omit=dev --audit-level=high
       - name: npm audit (dev tooling, report only)
         run: npm audit --audit-level=critical || true

@@ -20,9 +20,14 @@ export function countryName(code: string | null | undefined, locale: string) {
   return names.of(code) ?? code;
 }
 
+const sorted = new Map<string, { code: string; name: string }[]>();
+/** Every country with its name in this language, A to Z (worked out once per language). */
 export function countriesByName(locale: string) {
-  const collator = new Intl.Collator(locale);
-  return countryCodes
-    .map((code) => ({ code, name: countryName(code, locale) }))
-    .sort((a, b) => collator.compare(a.name, b.name));
+  let list = sorted.get(locale);
+  if (!list) {
+    const collator = new Intl.Collator(locale);
+    list = countryCodes.map((code) => ({ code, name: countryName(code, locale) })).sort((a, b) => collator.compare(a.name, b.name));
+    sorted.set(locale, list);
+  }
+  return list;
 }

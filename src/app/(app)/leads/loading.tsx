@@ -3,15 +3,19 @@ import { TableSkeleton } from "@/components/leads/leads-workspace";
 
 const bar = "rounded-sm bg-muted motion-safe:animate-pulse";
 
-// Skeleton matching the leads screen: title and Add button, toolbar, table and (desktop) the preview panel.
+// Skeleton matching the leads screen: title with the Import and Add buttons (an admin's header; it wraps on phones as
+// the real one does), toolbar, table and (desktop) the preview panel.
 export default async function Loading() {
   const t = await getTranslations("Common");
   return (
     <div aria-busy="true" className="flex flex-col gap-4 pt-4 lg:h-[calc(100dvh-72px-144px)] lg:min-h-[560px]">
       <span className="sr-only">{t("loading")}</span>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className={`h-9 w-40 sm:h-10 ${bar}`} />
-        <div className={`h-11 w-36 rounded-md ${bar}`} />
+        <div className="flex items-center gap-2">
+          <div className={`h-11 w-28 rounded-md ${bar}`} />
+          <div className={`h-11 w-36 rounded-md ${bar}`} />
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <div className={`h-11 min-w-0 flex-[1_1_280px] rounded-md sm:h-10 ${bar}`} />

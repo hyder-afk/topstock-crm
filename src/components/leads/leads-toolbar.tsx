@@ -335,6 +335,7 @@ function FilterChips({ filters, onChange, team }: { filters: LeadFilters; onChan
   if (filters.city) chips.push({ key: "city", label: tF("chipCity", { value: filters.city }), remove: () => onChange({ ...filters, city: undefined }) });
   if (filters.inactive)
     chips.push({ key: "inactive", label: tF("chipInactive", { days: filters.inactive }), remove: () => onChange({ ...filters, inactive: undefined }) });
+  if (filters.batch) chips.push({ key: "batch", label: tF("chipBatch"), remove: () => onChange({ ...filters, batch: undefined }) });
   if (!chips.length) return null;
   return (
     <ul className="flex flex-wrap items-center gap-2">

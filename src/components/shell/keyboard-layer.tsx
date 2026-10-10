@@ -13,7 +13,7 @@ export const useShell = () => useContext(ShellContext);
 
 // Keyboard-first layer for the signed-in app: Cmd/Ctrl+K and "/" open the command menu, "?" lists the shortcuts,
 // "G" then a letter opens a section. Single keys stay quiet while the person is typing in a field.
-export function KeyboardLayer({ children }: { children: React.ReactNode }) {
+export function KeyboardLayer({ children, isAdmin = false }: { children: React.ReactNode; isAdmin?: boolean }) {
   const router = useRouter();
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
@@ -73,7 +73,7 @@ export function KeyboardLayer({ children }: { children: React.ReactNode }) {
   return (
     <ShellContext.Provider value={value}>
       {children}
-      <CommandPalette open={palette} onOpenChange={setPalette} onShowShortcuts={openShortcuts} />
+      <CommandPalette open={palette} onOpenChange={setPalette} onShowShortcuts={openShortcuts} isAdmin={isAdmin} />
       <ShortcutsDialog open={help} onOpenChange={setHelp} />
     </ShellContext.Provider>
   );

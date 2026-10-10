@@ -5,9 +5,10 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { RowSelectionState } from "@tanstack/react-table";
-import { Plus, Users } from "lucide-react";
+import Link from "next/link";
+import { Plus, Upload, Users } from "lucide-react";
 import { createLead } from "@/app/(app)/leads/actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -123,6 +124,7 @@ export function LeadsWorkspace({
     else window.history.replaceState(null, "", urlFor(next));
   }, []);
   const canAssign = me.role === "admin" || me.role === "manager";
+  const isAdmin = me.role === "admin";
 
   const [views, setViews] = useState(initialViews);
   const [adding, setAdding] = useState(false);
@@ -174,11 +176,19 @@ export function LeadsWorkspace({
         </Button>
       </StatePanel>
     ) : (
-      <StatePanel title={t("emptyTitle")} text={t("emptyBody")} icon>
-        <Button onClick={() => setAdding(true)}>
-          <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
-          {t("add")}
-        </Button>
+      <StatePanel title={t("emptyTitle")} text={isAdmin ? t("emptyBody") : t("emptyBodyRep")} icon>
+        <div className="flex flex-wrap gap-3">
+          {isAdmin ? (
+            <Link href="/leads/import" className={buttonVariants()}>
+              <Upload aria-hidden="true" strokeWidth={2} className="size-4" />
+              {t("importFromSheet")}
+            </Link>
+          ) : null}
+          <Button variant={isAdmin ? "quiet" : "brand"} onClick={() => setAdding(true)}>
+            <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
+            {t("add")}
+          </Button>
+        </div>
       </StatePanel>
     );
   else
@@ -207,10 +217,18 @@ export function LeadsWorkspace({
             <span className="font-mono text-base font-normal text-muted-foreground">{format.number(total)}</span>
           ) : null}
         </h1>
-        <Button onClick={() => setAdding(true)}>
-          <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
-          {t("add")}
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Link href="/leads/import" className={buttonVariants({ variant: "quiet" })}>
+              <Upload aria-hidden="true" strokeWidth={1.75} className="size-4" />
+              {t("import")}
+            </Link>
+          ) : null}
+          <Button onClick={() => setAdding(true)}>
+            <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
+            {t("add")}
+          </Button>
+        </div>
       </div>
 
       <div className={activeId ? "hidden lg:block" : undefined}>

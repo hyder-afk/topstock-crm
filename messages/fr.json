@@ -27,6 +27,11 @@
     "body": "Réessayez. Si cela continue, prévenez Haider.",
     "retry": "Réessayer"
   },
+  "NotFound": {
+    "title": "Page introuvable",
+    "body": "Elle a peut-être été déplacée, ou elle n’est pas ouverte à votre compte.",
+    "home": "Aller à l’accueil"
+  },
   "Auth": {
     "signInTitle": "Connexion",
     "signInBody": "Utilisez l’adresse e-mail à laquelle votre invitation a été envoyée.",
@@ -134,6 +139,7 @@
     "placeholder": "Rechercher une section ou une action…",
     "empty": "Aucun résultat. Essayez le nom d’une section.",
     "goTo": "Aller à",
+    "actions": "Actions",
     "appearance": "Apparence",
     "themeLight": "Apparence claire",
     "themeDark": "Apparence sombre",
@@ -141,7 +147,8 @@
     "language": "Langue",
     "help": "Aide et compte",
     "shortcuts": "Raccourcis clavier",
-    "signOut": "Se déconnecter"
+    "signOut": "Se déconnecter",
+    "importLeads": "Importer des prospects"
   },
   "Shortcuts": {
     "title": "Raccourcis clavier",
@@ -228,7 +235,8 @@
       "chipCountry": "Pays : {value}",
       "chipCity": "Ville : {value}",
       "chipInactive": "Aucune activité depuis {days} jours",
-      "remove": "Retirer le filtre {name}"
+      "remove": "Retirer le filtre {name}",
+      "chipBatch": "Issus d’un import"
     },
     "never": "Jamais",
     "contacts": "{count, plural, =0 {Aucun contact} one {# contact} other {# contacts}}",
@@ -247,7 +255,8 @@
     "loadingMore": "Chargement d’autres prospects",
     "end": "Tous les prospects de ces filtres sont affichés.",
     "emptyTitle": "Aucun prospect pour l’instant",
-    "emptyBody": "Ajoutez votre premier prospect ici. L’import de votre fichier arrive ensuite.",
+    "emptyBody": "Importez votre fichier de prospects, ou ajoutez votre premier prospect à la main.",
+    "emptyBodyRep": "Ajoutez votre premier prospect ici.",
     "noMatchTitle": "Aucun prospect ne correspond à ces filtres",
     "noMatchBody": "Essayez moins de filtres ou une recherche plus courte.",
     "errorTitle": "Impossible de charger les prospects",
@@ -320,6 +329,298 @@
       "email": "Saisissez une adresse e-mail valide, ou laissez vide.",
       "phone": "Chiffres, espaces et + ( ) . / - uniquement."
     },
-    "noName": "Sans nom"
+    "noName": "Sans nom",
+    "import": "Importer",
+    "importFromSheet": "Importer depuis un tableur"
+  },
+  "StepUp": {
+    "title": "Confirmez votre identité",
+    "body": "Les imports modifient beaucoup de prospects d’un coup. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
+    "codeLabel": "Code à 6 chiffres",
+    "cancel": "Annuler",
+    "submit": "Confirmer",
+    "checking": "Vérification…",
+    "errors": {
+      "codeInvalid": "Saisissez les 6 chiffres de votre application d’authentification.",
+      "codeWrong": "Ce code n’a pas fonctionné. Vérifiez l’heure de votre téléphone ou attendez le code suivant.",
+      "rateLimited": "Trop d’essais. Attendez une minute, puis réessayez.",
+      "unavailable": "Impossible de vérifier le code pour l’instant. Réessayez dans un instant."
+    }
+  },
+  "Import": {
+    "title": "Importer des prospects",
+    "subtitle": "Ajoutez des prospects depuis un fichier CSV. Rien ne change dans votre CRM avant votre confirmation, et un import peut être annulé.",
+    "steps": {
+      "choose": "Fichier",
+      "match": "Colonnes",
+      "check": "Vérification",
+      "import": "Import",
+      "counter": "Étape {step} sur {total}"
+    },
+    "errors": {
+      "step_up": "Confirmez votre identité pour continuer.",
+      "forbidden": "Seuls les administrateurs peuvent importer des prospects.",
+      "incomplete": "Certaines lignes ne sont pas arrivées. Vérifiez à nouveau le fichier.",
+      "not_staged": "Cet import n’accepte plus de lignes. Commencez-en un nouveau.",
+      "not_ready": "Cet import ne peut pas faire cela pour l’instant. Actualisez la page pour voir où il en est.",
+      "too_many_open": "Il y a déjà 3 imports non terminés. Terminez ou abandonnez-en un d’abord.",
+      "bad_transition": "Cette étape n’est pas possible pour cet import.",
+      "busy": "Un autre import ou une annulation est en cours. Réessayez quand ce sera terminé.",
+      "invalid": "Un élément de la demande n’était pas correct. Actualisez la page et réessayez.",
+      "not_found": "Cet import n’existe plus. Actualisez la page.",
+      "timeout": "La base de données a mis trop de temps. Réessayez : rien n’a été ajouté deux fois.",
+      "unavailable": "Connexion perdue. Rien n’a été ajouté deux fois. Réessayez.",
+      "discard_failed": "Impossible d’abandonner cet import. Réessayez."
+    },
+    "toast": {
+      "discarded": "Import abandonné."
+    },
+    "choose": {
+      "title": "Choisissez votre fichier",
+      "body": "Un fichier CSV avec une ligne d’en-tête. Il reste sur cet ordinateur : seules les lignes nettoyées sont envoyées à la vérification.",
+      "drop": "Déposez votre CSV ici ou choisissez un fichier",
+      "pick": "Choisir un fichier CSV",
+      "limits": "Jusqu’à {rows} lignes et 15 Mo.",
+      "excelHint": "Depuis Excel : Fichier > Enregistrer une copie > CSV UTF-8.",
+      "button": "Choisir un fichier",
+      "reading": "Lecture du fichier…",
+      "safe": "Rien ne change dans votre CRM avant que vous ne confirmiez l’import.",
+      "errors": {
+        "not_csv": "Ce n’est pas un fichier CSV. Enregistrez-le en CSV UTF-8 et choisissez-le à nouveau.",
+        "too_big": "Ce fichier dépasse 15 Mo. Coupez-le en deux.",
+        "excel_file": "C’est un fichier Excel. Dans Excel : Fichier > Enregistrer une copie > CSV UTF-8, puis choisissez ce fichier.",
+        "not_text": "Ce fichier ne contient pas de texte. Enregistrez-le en CSV UTF-8.",
+        "empty": "Ce fichier est vide.",
+        "no_header": "Ce fichier n’a pas de ligne d’en-tête. Ajoutez-en une avec les noms de vos colonnes.",
+        "no_rows": "Ce fichier a un en-tête mais aucune ligne.",
+        "header_too_long": "Un nom de colonne dépasse 200 caractères. Vérifiez la première ligne.",
+        "too_many_columns": "Ce fichier a plus de 100 colonnes. Est-ce le bon fichier ?",
+        "too_many_rows": "Ce fichier a plus de {rows} lignes. Coupez-le en deux.",
+        "quote_error": "La ligne {row} ouvre un guillemet sans le fermer. Corrigez-la dans votre tableur et enregistrez à nouveau.",
+        "aborted": "Lecture arrêtée.",
+        "unreadable": "Impossible de lire ce fichier. Enregistrez-le à nouveau en CSV UTF-8."
+      }
+    },
+    "match": {
+      "title": "Associez vos colonnes",
+      "fileLine": "{file} · {rows, plural, one {{rowsFormatted} ligne} other {{rowsFormatted} lignes}} · {columns, plural, one {{columnsFormatted} colonne} other {{columnsFormatted} colonnes}} · séparées par {separator}",
+      "tab": "des tabulations",
+      "encodingNotice": "Nous avons lu ce fichier comme du texte d’Europe occidentale. Vérifiez les accents dans les exemples ci-dessous.",
+      "sameFile": "Vous avez importé exactement ce fichier le {date} ({count, plural, one {{formatted} prospect} other {{formatted} prospects}}). Les lignes importées alors apparaîtraient maintenant comme déjà dans le CRM.",
+      "restored": "Nous avons repris l’association choisie la dernière fois pour ces colonnes.",
+      "columnsTitle": "Colonnes",
+      "noHeader": "Colonne {n} (sans nom)",
+      "matched": "Associée",
+      "emptyColumn": "Colonne vide",
+      "targets": {
+        "name": "Nom de la société",
+        "owner": "Responsable",
+        "phone": "Téléphone",
+        "email": "E-mail",
+        "status": "Statut du prospect",
+        "last_activity": "Date de dernière activité",
+        "city": "Ville",
+        "country": "Pays",
+        "ignore": "Ne pas importer"
+      },
+      "needName": "Choisissez la colonne qui contient le nom de la société.",
+      "needStatus": "{count, plural, one {# mot de statut attend encore un choix} other {# mots de statut attendent encore un choix}}",
+      "statusTitle": "Statuts des prospects",
+      "statusHint": "Comment chaque mot de votre fichier devient un statut.",
+      "statusFor": "Statut pour « {value} »",
+      "choose": "Choisir…",
+      "blankStatus": "Statut vide",
+      "ownerTitle": "Responsables",
+      "ownerHint": "Nous avons associé {matched, plural, one {{matchedFormatted} nom de responsable} other {{matchedFormatted} noms de responsables}} sur {totalFormatted} à votre équipe. Invitez d’abord les personnes manquantes, ou réattribuez plus tard depuis Prospects.",
+      "ownerFor": "Responsable pour « {value} »",
+      "unassigned": "Non attribué",
+      "noName": "Pas encore de nom",
+      "countryTitle": "Pays non reconnus",
+      "countryHint": "Choisissez le pays, ou laissez vide.",
+      "countryFor": "Pays pour « {value} »",
+      "leaveBlank": "Laisser vide",
+      "tooManyValues": "Beaucoup de valeurs ne sont pas des pays. Est-ce la bonne colonne ?",
+      "dateTitle": "Dates",
+      "dateHint": "Comment les dates de dernière activité sont écrites, et leur fuseau horaire.",
+      "dateMixed": "Cette colonne mélange des dates jour en premier et mois en premier. Les lignes qui ne suivent pas l’ordre choisi seront signalées comme problèmes.",
+      "dateOrder": "Ordre des dates",
+      "dmy": "Jour en premier",
+      "mdy": "Mois en premier",
+      "dateReadsAs": "Donc {raw} est le {date}.",
+      "dateNotInOrder": "{raw} n’est pas une date dans cet ordre.",
+      "dayOne": "1er",
+      "timeZone": "Fuseau horaire",
+      "rowsCount": "{count, plural, one {{formatted} ligne} other {{formatted} lignes}}",
+      "needsChoice": "un choix est nécessaire",
+      "back": "Choisir un autre fichier",
+      "preparing": "Préparation…",
+      "check": "Vérifier le fichier",
+      "previewCounts": "{ready, plural, one {{readyFormatted} ligne prête à vérifier} other {{readyFormatted} lignes prêtes à vérifier}} · {fix, plural, one {{fixFormatted} à corriger} other {{fixFormatted} à corriger}}",
+      "previewCounting": "Comptage des lignes…"
+    },
+    "check": {
+      "checkingTitle": "Vérification de votre fichier",
+      "sending": "Envoi des lignes… {done} sur {total}",
+      "duplicates": "Recherche des doublons…",
+      "resultsTitle": "Résultat de la vérification",
+      "resultsBody": "{file} · {rows, plural, one {{rowsFormatted} ligne} other {{rowsFormatted} lignes}}. Rien n’a encore été ajouté.",
+      "tiles": {
+        "ready": "Seront ajoutés",
+        "existing": "Déjà dans le CRM",
+        "existingHint": "Ignorés",
+        "repeated": "En double dans le fichier",
+        "repeatedHint": "Seul le premier est gardé",
+        "rejected": "Impossible à importer"
+      },
+      "whyNot": "Pourquoi certaines lignes ne peuvent pas être importées",
+      "withChanges": "Ajoutés avec une modification",
+      "rowsTitle": "Lignes à examiner",
+      "download": "Télécharger les lignes non importées (CSV)",
+      "downloadNow": "Téléchargez-le maintenant : nous n’en gardons pas de copie après l’import. Il s’ouvre dans Excel et, une fois corrigé, peut être importé tel quel.",
+      "noFile": "Choisissez à nouveau le même fichier pour voir les noms des sociétés et télécharger les lignes non importées.",
+      "chooseFile": "Choisir le fichier",
+      "notSameFile": "Ce n’est pas le même fichier. Choisissez le fichier avec lequel cet import a été vérifié.",
+      "filterLabel": "Afficher les lignes",
+      "filters": {
+        "all": "Toutes",
+        "rejected": "Non importables",
+        "duplicate_file": "En double",
+        "duplicate_existing": "Déjà dans le CRM",
+        "fixed": "Modifiées"
+      },
+      "issuesError": "Impossible de charger les lignes.",
+      "retry": "Réessayer",
+      "noRows": "Aucune ligne ici.",
+      "colRow": "Ligne",
+      "colCompany": "Société",
+      "colWhat": "Ce qui s’est passé",
+      "noName": "(sans nom)",
+      "chooseFileForNames": "Choisissez le fichier pour voir les noms",
+      "import": "{count, plural, one {Importer {formatted} prospect} other {Importer {formatted} prospects}}",
+      "nothingNew": "Rien de nouveau à importer.",
+      "discard": "Abandonner",
+      "alreadyAdded": "{count, plural, one {{formatted} prospect déjà ajouté : l’import reprend là où il s’est arrêté.} other {{formatted} prospects déjà ajoutés : l’import reprend là où il s’est arrêté.}}",
+      "csvRow": "Ligne",
+      "csvProblem": "Problème",
+      "csvSuffix": "lignes-non-importees",
+      "importingTitle": "Import en cours",
+      "importing": "{done, plural, one {{doneFormatted} importé} other {{doneFormatted} importés}} sur {total}",
+      "importingCount": "{done, plural, one {{doneFormatted} importé} other {{doneFormatted} importés}}",
+      "keepOpen": "Gardez cet onglet ouvert. S’il se ferme, l’import se met en pause et vous pourrez le reprendre depuis Imports précédents.",
+      "doneTitle": "{count, plural, one {{formatted} prospect ajouté} other {{formatted} prospects ajoutés}}",
+      "doneBody": "Votre équipe peut les voir dès maintenant. Vous pouvez annuler cet import depuis Imports précédents.",
+      "doneLate": "{count, plural, one {{formatted} prospect a été ajouté par votre équipe pendant l’import ; il a donc été ignoré.} other {{formatted} prospects ont été ajoutés par votre équipe pendant l’import ; ils ont donc été ignorés.}} Vous pouvez annuler cet import depuis Imports précédents.",
+      "seeLeads": "Voir ces prospects",
+      "another": "Importer un autre fichier"
+    },
+    "problems": {
+      "name_missing": "Le nom de la société est vide",
+      "name_too_long": "Le nom de la société dépasse 200 caractères",
+      "columns_extra": "Cette ligne a plus de cellules que l’en-tête",
+      "cell_too_long": "Une cellule dépasse 2 000 caractères",
+      "email_invalid": "L’adresse e-mail ne semble pas correcte",
+      "phone_invalid": "Le numéro de téléphone ne semble pas correct",
+      "phone_mangled": "Excel a modifié ce numéro (il apparaît comme un nombre du type 3,36E+11)",
+      "phone_too_long": "Le numéro de téléphone dépasse 40 caractères",
+      "date_invalid": "La date de dernière activité n’existe pas",
+      "date_future": "La date de dernière activité est dans le futur",
+      "date_too_old": "La date de dernière activité est antérieure à 1990",
+      "city_too_long": "La ville dépasse 120 caractères",
+      "unknown": "Cette ligne ne peut pas être importée"
+    },
+    "fixes": {
+      "email_dropped": "E-mail laissé de côté (il ne semblait pas correct)",
+      "phone_dropped": "Téléphone laissé de côté (il ne semblait pas correct)",
+      "date_dropped": "Date de dernière activité laissée de côté",
+      "city_dropped": "Ville laissée de côté (trop longue)",
+      "owner_unassigned": "Le responsable n’est pas un utilisateur du CRM : prospect non attribué",
+      "country_dropped": "Pays non reconnu : laissé vide"
+    },
+    "reasons": {
+      "owner_unknown": "Le responsable ne fait pas partie de votre équipe",
+      "date_out_of_range": "La date de dernière activité est dans le futur ou antérieure à 1990",
+      "db_name": "Le nom de la société ne peut pas être enregistré",
+      "db_phone": "Le numéro de téléphone ne peut pas être enregistré",
+      "db_email": "L’adresse e-mail ne peut pas être enregistrée",
+      "db_city": "La ville ne peut pas être enregistrée",
+      "db_country": "Le pays ne peut pas être enregistré",
+      "db_status": "Le statut ne peut pas être enregistré"
+    },
+    "dupes": {
+      "file": {
+        "email": "Même e-mail que la ligne {row}",
+        "phone": "Même téléphone que la ligne {row}",
+        "name": "Même société et même ville que la ligne {row}"
+      },
+      "existing": {
+        "email": "Déjà dans le CRM : {name} (même e-mail)",
+        "phone": "Déjà dans le CRM : {name} (même téléphone)",
+        "name": "Déjà dans le CRM : {name} (même société et même ville)"
+      },
+      "existingNoName": {
+        "email": "Déjà dans le CRM (même e-mail)",
+        "phone": "Déjà dans le CRM (même téléphone)",
+        "name": "Déjà dans le CRM (même société et même ville)"
+      }
+    },
+    "history": {
+      "title": "Imports précédents",
+      "error": "Impossible de charger les imports précédents.",
+      "retry": "Réessayer",
+      "empty": "Aucun import pour l’instant. Votre premier import apparaîtra ici.",
+      "someone": "Quelqu’un",
+      "when": "{date} · {who}",
+      "status": {
+        "staged": "Envoi non terminé",
+        "dry_run": "Vérifié, non importé",
+        "committing": "En pause",
+        "imported": "Importé",
+        "rolling_back": "Annulation en pause",
+        "rolled_back": "{count, plural, =0 {Annulé} one {Annulé · {formatted} gardé} other {Annulé · {formatted} gardés}}",
+        "discarded": "Abandonné",
+        "running": "En cours dans cet onglet"
+      },
+      "review": "Revoir",
+      "resume": "Reprendre",
+      "seeLeads": "Voir les prospects",
+      "undo": "Annuler l’import",
+      "resumeUndo": "Reprendre l’annulation",
+      "discard": "Abandonner",
+      "counts": {
+        "added": "{count, plural, one {{formatted} ajouté} other {{formatted} ajoutés}}",
+        "ready": "{count, plural, one {{formatted} prêt} other {{formatted} prêts}}",
+        "rows": "{count, plural, one {{formatted} ligne} other {{formatted} lignes}}",
+        "existing": "{formatted} déjà dans le CRM",
+        "repeated": "{formatted} en double",
+        "rejected": "{count, plural, one {{formatted} non importé} other {{formatted} non importés}}"
+      }
+    },
+    "undo": {
+      "title": "Annuler cet import ?",
+      "body": "{removable, plural, =0 {Aucun prospect ajouté depuis {file} le {date} n’est resté intact : rien ne sera supprimé.} one {Cela supprime le prospect ajouté depuis {file} le {date} sur lequel personne n’a travaillé.} other {Cela supprime les {removableFormatted} prospects ajoutés depuis {file} le {date} sur lesquels personne n’a travaillé.}} {kept, plural, =0 {} one {{keptFormatted} prospect sur lequel votre équipe a travaillé depuis (un appel, une note, un contact, une affaire ou toute modification, y compris un nouveau responsable) est gardé.} other {{keptFormatted} prospects sur lesquels votre équipe a travaillé depuis (un appel, une note, un contact, une affaire ou toute modification, y compris un nouveau responsable) sont gardés.}}",
+      "loading": "Comptage des prospects de cet import…",
+      "running": "{done, plural, one {{doneFormatted} supprimé} other {{doneFormatted} supprimés}} sur {total}",
+      "done": "{removed, plural, one {{removedFormatted} supprimé} other {{removedFormatted} supprimés}}. {kept, plural, one {{keptFormatted} gardé} other {{keptFormatted} gardés}}.",
+      "keep": "Tout garder",
+      "remove": "{count, plural, one {Supprimer {formatted} prospect} other {Supprimer {formatted} prospects}}",
+      "finish": "Terminer l’annulation",
+      "close": "Fermer",
+      "runningTitle": "Annulation de l’import en cours",
+      "runningBody": "Gardez cet onglet ouvert. S’il se ferme, l’annulation se met en pause et vous pourrez la reprendre depuis Imports précédents.",
+      "doneTitle": "Import annulé",
+      "pausedTitle": "Annulation en pause",
+      "errorTitle": "Annulation non commencée",
+      "errors": {
+        "unavailable": "Connexion perdue. L’annulation est en pause : reprenez-la depuis Imports précédents.",
+        "timeout": "La base de données a mis trop de temps. L’annulation est en pause : reprenez-la depuis Imports précédents.",
+        "preview": "Impossible de compter les prospects de cet import. Fermez cette fenêtre et réessayez."
+      }
+    },
+    "discardConfirm": {
+      "title": "Abandonner cette vérification ?",
+      "body": "Rien n’a été ajouté à votre CRM. Vous pourrez vérifier le fichier à nouveau quand vous voudrez.",
+      "keep": "La garder",
+      "confirm": "Abandonner"
+    }
   }
 }
