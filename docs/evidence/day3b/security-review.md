@@ -52,3 +52,32 @@ URL query (the helpers only ever run against the local stack; environment values
   that has a second layer (removing both is caught).
 - `tests/auth/import.spec.ts`: a rep gets a not-found page, sees no import buttons or menu entry, and the issues
   endpoint answers 403.
+
+## Covers the final head (everything after b6416b8)
+
+The review above ran on b6416b8. Every later commit was reviewed again by a security reviewer (and a design reviewer),
+with a skeptic per finding:
+
+| Commit | What changed | Security result |
+|---|---|---|
+| 0b480cd | Layout: the wizard fills the width | Screen only |
+| ae4c911 | `no-console` on the server files that handle import data | Lint guard; no `console` call anywhere in `src` |
+| 3a8a69f | deploy-dev-db proves the dev REST API exposes only `public` | Runs on a push to main or by hand, never on PR input; `bash -eo pipefail` stops the job on a failed call; the Management API answer goes straight into `jq`, which keeps only `db_schema`; no body is printed; no `set -x` |
+| b39ff78 | Import security e2e | Tests only; the helpers refuse non-local URLs |
+| 410d244 | Name rule: any phone keeps a row out of the company + city match | Still SECURITY INVOKER, static SQL, `search_path = ''`; no new grants; RLS untouched; the same test in Check and in Import; mutation 36 catches its removal |
+| 88fb1e2 | Live counts on Match, late choices used, leftovers discarded, safer review and resume | No new server entry point: the only new call is the existing `discardImport` action (Zod `strictObject`, explicit arguments, session, codes-only errors); the database still checks admin + fresh code and refuses to discard a started, imported or undone import; the remembered matching is still a SHA-256 key holding column targets only |
+| eb6e66e | Time zone and country names prepared while the file is read | Caches keyed by language and zone id; they hold names only, never file data |
+| b2e292e | Date order example under the menu, 248 px menus | React text through next-intl; nothing rendered as HTML |
+| 5f30c4a | US and Canada phone key limit written up (design open question 7), test rows | Tests and docs; a duplicate-matching limit that Check shows before anything is written, not a security boundary |
+| 741164f | Final review fixes (headers, live counts, date example, measure, French "1er") | Screen and accessibility; plus: a check opened again from Past imports is no longer discarded at the next Check |
+| 3714b74 | The step heading takes focus after the new step is drawn | Screen only: CI on 5f30c4a failed once on Chromium and WebKit because the heading was focused on the next frame, which a busy main thread can run before the new step is drawn; reproduced at 4x and 8x CPU (focus on the page in 5 of 12 tries), 18 of 18 after the fix |
+
+Findings: one confirmed nit (the leftover discard above), fixed in 741164f. One refuted: the `no-console` rule does not
+list every server file (there is no `console` call anywhere in `src`; the row above now says what it covers).
+
+Checks on the final head: lint (0 errors), typecheck, unit tests (166), the database suite (`rls_attack`,
+`import_attack` with the new phone rows, `import_concurrency`, advisors with no ERROR), import e2e 14 of 14 on Chromium
+(WebKit runs in CI), the import screenshots (112, no console error, no sideways scroll), Semgrep with the CI rule sets
+(no finding), gitleaks on the branch history (no leak), `npm audit --omit=dev` (0). Development tooling only: a new
+advisory for `braces` (GHSA-vfj7-8cjw-p6xm, every version, pulled in by the Next.js ESLint config) affects the lint
+step, never the app; no fixed version exists yet, and CI reports development advisories without failing.
