@@ -123,6 +123,61 @@ begin
   end if;
 end $$;
 
+-- 0b. The key rules table shared with the TypeScript copy (tests/unit/helpers/dedupe-ref.ts) ---------------------
+-- tests/unit/key-rules.spec.ts holds the same rows and checks that the literal between the two markers below equals
+-- them, then runs them through the TypeScript copy: both sides give the same keys. Columns: name, city, country, email,
+-- phone, then the expected name, email and phone keys. Characters that lower() or [[:punct:]] treat differently in an
+-- ICU database (Supabase, CI) and a libc one (the local runner), such as + $ = or emoji, are left out on purpose.
+do $$
+declare
+  t record;
+begin
+  for t in select * from (values
+      -- key-table:start
+      ('Café Gamma S.A.R.L.', 'Lyon', 'FR', ' Alpha@Example.COM ', '+33 (0)6 12 34 56 78', 'cafegamma|lyon|FR', 'alpha@example.com', '612345678'),
+      ('CAFE GAMMA SARL', 'LYON', 'FR', 'alpha@example.com', '06.12.34.56.78', 'cafegamma|lyon|FR', 'alpha@example.com', '612345678'),
+      ('Œuvre & Fils', 'Saint-Étienne', 'FR', '   ', '0033 6 12 34 56 78', 'oeuvrefils|saintetienne|FR', null, '612345678'),
+      ('ŒUVRE ÆTHER æon', 'Århus', 'DK', 'ÉLODIE@EXEMPLE.FR', '1234567', 'oeuvreaetheraeon|arhus|DK', 'élodie@exemple.fr', null),
+      ('Straße Müller GmbH', 'München', 'DE', null, '12345678', 'strassemuller|munchen|DE', null, '12345678'),
+      ('GROẞHANDEL KG', 'Köln', 'DE', null, '123456789012345', 'großhandelkg|koln|DE', null, '789012345'),
+      ('ſtore ŉ Co', 'Paris', 'FR', null, '1234567890123456', 'storenco|paris|FR', null, null),
+      ('Łódź Trading Sp', 'Łódź', 'PL', null, '+33 6 12 34 56 78 / +33 6 98 76 54 32', 'lodztradingsp|lodz|PL', null, null),
+      ('ÀÉÎÕÜ Ÿ Ñ Ç Ø Đ Ħ Ŧ ĸ Ŋ', 'Ðorđe', 'RS', null, U&'\FF10\FF16 \FF11\FF12 \FF13\FF14 \FF15\FF16 \FF17\FF18', 'aeiouyncodhtkn|dorde|RS', null, null),
+      ('Ĳssel BV', 'Zwolle', 'NL', null, U&'\0660\0666\0661\0662\0663\0664\0665\0666\0667\0668', 'ĳssel|zwolle|NL', null, null),
+      ('İstanbul Ltd. Şti.', 'İzmir', 'TR', null, null, 'istanbulsti|izmir|TR', null, null),
+      ('SARL', 'Paris', 'FR', null, null, 'sarl|paris|FR', null, null),
+      ('S.A.S.', 'Nantes', 'FR', null, null, 'sas|nantes|FR', null, null),
+      ('SA SARL', 'Lille', 'FR', null, null, 'sasarl|lille|FR', null, null),
+      ('Sasu Sasso SAS', 'Nice', 'FR', null, null, 'sasso|nice|FR', null, null),
+      ('Acme_SARL', 'Brest', 'FR', null, null, 'acme|brest|FR', null, null),
+      ('Sarlington Limited', 'Leeds', 'GB', null, null, 'sarlington|leeds|GB', null, null),
+      ('3M France SAS', 'Cergy', 'FR', null, null, '3mfrance|cergy|FR', null, null),
+      ('Bistrot l’Ami Jean', 'Paris', 'FR', null, null, 'bistrotlamijean|paris|FR', null, null),
+      ('Chez l''Ami', 'Paris', 'FR', null, null, 'chezlami|paris|FR', null, null),
+      (U&'Maison\00A0Verdane\202FLtd', U&'Lyon\00A0', 'FR', null, null, 'maisonverdane|lyon|FR', null, null),
+      (U&'\FF34\FF2F\FF30 \FF33\FF34\FF2F\FF23\FF2B', U&'\FF30\FF41\FF52\FF49\FF53', 'FR', U&'Contact@\FF25\FF38\FF21\FF2D\FF30\FF2C\FF25.com', null, U&'\FF54\FF4F\FF50\FF53\FF54\FF4F\FF43\FF4B|\FF50\FF41\FF52\FF49\FF53|FR', U&'contact@\FF45\FF58\FF41\FF4D\FF50\FF4C\FF45.com', null),
+      (U&'\FF21\FF22\FF23\FF01\FF06\FF08\FF11\FF12\FF13\FF09', U&'Lyon\3000Est', 'FR', null, null, U&'\FF41\FF42\FF43\FF11\FF12\FF13|lyonest|FR', null, null),
+      ('東京商事', 'Tokyo', 'JP', null, null, '東京商事|tokyo|JP', null, null),
+      ('Dupont, Fils & Cie', 'Saint-Denis', 'FR', null, null, 'dupontfilscie|saintdenis|FR', null, null),
+      ('Le "Petit" Marché', 'Aix-en-Provence', 'FR', null, null, 'lepetitmarche|aixenprovence|FR', null, null),
+      ('Alpha', '', 'FR', null, null, null, null, null),
+      ('Alpha', ' - ', 'FR', null, null, null, null, null),
+      ('Alpha', null, 'FR', null, null, null, null, null),
+      ('!!!', 'Paris', 'FR', null, null, null, null, null),
+      ('Delta', 'Nantes', null, null, null, 'delta|nantes|', null, null)
+      -- key-table:end
+    ) as k (name, city, country, email, phone, name_key, email_key, phone_key) loop
+    if private.lead_name_key(t.name, t.city, t.country) is distinct from t.name_key
+       or private.lead_email_key(t.email) is distinct from t.email_key
+       or private.lead_phone_key(t.phone) is distinct from t.phone_key then
+      raise exception 'FAIL: key table row (%, %, %, %, %) gave (%, %, %), expected (%, %, %)',
+        t.name, t.city, t.country, t.email, t.phone,
+        private.lead_name_key(t.name, t.city, t.country), private.lead_email_key(t.email), private.lead_phone_key(t.phone),
+        t.name_key, t.email_key, t.phone_key;
+    end if;
+  end loop;
+end $$;
+
 -- 1. anon: no function, no batch, no working rows ------------------------------------------------------------------
 set role anon;
 do $$ begin perform set_config('request.jwt.claims', '{"role":"anon"}', false); end $$;
