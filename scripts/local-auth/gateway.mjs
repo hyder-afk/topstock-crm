@@ -130,7 +130,9 @@ export function sqlResult({ status, out, err }, role) {
   return { ok: false, status: httpStatus(code, role), body: { code, message: "database error", details: null, hint: null } };
 }
 
-// The whole body as UTF-8 JSON, at most MAX_BODY bytes (413 above that).
+// The whole body as UTF-8 text, at most MAX_BODY bytes (413 above that), checked with JSON.parse but passed on as
+// sent (an empty body is "{}"): a parse-and-stringify copy would round big numbers and turn 1e400 into null, while
+// jsonb keeps them exactly as numeric.
 function readBody(req) {
   return new Promise((resolve, reject) => {
     if (Number(req.headers["content-length"] || 0) > MAX_BODY) {
@@ -147,12 +149,13 @@ function readBody(req) {
     req.on("error", reject);
     req.on("end", () => {
       if (size > MAX_BODY) return reject(new LocalError(413, "request body over 2 MB"));
-      const raw = Buffer.concat(chunks).toString("utf8");
+      const raw = Buffer.concat(chunks).toString("utf8") || "{}";
       try {
-        resolve(raw ? JSON.parse(raw) : {});
+        JSON.parse(raw);
       } catch {
-        reject(new LocalError(400, "invalid JSON body"));
+        return reject(new LocalError(400, "invalid JSON body"));
       }
+      resolve(raw);
     });
   });
 }
@@ -166,26 +169,29 @@ async function rest(req, res) {
 
   if (parts[0] === "rpc" && NAME.test(parts[1] || "") && req.method === "POST") {
     const body = await readBody(req);
-    const a = sqlResult(await runCall(claims, { kind: "rpc", name: parts[1], body: JSON.stringify(body) }), claims.role);
+    const a = sqlResult(await runCall(claims, { kind: "rpc", name: parts[1], body }), claims.role);
     if (!a.ok) return send(res, a.status, a.body);
     return a.out === "" ? send(res, 204) : send(res, 200, a.out);
   }
 
   if (parts.length === 1 && NAME.test(parts[0]) && (req.method === "GET" || req.method === "PATCH")) {
-    const filters = {};
+    // A Map, not {}: on a plain object the key "__proto__" is dropped silently, and a request filtered only by it
+    // would act on every row RLS allows. Every filter name reaches the database, which answers 42703 (400) for a
+    // column that does not exist, as PostgREST does. A repeated column (PostgREST ANDs both) is refused, not guessed.
+    const filters = new Map();
     let cols = null;
     for (const [k, v] of url.searchParams) {
       if (k === "select") cols = v.split(",").map((c) => c.trim());
-      else if (NAME.test(k) && v.startsWith("eq.")) filters[k] = v.slice(3);
+      else if (NAME.test(k) && v.startsWith("eq.") && !filters.has(k)) filters.set(k, v.slice(3));
       else return send(res, 400, localBody(`unsupported query ${k}=${v}`));
     }
-    const call = { name: parts[0], filters: JSON.stringify(filters) };
+    const call = { name: parts[0], filters: JSON.stringify(Object.fromEntries(filters)) };
     let r;
     if (req.method === "GET") {
       if (!cols || !cols.every((c) => NAME.test(c))) return send(res, 400, localBody("list the columns"));
       r = await runCall(claims, { ...call, kind: "select", cols: cols.join(",") });
     } else {
-      r = await runCall(claims, { ...call, kind: "update", body: JSON.stringify(await readBody(req)) });
+      r = await runCall(claims, { ...call, kind: "update", body: await readBody(req) });
     }
     const a = sqlResult(r, claims.role);
     if (!a.ok) return send(res, a.status, a.body);

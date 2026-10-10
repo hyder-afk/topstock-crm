@@ -7,7 +7,7 @@
 // It reads SUPABASE_LOCAL_URL, SUPABASE_LOCAL_SERVICE_ROLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_LOCAL_DB_URL
 // from the stack's env file ($OUT/env, default /tmp/topstock-auth/env), which wins over the shell (the shell may hold
 // the dev project's anon key); without the file, from the shell. Both URLs must point at 127.0.0.1 or localhost.
-// Sections 8 and 9 check how errors pass through and that a failed call writes nothing (probe row in local-api.sql).
+// Sections 8 to 12 check how errors, bodies and filters pass through, on the probe row in local-api.sql.
 // Prints one line per check and exits 1 if any check fails.
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -243,6 +243,60 @@ function psql(script) {
   const good = await call(SERVICE, JSON.stringify({ p_payload: { write: "after" } }));
   const now = await getNote();
   check("a successful call is committed", good.status === 200 && now === "after", `${shown(good)}, note ${JSON.stringify(now)}`);
+}
+
+// 10. The body reaches the database as sent, not as a JSON.parse/JSON.stringify copy (which rounds big numbers and
+//     turns 1e400 into null), and the result comes back as the database wrote it.
+{
+  const big = "123456789012345678901234567890";
+  const precise = "0.1000000000000000055511151231257827";
+  const r = await call(SERVICE, `{"p_payload":{"echo":{"big":${big},"huge":1e400,"precise":${precise}}}}`);
+  const want = `{"big": ${big}, "huge": 1${"0".repeat(400)}, "precise": ${precise}}`;
+  check("big numbers reach the database exactly", r.status === 200 && r.json?.echo_text === want, shown(r));
+  check("and come back exactly in the result", r.text.includes(`"echo": ${want}`));
+}
+
+// 11. Table PATCH then GET on the probe row as service_role: awkward text comes back byte for byte, also as the
+//     filter, and so does a ~300 KB value. anon gets nothing (no grant, RLS on): 401 with 42501.
+{
+  const awkward = "Bob it's $$ \\ :'role' é";
+  const p = await setNote(awkward);
+  const g = await request("GET", `${ROWS}?select=id,note&note=eq.${encodeURIComponent(awkward)}`, SERVICE);
+  check(
+    "awkward value: PATCH, then GET filtered by it",
+    p.status === 204 && g.status === 200 && g.json?.length === 1 && g.json[0].id === 1 && g.json[0].note === awkward,
+    `PATCH HTTP ${p.status}, GET ${shown(g)}`,
+  );
+  const large = awkward.repeat(Math.ceil((300 * 1024) / Buffer.byteLength(awkward)));
+  const p2 = await setNote(large);
+  const back = await getNote();
+  check(
+    `${Buffer.byteLength(large)}-byte value: PATCH, then GET byte for byte`,
+    p2.status === 204 && typeof back === "string" && Buffer.from(back, "utf8").equals(Buffer.from(large, "utf8")),
+    `PATCH HTTP ${p2.status}, ${typeof back === "string" ? Buffer.byteLength(back) : back} bytes back`,
+  );
+  const anon = await request("GET", `${ROWS}?select=id`, ANON);
+  check("anon cannot read the probe row (401, 42501)", anon.status === 401 && anon.json?.code === "42501", shown(anon));
+}
+
+// 12. Filter names: "__proto__", "constructor" and "prototype" reach the database like any other name and are refused
+//     as unknown columns (400, 42703), as PostgREST does, so a PATCH filtered only by "__proto__" changes nothing.
+//     A repeated filter is refused (400) rather than half applied.
+{
+  await setNote("untouched");
+  for (const name of ["__proto__", "constructor", "prototype"]) {
+    const g = await request("GET", `${ROWS}?select=id,note&${name}=eq.x`, SERVICE);
+    check(`GET filtered by ${name}: 400, 42703`, g.status === 400 && g.json?.code === "42703", shown(g));
+  }
+  const p = await request("PATCH", `${ROWS}?__proto__=eq.x`, SERVICE, JSON.stringify({ note: "changed" }));
+  const kept = await getNote();
+  check(
+    "PATCH filtered only by __proto__: 400, 42703, nothing changed",
+    p.status === 400 && p.json?.code === "42703" && kept === "untouched",
+    `${shown(p)}, note ${JSON.stringify(kept)}`,
+  );
+  const twice = await request("GET", `${ROWS}?select=id&id=eq.1&id=eq.2`, SERVICE);
+  check("a repeated filter: 400", twice.status === 400 && twice.json?.code === "LOCAL", shown(twice));
 }
 
 console.log(failed ? `${failed} check(s) failed` : "all checks passed");

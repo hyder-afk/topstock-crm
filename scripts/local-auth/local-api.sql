@@ -146,8 +146,8 @@ grant select, update on table public.local_gateway_probe_rows to service_role;
 --   cast: casts this text to integer (a 22P02 error whose message quotes the value, as an imported value would be);
 --   raise: raises 22023 with a fixed detail and hint;
 --   raise_with: sends a NOTICE with its own hint, then raises 22023 with this object's message, detail and hint;
--- otherwise it reports what reached the database: byte size and md5 of p_payload->>'blob', and the role and JWT role
--- the call ran as. Executable by service_role only, so an anon call must fail.
+-- otherwise it reports what reached the database: byte size and md5 of p_payload->>'blob', p_payload->'echo' as JSON
+-- and as text, and the role and JWT role the call ran as. Executable by service_role only, so an anon call must fail.
 create or replace function public.local_gateway_probe(p_payload jsonb) returns jsonb
 language plpgsql set search_path = '' as $$
 begin
@@ -170,6 +170,8 @@ begin
   return jsonb_build_object(
     'bytes', octet_length(p_payload->>'blob'),
     'md5', md5(p_payload->>'blob'),
+    'echo', p_payload->'echo',
+    'echo_text', (p_payload->'echo')::text,
     'role', current_user,
     'jwt_role', current_setting('request.jwt.claims', true)::jsonb->>'role');
 end;
