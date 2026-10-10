@@ -129,6 +129,22 @@ $$;
 create trigger touch_company_activity after insert on public.activities
   for each row execute function private.touch_company_activity();
 
+-- An activity's time is the server's clock for people using the app (a future date would push the lead's last
+-- activity forward); maintenance and import sessions (no auth.uid()) may keep historical dates. It never changes later.
+create function private.set_activity_time() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' then
+    new.created_at := old.created_at;
+  elsif (select auth.uid()) is not null then
+    new.created_at := now();
+  end if;
+  return new;
+end;
+$$;
+create trigger set_activity_time before insert or update on public.activities
+  for each row execute function private.set_activity_time();
+
 -- The audit log skips updates that only move the last-activity date (the activity itself is audited).
 create or replace function private.audit_row() returns trigger
 language plpgsql security definer set search_path = '' as $$
@@ -225,9 +241,13 @@ drop policy deals_rw on public.deals;
 create policy deals_rw on public.deals for all to authenticated
   using (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid())))
   with check (org_id = (select private.current_org_id()) and ((select private.is_manager_or_admin()) or owner_id = (select auth.uid()))
-    and (deals.contact_id is null or exists (select 1 from public.contacts p where p.id = deals.contact_id))
     and (deals.company_id is null or exists (select 1 from public.companies p where p.id = deals.company_id
          and ((select private.is_manager_or_admin()) or p.owner_id = (select auth.uid()))))
+    -- the contact must belong to a lead the caller may change, and to the deal's lead when both are set
+    and (deals.contact_id is null or exists (select 1 from public.contacts k join public.companies p on p.id = k.company_id
+         where k.id = deals.contact_id
+           and (deals.company_id is null or k.company_id = deals.company_id)
+           and ((select private.is_manager_or_admin()) or p.owner_id = (select auth.uid()))))
     and exists (select 1 from public.pipeline_stages p where p.id = deals.stage_id));
 
 -- ---------------------------------------------------------------------------
@@ -530,6 +550,7 @@ revoke all on function private.like_escape(text), private.touch_company_activity
 grant execute on function private.like_escape(text),
   private.filtered_leads(text, text[], uuid[], boolean, text[], text, integer) to authenticated;
 revoke all on function private.touch_company_activity() from authenticated;
+revoke all on function private.set_activity_time() from public, anon, authenticated;
 
 do $$
 declare

@@ -257,6 +257,8 @@ begin
     $q$insert into public.deals (contact_id, stage_id) values ('10000000-0000-0000-0000-0000000000c1', (select id from public.pipeline_stages where position = 1))$q$,
     -- a deal on a lead the caller may not change
     $q$insert into public.deals (company_id, stage_id) values ('30000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
+    $q$insert into public.deals (contact_id, stage_id) values ('10000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
+    $q$insert into public.deals (company_id, contact_id, stage_id) values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
     $q$insert into public.deals (stage_id) values ('20000000-0000-0000-0000-0000000000c1')$q$,
     -- a contact on someone else's lead, or another org's
     $q$insert into public.contacts (first_name, company_id) values ('x', '30000000-0000-0000-0000-0000000000b1')$q$,
@@ -289,6 +291,17 @@ begin
   -- Rep A logged a call on lead a1 just above: its last-activity date moved to now.
   if (select last_activity_at from public.companies where id = '30000000-0000-0000-0000-0000000000a1') < now() - interval '1 minute' then
     raise exception 'FAIL: logging a call did not move the last-activity date';
+  end if;
+  -- A client-chosen time is ignored: the server's clock decides, so nobody can push a lead's last activity ahead.
+  insert into public.activities (company_id, type, created_at)
+  values ('30000000-0000-0000-0000-0000000000a1', 'note', now() + interval '5 years');
+  if (select max(created_at) from public.activities where company_id = '30000000-0000-0000-0000-0000000000a1') > now() + interval '1 minute'
+     or (select last_activity_at from public.companies where id = '30000000-0000-0000-0000-0000000000a1') > now() + interval '1 minute' then
+    raise exception 'FAIL: an activity dated in the future moved the last-activity date';
+  end if;
+  update public.activities set created_at = now() + interval '5 years' where id = '50000000-0000-0000-0000-0000000000a1';
+  if (select created_at from public.activities where id = '50000000-0000-0000-0000-0000000000a1') > now() + interval '1 minute' then
+    raise exception 'FAIL: an activity time was changed after the fact';
   end if;
   -- Logging on rep B's lead is allowed and moves its date too (the team works every lead).
   insert into public.activities (company_id, type) values ('30000000-0000-0000-0000-0000000000b1', 'note');
