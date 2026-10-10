@@ -1,5 +1,6 @@
 // Column mapping (design 3.3): which column feeds which lead field. Mappings are arrays indexed by column, never
 // objects keyed by header text.
+import { sha256Hex } from "./decode";
 import { cleanText, fold } from "./text";
 
 export const FIELD_TARGETS = ["name", "owner", "phone", "email", "status", "last_activity", "city", "country"] as const;
@@ -151,7 +152,15 @@ export function columnFor(mapping: ColumnMapping, field: FieldTarget): number {
   return mapping.indexOf(field);
 }
 
-/** Stable text for remembering a mapping per header row (the UI hashes it before using it as a storage key). */
+/** Stable text for remembering a mapping per header row (never stored as is: see headerStorageKey). */
 export function headerFingerprint(headers: readonly string[]): string {
   return JSON.stringify(headers.map(normaliseHeader));
+}
+
+/**
+ * Lower-case hex SHA-256 of the header fingerprint: the name a remembered mapping is stored under in this browser.
+ * A file with no header row has a lead as its first line, so the header text itself never goes into storage.
+ */
+export async function headerStorageKey(headers: readonly string[]): Promise<string> {
+  return sha256Hex(new TextEncoder().encode(headerFingerprint(headers)));
 }

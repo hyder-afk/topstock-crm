@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { importChunkSchema } from "@/lib/import/schema";
+import { isCleanString } from "@/lib/import/text";
 import { importError, type ImportBatch, type ImportErrorCode } from "@/lib/import-server";
 
 // Lead import (Day 3b). Each action: Zod on its input, the aal2 session, one database function, a short code back.
@@ -20,7 +21,16 @@ async function call<T>(fn: string, args: Record<string, unknown>): Promise<Impor
 }
 
 const startInput = z.strictObject({
-  filename: z.string().trim().min(1).max(255).regex(noControl).refine((s) => !/[/\\]/.test(s)),
+  // Shown to every admin (Past imports, the Undo dialog): no controls, slashes, bidi overrides or zero-width characters
+  // that could make it read as another file.
+  filename: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .regex(noControl)
+    .refine((s) => !/[/\\]/.test(s))
+    .refine(isCleanString),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   rowCount: z.int().min(1).max(50000),
   lastRowNo: z.int().min(2).max(50001),
@@ -62,7 +72,14 @@ export async function checkImport(input: unknown): Promise<ImportResult<CheckSum
   return call<CheckSummary>("validate_lead_import", { p_batch: parsed.data.batchId });
 }
 
-export type CommitStep = { status: "committing" | "imported"; imported_now: number; late_duplicates: number; remaining: number };
+// imported_total: the leads tagged with this import after this call (counted, so right after a pause or a lost answer).
+export type CommitStep = {
+  status: "committing" | "imported";
+  imported_now: number;
+  late_duplicates: number;
+  remaining: number;
+  imported_total: number;
+};
 
 export async function commitImportStep(input: unknown): Promise<ImportResult<CommitStep>> {
   const parsed = z.strictObject({ batchId, size: z.int().min(250).max(1000) }).safeParse(input);

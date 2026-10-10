@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { assignTarget, autoMap, columnFor, headerFingerprint, normaliseHeader } from "../../src/lib/import/headers";
+import {
+  assignTarget,
+  autoMap,
+  columnFor,
+  headerFingerprint,
+  headerStorageKey,
+  normaliseHeader,
+} from "../../src/lib/import/headers";
 import { dedupeHeaders } from "../../src/lib/import/parse";
 
 const HAIDER = [
@@ -132,5 +139,18 @@ test.describe("header mapping", () => {
   test("the fingerprint is stable across case and accents", () => {
     expect(headerFingerprint(["Société", "Email"])).toBe(headerFingerprint(["SOCIETE", "email"]));
     expect(headerFingerprint(["A", "B"])).not.toBe(headerFingerprint(["B", "A"]));
+  });
+
+  test("the storage key is a hash: no header text (a lead, when the file has no header row) reaches storage", async () => {
+    // A made-up file with no header row: its first lead is read as the header.
+    const firstLead = ["Maison Verdane", "Jean Dupont", "+33 6 12 34 56 78", "jean.dupont@example.com", "Paris", "France"];
+    const key = await headerStorageKey(firstLead);
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    for (const word of ["maison", "verdane", "jean", "dupont", "example", "paris", "france"]) {
+      expect(key.toLowerCase()).not.toContain(word);
+    }
+    // Same header row (any case or accents), same key; another header row, another key.
+    expect(await headerStorageKey(["Société", "Email"])).toBe(await headerStorageKey(["SOCIETE", "email"]));
+    expect(await headerStorageKey(HAIDER)).not.toBe(await headerStorageKey([...HAIDER].reverse()));
   });
 });
