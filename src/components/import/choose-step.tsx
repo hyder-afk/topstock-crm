@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { FileUp } from "lucide-react";
 import { ProgressBar } from "@/components/import/progress";
 import { readImportFile, type LoadedFile } from "@/components/import/read-file";
@@ -25,6 +25,7 @@ export function ChooseStep({
 }) {
   const t = useTranslations("Import.choose");
   const format = useFormatter();
+  const locale = useLocale();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<ReadState>({ kind: "idle" });
@@ -43,6 +44,7 @@ export function ChooseStep({
       setState({ kind: "reading", done: 0, total: picked.size });
       announce(t("reading"));
       const loaded = await readImportFile(picked, {
+        locale,
         signal: controller.signal,
         onProgress: (p) => setState({ kind: "reading", done: p.done, total: p.total }),
       });

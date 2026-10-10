@@ -2,6 +2,7 @@
 // European if that fails), hashed (the "same file" checks), parsed in slices so the screen keeps responding, and the
 // lists the matching screen needs prepared. Used by the Choose step and by the results screen ("Choose the file").
 import { prepareAnalysis } from "@/components/import/analysis";
+import { prepareZoneLabels } from "@/components/import/zones";
 import {
   ImportFileError,
   checkFileMeta,
@@ -33,15 +34,17 @@ const stopIfAborted = (signal?: AbortSignal) => {
 /** Throws ImportFileError (with a code for the message) when the file is refused, or "aborted" when the signal fires. */
 export async function readImportFile(
   picked: File,
-  options: { signal?: AbortSignal; onProgress?: (progress: ParseProgress) => void } = {},
+  options: { signal?: AbortSignal; onProgress?: (progress: ParseProgress) => void; locale?: string } = {},
 ): Promise<LoadedFile> {
-  const { signal, onProgress } = options;
+  const { signal, onProgress, locale } = options;
   checkFileMeta(picked);
   const bytes = new Uint8Array(await picked.arrayBuffer());
   stopIfAborted(signal);
   const decoded = decodeBytes(bytes);
-  // The matching screen needs the country names: build them while the file is read, between parsing slices.
+  // The matching screen needs the country and time zone names: build them while the file is read, one task each,
+  // between parsing slices.
   setTimeout(prepareCountryNames, 0);
+  if (locale) setTimeout(() => prepareZoneLabels(locale), 0);
   const sha256 = await sha256Hex(bytes);
   stopIfAborted(signal);
   const parsed = await parseCsvText(decoded.text, { sepHint: decoded.sepHint, onProgress, signal });

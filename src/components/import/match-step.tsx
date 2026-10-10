@@ -25,6 +25,7 @@ import type { ImportBatch } from "@/lib/import-server";
 import { leadStatuses, personName, type LeadStatus, type TeamMember } from "@/lib/leads";
 import { columnDateOrder, columnDateSample, columnValues } from "@/components/import/analysis";
 import { readMapping, saveMapping } from "@/components/import/mapping-store";
+import { TIME_ZONES, zoneLabel } from "@/components/import/zones";
 import type { LoadedFile } from "@/components/import/read-file";
 import { useModKey } from "@/lib/use-platform";
 import { cn } from "@/lib/utils";
@@ -40,35 +41,6 @@ export type MatchState = {
   dateOrder: DateOrder | null;
   timeZone: string;
 };
-
-const timeZones = ["Europe/Paris", "Europe/London", "Europe/Brussels", "Europe/Berlin", "Europe/Madrid", "Africa/Casablanca", "America/New_York", "UTC"];
-// The country each listed zone belongs to (its name comes from Intl in the screen's language).
-const zoneCountry: Record<string, string> = {
-  "Europe/Paris": "FR",
-  "Europe/London": "GB",
-  "Europe/Brussels": "BE",
-  "Europe/Berlin": "DE",
-  "Europe/Madrid": "ES",
-  "Africa/Casablanca": "MA",
-  "America/New_York": "US",
-};
-
-function zoneName(zone: string, locale: string, style: "long" | "longGeneric" | "shortOffset"): string | null {
-  try {
-    return new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: style }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// "France (UTC+2)", "Royaume-Uni (UTC+1)", "temps universel coordonné": readable, in the screen's language.
-function zoneLabel(zone: string, locale: string, countries: Intl.DisplayNames | null): string {
-  if (zone === "UTC") return zoneName(zone, locale, "long") ?? zone;
-  const code = zoneCountry[zone];
-  const place = (code ? countries?.of(code) : null) ?? zoneName(zone, locale, "longGeneric") ?? zone.replace(/_/g, " ");
-  const offset = zoneName(zone, locale, "shortOffset");
-  return offset ? `${place} (${offset})` : place;
-}
 
 // Two sets of choices are the same when every part is the same value (state keeps each part's identity until it
 // changes).
@@ -147,18 +119,12 @@ export function MatchStep({
   const owners = columnValues(records, ownerCol, "owner");
   const countries = columnValues(records, countryCol, "country");
   const dateGuess = columnDateOrder(records, dateCol);
-  const countryOptions = useMemo(() => countriesByName(locale), [locale]);
+  // The full country list only when a value needs a choice (it is long to build, then remembered).
+  const countryOptions = countries.some((c) => !matchCountry(c.label)) ? countriesByName(locale) : [];
   const order: DateOrder = dateOrder ?? (dateGuess ? suggestDateOrder(dateGuess) : "dmy");
   const sample = columnDateSample(records, dateCol);
-  const zoneOptions = useMemo(() => {
-    let countryNames: Intl.DisplayNames | null = null;
-    try {
-      countryNames = new Intl.DisplayNames([locale], { type: "region" });
-    } catch {
-      // Older engines: the zone's own name is used instead.
-    }
-    return [...new Set([defaultTimeZone, ...timeZones])].map((zone) => ({ zone, label: zoneLabel(zone, locale, countryNames) }));
-  }, [defaultTimeZone, locale]);
+  // Names prepared while the file was read (zones.ts).
+  const zoneOptions = [...new Set([defaultTimeZone, ...TIME_ZONES])].map((zone) => ({ zone, label: zoneLabel(zone, locale) }));
 
   // "Day first (03/04/2025 → 3 April 2025)": the same date from the file, read each way.
   const orderLabel = (o: DateOrder) => {
