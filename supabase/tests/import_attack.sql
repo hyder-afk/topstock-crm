@@ -923,6 +923,34 @@ begin
   end if;
 end $$;
 
+-- A status changed directly (a PATCH, not a function) deletes the working rows too: discard, and undo of a paused import.
+do $$
+declare
+  batch uuid;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  batch := public.create_lead_import('patch-discard.csv', null, 2, 3);
+  perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Patch A", "lead_status": "cold",
+    "email": "patch-a@example.com"}, {"row_no": 3, "name": "Patch B", "lead_status": "cold"}]');
+  update public.import_batches set status = 'discarded' where id = batch;
+  if (select status from public.import_batches where id = batch) <> 'discarded'
+     or (select count(*) from private.lead_import_staging where batch_id = batch) <> 0 then
+    raise exception 'FAIL: a direct discard left working rows';
+  end if;
+  batch := public.create_lead_import('patch-undo.csv', null, 2, 3);
+  perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Patch C", "lead_status": "cold"},
+    {"row_no": 3, "name": "Patch D", "lead_status": "cold"}]');
+  perform public.validate_lead_import(batch);
+  perform public.commit_lead_import(batch, 1);
+  update public.import_batches set status = 'rolling_back' where id = batch;
+  if (select count(*) from private.lead_import_staging where batch_id = batch) <> 0 then
+    raise exception 'FAIL: a direct undo of a paused import left working rows';
+  end if;
+  if (public.rollback_lead_import(batch) ->> 'status') <> 'rolled_back' then
+    raise exception 'FAIL: undo after a direct status change';
+  end if;
+end $$;
+
 -- Superuser view: no closed import keeps working rows.
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;  -- superuser: no caller

@@ -340,7 +340,9 @@ $$;
 -- 6. The batch guard: every status change and every counter goes through this trigger
 -- ---------------------------------------------------------------------------
 -- It also holds for a direct API update (the update grant is on status only). Counters are recomputed from the staged
--- rows at every final move, so they always add up. It runs after enforce_org_and_owner (alphabetical), so org_id is
+-- rows at every final move, so they always add up. A move that closes the import (discarded, imported, rolling_back,
+-- rolled_back) also deletes its working rows, however the status was changed (a function or a direct PATCH), so no
+-- lead values wait for the next import's clean-up. It runs after enforce_org_and_owner (alphabetical), so org_id is
 -- set; like that trigger it does nothing for the superuser (fixtures and performance seeding).
 create function private.import_batch_guard() returns trigger
 language plpgsql set search_path = '' as $$
@@ -387,12 +389,11 @@ begin
     new.imported := 0;
     new.checked_at := now();
   elsif old.status in ('staged', 'dry_run') and new.status = 'discarded' then
-    return new;
+    null;  -- any admin, nothing to check
   elsif old.status = 'dry_run' and new.status = 'committing' then
     if old.uploaded_by is distinct from caller then
       raise exception 'only the person who started this import can import it' using errcode = '42501';
     end if;
-    return new;
   elsif old.status = 'committing' and new.status = 'imported' then
     if old.uploaded_by is distinct from caller then
       raise exception 'only the person who started this import can import it' using errcode = '42501';
@@ -406,27 +407,32 @@ begin
     new.imported_at := now();
   elsif old.status in ('committing', 'imported') and new.status = 'rolling_back' then
     new.rolled_back_by := caller;
-    if old.status = 'imported' then
-      return new;
+    if old.status = 'committing' then
+      tally := private.lead_import_tally(new.id);
+      new.imported := (select count(*) from public.companies c where c.import_batch_id = new.id);
     end if;
-    tally := private.lead_import_tally(new.id);
-    new.imported := (select count(*) from public.companies c where c.import_batch_id = new.id);
   elsif old.status = 'rolling_back' and new.status = 'rolled_back' then
     if exists (select 1 from private.lead_import_untouched(new.id, 1)) then
       raise exception 'some leads are still waiting to be removed' using errcode = '22023', hint = 'not_ready';
     end if;
     new.kept := (select count(*) from public.companies c where c.import_batch_id = new.id);
     new.rolled_back_at := now();
-    return new;
   else
     raise exception 'this change is not allowed' using errcode = '22023', hint = 'bad_transition';
   end if;
 
-  new.duplicates := (tally ->> 'duplicate_file')::integer + (tally ->> 'duplicate_existing')::integer;
-  new.rejected := (tally ->> 'rejected')::integer;
-  new.issue_counts := tally;
-  if new.status = 'imported' and new.imported + new.duplicates + new.rejected <> new.row_count then
-    raise exception 'import counts do not add up' using errcode = '22023', hint = 'not_ready';
+  if tally is not null then
+    new.duplicates := (tally ->> 'duplicate_file')::integer + (tally ->> 'duplicate_existing')::integer;
+    new.rejected := (tally ->> 'rejected')::integer;
+    new.issue_counts := tally;
+    if new.status = 'imported' and new.imported + new.duplicates + new.rejected <> new.row_count then
+      raise exception 'import counts do not add up' using errcode = '22023', hint = 'not_ready';
+    end if;
+  end if;
+  -- After the counts above (they read the working rows). The caller passed the update policy, so it is an admin of
+  -- this organisation with a fresh code: the staging delete policy lets it delete these rows.
+  if new.status in ('discarded', 'imported', 'rolling_back', 'rolled_back') then
+    delete from private.lead_import_staging s where s.batch_id = new.id;
   end if;
   return new;
 end;
@@ -452,8 +458,9 @@ begin
 end;
 $$;
 
--- Starts an import. Also tidies up: open imports untouched for 24 hours are discarded, and the working rows of
--- finished, undone and discarded imports are deleted.
+-- Starts an import. Also tidies up: open imports untouched for 24 hours are discarded (the guard deletes their working
+-- rows), and any working rows still left on a closed import (a status the superuser changed, which the guard skips)
+-- are deleted.
 create function public.create_lead_import(
   p_filename text,
   p_file_sha256 text,
@@ -799,8 +806,7 @@ begin
   select count(*) into v_remaining
     from private.lead_import_staging s where s.batch_id = p_batch and s.outcome = 'ready';
   if v_remaining = 0 then
-    update public.import_batches set status = 'imported' where id = p_batch;
-    delete from private.lead_import_staging where batch_id = p_batch;
+    update public.import_batches set status = 'imported' where id = p_batch;  -- the guard deletes the working rows
   end if;
   select count(*) into v_total from public.companies c where c.import_batch_id = p_batch;
   return jsonb_build_object('status', case when v_remaining = 0 then 'imported' else 'committing' end,
@@ -850,11 +856,10 @@ begin
     return jsonb_build_object('status', 'rolled_back', 'removed_now', 0, 'kept', b.kept);
   elsif b.status in ('imported', 'committing') then
     begin
-      update public.import_batches set status = 'rolling_back' where id = p_batch;
+      update public.import_batches set status = 'rolling_back' where id = p_batch;  -- the guard deletes the working rows
     exception when unique_violation then
       raise exception 'another import or undo is running' using errcode = '22023', hint = 'busy';
     end;
-    delete from private.lead_import_staging where batch_id = p_batch;
   elsif b.status <> 'rolling_back' then
     raise exception 'this import cannot be undone now' using errcode = '22023', hint = 'not_ready';
   end if;
@@ -889,8 +894,7 @@ begin
   if b.status not in ('staged', 'dry_run') then
     raise exception 'this import cannot be discarded' using errcode = '22023', hint = 'not_ready';
   end if;
-  update public.import_batches set status = 'discarded' where id = p_batch;
-  delete from private.lead_import_staging where batch_id = p_batch;
+  update public.import_batches set status = 'discarded' where id = p_batch;  -- the guard deletes the working rows
 end;
 $$;
 
