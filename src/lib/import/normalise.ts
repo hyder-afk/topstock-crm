@@ -22,7 +22,7 @@ import {
   type ProblemCode,
 } from "./rules";
 import { EMAIL_PATTERN, PHONE_PATTERN, isLocalDateTime, type RejectedRow, type StagedRow } from "./schema";
-import { cleanCell, cleanText, codePointLength } from "./text";
+import { cleanCell, cleanText, codePointLength, stripFormulaGuard } from "./text";
 import {
   countryKey,
   createOwnerMatcher,
@@ -333,7 +333,8 @@ export function createNormaliser(options: NormaliseOptions): (record: ParsedReco
       }
     }
     for (const i of importedColumns) {
-      const raw = cells[i] ?? "";
+      // Measured without the problems file's formula guard, so a fixed file re-imports with the same result.
+      const raw = stripFormulaGuard(cells[i] ?? "");
       if (raw.length > LIMITS.maxCellChars && codePointLength(raw) > LIMITS.maxCellChars) problems.add("cell_too_long");
     }
     const name = normaliseName(cell(cols.name));

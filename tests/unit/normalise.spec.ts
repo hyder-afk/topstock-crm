@@ -62,6 +62,21 @@ test.describe("cell cleaning", () => {
     expect(cleanText("''=1")).toBe("''=1");
   });
 
+  test("the guard is removed from the cell as written, before cleaning: blank cells stay blank", () => {
+    // csvCell guards a cell that starts with a tab or a carriage return; once removed, the cell is blank again.
+    expect(cleanText("'\t")).toBe("");
+    expect(cleanText("'\r")).toBe("");
+    expect(cleanText("'\r\n")).toBe("");
+    expect(cleanText("'\t=1")).toBe("=1");
+    expect(cleanText("'\r\n'-")).toBe("'-");
+    expect(cleanText("' =1")).toBe("=1");
+    // An apostrophe that is not a guard stays, even before a space or after leading spaces.
+    expect(cleanText("' text")).toBe("' text");
+    expect(cleanText(" '=1")).toBe("'=1");
+    expect(cleanText("'")).toBe("'");
+    expect(cleanText("'   ")).toBe("'");
+  });
+
   test("placeholders become empty", () => {
     for (const p of ["n/a", "N/A", "na", "None", "NULL", "-", "--", "/", "?", "aucun", "Néant", "inconnu", "Unknown", "TBD", "#N/A"]) {
       expect(cleanCell(p), p).toBe("");

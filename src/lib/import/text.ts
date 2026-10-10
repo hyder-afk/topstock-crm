@@ -1,4 +1,5 @@
 // Text helpers shared by the import modules (design 3.5 "Every cell"). Pure: works in the browser and in Node.
+import { FORMULA_START } from "./csv-out";
 
 // Removed from every cell: C0 and C1 controls (tab and newlines are turned into spaces first), zero-width characters
 // and joiners, the BOM, and bidi embeddings, overrides and isolates (U+202A-E, U+2066-9), so a name cannot hide text
@@ -10,8 +11,6 @@ const NEWLINES = /\r\n|[\r\n\u0085\u2028\u2029]/g;
 const SPACES = /[\t\p{Zs}]/gu;
 const MULTI_SPACE = / {2,}/g;
 const SURROGATE = /[\uD800-\uDFFF]/;
-// One leading apostrophe that guards a formula (written by csvCell in the problems file) is removed again.
-const QUOTE_GUARD = /^'(?=[ ]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]| )/;
 
 // Lone UTF-16 surrogates cannot be stored by Postgres; decoded files never contain them, but drop any defensively.
 function dropLoneSurrogates(s: string): string {
@@ -32,13 +31,20 @@ function dropLoneSurrogates(s: string): string {
   return out;
 }
 
-/** Cleans one cell without the placeholder rule: NFC, spaces, invisible characters, one formula guard. */
+/**
+ * The cell as it was before the problems file guarded it: csvCell puts one apostrophe in front of a cell that matches
+ * FORMULA_START, so exactly that apostrophe is removed, from the cell as written (before any cleaning). Anything else,
+ * "'abc" or "' text", is kept as it is.
+ */
+export function stripFormulaGuard(raw: string): string {
+  return raw[0] === "'" && FORMULA_START.test(raw.slice(1)) ? raw.slice(1) : raw;
+}
+
+/** Cleans one cell without the placeholder rule: formula guard, NFC, spaces, invisible characters. */
 export function cleanText(raw: string | undefined | null): string {
   if (!raw) return "";
-  let s = dropLoneSurrogates(raw).normalize("NFC");
-  s = s.replace(NEWLINES, " ").replace(SPACES, " ").replace(INVISIBLE_ALL, "").replace(MULTI_SPACE, " ").trim();
-  if (QUOTE_GUARD.test(s)) s = s.slice(1).trim();
-  return s;
+  const s = dropLoneSurrogates(stripFormulaGuard(raw)).normalize("NFC");
+  return s.replace(NEWLINES, " ").replace(SPACES, " ").replace(INVISIBLE_ALL, "").replace(MULTI_SPACE, " ").trim();
 }
 
 // Values that mean "nothing here" (compared after fold()).

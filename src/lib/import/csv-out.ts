@@ -1,11 +1,13 @@
 // The "rows not imported" file, built in the browser from the file in memory (design 3.10). Safe to open in Excel:
-// formula-like cells get a leading apostrophe, which the importer removes again (cleanText), so it re-imports as is.
+// formula-like cells get a leading apostrophe, which the importer removes again (stripFormulaGuard), so it re-imports
+// as is.
 import type { ParsedRecord } from "./parse";
 import type { Delimiter } from "./rules";
 
 // A cell that Excel or LibreOffice could run as a formula: after leading spaces it starts with = + - @, a tab or a
-// carriage return, or a full-width equals, plus, minus or at sign (U+FF1D, U+FF0B, U+FF0D, U+FF20).
-const FORMULA_START = /^[ \u00A0]*[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/;
+// carriage return, or a full-width equals, plus, minus or at sign (U+FF1D, U+FF0B, U+FF0D, U+FF20). The importer uses
+// the same pattern to remove the guard again (text.ts stripFormulaGuard), so the two always agree.
+export const FORMULA_START = /^[ \u00A0]*[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/;
 
 /** One CSV cell: formula guard, then always quoted with inner quotes doubled. */
 export function csvCell(value: string | number | null | undefined): string {

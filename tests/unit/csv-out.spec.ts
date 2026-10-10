@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { buildProblemsCsv, csvCell, problemsFileName } from "../../src/lib/import/csv-out";
 import { autoMap } from "../../src/lib/import/headers";
 import { parseCsvText } from "../../src/lib/import/parse";
-import { cleanCell } from "../../src/lib/import/text";
+import { cleanCell, stripFormulaGuard } from "../../src/lib/import/text";
 
 test.describe("csvCell", () => {
   test("csv_cell_formula: = + - @ get an apostrophe", () => {
@@ -36,6 +36,21 @@ test.describe("csvCell", () => {
     expect(csvCell(null)).toBe("\"\"");
     expect(csvCell(12)).toBe("\"12\"");
     expect(csvCell("L'Atelier")).toBe("\"L'Atelier\"");
+  });
+});
+
+test.describe("stripFormulaGuard", () => {
+  test("undoes csvCell's guard and nothing else", () => {
+    const values = ["=1", " =1", " @x", "\t", "\r", "\r\n", "\t=1", "＝1", "+33 6 39 98 00 01", "' text", "'", "", "plain"];
+    for (const value of values) {
+      const written = csvCell(value).slice(1, -1).replace(/""/g, "\"");
+      expect(stripFormulaGuard(written), JSON.stringify(value)).toBe(value);
+    }
+    // A cell that already starts with a guard-like apostrophe reads the same whether or not it went through the file.
+    for (const value of ["'=1", "'\t", "'+33 6 39 98 00 01"]) {
+      const written = csvCell(value).slice(1, -1);
+      expect(stripFormulaGuard(written), JSON.stringify(value)).toBe(stripFormulaGuard(value));
+    }
   });
 });
 
