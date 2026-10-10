@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Local only: proves the Day 3b database tests catch each protection being removed (design section 6A).
+
+For each mutation below, the lead-import migration is changed in place, scripts/db-test.sh runs (migrations, RLS and
+import attack tests, two-session test), and the migration is restored. A mutation is "caught" when the run fails.
+Usage: python3 scripts/db-mutations.py [numbers...]  (about 40 s per mutation). Writes a Markdown table to stdout.
+A protection with two layers is also removed together with its second layer (one mutation each way).
+"""
+import pathlib
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+MIG = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
+
+MUTATIONS = [
+    ("Working rows: insert without a fresh code",
+     [("              and (select private.has_recent_aal2(600))\n              and exists (select 1 from public.import_batches b\n",
+       "              and exists (select 1 from public.import_batches b\n")]),
+    ("Working rows: read without a fresh code",
+     [("create policy staging_select on private.lead_import_staging for select to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin())\n         and (select private.has_recent_aal2(600)));",
+       "create policy staging_select on private.lead_import_staging for select to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()));")]),
+    ("Working rows: row number past the file's end",
+     [("                            and lead_import_staging.row_no between 2 and b.last_row_no));", "));")]),
+    ("Tagging leads: no admin check",
+     [("      and (select private.is_admin()) and (select private.has_recent_aal2(600))\n      and (last_activity_at is null",
+       "      and (select private.has_recent_aal2(600))\n      and (last_activity_at is null")]),
+    ("Tagging leads: no admin check in the rule nor in who sees imports (both layers)",
+     [("      and (select private.is_admin()) and (select private.has_recent_aal2(600))\n      and (last_activity_at is null",
+       "      and (select private.has_recent_aal2(600))\n      and (last_activity_at is null"),
+      ("create policy import_batches_select on public.import_batches for select to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()));",
+       "create policy import_batches_select on public.import_batches for select to authenticated\n  using (org_id = (select private.current_org_id()));")]),
+    ("Tagging leads: no fresh-code check",
+     [("      and (select private.is_admin()) and (select private.has_recent_aal2(600))\n      and (last_activity_at is null",
+       "      and (select private.is_admin())\n      and (last_activity_at is null")]),
+    ("Tagging leads: import need not be in progress",
+     [("b.kind = 'leads' and b.status = 'committing'\n", "b.kind = 'leads'\n")]),
+    ("Import history: no organisation check",
+     [("create policy import_batches_select on public.import_batches for select to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()));",
+       "create policy import_batches_select on public.import_batches for select to authenticated\n  using ((select private.is_admin()));")]),
+    ("Import status: changeable without a fresh code",
+     [("create policy import_batches_update on public.import_batches for update to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin())\n         and (select private.has_recent_aal2(600)))",
+       "create policy import_batches_update on public.import_batches for update to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()))")]),
+    ("Import counters: client may write one",
+     [("grant update (status) on public.import_batches to authenticated;",
+       "grant update (status, imported) on public.import_batches to authenticated;")]),
+    ("Batch guard trigger dropped",
+     [("create trigger import_batch_guard before insert or update on public.import_batches\n  for each row execute function private.import_batch_guard();", "")]),
+    ("One import at a time: index not unique",
+     [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
+    ("Undo: leads with an activity count as untouched",
+     [("     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
+    ("Undo: leads with a contact count as untouched",
+     [("     and not exists (select 1 from public.contacts k where k.company_id = c.id)\n", "")]),
+    ("Undo: leads with a deal count as untouched",
+     [("     and not exists (select 1 from public.deals d where d.company_id = c.id)\n", "")]),
+    ("Undo: edited leads count as untouched",
+     [("c.import_batch_id = p_batch and c.updated_at = c.created_at", "c.import_batch_id = p_batch")]),
+    ("Undo: no second look before deleting (race with a new contact)",
+     [("   where c.id = any (v_ids) and c.id in (select private.lead_import_untouched(p_batch, p_max_rows));",
+       "   where c.id = any (v_ids);")]),
+    ("Import: no re-check for leads added meanwhile",
+     [("case when not p.bad and p.email_key is not null then\n             (select c.id from public.companies c where c.org_id = b.org_id and c.email_key = p.email_key\n               order by c.created_at, c.id limit 1) end as ex_email,",
+       "null::uuid as ex_email,")]),
+    ("Import: someone else may run it",
+     [("    raise exception 'only the person who started this import can import it' using errcode = '42501';\n  end if;\n  if b.status = 'imported' then",
+       "    null;\n  end if;\n  if b.status = 'imported' then")]),
+    ("Add rows: no constant-error pre-check",
+     [("     where r.row_no is null or r.row_no !~ '^[0-9]{1,6}$' or r.row_no::integer not between 2 and b.last_row_no",
+       "     where false and (r.row_no is null or r.row_no !~ '^[0-9]{1,6}$' or r.row_no::integer not between 2 and b.last_row_no"),
+      ("'country_dropped']))))\n  ) then", "'country_dropped'])))))\n  ) then")]),
+    ("Functions: no fresh-code check (hint step_up)",
+     [("  if p_fresh and not private.has_recent_aal2(600) then", "  if false then")]),
+    ("Audit: full copy of imported leads",
+     [("  elsif tg_op = 'INSERT' and tg_table_name = 'companies' and rec ->> 'import_batch_id' is not null then\n    diff := jsonb_build_object('import_batch_id', rec -> 'import_batch_id');\n", "")]),
+    ("Audit: search and key columns kept",
+     [("(case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end) - hidden;",
+       "(case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end);")]),
+    ("Working rows kept after the import",
+     [("    update public.import_batches set status = 'imported' where id = p_batch;\n    delete from private.lead_import_staging where batch_id = p_batch;",
+       "    update public.import_batches set status = 'imported' where id = p_batch;")]),
+    ("Counters not recounted at the end of an import",
+     [("    tally := private.lead_import_tally(new.id);\n    new.imported := (tally ->> 'imported')::integer;\n    new.imported_at := now();",
+       "    tally := old.issue_counts;\n    new.imported := old.imported;\n    new.imported_at := now();")]),
+]
+
+
+def main() -> int:
+    only = {int(a) for a in sys.argv[1:]}  # optional: mutation numbers to run
+    original = MIG.read_text()
+    print("| # | Protection removed | Result | First failure |")
+    print("|---|---|---|---|")
+    survived = 0
+    try:
+        for i, (title, edits) in enumerate(MUTATIONS, 1):
+            if only and i not in only:
+                continue
+            text = original
+            for old, new in edits:
+                if text.count(old) != 1:
+                    print(f"| {i} | {title} | NOT APPLIED (pattern found {text.count(old)} times) | |")
+                    survived += 1
+                    break
+                text = text.replace(old, new)
+            else:
+                MIG.write_text(text)
+                run = subprocess.run(["bash", str(ROOT / "scripts/db-test.sh")], capture_output=True, text=True)
+                out = run.stdout + run.stderr
+                first = next((l.strip() for l in out.splitlines() if "FAIL" in l or "ERROR" in l), "")
+                first = first.split("ERROR:", 1)[-1].strip().replace("|", "/")[:140]
+                caught = run.returncode != 0
+                survived += 0 if caught else 1
+                print(f"| {i} | {title} | {'caught' if caught else '**NOT CAUGHT**'} | {first} |", flush=True)
+    finally:
+        MIG.write_text(original)
+    return 1 if survived else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

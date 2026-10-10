@@ -32,3 +32,6 @@ yarn-error.log*
 .pnpm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent worktrees (local, never committed)
+.claude/worktrees/
