@@ -35,26 +35,46 @@ $$;
 -- Name + city + country, used only for rows with neither email nor phone. Accents are folded with a fixed map (no
 -- dictionary, no locale), punctuation and spaces are removed, and legal forms (SARL, SAS, Ltd, GmbH...) are dropped as
 -- whole words unless nothing else is left. No city, no key: a name alone never makes two companies the same.
+-- The key must not depend on the database's locale: Supabase runs ICU (en-US), the local test runner libc (C.UTF-8),
+-- and the two disagree on [[:punct:]], word boundaries and lower() (a Turkish locale even lower-cases "I" to "ı"). So
+-- the map lower-cases A-Z and the Latin accents itself, both character sets below are fixed code point ranges, and a
+-- legal form is a word between two spaces. lower() only sees the other scripts (Greek, Cyrillic, full-width...), where
+-- ICU and libc give the same letter, except that ICU writes a Greek sigma at the end of a word as "ς" and libc as "σ":
+-- "ς" becomes "σ" afterwards. (Only a letter newer than one side's Unicode tables could still differ.)
 create function private.lead_name_key(name text, city text, country text) returns text
 language plpgsql immutable parallel safe set search_path = '' as $$
 declare
-  fold_from constant text := 'ÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝàáâãäåçèéêëìíîïðñòóôõöøùúûüýÿĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłŃńŅņŇňŉŊŋŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžſ';
-  fold_to constant text := 'AAAAAACEEEEIIIIDNOOOOOOUUUUYaaaaaaceeeeiiiidnoooooouuuuyyAaAaAaCcCcCcCcDdDdEeEeEeEeEeGgGgGgGgHhHhIiIiIiIiIiJjKkkLlLlLlLlLlNnNnNnnNnOoOoOoRrRrRrSsSsSsSsTtTtTtUuUuUuUuUuUuWwYyYZzZzZzs';
-  punct constant text := '[[:punct:][:space:][:cntrl:] -¿ -⁯]';
+  -- a-z, space, digits and "-" come first, mapped to themselves, only for speed: translate() looks each character up
+  -- from the start of the map, so the common ones are found at once (the whole key takes half the time). Then A-Z and
+  -- the Latin-1 Supplement and Latin Extended-A letters to lower-case ASCII (Æ æ Œ œ ß are replaced afterwards).
+  fold_from constant text := 'abcdefghijklmnopqrstuvwxyz 0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝàáâãäåçèéêëìíîïðñòóôõöøùúûüýÿĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĴĵĶķĸĹĺĻļĽľĿŀŁłŃńŅņŇňŉŊŋŌōŎŏŐőŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽžſ';
+  fold_to constant text := 'abcdefghijklmnopqrstuvwxyz 0123456789-abcdefghijklmnopqrstuvwxyzaaaaaaceeeeiiiidnoooooouuuuyaaaaaaceeeeiiiidnoooooouuuuyyaaaaaaccccccccddddeeeeeeeeeegggggggghhhhiiiiiiiiiijjkkkllllllllllnnnnnnnnnoooooorrrrrrssssssssttttttuuuuuuuuuuuuwwyyyzzzzzzs';
+  -- Deleted from the name, as part of the word they sit in: dots (S.A.R.L.), soft hyphens, combining accents (a
+  -- decomposed "é"), zero-width characters and the byte order mark.
+  glue constant text := '[\u002E\u00AD\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u200B-\u200D\u2060\u20D0-\u20FF\uFE20-\uFE2F\uFEFF]';
+  -- Removed from the city and turned into spaces in the name: ASCII other than letters and digits (so "|", which
+  -- separates the parts of the key, never stays in a name or city), controls, Latin-1 punctuation and symbols, × ÷, the
+  -- modifier apostrophe, combining accents, Greek and Arabic punctuation, every Unicode space, General Punctuation to
+  -- Miscellaneous Symbols and Arrows (dashes, quotes, super- and subscripts, currencies such as €, ™, arrows, maths,
+  -- shapes, dingbats), Supplemental Punctuation, CJK and full-width punctuation and symbols (not the letters 々 〆 〇
+  -- and ー), variation selectors and small forms, the specials block, emoji and flags, and tag characters.
+  punct constant text := '[\u0001-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u00BF\u00D7\u00F7\u02BC\u0300-\u036F\u037E\u0384-\u0385\u0387\u060C-\u060D\u061B-\u061C\u061F\u066A-\u066D\u06D4\u1680\u1AB0-\u1AFF\u1DC0-\u1DFF\u2000-\u2BFF\u2E00-\u2E7F\u3000-\u3004\u3008-\u3020\u302A-\u3030\u3036-\u3037\u303D-\u303F\u30A0\u30FB\uFE00-\uFE6F\uFEFF\uFF00-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF40\uFF5B-\uFF65\uFFE0-\uFFFF\U0001F000-\U0001FBFF\U000E0000-\U000E007F\U000E0100-\U000E01EF]';
   n text;
   c text;
   stripped text;
 begin
   c := lower(replace(replace(replace(replace(replace(translate(coalesce(city, ''), fold_from, fold_to),
          'Œ', 'oe'), 'œ', 'oe'), 'Æ', 'ae'), 'æ', 'ae'), 'ß', 'ss'));
-  c := regexp_replace(c, punct, '', 'g');
+  c := replace(regexp_replace(c, punct, '', 'g'), 'ς', 'σ');
   if c = '' then
     return null;
   end if;
   n := lower(replace(replace(replace(replace(replace(translate(coalesce(name, ''), fold_from, fold_to),
          'Œ', 'oe'), 'œ', 'oe'), 'Æ', 'ae'), 'æ', 'ae'), 'ß', 'ss'));
-  n := regexp_replace(replace(n, '.', ''), punct, ' ', 'g');
-  stripped := regexp_replace(n, '\m(sarl|sas|sasu|sa|eurl|snc|sci|selarl|ltd|limited|llc|inc|gmbh|bv|srl|plc)\M', ' ', 'g');
+  n := ' ' || replace(regexp_replace(regexp_replace(n, glue, '', 'g'), punct, ' ', 'g'), 'ς', 'σ') || ' ';
+  -- A legal form with a space before and after it; the lookahead leaves the space after it for the next match, so
+  -- "durand sarl sas" loses both, and "sasha" keeps its "sa".
+  stripped := regexp_replace(n, ' (sarl|sas|sasu|sa|eurl|snc|sci|selarl|ltd|limited|llc|inc|gmbh|bv|srl|plc)(?= )', ' ', 'g');
   if btrim(stripped) <> '' then
     n := stripped;
   end if;

@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { FOLD_FROM, FOLD_TO, LEGAL_FORM_WORDS, emailKey, nameKey, phoneKey } from "./helpers/dedupe-ref";
+import {
+  FOLD_FROM, FOLD_TO, GLUE, LEGAL_FORM_WORDS, PUNCT, emailKey, nameKey, phoneKey, type CodeRange,
+} from "./helpers/dedupe-ref";
 
 // The duplicate keys on both sides of the shared contract (design 2.1 and 3.8). The same table is a literal here and in
 // supabase/tests/import_attack.sql (block 0b), which runs it through private.lead_name_key, lead_email_key and
@@ -23,7 +25,12 @@ type KeyRow = [
 
 // Accents, ligatures (Œ Æ ß ẞ Ĳ), long s and ŉ, letters without a decomposition (Ł Ø Đ Ħ Ŧ ĸ Ŋ), Turkish İ and Ş,
 // legal forms (alone, together, dotted, inside words, next to "_"), apostrophes, quotes, NBSP, full-width letters,
-// digits and punctuation, the ideographic space, CJK, empty or missing cities, and phone and email edge cases.
+// digits and punctuation, the ideographic space, CJK, empty or missing cities, and phone and email edge cases. Then the
+// characters that once gave a different key under ICU (Supabase, CI) and libc (the local runner): symbols (+ $ = ^ ~
+// < > ` € ™ ² ½), emoji and flags, Greek final sigma, decomposed accents, NBSP and soft hyphens around legal forms,
+// full-width SARL (kept: only ASCII legal forms are dropped), CJK and Arabic punctuation next to letters that stay
+// (々 ー), "|" inside a name or city (the key's separator), and upper-case I (lower-cased by the map, never by lower(),
+// which gives "ı" in a Turkish locale).
 const KEY_TABLE: readonly KeyRow[] = [
   ["Café Gamma S.A.R.L.", "Lyon", "FR", " Alpha@Example.COM ", "+33 (0)6 12 34 56 78", "cafegamma|lyon|FR", "alpha@example.com", "612345678"],
   ["CAFE GAMMA SARL", "LYON", "FR", "alpha@example.com", "06.12.34.56.78", "cafegamma|lyon|FR", "alpha@example.com", "612345678"],
@@ -51,6 +58,29 @@ const KEY_TABLE: readonly KeyRow[] = [
   ["東京商事", "Tokyo", "JP", null, null, "東京商事|tokyo|JP", null, null],
   ["Dupont, Fils & Cie", "Saint-Denis", "FR", null, null, "dupontfilscie|saintdenis|FR", null, null],
   ["Le \"Petit\" Marché", "Aix-en-Provence", "FR", null, null, "lepetitmarche|aixenprovence|FR", null, null],
+  ["A+B $ C = D", "Lyon", "FR", null, null, "abcd|lyon|FR", null, null],
+  ["Hat^Tilde~Less<More>", "Grave`Paris", "FR", null, null, "hattildelessmore|graveparis|FR", null, null],
+  ["Prix € ™ Café² ½", "Paris²", "FR", null, null, "prixcafe|paris|FR", null, null],
+  ["Le Comptoir 🙂 ❤\uFE0F", "Nice \u{1F1EB}\u{1F1F7}", "FR", null, null, "lecomptoir|nice|FR", null, null],
+  ["ΣΟΦΟΣ", "ΑΘΉΝΑ", "GR", null, null, "σοφοσ|αθήνα|GR", null, null],
+  ["σοφος", "Αθήνα", "GR", null, null, "σοφοσ|αθήνα|GR", null, null],
+  ["Socie\u0301te\u0301 Ge\u0301ne\u0301rale", "Saint-E\u0301tienne", "FR", null, null, "societegenerale|saintetienne|FR", null, null],
+  ["Fromagerie Durand Sa\u0300rl", "Lausanne", "CH", null, null, "fromageriedurand|lausanne|CH", null, null],
+  ["Fromagerie Durand Sàrl", "Lausanne", "CH", null, null, "fromageriedurand|lausanne|CH", null, null],
+  ["SARL\u00A0Dupont", "Paris", "FR", null, null, "dupont|paris|FR", null, null],
+  ["Dupont \uFF33\uFF21\uFF32\uFF2C", "Paris", "FR", null, null, "dupont\uFF53\uFF41\uFF52\uFF4C|paris|FR", null, null],
+  ["東京、商事", "東京", "JP", null, null, "東京商事|東京|JP", null, null],
+  ["A|B", "C", "FR", null, null, "ab|c|FR", null, null],
+  ["A", "B|C", "FR", null, null, "a|bc|FR", null, null],
+  ["Durand SARL SAS", "Paris", "FR", null, null, "durand|paris|FR", null, null],
+  ["Sasha Inc Bv", "Paris", "FR", null, null, "sasha|paris|FR", null, null],
+  ["SARL SAS", "Paris", "FR", null, null, "sarlsas|paris|FR", null, null],
+  ["佐々木商店", "東京", "JP", null, null, "佐々木商店|東京|JP", null, null],
+  ["ジョン・スミス", "大阪", "JP", null, null, "ジョンスミス|大阪|JP", null, null],
+  ["ООО «Ромашка»", "Москва", "RU", null, null, "оооромашка|москва|RU", null, null],
+  ["النور، للتجارة", "الدار البيضاء", "MA", null, null, "النورللتجارة|الدارالبيضاء|MA", null, null],
+  ["L\u02BCatelier Inter\u00ADnational SA\u00ADRL", "Lyon\u200B", "FR", null, null, "latelierinternational|lyon|FR", null, null],
+  ["IRMAK INC", "ISTANBUL", "TR", null, null, "irmak|istanbul|TR", null, null],
   ["Alpha", "", "FR", null, null, null, null, null],
   ["Alpha", " - ", "FR", null, null, null, null, null],
   ["Alpha", null, "FR", null, null, null, null, null],
@@ -86,6 +116,14 @@ function sqlTable(): (string | null)[][] {
     });
 }
 
+// A bracket of code point ranges as the migration writes it: escapes only, \u and four hex digits, or \U and eight
+// beyond U+FFFF, so the pattern reads the same in any editor and under any database locale.
+function sqlBracket(set: readonly CodeRange[]): string {
+  const hex = (cp: number) => cp.toString(16).toUpperCase();
+  const esc = (cp: number) => (cp > 0xffff ? `\\U${hex(cp).padStart(8, "0")}` : `\\u${hex(cp).padStart(4, "0")}`);
+  return `[${set.map(([first, last]) => (first === last ? esc(first) : `${esc(first)}-${esc(last)}`)).join("")}]`;
+}
+
 test.describe("duplicate keys: TypeScript copy and SQL on one shared table", () => {
   test("the TypeScript copy gives every expected key", () => {
     for (const [name, city, country, email, phone, wantName, wantEmail, wantPhone] of KEY_TABLE) {
@@ -101,12 +139,23 @@ test.describe("duplicate keys: TypeScript copy and SQL on one shared table", () 
     expect(KEY_TABLE.length).toBeGreaterThanOrEqual(25);
   });
 
-  test("the fold map and the legal forms are the migration's", () => {
+  test("the fold map, the character sets and the legal forms are the migration's", () => {
     expect(migration).toContain(`fold_from constant text := '${FOLD_FROM}';`);
     expect(migration).toContain(`fold_to constant text := '${FOLD_TO}';`);
     expect([...FOLD_FROM]).toHaveLength([...FOLD_TO].length);
-    expect(migration).toContain(`'\\m(${LEGAL_FORM_WORDS.join("|")})\\M'`);
-    expect(migration).toContain("punct constant text := '[[:punct:][:space:][:cntrl:]\u00A0-\u00BF\u2000-\u206F]';");
+    expect(new Set(FOLD_FROM).size, "each character once in the map").toBe([...FOLD_FROM].length);
+    expect(migration).toContain(`glue constant text := '${sqlBracket(GLUE)}';`);
+    expect(migration).toContain(`punct constant text := '${sqlBracket(PUNCT)}';`);
+    expect(migration).toContain(`' (${LEGAL_FORM_WORDS.join("|")})(?= )'`);
+    // What the name deletes, the city removes too; "|" separates the parts of the key, so no part ever keeps one.
+    for (const [first, last] of GLUE) {
+      expect(PUNCT.some(([a, b]) => a <= first && last <= b), `glue U+${first.toString(16)} is in punct`).toBe(true);
+    }
+    expect(nameKey("|", "|", null)).toBeNull();
+    // Nothing in the function depends on the locale: no character class, no word boundary, no class escape.
+    const start = migration.indexOf("create function private.lead_name_key");
+    const body = migration.slice(start, migration.indexOf("$$;", start));
+    expect(body).not.toMatch(/\[\[:|\\[mMyYwWsSdD]/);
     // The order of the replacements matters: ẞ is not replaced, then lower() makes it ß (not "ss").
     expect(migration).toContain("'Œ', 'oe'), 'œ', 'oe'), 'Æ', 'ae'), 'æ', 'ae'), 'ß', 'ss'));");
     expect(nameKey("ẞ", "x", null)).toBe("ß|x|");

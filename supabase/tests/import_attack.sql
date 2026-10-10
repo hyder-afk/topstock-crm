@@ -126,8 +126,9 @@ end $$;
 -- 0b. The key rules table shared with the TypeScript copy (tests/unit/helpers/dedupe-ref.ts) ---------------------
 -- tests/unit/key-rules.spec.ts holds the same rows and checks that the literal between the two markers below equals
 -- them, then runs them through the TypeScript copy: both sides give the same keys. Columns: name, city, country, email,
--- phone, then the expected name, email and phone keys. Characters that lower() or [[:punct:]] treat differently in an
--- ICU database (Supabase, CI) and a libc one (the local runner), such as + $ = or emoji, are left out on purpose.
+-- phone, then the expected name, email and phone keys. The rows from "A+B $ C = D" on hold the characters that once
+-- gave a different key in an ICU database (Supabase, CI) and a libc one (the local runner): symbols, emoji, Greek final
+-- sigma, decomposed accents, "|"... The same rows must pass under both (scripts/db-test.sh runs libc).
 do $$
 declare
   t record;
@@ -160,6 +161,29 @@ begin
       ('東京商事', 'Tokyo', 'JP', null, null, '東京商事|tokyo|JP', null, null),
       ('Dupont, Fils & Cie', 'Saint-Denis', 'FR', null, null, 'dupontfilscie|saintdenis|FR', null, null),
       ('Le "Petit" Marché', 'Aix-en-Provence', 'FR', null, null, 'lepetitmarche|aixenprovence|FR', null, null),
+      ('A+B $ C = D', 'Lyon', 'FR', null, null, 'abcd|lyon|FR', null, null),
+      ('Hat^Tilde~Less<More>', 'Grave`Paris', 'FR', null, null, 'hattildelessmore|graveparis|FR', null, null),
+      ('Prix € ™ Café² ½', 'Paris²', 'FR', null, null, 'prixcafe|paris|FR', null, null),
+      (U&'Le Comptoir 🙂 ❤\FE0F', U&'Nice \+01F1EB\+01F1F7', 'FR', null, null, 'lecomptoir|nice|FR', null, null),
+      ('ΣΟΦΟΣ', 'ΑΘΉΝΑ', 'GR', null, null, 'σοφοσ|αθήνα|GR', null, null),
+      ('σοφος', 'Αθήνα', 'GR', null, null, 'σοφοσ|αθήνα|GR', null, null),
+      (U&'Socie\0301te\0301 Ge\0301ne\0301rale', U&'Saint-E\0301tienne', 'FR', null, null, 'societegenerale|saintetienne|FR', null, null),
+      (U&'Fromagerie Durand Sa\0300rl', 'Lausanne', 'CH', null, null, 'fromageriedurand|lausanne|CH', null, null),
+      ('Fromagerie Durand Sàrl', 'Lausanne', 'CH', null, null, 'fromageriedurand|lausanne|CH', null, null),
+      (U&'SARL\00A0Dupont', 'Paris', 'FR', null, null, 'dupont|paris|FR', null, null),
+      (U&'Dupont \FF33\FF21\FF32\FF2C', 'Paris', 'FR', null, null, U&'dupont\FF53\FF41\FF52\FF4C|paris|FR', null, null),
+      ('東京、商事', '東京', 'JP', null, null, '東京商事|東京|JP', null, null),
+      ('A|B', 'C', 'FR', null, null, 'ab|c|FR', null, null),
+      ('A', 'B|C', 'FR', null, null, 'a|bc|FR', null, null),
+      ('Durand SARL SAS', 'Paris', 'FR', null, null, 'durand|paris|FR', null, null),
+      ('Sasha Inc Bv', 'Paris', 'FR', null, null, 'sasha|paris|FR', null, null),
+      ('SARL SAS', 'Paris', 'FR', null, null, 'sarlsas|paris|FR', null, null),
+      ('佐々木商店', '東京', 'JP', null, null, '佐々木商店|東京|JP', null, null),
+      ('ジョン・スミス', '大阪', 'JP', null, null, 'ジョンスミス|大阪|JP', null, null),
+      ('ООО «Ромашка»', 'Москва', 'RU', null, null, 'оооромашка|москва|RU', null, null),
+      ('النور، للتجارة', 'الدار البيضاء', 'MA', null, null, 'النورللتجارة|الدارالبيضاء|MA', null, null),
+      (U&'L\02BCatelier Inter\00ADnational SA\00ADRL', U&'Lyon\200B', 'FR', null, null, 'latelierinternational|lyon|FR', null, null),
+      ('IRMAK INC', 'ISTANBUL', 'TR', null, null, 'irmak|istanbul|TR', null, null),
       ('Alpha', '', 'FR', null, null, null, null, null),
       ('Alpha', ' - ', 'FR', null, null, null, null, null),
       ('Alpha', null, 'FR', null, null, null, null, null),
