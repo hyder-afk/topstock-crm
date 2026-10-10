@@ -21,6 +21,9 @@ const PORT = Number(process.env.LOCAL_GATEWAY_PORT || 54321);
 const ROLES = new Set(["anon", "authenticated", "service_role"]);
 const NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 export const MAX_BODY = 2 * 1024 * 1024;
+// A body over MAX_BODY is still read to its end, up to this many bytes, before the 413 goes out: a client that is
+// still sending then reads the 413 instead of a broken pipe. Past this, reading stops and the connection closes.
+const DRAIN_MAX = 16 * 1024 * 1024;
 
 class LocalError extends Error {
   constructor(status, message) {
@@ -135,8 +138,9 @@ export function sqlResult({ status, out, err }, role) {
 // jsonb keeps them exactly as numeric.
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    if (Number(req.headers["content-length"] || 0) > MAX_BODY) {
-      reject(new LocalError(413, "request body over 2 MB"));
+    const tooBig = () => new LocalError(413, "request body over 2 MB");
+    if (Number(req.headers["content-length"] || 0) > DRAIN_MAX) {
+      reject(tooBig());
       return;
     }
     const chunks = [];
@@ -145,10 +149,12 @@ function readBody(req) {
       size += chunk.length;
       if (size <= MAX_BODY) chunks.push(chunk);
       else chunks.length = 0;
+      // A body without Content-Length that keeps coming: answer now (the 413 closes the connection).
+      if (size > DRAIN_MAX) reject(tooBig());
     });
     req.on("error", reject);
     req.on("end", () => {
-      if (size > MAX_BODY) return reject(new LocalError(413, "request body over 2 MB"));
+      if (size > MAX_BODY) return reject(tooBig());
       const raw = Buffer.concat(chunks).toString("utf8") || "{}";
       try {
         JSON.parse(raw);
@@ -207,7 +213,7 @@ function serve() {
       if (req.url.startsWith("/rest/v1/")) {
         rest(req, res).catch((e) => {
           if (res.headersSent) return;
-          // A too-large Content-Length is refused before the body is read, so a 413 closes the connection.
+          // A 413 closes the connection: a body over DRAIN_MAX is not read to its end.
           if (e instanceof LocalError) {
             return send(res, e.status, localBody(e.message), e.status === 413 ? { connection: "close" } : {});
           }

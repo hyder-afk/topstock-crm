@@ -177,6 +177,19 @@ function psql(script) {
     req.end();
   });
   check("2 MiB + 1 byte chunked (no Content-Length): 413", chunked === 413, `got ${chunked}`);
+
+  // Well over the limit with a Content-Length: the body is still read before the 413 goes out, so the client sees the
+  // 413 instead of a broken pipe (EPIPE).
+  const declared = await new Promise((resolve) => {
+    const piece = Buffer.alloc(3 * MAX_BODY, "a");
+    const req = http.request(PROBE, { method: "POST", headers: { ...auth(SERVICE), "Content-Length": piece.length } }, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.on("error", (e) => resolve(e.code));
+    req.end(piece);
+  });
+  check("6 MiB with Content-Length: 413, not a broken pipe", declared === 413, `got ${declared}`);
 }
 
 // 6. Unchanged behaviour: no token is 401, a body that is not JSON is 400.
