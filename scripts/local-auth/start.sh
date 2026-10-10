@@ -1,7 +1,9 @@
 #!/bin/bash
 # Local-only Supabase Auth for screenshots and auth tests in cloud VMs where Docker is blocked.
 # Builds Supabase Auth (GoTrue) from source at a pinned commit via the Go module proxy, runs it on a throwaway
-# PostgreSQL 16, and puts a tiny gateway on :54321 that maps /auth/v1/* like the Supabase API gateway does.
+# PostgreSQL 16 with the app's migrations, and puts a tiny gateway on :54321: /auth/v1/* goes to Supabase Auth and
+# /rest/v1/* to a minimal PostgREST stand-in (gateway.mjs + local-api.sql) that runs requests as the caller's role,
+# so row level security applies as on Supabase.
 # Fake users only. The JWT secret is random per run. Writes the env to use into $OUT/env (default /tmp/topstock-auth).
 # CI does not use this: it runs the real Supabase stack (`supabase start`).
 set -euo pipefail
@@ -37,15 +39,18 @@ export GOTRUE_JWT_SECRET="$SECRET" GOTRUE_JWT_EXP=3600 GOTRUE_JWT_AUD=authentica
   GOTRUE_DISABLE_SIGNUP=true GOTRUE_EXTERNAL_EMAIL_ENABLED=true GOTRUE_MAILER_AUTOCONFIRM=true \
   GOTRUE_MFA_TOTP_ENROLL_ENABLED=true GOTRUE_MFA_TOTP_VERIFY_ENABLED=true GOTRUE_PASSWORD_MIN_LENGTH=12 GOTRUE_LOG_LEVEL=warn
 "$OUT/gotrue" migrate > "$OUT/migrate.log" 2>&1
+PSQL="psql -h 127.0.0.1 -p 54330 -U postgres -d postgres -X -q -v ON_ERROR_STOP=1"
+$PSQL -f "$ROOT/scripts/local-auth/compat.sql"
+for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$f"; done
+$PSQL -f "$ROOT/scripts/local-auth/local-api.sql"
 nohup "$OUT/gotrue" serve > "$OUT/gotrue.log" 2>&1 < /dev/null &
-nohup node "$ROOT/scripts/local-auth/gateway.mjs" > "$OUT/gateway.log" 2>&1 < /dev/null &
+LOCAL_PG_PORT=54330 nohup node "$ROOT/scripts/local-auth/gateway.mjs" > "$OUT/gateway.log" 2>&1 < /dev/null &
 {
   echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321"
   echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(node "$ROOT/scripts/local-auth/jwt.mjs" "$SECRET" anon)"
   echo "SUPABASE_LOCAL_URL=http://127.0.0.1:54321"
+  echo "SUPABASE_LOCAL_DB_URL=postgres://postgres@127.0.0.1:54330/postgres"
   echo "SUPABASE_LOCAL_SERVICE_ROLE_KEY=$(node "$ROOT/scripts/local-auth/jwt.mjs" "$SECRET" service_role)"
-  # Auth only: no data API (PostgREST) here, so tests that read or write tables skip themselves.
-  echo "LOCAL_AUTH_ONLY=1"
 } > "$OUT/env"
 echo "$PG" > "$OUT/pgdir"
 for _ in $(seq 1 20); do curl -fsS http://127.0.0.1:54321/auth/v1/health >/dev/null 2>&1 && break; sleep 0.5; done

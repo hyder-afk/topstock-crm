@@ -79,15 +79,18 @@ export async function proxy(request: NextRequest) {
   // First line of the sign-in wall (fails closed). Every page and action checks again on the server (src/lib/auth.ts).
   const target = wallTarget(path, aal);
   if (target) {
-    const redirect = NextResponse.redirect(new URL(target, request.url));
+    // JSON APIs answer 401 (the app's data fetches then show their error state) instead of an HTML redirect.
+    const blocked = path.startsWith("/api/")
+      ? NextResponse.json({ error: "unauthorized" }, { status: 401 })
+      : NextResponse.redirect(new URL(target, request.url));
     // Keep any refreshed session cookies and their no-store headers on the redirect.
-    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    response.cookies.getAll().forEach((c) => blocked.cookies.set(c));
     ["cache-control", "expires", "pragma"].forEach((key) => {
       const value = response.headers.get(key);
-      if (value) redirect.headers.set(key, value);
+      if (value) blocked.headers.set(key, value);
     });
-    redirect.headers.set("Content-Security-Policy", csp);
-    return redirect;
+    blocked.headers.set("Content-Security-Policy", csp);
+    return blocked;
   }
 
   response.headers.set("Content-Security-Policy", csp);

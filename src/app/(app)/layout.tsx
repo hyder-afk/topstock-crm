@@ -1,7 +1,9 @@
 import { Logo } from "@/components/logo";
+import { QueryProvider } from "@/components/providers/query-provider";
 import { Dock } from "@/components/shell/dock";
 import { KeyboardLayer } from "@/components/shell/keyboard-layer";
 import { SearchButton } from "@/components/shell/search-button";
+import { ToastProvider } from "@/components/ui/toast";
 import { requireSession } from "@/lib/auth";
 
 // Everything behind the sign-in wall: a slim top bar, the page, and the floating dock.
@@ -9,18 +11,22 @@ import { requireSession } from "@/lib/auth";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   await requireSession();
   return (
-    <KeyboardLayer>
-      <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col px-4 sm:px-8">
-        <header className="flex h-[72px] shrink-0 items-center justify-between gap-4">
-          <Logo className="h-auto w-[184px] text-foreground" />
-          <SearchButton />
-        </header>
-        {/* Bottom padding keeps the last content clear of the dock and its bead. */}
-        <main id="main" className="flex flex-1 flex-col pb-36">
-          {children}
-        </main>
-        <Dock />
-      </div>
-    </KeyboardLayer>
+    <QueryProvider>
+      <ToastProvider>
+        <KeyboardLayer>
+          <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col px-4 sm:px-8">
+            <header className="flex h-[72px] shrink-0 items-center justify-between gap-4">
+              <Logo className="h-auto w-[184px] text-foreground" />
+              <SearchButton />
+            </header>
+            {/* Bottom padding keeps the last content clear of the dock and its bead. */}
+            <main id="main" className="flex flex-1 flex-col pb-36">
+              {children}
+            </main>
+            <Dock />
+          </div>
+        </KeyboardLayer>
+      </ToastProvider>
+    </QueryProvider>
   );
 }

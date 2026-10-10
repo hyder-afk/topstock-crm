@@ -11,5 +11,7 @@ export default getRequestConfig(async () => {
     locale,
     messages: (await import(`../../messages/${locale}.json`)).default,
     timeZone: "Europe/Paris",
+    // One reference time per request for "2 days ago": the browser inherits it, so server and client agree.
+    now: new Date(),
   };
 });

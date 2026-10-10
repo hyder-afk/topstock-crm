@@ -16,9 +16,10 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3100", trace: "retain-on-failure" },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } } },
-    // Safari's engine for the shell (dock drag, keyboard, command menu; Master Plan: "Test in Safari and Chrome").
+    // Safari's engine for the shell and the leads screen (dock drag, keyboard, command menu, table, preview;
+    // Master Plan: "Test in Safari and Chrome").
     // CI installs WebKit; locally run `--project chromium` when only Chromium is available.
-    { name: "webkit", testMatch: /shell\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
+    { name: "webkit", testMatch: /(shell|leads)\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
   ],
   webServer: { command: "npm run start", url: "http://localhost:3100/login", reuseExistingServer: true, timeout: 60_000 },
 });
