@@ -85,7 +85,9 @@ async function choose(page: Page, file: string | { name: string; mimeType: strin
 const tile = (page: Page, label: string) => page.locator("dl > div").filter({ hasText: label }).locator("dd").first();
 const checkButton = (page: Page) => page.getByRole("button", { name: /^Check file/ });
 const history = (page: Page) => page.getByRole("complementary", { name: "Past imports" });
-const historyItem = (page: Page, file: string) => history(page).getByRole("listitem").filter({ hasText: file });
+// The import of this file that is still in play (a discarded check of the same file stays listed too).
+const historyItem = (page: Page, file: string) =>
+  history(page).getByRole("listitem").filter({ hasText: file }).filter({ hasNotText: "Discarded" });
 const noHorizontalScroll = async (page: Page) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 // Discard asks first ("Discard this check?"), then the import is thrown away.
