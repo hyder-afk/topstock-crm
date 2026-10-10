@@ -19,7 +19,7 @@ import { LeadForm, leadToValues } from "@/components/leads/lead-form";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { leadKey, rowBefore, useLead, useLeadChanges } from "@/components/leads/use-leads";
 import { countryName } from "@/lib/countries";
-import { leadStatuses, personName, telHref, type LeadDetail, type LeadStatus, type TeamMember } from "@/lib/leads";
+import { leadStatuses, mailHref, personName, telHref, type LeadDetail, type LeadStatus, type TeamMember } from "@/lib/leads";
 import { cn } from "@/lib/utils";
 
 // Compact actions so Call, Email, Set status and Edit fit one row in the preview panel.
@@ -133,7 +133,7 @@ function LeadDetailView({
     {
       label: t("email2"),
       value: lead.email ? (
-        <a href={`mailto:${lead.email}`} className="break-all underline-offset-4 hover:underline">
+        <a href={mailHref(lead.email)} className="break-all underline-offset-4 hover:underline">
           {lead.email}
         </a>
       ) : (
@@ -182,7 +182,7 @@ function LeadDetailView({
           </a>
         ) : null}
         {lead.email ? (
-          <a href={`mailto:${lead.email}`} className={cn(buttonVariants({ variant: "quiet" }), compact)}>
+          <a href={mailHref(lead.email)} className={cn(buttonVariants({ variant: "quiet" }), compact)}>
             <Mail aria-hidden="true" strokeWidth={1.75} className="size-4" />
             {t("email")}
           </a>
@@ -315,7 +315,7 @@ function LeadDetailView({
                         </a>
                       ) : null}
                       {c.email ? (
-                        <a href={`mailto:${c.email}`} className="break-all underline-offset-4 hover:underline">
+                        <a href={mailHref(c.email)} className="break-all underline-offset-4 hover:underline">
                           {c.email}
                         </a>
                       ) : null}

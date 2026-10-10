@@ -207,6 +207,41 @@ test.describe("desktop", () => {
   });
 });
 
+test("saved views with bad filters are tidied or left out; email links cannot add mail fields; long cursors page", async ({
+  browser,
+}) => {
+  sql(`insert into public.saved_views (org_id, user_id, section, name, filters_json)
+       select p.org_id, p.id, 'leads', v.name, v.filters::jsonb
+       from public.profiles p join auth.users u on u.id = p.id,
+            (values ('Broken view', '"not filters"'), ('Tidied view', '{"q": "Verdane", "status": 5, "inactive": "soon"}'))
+              as v (name, filters)
+       where u.email = '${adminEmail}'`);
+  const lead = sql(`select id from public.companies order by lower(name), id limit 1`);
+  sql(`update public.companies set email = 'sales?cc=x&co@example.test' where id = '${lead}'`);
+  const context = await browser.newContext({ storageState: adminState, viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  await openLeads(page, `/leads?sort=name&lead=${lead}`);
+  await expect(preview(page).getByRole("link", { name: "sales?cc=x&co@example.test" })).toHaveAttribute(
+    "href",
+    "mailto:sales%3Fcc%3Dx%26co@example.test",
+  );
+  await page.getByRole("button", { name: "Views" }).click();
+  await expect(page.getByRole("button", { name: "Broken view", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Tidied view", exact: true }).click();
+  await expect(page).toHaveURL(/q=Verdane/);
+  expect(page.url()).not.toMatch(/status=|inactive=/);
+  // Paging cursors carry the last lead's sort value: a 200-character name (up to 400 UTF-16 units) is accepted.
+  const afterId = "00000000-0000-4000-8000-000000000000";
+  const cursor = (value: string) => `/api/leads?sort=name&after_value=${encodeURIComponent(value)}&after_id=${afterId}`;
+  expect((await context.request.get(cursor("é".repeat(150)))).status()).toBe(200);
+  expect((await context.request.get(cursor("😀".repeat(200)))).status()).toBe(200);
+  expect((await context.request.get(cursor("a".repeat(401)))).status()).toBe(400);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("a rep reads every lead but changes only their own", async ({ browser }) => {
   const context = await browser.newContext({ storageState: repState, viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();

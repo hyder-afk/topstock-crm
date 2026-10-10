@@ -98,7 +98,8 @@ begin
   end loop;
   foreach t in array array['select * from public.list_leads()', 'select public.count_leads()',
                            'select public.get_lead(gen_random_uuid())', 'select * from public.list_team()',
-                           $q$select public.create_lead('x')$q$, $q$select * from public.list_saved_views('leads')$q$] loop
+                           $q$select public.create_lead('x')$q$, $q$select * from public.list_saved_views('leads')$q$,
+                           $q$select * from private.search_lead_ids('%co%')$q$] loop
     begin
       execute t;
       raise exception 'FAIL: anon could call %', t;
@@ -116,6 +117,7 @@ do $$ begin
   if (select count(*) from public.contacts) <> 0 then raise exception 'FAIL: aal1 session can read contacts'; end if;
   if (select count(*) from public.profiles) <> 0 then raise exception 'FAIL: aal1 session can read profiles'; end if;
   if (select count(*) from public.list_leads()) <> 0 then raise exception 'FAIL: aal1 session can list leads'; end if;
+  if exists (select 1 from private.search_lead_ids('%co%')) then raise exception 'FAIL: aal1 session can search leads'; end if;
   if public.get_lead('30000000-0000-0000-0000-0000000000a1') is not null then
     raise exception 'FAIL: aal1 session can read a lead';
   end if;
@@ -157,10 +159,15 @@ begin
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL: contact deleted without a fresh two-factor code'; end if;
 
-  -- Insert: org and owner are set by the server, not the client.
-  insert into public.companies (name, org_id) values ('mine', '00000000-0000-0000-0000-0000000000cc');
-  if (select org_id from public.companies where name = 'mine') = '00000000-0000-0000-0000-0000000000cc' then
-    raise exception 'FAIL: client chose org_id';
+  -- Insert: org and owner are set by the server; a client cannot even name the org column.
+  begin
+    insert into public.companies (name, org_id) values ('mine', '00000000-0000-0000-0000-0000000000cc');
+    raise exception 'FAIL: client sent org_id';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public.companies (name) values ('mine');
+  if (select org_id from public.companies where name = 'mine') <> (select id from public.orgs where name = 'TopStock Wholesale') then
+    raise exception 'FAIL: org not set by the server';
   end if;
   if (select owner_id from public.companies where name = 'mine') <> '00000000-0000-0000-0000-0000000000a1' then
     raise exception 'FAIL: owner not defaulted to caller';
@@ -209,6 +216,28 @@ begin
     raise exception 'FAIL: rep wrote to the audit log';
   exception when insufficient_privilege then null;
   end;
+end $$;
+
+-- 3a. Column grants: server-kept columns cannot be written, even on one's own lead --------------------------
+do $$
+declare
+  attempt text;
+begin
+  foreach attempt in array array[
+    $q$update public.companies set last_activity_at = now() + interval '3 years' where id = '30000000-0000-0000-0000-0000000000a1'$q$,
+    $q$update public.companies set created_at = '2000-01-01' where id = '30000000-0000-0000-0000-0000000000a1'$q$,
+    $q$update public.companies set import_batch_id = '90000000-0000-0000-0000-00000000000a' where id = '30000000-0000-0000-0000-0000000000a1'$q$,
+    $q$insert into public.companies (name, last_activity_at) values ('backdated', now() - interval '1 day')$q$,
+    $q$insert into public.companies (name, import_batch_id) values ('tagged', '90000000-0000-0000-0000-00000000000a')$q$,
+    $q$update public.contacts set created_at = '2000-01-01' where id = '10000000-0000-0000-0000-0000000000a1'$q$,
+    $q$update public.contacts set org_id = '00000000-0000-0000-0000-0000000000cc' where id = '10000000-0000-0000-0000-0000000000a1'$q$
+  ] loop
+    begin
+      execute attempt;
+      raise exception 'FAIL: wrote a server-kept column: %', attempt;
+    exception when insufficient_privilege then null;
+    end;
+  end loop;
 end $$;
 
 -- 3b. Deals, tasks and files stay with their owner: rep B's and the other org's rows are invisible ----------
@@ -332,13 +361,33 @@ begin
     raise exception 'FAIL: search by contact name';
   end if;
   -- LIKE wildcards in user text are literal: "%" and "_" match nothing here.
-  if (select count(*) from public.list_leads(p_search => '%')) <> 0 or (select count(*) from public.list_leads(p_search => '_')) <> 0 then
+  if (select count(*) from public.list_leads(p_search => '%%')) <> 0 or (select count(*) from public.list_leads(p_search => '__')) <> 0
+     or public.count_leads(p_search => '%%') <> 0 then
     raise exception 'FAIL: search text was treated as a pattern';
   end if;
-  update public.companies set last_activity_at = now() - interval '40 days' where id = '30000000-0000-0000-0000-0000000000a1';
+  -- The search helper runs as its owner (so the trigram indexes work) but keeps to the caller's org: "c1" is only in
+  -- the other org's lead ("Co c1") and contact ("Person c1").
+  if (select count(*) from private.search_lead_ids('%co%')) <> 2 then
+    raise exception 'FAIL: search helper should find the 2 leads of the org';
+  end if;
+  if exists (select 1 from private.search_lead_ids('%c1%')) then
+    raise exception 'FAIL: search helper returned another org''s lead';
+  end if;
+end $$;
+
+-- Only the server sets the last-activity date: backdate lead a1 as the superuser for the inactivity filter.
+reset role;
+update public.companies set last_activity_at = now() - interval '40 days' where id = '30000000-0000-0000-0000-0000000000a1';
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2'); end $$;
+do $$ begin
   -- "No activity for 30 days": lead a1 (40 days) and 'mine' (never); not b1 (just now).
   if (select count(*) from public.list_leads(p_inactive_days => 30)) <> 2 then
     raise exception 'FAIL: inactivity filter';
+  end if;
+  -- Search shorter than 2 characters is no search (every lead), longer than 100 is cut.
+  if (select count(*) from public.list_leads(p_search => 'C')) <> 3 then
+    raise exception 'FAIL: one-character search should not filter';
   end if;
 end $$;
 
@@ -516,6 +565,18 @@ begin
     raise exception 'FAIL: admin should see both reps'' files, nothing from the other org';
   end if;
   if (select count(*) from public.profiles) <> 3 then raise exception 'FAIL: admin should see 3 profiles of the org'; end if;
+
+  -- Not even an admin writes the server-kept columns.
+  begin
+    update public.companies set last_activity_at = now() + interval '3 years' where id = '30000000-0000-0000-0000-0000000000b1';
+    raise exception 'FAIL: admin wrote the last-activity date';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.companies set import_batch_id = '90000000-0000-0000-0000-00000000000a' where id = '30000000-0000-0000-0000-0000000000b1';
+    raise exception 'FAIL: admin tagged a lead into an import batch';
+  exception when insufficient_privilege then null;
+  end;
 
   -- Admins assign leads to anyone in the team, never to someone outside it.
   perform public.update_lead('30000000-0000-0000-0000-0000000000a1', 'Co a1', '00000000-0000-0000-0000-0000000000b1',

@@ -1,6 +1,15 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { pageSize, rpcFilterArgs, type LeadFilters, type LeadPage, type LeadRow, type TeamMember } from "@/lib/leads";
+import { z } from "zod";
+import {
+  filterParams,
+  pageSize,
+  rpcFilterArgs,
+  type LeadFilters,
+  type LeadPage,
+  type LeadRow,
+  type TeamMember,
+} from "@/lib/leads";
 
 // One page of leads for these filters (keyset). Shared by the leads page (first page, server-rendered) and
 // GET /api/leads (next pages and filter changes). Returns null when the database could not answer.
@@ -39,7 +48,15 @@ export async function fetchTeam(supabase: SupabaseClient): Promise<TeamMember[] 
 
 export type SavedView = { id: string; name: string; filters: LeadFilters; created_at: string };
 
+// Saved filters come back as stored JSON: each view is checked like filters from the URL (bad values dropped), and a
+// view that is not even an object of filters is left out.
+const savedView = z.object({ id: z.uuid(), name: z.string(), filters: filterParams, created_at: z.string() });
+
 export async function fetchViews(supabase: SupabaseClient): Promise<SavedView[] | null> {
   const { data, error } = await supabase.rpc("list_saved_views", { p_section: "leads" });
-  return error ? null : ((data ?? []) as SavedView[]);
+  if (error) return null;
+  return ((data ?? []) as unknown[]).flatMap((row) => {
+    const view = savedView.safeParse(row);
+    return view.success ? [view.data] : [];
+  });
 }

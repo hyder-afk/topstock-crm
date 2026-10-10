@@ -26,7 +26,12 @@ alter table public.companies add constraint companies_country_check check (count
 create index companies_status_idx on public.companies (org_id, lead_status);
 create index companies_country_idx on public.companies (org_id, country);
 create index companies_import_batch_idx on public.companies (import_batch_id);
-create index companies_email_trgm_idx on public.companies using gin (email extensions.gin_trgm_ops);
+-- Search looks in name, email, phone and city at once: one trigram index over the four joined by line breaks (a line
+-- break cannot be typed in the search box, so a search from the app never spans two fields). Replaces the name index.
+drop index public.companies_name_trgm_idx;
+create index companies_search_trgm_idx on public.companies using gin (
+  (name || E'\n' || coalesce(email, '') || E'\n' || coalesce(phone, '') || E'\n' || coalesce(city, ''))
+  extensions.gin_trgm_ops);
 -- Keyset pagination for the three sort orders of the leads list.
 create index companies_activity_keyset_idx
   on public.companies (org_id, (coalesce(last_activity_at, '-infinity'::timestamptz)) desc, id desc);
@@ -54,6 +59,11 @@ alter table public.contacts
 create trigger enforce_org_and_owner before insert or update on public.contacts
   for each row execute function private.enforce_org_and_owner();
 create index contacts_org_idx on public.contacts (org_id);
+-- Same for the people at a lead: full name, email and phone in one trigram index (replaces the name and email ones).
+drop index public.contacts_name_trgm_idx, public.contacts_email_trgm_idx;
+create index contacts_search_trgm_idx on public.contacts using gin (
+  (first_name || ' ' || last_name || E'\n' || coalesce(email, '') || E'\n' || coalesce(phone, ''))
+  extensions.gin_trgm_ops);
 
 -- ---------------------------------------------------------------------------
 -- Activities belong to a lead (optionally to one of its contacts and a deal)
@@ -259,39 +269,62 @@ language sql immutable set search_path = '' as $$
   select replace(replace(replace(value, '\', '\\'), '%', '\%'), '_', '\_')
 $$;
 
-create function private.filtered_leads(
-  p_search text, p_statuses text[], p_owners uuid[], p_unowned boolean, p_countries text[], p_city text,
-  p_inactive_days integer
-) returns setof public.companies
-language sql stable set search_path = '' as $$
-  with q as (
-    select nullif(btrim(left(p_search, 100)), '') as search, nullif(btrim(left(p_city, 120)), '') as city
-  )
-  select c.*
-  from public.companies c, q
-  where (p_statuses is null or c.lead_status = any (p_statuses))
-    and ((p_owners is null and not coalesce(p_unowned, false))
-         or c.owner_id = any (p_owners)
-         or (coalesce(p_unowned, false) and c.owner_id is null))
-    and (p_countries is null or c.country = any (p_countries))
-    and (q.city is null or c.city ilike '%' || private.like_escape(q.city) || '%')
-    and (p_inactive_days is null
-         or c.last_activity_at is null
-         or c.last_activity_at < now() - make_interval(days => greatest(p_inactive_days, 0)))
-    and (q.search is null
-         or c.name ilike '%' || private.like_escape(q.search) || '%'
-         or c.email ilike '%' || private.like_escape(q.search) || '%'
-         or c.phone ilike '%' || private.like_escape(q.search) || '%'
-         or c.city ilike '%' || private.like_escape(q.search) || '%'
-         or exists (select 1 from public.contacts k
-                    where k.company_id = c.id
-                      and ((k.first_name || ' ' || k.last_name) ilike '%' || private.like_escape(q.search) || '%'
-                           or k.email ilike '%' || private.like_escape(q.search) || '%'
-                           or k.phone ilike '%' || private.like_escape(q.search) || '%')))
+-- Search (2 to 100 characters) and city (1 to 120) become ILIKE patterns, their wildcards escaped; shorter is "none".
+create function private.like_pattern(value text, max_len integer, min_len integer) returns text
+language sql immutable set search_path = '' as $$
+  select case when char_length(btrim(coalesce(value, ''))) >= min_len
+              then '%' || private.like_escape(left(btrim(value), max_len)) || '%' end
 $$;
 
+-- Ids of the caller's leads whose name, email, phone or city, or one of whose contacts' name, email or phone, contain the
+-- search pattern. Why this runs as the definer: row level security evaluates its own checks before any condition that is
+-- not leakproof, and ILIKE is not, so under RLS the trigram indexes cannot be used and every search read all 30k leads
+-- (about 100 ms, docs/evidence/day3a/perf.md); here the indexes answer in a few ms. It applies the same rule as the
+-- companies_select and contacts_select policies itself (the caller's org, with two-factor) and returns ids only; the
+-- calling query reads the leads under row level security as usual. Not reachable from the API (private schema).
+create function private.search_lead_ids(p_pattern text) returns setof uuid
+language plpgsql stable security definer rows 100 set search_path = '' as $$
+declare
+  v_org uuid := private.current_org_id();
+begin
+  if v_org is null or not private.has_aal2() or p_pattern is null then
+    return;
+  end if;
+  return query execute $q$
+    select s.id from public.companies s
+     where s.org_id = $1
+       and (s.name || E'\n' || coalesce(s.email, '') || E'\n' || coalesce(s.phone, '') || E'\n' || coalesce(s.city, ''))
+           ilike $2
+    union
+    select k.company_id from public.contacts k
+     where k.org_id = $1
+       and (k.first_name || ' ' || k.last_name || E'\n' || coalesce(k.email, '') || E'\n' || coalesce(k.phone, ''))
+           ilike $2
+  $q$ using v_org, p_pattern;
+end;
+$$;
+
+-- The leads filter, written once for list_leads and count_leads. It is constant SQL text with positional parameters
+-- only ($1 search pattern, $2 statuses, $3 owners, $4 unowned, $5 countries, $6 city pattern, $7 inactive days). The two
+-- functions run it with EXECUTE ... USING, so values never become SQL and each call is planned with its real values:
+-- the keyset indexes stay usable (a set-returning SQL function with a SET clause is never inlined). Search goes through
+-- private.search_lead_ids above.
+create function private.lead_filter_sql() returns text
+language sql immutable set search_path = '' as $f$
+  select $q$
+        ($2::text[] is null or c.lead_status = any ($2))
+    and (($3::uuid[] is null and not $4) or c.owner_id = any ($3) or ($4 and c.owner_id is null))
+    and ($5::text[] is null or c.country = any ($5))
+    and ($6::text is null or c.city ilike $6)
+    and ($7::integer is null or c.last_activity_at is null
+         or c.last_activity_at < now() - make_interval(days => greatest($7, 0)))
+    and ($1::text is null or c.id = any (array(select private.search_lead_ids($1))))
+  $q$
+$f$;
+
 -- One page of leads. p_sort: 'activity' (newest activity first, never-contacted last), 'name' (A to Z), 'created'
--- (newest first). Pass the last row's sort_value and id to get the next page (keyset; never OFFSET).
+-- (newest first). Pass the last row's sort_value and id to get the next page (keyset; never OFFSET). The sort keys and
+-- cursor conditions below are fixed strings chosen by p_sort (whitelisted), never user text.
 create function public.list_leads(
   p_search text default null,
   p_statuses text[] default null,
@@ -321,7 +354,10 @@ create function public.list_leads(
   sort_value text
 )
 language plpgsql stable set search_path = '' as $$
-#variable_conflict use_column
+declare
+  sort_key text;
+  after_cond text;
+  direction text;
 begin
   if p_limit is null or p_limit < 1 or p_limit > 200 then
     raise exception 'limit must be between 1 and 200' using errcode = '22023';
@@ -332,42 +368,31 @@ begin
   if (p_after_value is null) <> (p_after_id is null) then
     raise exception 'cursor needs both value and id' using errcode = '22023';
   end if;
+  sort_key := case p_sort
+    when 'name' then 'lower(c.name)'
+    when 'created' then 'c.created_at'
+    else 'coalesce(c.last_activity_at, ''-infinity''::timestamptz)'
+  end;
+  after_cond := case p_sort
+    when 'name' then '(lower(c.name), c.id) > ($8, $9)'
+    else format('(%s, c.id) < ($8::timestamptz, $9)', sort_key)
+  end;
+  direction := case p_sort when 'name' then 'asc' else 'desc' end;
 
-  if p_sort = 'name' then
-    return query
-      select c.id, c.name, c.owner_id, o.first_name, o.last_name, c.phone, c.email, c.lead_status,
-             c.last_activity_at, c.city, c.country,
-             (select count(*)::integer from public.contacts k where k.company_id = c.id), c.created_at,
-             lower(c.name)
-      from private.filtered_leads(p_search, p_statuses, p_owners, p_unowned, p_countries, p_city, p_inactive_days) c
-      left join public.profiles o on o.id = c.owner_id
-      where p_after_id is null or (lower(c.name), c.id) > (p_after_value, p_after_id)
-      order by lower(c.name), c.id
-      limit p_limit;
-  elsif p_sort = 'created' then
-    return query
-      select c.id, c.name, c.owner_id, o.first_name, o.last_name, c.phone, c.email, c.lead_status,
-             c.last_activity_at, c.city, c.country,
-             (select count(*)::integer from public.contacts k where k.company_id = c.id), c.created_at,
-             c.created_at::text
-      from private.filtered_leads(p_search, p_statuses, p_owners, p_unowned, p_countries, p_city, p_inactive_days) c
-      left join public.profiles o on o.id = c.owner_id
-      where p_after_id is null or (c.created_at, c.id) < (p_after_value::timestamptz, p_after_id)
-      order by c.created_at desc, c.id desc
-      limit p_limit;
-  else
-    return query
-      select c.id, c.name, c.owner_id, o.first_name, o.last_name, c.phone, c.email, c.lead_status,
-             c.last_activity_at, c.city, c.country,
-             (select count(*)::integer from public.contacts k where k.company_id = c.id), c.created_at,
-             coalesce(c.last_activity_at, '-infinity'::timestamptz)::text
-      from private.filtered_leads(p_search, p_statuses, p_owners, p_unowned, p_countries, p_city, p_inactive_days) c
-      left join public.profiles o on o.id = c.owner_id
-      where p_after_id is null
-         or (coalesce(c.last_activity_at, '-infinity'::timestamptz), c.id) < (p_after_value::timestamptz, p_after_id)
-      order by coalesce(c.last_activity_at, '-infinity'::timestamptz) desc, c.id desc
-      limit p_limit;
-  end if;
+  return query execute format(
+    $q$select c.id, c.name, c.owner_id, o.first_name, o.last_name, c.phone, c.email, c.lead_status,
+              c.last_activity_at, c.city, c.country,
+              (select count(*)::integer from public.contacts k where k.company_id = c.id), c.created_at,
+              (%1$s)::text
+         from public.companies c
+         left join public.profiles o on o.id = c.owner_id
+        where %2$s
+          and ($9::uuid is null or %3$s)
+        order by %1$s %4$s, c.id %4$s
+        limit $10$q$,
+    sort_key, private.lead_filter_sql(), after_cond, direction)
+  using private.like_pattern(p_search, 100, 2), p_statuses, p_owners, coalesce(p_unowned, false), p_countries,
+        private.like_pattern(p_city, 120, 1), p_inactive_days, p_after_value, p_after_id, p_limit;
 end;
 $$;
 
@@ -381,9 +406,16 @@ create function public.count_leads(
   p_city text default null,
   p_inactive_days integer default null
 ) returns bigint
-language sql stable set search_path = '' as $$
-  select count(*)
-  from private.filtered_leads(p_search, p_statuses, p_owners, p_unowned, p_countries, p_city, p_inactive_days)
+language plpgsql stable set search_path = '' as $$
+declare
+  n bigint;
+begin
+  execute format('select count(*) from public.companies c where %s', private.lead_filter_sql())
+    into n
+    using private.like_pattern(p_search, 100, 2), p_statuses, p_owners, coalesce(p_unowned, false), p_countries,
+          private.like_pattern(p_city, 120, 1), p_inactive_days;
+  return n;
+end;
 $$;
 
 -- One lead with its owner and contacts, and whether the caller may change it. Null when not visible.
@@ -545,10 +577,10 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Function privileges: the API functions run as the caller, so authenticated needs the private helpers they use.
 -- ---------------------------------------------------------------------------
-revoke all on function private.like_escape(text), private.touch_company_activity(),
-  private.filtered_leads(text, text[], uuid[], boolean, text[], text, integer) from public, anon;
-grant execute on function private.like_escape(text),
-  private.filtered_leads(text, text[], uuid[], boolean, text[], text, integer) to authenticated;
+revoke all on function private.like_escape(text), private.like_pattern(text, integer, integer),
+  private.lead_filter_sql(), private.search_lead_ids(text), private.touch_company_activity() from public, anon;
+grant execute on function private.like_escape(text), private.like_pattern(text, integer, integer),
+  private.lead_filter_sql(), private.search_lead_ids(text) to authenticated;
 revoke all on function private.touch_company_activity() from authenticated;
 revoke all on function private.set_activity_time() from public, anon, authenticated;
 
@@ -575,3 +607,16 @@ begin
   end loop;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Column grants (CLAUDE.md: whitelist fields on writes). People change only these columns of a lead and a contact,
+-- through the API functions or directly; the last-activity date, import batch, org and timestamps are set by the
+-- server (triggers and imports), never by a client, so nobody can backdate a lead or tag it into an import batch.
+-- ---------------------------------------------------------------------------
+revoke insert, update on public.companies, public.contacts from authenticated;
+grant insert (name, website, industry, owner_id, lead_status, phone, email, city, country),
+      update (name, website, industry, owner_id, lead_status, phone, email, city, country)
+  on public.companies to authenticated;
+grant insert (company_id, first_name, last_name, title, email, phone),
+      update (company_id, first_name, last_name, title, email, phone)
+  on public.contacts to authenticated;

@@ -104,7 +104,8 @@ export function rpcFilterArgs(f: LeadFilters) {
 }
 
 export const cursorParams = z.object({
-  after_value: z.string().max(80),
+  // A lead name is up to 200 characters, which can be 400 UTF-16 units (what Zod counts).
+  after_value: z.string().max(400),
   after_id: uuid,
 });
 
@@ -191,6 +192,16 @@ export const savedViewInput = z.object({
 export function personName(p: { first_name: string | null; last_name: string | null } | null | undefined) {
   if (!p) return "";
   return [p.first_name, p.last_name].filter(Boolean).join(" ").trim();
+}
+
+// mailto: links with the address percent-encoded, so a "?", "&" or "," in a stored address cannot add a subject, a body
+// or more recipients.
+export function mailHref(address: string) {
+  const at = address.lastIndexOf("@");
+  const local = at < 0 ? address : address.slice(0, at);
+  return at < 0
+    ? `mailto:${encodeURIComponent(local)}`
+    : `mailto:${encodeURIComponent(local)}@${encodeURIComponent(address.slice(at + 1))}`;
 }
 
 // tel: links keep only digits and a leading plus.
