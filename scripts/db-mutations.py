@@ -54,6 +54,9 @@ MUTATIONS = [
     ("Import counters: client may write one",
      [("grant update (status) on public.import_batches to authenticated;",
        "grant update (status, imported) on public.import_batches to authenticated;")]),
+    ("File name: zero-width and bidi characters allowed (controls only)",
+     [("'[\\u0001-\\u001F\\u007F-\\u009F\\u061C\\u180E\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\uFEFF\\uFFF9-\\uFFFB\\U000E0000-\\U000E007F/\\\\]'",
+       "'[[:cntrl:]/\\\\]'")]),
     ("Batch guard trigger dropped",
      [("create trigger import_batch_guard before insert or update on public.import_batches\n  for each row execute function private.import_batch_guard();", "")]),
     ("One import at a time: index not unique",
@@ -134,6 +137,8 @@ def main() -> int:
                 out = run.stdout + run.stderr
                 first = next((l.strip() for l in out.splitlines() if "FAIL" in l or "ERROR" in l), "")
                 first = first.split("ERROR:", 1)[-1].strip().replace("|", "/")[:140]
+                # Invisible characters (a file-name test prints a bidi override) as escapes, so the table reads right.
+                first = "".join(c if c.isprintable() else f"\\u{ord(c):04X}" for c in first)
                 caught = run.returncode != 0
                 survived += 0 if caught else 1
                 print(f"| {i} | {title} | {'caught' if caught else '**NOT CAUGHT**'} | {first} |", flush=True)

@@ -951,6 +951,23 @@ begin
   end if;
 end $$;
 
+-- The file name: no control, zero-width, bidi or tag character (the browser's INVISIBLE_CHARS), no slash.
+do $$
+declare
+  bad text;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  foreach bad in array array[U&'leads\202Evsc.csv', U&'lea\200Bds.csv', U&'\2066leads\2069.csv', U&'\FEFFleads.csv',
+                             U&'leads\0085.csv', U&'leads\061C.csv', U&'leads\+0E0041.csv', U&'leads\2060.csv',
+                             U&'leads\180E.csv', U&'leads\FFF9.csv', U&'leads\200E.csv', E'leads\t.csv', 'a\b.csv'] loop
+    perform pg_temp.expect_error(format('select public.create_lead_import(%L, null, 1, 2)', bad), '23514');
+  end loop;
+  perform pg_temp.expect_error(format('insert into public.import_batches (filename, row_count, last_row_no) values (%L, 1, 2)',
+                                      U&'leads\202E.csv'), '23514');
+  -- Accents, spaces and brackets are fine.
+  perform public.discard_lead_import(public.create_lead_import('Prospects été 2026 (v2).csv', null, 1, 2));
+end $$;
+
 -- Superuser view: no closed import keeps working rows.
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;  -- superuser: no caller

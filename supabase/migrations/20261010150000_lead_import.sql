@@ -177,9 +177,14 @@ alter table public.import_batches
 alter table public.import_batches drop constraint import_batches_status_check;
 alter table public.import_batches add constraint import_batches_status_check
   check (status in ('staged', 'dry_run', 'committing', 'imported', 'rolling_back', 'rolled_back', 'discarded'));
+-- The file name is shown in the history: no slash or backslash, and none of the characters the browser removes from
+-- cells (src/lib/import/text.ts INVISIBLE_CHARS: C0 and C1 controls, zero-width characters, the BOM, bidi marks,
+-- embeddings, overrides and isolates, U+180E, U+FFF9-B, tag characters), so a name cannot hide text or reverse what
+-- follows it. Code point ranges, not [[:cntrl:]], so the rule is the same under any database locale.
 alter table public.import_batches
   add constraint import_batches_row_count_max check (row_count <= 50000),
-  add constraint import_batches_filename_safe check (char_length(filename) >= 1 and filename !~ '[[:cntrl:]/\\]');
+  add constraint import_batches_filename_safe check (char_length(filename) >= 1 and filename !~
+    '[\u0001-\u001F\u007F-\u009F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB\U000E0000-\U000E007F/\\]');
 -- One import or undo at a time per organisation.
 create unique index import_batches_one_writer_idx on public.import_batches (org_id)
   where status in ('committing', 'rolling_back');
