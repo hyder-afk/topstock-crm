@@ -422,7 +422,7 @@ export function ImportWorkspace({
   }, [file, matchState]);
 
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,880px)_320px] lg:items-start">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
       <section aria-labelledby="import-step-heading" className="flex min-w-0 flex-col gap-6 rounded-lg bg-card p-4 sm:p-8">
         <Stepper current={stepOf[phase.kind]} />
         {error ? (

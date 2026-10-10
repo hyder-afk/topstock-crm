@@ -26,7 +26,7 @@ export default async function Loading() {
         <Line className="w-full max-w-[600px]" />
         <Line className="w-2/3 max-w-[380px]" />
       </div>
-      <div aria-hidden="true" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,880px)_320px] lg:items-start">
+      <div aria-hidden="true" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <div className="flex flex-col gap-6 rounded-lg bg-card p-4 sm:p-8">
           <div className="flex flex-col gap-2">
             <div className="flex h-4 items-center sm:hidden">

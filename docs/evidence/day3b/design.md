@@ -599,7 +599,7 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 - Non-admins get the standard 404 and see no entry points.
 
 **Layout**
-- At 1024 and wider (designed at 1440): the wizard (max 880 px) and a 320 px "Past imports" rail.
+- At 1024 and wider (designed at 1440): the wizard fills the width and a 320 px "Past imports" rail sits on the right, both edges in line with the header (built: an 880 px cap left the rail short of the header's right edge on wide screens; text blocks keep a 65-character measure instead).
 - At 768: the rail goes under the wizard.
 - At 390:
   - one column with a "Step 2 of 4" header;

@@ -189,7 +189,7 @@ test("command menu and shortcuts list", async ({ browser }) => {
 // real, and existing-20.csv is imported once so the 500-row sample shows leads already in the CRM. Every shot does
 // its own steps from a clean slate (unfinished and discarded imports removed; at most 3 may be open). The "Confirm it's you" shots use a
 // session whose code was made to look 15 minutes old.
-test("lead import: choose, match, results, undo, confirm it's you, done", async ({ browser }) => {
+test("lead import: choose, match, results, undo, done, discard, confirm it's you", async ({ browser }) => {
   test.setTimeout(1_500_000);
   sql(`delete from public.import_batches;
        update public.profiles set last_name = 'Earlier run'
@@ -267,7 +267,7 @@ test("lead import: choose, match, results, undo, confirm it's you, done", async 
     const item = page.getByRole("complementary").getByRole("listitem").filter({ hasText: "existing-20.csv" });
     await item.getByRole("button", { name: /^(Undo import|Annuler l’import)$/ }).click();
     await expect(page.getByRole("dialog").getByRole("button")).toHaveCount(2);
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(400); // phone sheets rise in 320 ms
   }, matrix, clean);
   await fresh();
   const reprise = {
@@ -286,6 +286,15 @@ test("lead import: choose, match, results, undo, confirm it's you, done", async 
     // Past imports refreshes right after: wait for it to show the import as done.
     await expect(page.getByRole("complementary").getByRole("listitem").first()).toContainText(/Imported|Importé/);
   }, matrix, clean);
+  await fresh();
+  await shoot(browser, "importer", "/leads/import", "import-discard", async (page) => {
+    await pick(page, "existing-20.csv");
+    await checkFile(page);
+    await results(page);
+    await page.getByRole("button", { name: /^(Discard|Abandonner)$/ }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(400);
+  }, matrix, clean);
   clean();
 
   // Last: back-dating the code rotates this session.
@@ -299,7 +308,7 @@ test("lead import: choose, match, results, undo, confirm it's you, done", async 
     await pick(page, "existing-20.csv");
     await page.getByRole("button", { name: /^(Check file|Vérifier le fichier)/ }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(400); // phone sheets rise in 320 ms
   }, matrix, clean);
   clean();
 });
