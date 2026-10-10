@@ -4,6 +4,7 @@
 --  P2 check the whole file   P3 one page of the problems list   P4 import in 30 chunks with 281 leads added meanwhile
 --  P5 touch 100 imported leads   P6 undo preview and undo in chunks of 2,000 (100 must stay)
 --  P7 a 50,000-row file: add, check, discard.
+-- The history (20 rows) is also timed half way through the import and the undo, when it counts the leads tagged so far.
 \set ON_ERROR_STOP 1
 \set QUIET 1
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000ad', 'perf-admin@test.invalid');
@@ -91,6 +92,7 @@ declare
   max_ms numeric := 0;
   calls integer := 0;
   late integer := 0;
+  history integer;
 begin
   loop
     t0 := clock_timestamp();
@@ -101,9 +103,21 @@ begin
     max_ms := greatest(max_ms, ms);
     late := late + (r ->> 'late_duplicates')::integer;
     exit when r ->> 'status' = 'imported';
+    if calls = 15 then
+      t0 := clock_timestamp();
+      select h.imported into history from public.list_lead_imports(20) h where h.id = batch;
+      raise notice 'P4 history (20 rows) half way, import paused: % ms, shows % added (call total %)',
+        round(extract(epoch from clock_timestamp() - t0) * 1000, 1), history, r ->> 'imported_total';
+      if history is distinct from (r ->> 'imported_total')::integer then
+        raise exception 'FAIL: the history and the import call disagree on the leads added';
+      end if;
+    end if;
   end loop;
-  raise notice 'P4 import: % calls, average % ms, slowest % ms, total % ms, late duplicates skipped %',
-    calls, round(total_ms / calls, 1), round(max_ms, 1), round(total_ms), late;
+  raise notice 'P4 import: % calls, average % ms, slowest % ms, total % ms, late duplicates skipped %, total added %',
+    calls, round(total_ms / calls, 1), round(max_ms, 1), round(total_ms), late, r ->> 'imported_total';
+  if (r ->> 'imported_total')::integer <> (select imported from public.import_batches where id = batch) then
+    raise exception 'FAIL: the running total should end at the final counter';
+  end if;
   raise notice 'P4 result: %', (select jsonb_build_object('imported', imported, 'duplicates', duplicates, 'rejected', rejected,
                                                          'row_count', row_count)
                                  from public.import_batches where id = batch);
@@ -133,6 +147,13 @@ begin
     total_ms := total_ms + ms;
     max_ms := greatest(max_ms, ms);
     exit when r ->> 'status' = 'rolled_back';
+    if calls = 7 then
+      t0 := clock_timestamp();
+      perform count(*) from public.list_lead_imports(20);
+      raise notice 'P6 history (20 rows) half way, undo paused: % ms, shows % still there',
+        round(extract(epoch from clock_timestamp() - t0) * 1000, 1),
+        (select h.imported from public.list_lead_imports(p_id => batch) h);
+    end if;
   end loop;
   raise notice 'P6 undo: % calls, average % ms, slowest % ms, total % ms, kept %',
     calls, round(total_ms / calls, 1), round(max_ms, 1), round(total_ms), r ->> 'kept';
