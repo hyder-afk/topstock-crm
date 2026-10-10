@@ -126,18 +126,16 @@ export function MatchStep({
   // Names prepared while the file was read (zones.ts).
   const zoneOptions = [...new Set([defaultTimeZone, ...TIME_ZONES])].map((zone) => ({ zone, label: zoneLabel(zone, locale) }));
 
-  // "Day first (03/04/2025 → 3 April 2025)": the same date from the file, read each way.
-  const orderLabel = (o: DateOrder) => {
-    if (sample) {
-      const read = normaliseDate(sample, { order: o, timeZone: "UTC", nowLocal: "9999-12-31T23:59:59" });
-      const m = read.value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(read.value) : null;
-      if (m) {
-        const date = format.dateTime(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))), { dateStyle: "long", timeZone: "UTC" });
-        return t(o === "dmy" ? "dmyExample" : "mdyExample", { raw: sample, date });
-      }
-    }
-    return t(o);
-  };
+  // "So 01/09/2023 is 1 September 2023.": a date from the file, read in the chosen order (shown under the choice, so
+  // the menu itself stays short).
+  const readsAs = (() => {
+    if (!sample) return undefined;
+    const read = normaliseDate(sample, { order, timeZone: "UTC", nowLocal: "9999-12-31T23:59:59" });
+    const m = read.value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(read.value) : null;
+    if (!m) return undefined;
+    const date = format.dateTime(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))), { dateStyle: "long", timeZone: "UTC" });
+    return t("dateReadsAs", { raw: sample, date });
+  })();
 
   const matchOwner = useMemo(() => createOwnerMatcher(team), [team]);
   const unknownStatuses = statuses.filter((s) => !suggestStatus(s.label) && !statusChoices.has(s.key));
@@ -377,10 +375,10 @@ export function MatchStep({
 
       {dateGuess ? (
         <ValueSection title={t("dateTitle")} hint={dateGuess.order === "mixed" ? t("dateMixed") : t("dateHint")}>
-          <ValueRow label={t("dateOrder")} count={null}>
+          <ValueRow label={t("dateOrder")} count={null} hint={readsAs}>
             <Select aria-label={t("dateOrder")} value={order} onChange={(e) => setDateOrder(e.target.value as DateOrder)}>
-              <option value="dmy">{orderLabel("dmy")}</option>
-              <option value="mdy">{orderLabel("mdy")}</option>
+              <option value="dmy">{t("dmy")}</option>
+              <option value="mdy">{t("mdy")}</option>
             </Select>
           </ValueRow>
           <ValueRow label={t("timeZone")} count={null}>
@@ -448,7 +446,7 @@ function ColumnRow({
   const t = useTranslations("Import.match");
   const id = useId();
   return (
-    <li className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_220px] sm:items-center">
+    <li className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_248px] sm:items-center">
       <div className="flex min-w-0 items-center gap-2">
         <label htmlFor={id} className="truncate font-bold" title={header}>
           {header}
@@ -491,18 +489,21 @@ function ValueRow({
   count,
   needsChoice = false,
   amber = false,
+  hint,
   children,
 }: {
   label: string;
   count: number | null;
   needsChoice?: boolean;
   amber?: boolean;
+  /** A line under the label that says what the choice means. */
+  hint?: string;
   children: React.ReactNode;
 }) {
   const t = useTranslations("Import.match");
   const format = useFormatter();
   return (
-    <li className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center">
+    <li className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-[minmax(0,1fr)_248px] sm:items-center">
       <div className="flex min-w-0 items-center gap-2">
         {needsChoice || amber ? (
           <span aria-hidden="true" className={needsChoice ? "size-1.5 shrink-0 rounded-full bg-status-red" : "size-1.5 shrink-0 rounded-full bg-status-amber"} />
@@ -516,6 +517,11 @@ function ValueRow({
         {needsChoice ? <span className="sr-only">{t("needsChoice")}</span> : null}
       </div>
       {children}
+      {hint ? (
+        <p className="text-sm text-muted-foreground sm:col-span-2" aria-live="polite">
+          {hint}
+        </p>
+      ) : null}
     </li>
   );
 }
