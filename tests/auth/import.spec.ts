@@ -5,8 +5,9 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, sql, totp } from "./helpers";
 
 // Lead import (Day 3b): an admin imports the fake sample files end to end (choose, match, check, import, undo), the
-// problems file, a paused import resumed, a checked import reviewed later, bad files, the phone layout, the
-// "Confirm it's you" step when the last code is too old, and a rep who has no way in. Fixtures are the made-up files
+// problems file, a check that fails part way (thrown away, choices kept), a paused import resumed, a checked import
+// reviewed later with its file chosen again, bad files, the phone layout, the "Confirm it's you" step when the last
+// code is too old, and a rep who has no way in. Fixtures are the made-up files
 // in tests/fixtures/import (expected.json lists what every row of the 500-row sample must become).
 test.describe.configure({ mode: "serial" });
 
@@ -87,6 +88,14 @@ const history = (page: Page) => page.getByRole("complementary", { name: "Past im
 const historyItem = (page: Page, file: string) => history(page).getByRole("listitem").filter({ hasText: file });
 const noHorizontalScroll = async (page: Page) =>
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+// Discard asks first ("Discard this check?"), then the import is thrown away.
+async function discardAndConfirm(page: Page) {
+  await page.getByRole("button", { name: "Discard" }).first().click();
+  const confirm = page.getByRole("dialog", { name: "Discard this check?" });
+  await expect(confirm).toContainText("Nothing was added to your CRM.");
+  await confirm.getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByText("Import discarded.")).toBeVisible();
+}
 
 function batchId(filename: string, status: string) {
   return sql(`select id from public.import_batches where filename = '${filename}' and status = '${status}'
@@ -141,6 +150,15 @@ test("existing-20.csv: every column matched on its own, 20 leads checked and imp
   expect(sql(`select count(*) from public.companies where import_batch_id is not null`)).toBe("20");
   // The owners came from the names in the file ("kais test" is Kais Test).
   expect(sql(`select count(distinct owner_id) from public.companies`)).toBe("3");
+  // The column matching is remembered under a hash of the header row: no header text in this browser's storage.
+  const stored = await page.evaluate(() => Object.entries(window.localStorage));
+  const mappingKeys = stored.map(([key]) => key).filter((key) => key.startsWith("topstock.import.mapping."));
+  expect(mappingKeys).toHaveLength(1);
+  expect(mappingKeys[0]).toMatch(/^topstock\.import\.mapping\.[0-9a-f]{64}$/);
+  const storedText = JSON.stringify(stored).toLowerCase();
+  for (const header of ["company name", "company owner", "phone number", "lead status", "last activity date", "country/region"]) {
+    expect(storedText).not.toContain(header);
+  }
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -230,6 +248,49 @@ test("the 500-row sample: two status words chosen, results match expected.json, 
   await context.close();
 });
 
+test("a check that fails part way is thrown away, and every choice on Match stays", async ({ browser }) => {
+  const context = await adminContext(browser);
+  const page = await context.newPage();
+  const errors = watchErrors(page);
+  await openImport(page);
+  await choose(page, "leads-500-fake.csv");
+  await page.getByLabel("Status for “Hot lead”").selectOption("warm");
+  await page.getByLabel("Status for “Prospect”").selectOption("cold");
+  await page.getByLabel("Empty status").selectOption("warm");
+  await page.getByLabel("Owner for “Former Rep”").selectOption({ label: "Henri Test" });
+  await page.getByLabel("Date order").selectOption("mdy");
+  await page.getByLabel("Time zone").selectOption("Europe/London");
+  // The connection drops once the import is created: the rows (and their 3 retries) never arrive.
+  let calls = 0;
+  await page.route("**/leads/import", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST" && request.headers()["next-action"]) {
+      calls += 1;
+      if (calls >= 2 && calls <= 5) return route.abort();
+    }
+    return route.continue();
+  });
+  await checkButton(page).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("Connection lost.");
+  // Back on Match, focus on its heading, with every choice as it was.
+  await expect(page.getByRole("heading", { name: "Match your columns" })).toBeFocused();
+  await expect(page.getByLabel("Status for “Hot lead”")).toHaveValue("warm");
+  await expect(page.getByLabel("Status for “Prospect”")).toHaveValue("cold");
+  await expect(page.getByLabel("Empty status")).toHaveValue("warm");
+  await expect(page.getByLabel("Owner for “Former Rep”")).not.toHaveValue("");
+  await expect(page.getByLabel("Date order")).toHaveValue("mdy");
+  await expect(page.getByLabel("Time zone")).toHaveValue("Europe/London");
+  await expect(checkButton(page)).toBeEnabled();
+  // The half-sent import was thrown away, so trying again starts a fresh one (and never fills the 3 open slots).
+  await expect
+    .poll(() => sql(`select count(*) from public.import_batches where filename = 'leads-500-fake.csv' and status in ('staged', 'dry_run')`))
+    .toBe("0");
+  await page.unroute("**/leads/import");
+  // The aborted requests are logged by the browser; nothing else may be.
+  expect(errors.filter((e) => !e.includes("Failed to load resource"))).toEqual([]);
+  await context.close();
+});
+
 test("the rows-not-imported file goes back in as is: nothing new, the same rows still can't be imported", async ({ browser }) => {
   expect(problemsFile).not.toBe("");
   const context = await adminContext(browser);
@@ -249,8 +310,8 @@ test("the rows-not-imported file goes back in as is: nothing new, the same rows 
   await expect(tile(page, "Already in the CRM")).toHaveText(String(expected.totals.duplicate_file + expected.totals.duplicate_existing));
   await expect(tile(page, "Can’t be imported")).toHaveText(String(expected.totals.rejected));
   await expect(page.getByText("Nothing new to import.")).toBeVisible();
-  await page.getByRole("button", { name: "Discard" }).first().click();
-  await expect(page.getByText("Import discarded.")).toBeVisible();
+  await discardAndConfirm(page);
+  await expect(page.getByRole("heading", { name: "Choose your file" })).toBeFocused();
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -270,8 +331,13 @@ test("undo removes the leads nobody worked on and keeps the one with a new conta
   await expect(dialog).toContainText("removes the 399 leads added from leads-500-fake.csv");
   await expect(dialog).toContainText("1 lead your team worked on since");
   await dialog.getByRole("button", { name: "Remove 399 leads" }).click();
-  await expect(dialog).toContainText("Removed 399. Kept 1.");
-  await dialog.getByRole("button", { name: "Close" }).click();
+  // The title says it is done, the result is announced, and Close has the focus.
+  const done = page.getByRole("dialog", { name: "Import undone" });
+  await expect(done).toContainText("Removed 399. Kept 1.");
+  await expect(done.getByRole("button", { name: "Close" })).toBeFocused();
+  await done.getByRole("button", { name: "Close" }).click();
+  // The Undo button is gone: focus goes to the list's heading, never to the page.
+  await expect(page.getByRole("heading", { name: "Past imports" })).toBeFocused();
   await expect(historyItem(page, "leads-500-fake.csv")).toContainText("Undone · 1 kept");
   await expect(historyItem(page, "leads-500-fake.csv").getByRole("button", { name: "Undo import" })).toHaveCount(0);
   expect(sql(`select count(*) from public.companies where import_batch_id = '${id}'`)).toBe("1");
@@ -305,11 +371,15 @@ test("a French Windows-1252 file with ; and its own headers: owner column matche
   await context.close();
 });
 
-test("a checked import can be reviewed later, and a paused import resumes where it stopped", async ({ browser }) => {
-  // A small file with different column names (mapped on their own) and 5 made-up companies.
+test("a checked import can be reviewed later (its file chosen again), and a paused import resumes where it stopped", async ({
+  browser,
+}) => {
+  // A small file with different column names (mapped on their own), 5 made-up companies and one that can't be imported
+  // (row 7: its email doesn't look right).
   const csv = [
     "Société,Ville,Pays,Courriel",
     ...["Alpha", "Brio", "Cendre", "Dune", "Écume"].map((n, i) => `Reprise ${n},Lyon,France,reprise${i}@example.test`),
+    "Reprise Faux,Lyon,France,not-an-email",
   ].join("\r\n");
   const file = { name: "reprise-5.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") };
   const context = await adminContext(browser);
@@ -328,12 +398,22 @@ test("a checked import can be reviewed later, and a paused import resumes where 
   await historyItem(page, "reprise-5.csv").getByRole("button", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Check results" })).toBeVisible();
   await expect(tile(page, "Will be added")).toHaveText("5");
+  // Without the file the rows have no names; choosing it again on this screen brings them back (another file is refused).
+  const rows = page.getByRole("list", { name: "Rows to look at" });
+  await expect(rows.getByRole("listitem").first()).toContainText("Choose the file to see names");
+  await page.locator('input[type="file"]').setInputFiles(path.resolve(fixtures, "existing-20.csv"));
+  await expect(page.locator("main").getByRole("alert")).toContainText("This isn’t the same file.");
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await expect(rows.getByRole("listitem").first()).toContainText("Reprise Faux");
+  await expect(rows.getByRole("listitem").first()).toContainText("Email address doesn’t look right");
+  await expect(page.getByRole("button", { name: "Download rows not imported (CSV)" })).toBeVisible();
 
   // The tab closed mid-import (the import is "committing"): Resume finishes it, nothing added twice.
   sql(`update public.import_batches set status = 'committing' where id = '${batchId("reprise-5.csv", "dry_run")}'`);
   await openImport(page);
   await expect(historyItem(page, "reprise-5.csv")).toContainText("Paused");
   await historyItem(page, "reprise-5.csv").getByRole("button", { name: "Resume" }).click();
+  // The count is the import's total (from the database), also after a pause.
   await expect(page.getByRole("heading", { name: "5 leads added" })).toBeVisible();
   await expect(historyItem(page, "reprise-5.csv")).toContainText("Imported");
   expect(sql(`select count(*) from public.companies where name like 'Reprise %'`)).toBe("5");
@@ -358,14 +438,19 @@ test("files that are not CSV, or empty, are refused with a plain message", async
 });
 
 test.describe("phone", () => {
-  test("390 wide: every step fits, the main button stays in reach, discard works", async ({ browser }) => {
+  test("390 wide: every step fits (a long file name too), the main button stays in reach, discard works", async ({ browser }) => {
     const context = await adminContext(browser, { width: 390, height: 844 });
     const page = await context.newPage();
     const errors = watchErrors(page);
     await openImport(page);
     await expect(page.getByText("Choose a CSV file")).toBeVisible();
     await noHorizontalScroll(page);
-    await choose(page, "existing-20.csv");
+    // An export name with no spaces wraps instead of widening the page.
+    await choose(page, {
+      name: "TopStock_Wholesale_HubSpot_companies_export_20261010.csv",
+      mimeType: "text/csv",
+      buffer: readFileSync(path.join(fixtures, "existing-20.csv")),
+    });
     await expect(page.getByRole("heading", { name: "Match your columns" })).toBeVisible();
     await noHorizontalScroll(page);
     // The action bar sticks above the dock while the columns scroll.
@@ -376,8 +461,7 @@ test.describe("phone", () => {
     await expect(tile(page, "Already in the CRM")).toHaveText("20");
     await expect(page.getByText("Nothing new to import.")).toBeVisible();
     await noHorizontalScroll(page);
-    await page.getByRole("button", { name: "Discard" }).first().click();
-    await expect(page.getByText("Import discarded.")).toBeVisible();
+    await discardAndConfirm(page);
     await expect(page.getByRole("heading", { name: "Choose your file" })).toBeVisible();
     expect(errors).toEqual([]);
     await context.close();
@@ -408,14 +492,15 @@ test("an authenticator code older than 10 minutes: “Confirm it’s you” befo
   const wrong = totp(adminSecret) === "000000" ? "111111" : "000000";
   await dialog.getByLabel("6-digit code").fill(wrong);
   await expect(dialog).toContainText("That code didn’t work.");
+  // The field has the focus again: the next code is typed straight in, no click.
+  await expect(dialog.getByLabel("6-digit code")).toBeFocused();
   await nextWindow();
-  await dialog.getByLabel("6-digit code").fill(totp(adminSecret));
+  await page.keyboard.type(totp(adminSecret));
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Check results" })).toBeVisible();
   await expect(tile(page, "Already in the CRM")).toHaveText("20");
-  // The new code is fresh for 10 minutes: discarding asks nothing more.
-  await page.getByRole("button", { name: "Discard" }).first().click();
-  await expect(page.getByText("Import discarded.")).toBeVisible();
+  // The new code is fresh for 10 minutes: discarding asks nothing more than its own "Discard this check?".
+  await discardAndConfirm(page);
   expect(sql(`select count(*) from public.import_batches where status in ('staged', 'dry_run')`)).toBe("0");
   expect(errors).toEqual([]);
   await context.close();

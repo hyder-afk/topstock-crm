@@ -360,7 +360,7 @@
     "errors": {
       "step_up": "Confirm it’s you to continue.",
       "forbidden": "Only admins can import leads.",
-      "incomplete": "Some rows didn’t arrive. Try again: rows already sent are kept.",
+      "incomplete": "Some rows didn’t arrive. Check the file again.",
       "not_staged": "This import isn’t taking rows any more. Start a new one.",
       "not_ready": "This import can’t do that right now. Refresh the page to see where it stands.",
       "too_many_open": "There are already 3 unfinished imports. Import or discard one first.",
@@ -369,7 +369,8 @@
       "invalid": "Something in the request wasn’t right. Refresh the page and try again.",
       "not_found": "This import no longer exists. Refresh the page.",
       "timeout": "The database took too long. Try again: nothing was added twice.",
-      "unavailable": "Connection lost. Nothing was added twice. Try again."
+      "unavailable": "Connection lost. Nothing was added twice. Try again.",
+      "discard_failed": "We couldn’t discard this import. Try again."
     },
     "toast": {
       "discarded": "Import discarded."
@@ -377,9 +378,6 @@
     "choose": {
       "title": "Choose your file",
       "body": "A CSV file with one header row. It stays on this computer: only the cleaned rows are sent when you check.",
-      "resumeTitle": "Choose {file} again",
-      "resumeBody": "To continue this import, choose the same file. We check that it’s exactly the same.",
-      "resumeCancel": "Start a new import instead",
       "drop": "Drop your CSV here or choose a file",
       "pick": "Choose a CSV file",
       "limits": "Up to {rows} rows and 15 MB.",
@@ -400,16 +398,15 @@
         "too_many_rows": "This file has more than {rows} rows. Split it in two.",
         "quote_error": "Row {row} has an opening quote without a closing one. Fix it in your spreadsheet and save again.",
         "aborted": "Reading stopped.",
-        "not_same_file": "This isn’t the same file. Choose the file you started this import with.",
         "unreadable": "We couldn’t read this file. Save it again as CSV UTF-8."
       }
     },
     "match": {
       "title": "Match your columns",
-      "fileLine": "{file} · {rows} rows · {columns} columns · separated by {separator}",
+      "fileLine": "{file} · {rows, plural, one {{rowsFormatted} row} other {{rowsFormatted} rows}} · {columns, plural, one {{columnsFormatted} column} other {{columnsFormatted} columns}} · separated by {separator}",
       "tab": "tabs",
       "encodingNotice": "We read this file as Western European text. Check the accents in the examples below.",
-      "sameFile": "You imported this exact file on {date} ({count} leads). Every row would show as already in the CRM.",
+      "sameFile": "You imported this exact file on {date} ({count, plural, one {{formatted} lead} other {{formatted} leads}}). The rows imported then would now show as already in the CRM.",
       "restored": "We used the matching you chose last time for these columns.",
       "columnsTitle": "Columns",
       "noHeader": "Column {n} (no name)",
@@ -434,7 +431,7 @@
       "choose": "Choose…",
       "blankStatus": "Empty status",
       "ownerTitle": "Owners",
-      "ownerHint": "We matched {matched} of {total} owner names to your team. Invite missing people first, or reassign later from Leads.",
+      "ownerHint": "We matched {matchedFormatted} of {total, plural, one {{totalFormatted} owner name} other {{totalFormatted} owner names}} to your team. Invite missing people first, or reassign later from Leads.",
       "ownerFor": "Owner for “{value}”",
       "unassigned": "Unassigned",
       "noName": "No name yet",
@@ -449,6 +446,8 @@
       "dateOrder": "Date order",
       "dmy": "Day first (31/12/2025)",
       "mdy": "Month first (12/31/2025)",
+      "dmyExample": "Day first ({raw} → {date})",
+      "mdyExample": "Month first ({raw} → {date})",
       "timeZone": "Time zone",
       "rowsCount": "{count, plural, one {{formatted} row} other {{formatted} rows}}",
       "needsChoice": "needs a choice",
@@ -461,7 +460,7 @@
       "sending": "Sending rows… {done} of {total}",
       "duplicates": "Looking for duplicates…",
       "resultsTitle": "Check results",
-      "resultsBody": "{file} · {rows} rows. Nothing has been added yet.",
+      "resultsBody": "{file} · {rows, plural, one {{rowsFormatted} row} other {{rowsFormatted} rows}}. Nothing has been added yet.",
       "tiles": {
         "ready": "Will be added",
         "existing": "Already in the CRM",
@@ -476,6 +475,8 @@
       "download": "Download rows not imported (CSV)",
       "downloadNow": "Download it now: we don’t keep a copy after the import. It opens in Excel, and once fixed it can be imported as is.",
       "noFile": "Choose the same file again to see company names and download the rows not imported.",
+      "chooseFile": "Choose the file",
+      "notSameFile": "This isn’t the same file. Choose the file this import was checked with.",
       "filterLabel": "Show rows",
       "filters": {
         "all": "All",
@@ -495,12 +496,13 @@
       "import": "{count, plural, one {Import {formatted} lead} other {Import {formatted} leads}}",
       "nothingNew": "Nothing new to import.",
       "discard": "Discard",
+      "alreadyAdded": "{count, plural, one {{formatted} lead already added: the import picks up where it stopped.} other {{formatted} leads already added: the import picks up where it stopped.}}",
       "csvRow": "Row",
       "csvProblem": "Problem",
       "csvSuffix": "rows-not-imported",
       "importingTitle": "Importing",
-      "importing": "Imported {done} of {total}",
-      "importingCount": "Imported {done}",
+      "importing": "Imported {doneFormatted} of {total}",
+      "importingCount": "Imported {doneFormatted}",
       "keepOpen": "Keep this tab open. If it closes, the import pauses and you can resume it from Past imports.",
       "doneTitle": "{count, plural, one {{formatted} lead added} other {{formatted} leads added}}",
       "doneBody": "Your team can see them now. You can undo this import from Past imports.",
@@ -560,7 +562,8 @@
     },
     "history": {
       "title": "Past imports",
-      "error": "Couldn’t load past imports. Refresh the page.",
+      "error": "Couldn’t load past imports.",
+      "retry": "Try again",
       "empty": "No imports yet. Your first import will show up here.",
       "someone": "Someone",
       "when": "{date} · {who}",
@@ -571,9 +574,9 @@
         "imported": "Imported",
         "rolling_back": "Undo paused",
         "rolled_back": "{count, plural, =0 {Undone} other {Undone · {formatted} kept}}",
-        "discarded": "Discarded"
+        "discarded": "Discarded",
+        "running": "Still running in this tab"
       },
-      "continue": "Continue",
       "review": "Review",
       "resume": "Resume",
       "seeLeads": "See leads",
@@ -591,14 +594,30 @@
     },
     "undo": {
       "title": "Undo this import?",
-      "body": "This removes the {removable, plural, one {{removableFormatted} lead} other {{removableFormatted} leads}} added from {file} on {date} that nobody has worked on. {kept, plural, =0 {} one {{keptFormatted} lead your team worked on since (a call, note, contact, deal or any change, including a new owner) stays.} other {{keptFormatted} leads your team worked on since (a call, note, contact, deal or any change, including a new owner) stay.}}",
+      "body": "{removable, plural, =0 {No lead added from {file} on {date} is still untouched, so nothing will be removed.} one {This removes the {removableFormatted} lead added from {file} on {date} that nobody has worked on.} other {This removes the {removableFormatted} leads added from {file} on {date} that nobody has worked on.}} {kept, plural, =0 {} one {{keptFormatted} lead your team worked on since (a call, note, contact, deal or any change, including a new owner) stays.} other {{keptFormatted} leads your team worked on since (a call, note, contact, deal or any change, including a new owner) stay.}}",
       "loading": "Counting the leads from this import…",
-      "running": "Removed {done} of {total}",
-      "done": "Removed {removed}. Kept {kept}.",
+      "running": "Removed {doneFormatted} of {total}",
+      "done": "Removed {removedFormatted}. Kept {keptFormatted}.",
       "keep": "Keep everything",
       "remove": "{count, plural, one {Remove {formatted} lead} other {Remove {formatted} leads}}",
       "finish": "Finish undo",
-      "close": "Close"
+      "close": "Close",
+      "runningTitle": "Undoing this import",
+      "runningBody": "Keep this tab open. If it closes, the undo pauses and you can resume it from Past imports.",
+      "doneTitle": "Import undone",
+      "pausedTitle": "Undo paused",
+      "errorTitle": "Undo not started",
+      "errors": {
+        "unavailable": "Connection lost. The undo is paused: resume it from Past imports.",
+        "timeout": "The database took too long. The undo is paused: resume it from Past imports.",
+        "preview": "We couldn’t count the leads from this import. Close this and try again."
+      }
+    },
+    "discardConfirm": {
+      "title": "Discard this check?",
+      "body": "Nothing was added to your CRM. You can check the file again whenever you like.",
+      "keep": "Keep it",
+      "confirm": "Discard"
     }
   }
 }

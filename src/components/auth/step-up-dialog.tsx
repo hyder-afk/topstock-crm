@@ -20,8 +20,10 @@ export function useStepUp(initialSecondsLeft: number) {
   const [open, setOpen] = useState(false);
   const freshUntil = useRef(0);
   const waiting = useRef<((ok: boolean) => void) | null>(null);
-  // What had focus when the dialog opened: it gets focus back on close unless the action moved it on.
+  // What had focus when the dialog opened: it gets focus back on close unless the action moved it on. When it is gone
+  // by then (it was in a dialog that has closed meanwhile), the caller's fallback gets it.
   const opener = useRef<HTMLElement | null>(null);
+  const fallback = useRef<(() => HTMLElement | null) | null>(null);
   const mounted = useRef(false);
 
   useEffect(() => {
@@ -41,13 +43,14 @@ export function useStepUp(initialSecondsLeft: number) {
 
   // Resolves true when the code is fresh for at least `minSeconds` more (asking for a new one if needed), false if
   // the person cancels.
-  const ensureFresh = useCallback((minSeconds = 120) => {
+  const ensureFresh = useCallback((minSeconds = 120, focusFallback?: () => HTMLElement | null) => {
     if (performance.now() + minSeconds * 1000 < freshUntil.current) return Promise.resolve(true);
     if (!mounted.current) return Promise.resolve(false);
     return new Promise<boolean>((resolve) => {
       waiting.current?.(false);
       waiting.current = resolve;
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      fallback.current = focusFallback ?? null;
       setOpen(true);
     });
   }, []);
@@ -72,6 +75,7 @@ export function useStepUp(initialSecondsLeft: number) {
     if (active && active !== document.body) return;
     const target = opener.current;
     if (target?.isConnected && !target.matches(":disabled")) target.focus();
+    else fallback.current?.()?.focus();
   }, []);
 
   const dialog = <StepUpDialog open={open} onDone={(s) => finish(s)} onCancel={() => finish(null)} onRestoreFocus={restoreFocus} />;

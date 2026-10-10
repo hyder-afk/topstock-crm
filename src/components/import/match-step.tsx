@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useId, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -11,8 +11,8 @@ import {
   assignTarget,
   autoMap,
   createOwnerMatcher,
-  headerFingerprint,
   matchCountry,
+  normaliseDate,
   suggestDateOrder,
   suggestStatus,
   type DateOrder,
@@ -22,37 +22,52 @@ import {
 } from "@/lib/import";
 import type { ImportBatch } from "@/lib/import-server";
 import { leadStatuses, personName, type LeadStatus, type TeamMember } from "@/lib/leads";
-import { columnDateOrder, columnValues } from "@/components/import/analysis";
-import type { LoadedFile } from "@/components/import/choose-step";
+import { columnDateOrder, columnDateSample, columnValues } from "@/components/import/analysis";
+import { readMapping, saveMapping } from "@/components/import/mapping-store";
+import type { LoadedFile } from "@/components/import/read-file";
 import { useModKey } from "@/lib/use-platform";
+import { cn } from "@/lib/utils";
 
-export type MatchChoices = { timeZone: string };
-
-const mappingKey = (fingerprint: string) => `topstock.import.mapping.${fingerprint}`;
-
-// A remembered column matching for the same header row (a per-person convenience in this browser; never lead data).
-function readMapping(fingerprint: string, length: number): Target[] | null {
-  try {
-    const raw = window.localStorage.getItem(mappingKey(fingerprint));
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(parsed) && parsed.length === length && parsed.every((x) => (TARGETS as readonly string[]).includes(x))) {
-      return parsed as Target[];
-    }
-  } catch {
-    // Storage blocked: start from the suggestions.
-  }
-  return null;
-}
-
-function saveMapping(fingerprint: string, mapping: readonly Target[]) {
-  try {
-    window.localStorage.setItem(mappingKey(fingerprint), JSON.stringify(mapping));
-  } catch {
-    // Storage blocked: nothing to remember.
-  }
-}
+// Every choice made on this screen. The workspace keeps it, so coming back here (after a check that failed, or from
+// the Check step) shows the same choices.
+export type MatchState = {
+  mapping: Target[];
+  statusChoices: Map<string, LeadStatus>;
+  defaultStatus: LeadStatus;
+  ownerChoices: Map<string, string | null>;
+  countryChoices: Map<string, string | null>;
+  dateOrder: DateOrder | null;
+  timeZone: string;
+};
 
 const timeZones = ["Europe/Paris", "Europe/London", "Europe/Brussels", "Europe/Berlin", "Europe/Madrid", "Africa/Casablanca", "America/New_York", "UTC"];
+// The country each listed zone belongs to (its name comes from Intl in the screen's language).
+const zoneCountry: Record<string, string> = {
+  "Europe/Paris": "FR",
+  "Europe/London": "GB",
+  "Europe/Brussels": "BE",
+  "Europe/Berlin": "DE",
+  "Europe/Madrid": "ES",
+  "Africa/Casablanca": "MA",
+  "America/New_York": "US",
+};
+
+function zoneName(zone: string, locale: string, style: "long" | "longGeneric" | "shortOffset"): string | null {
+  try {
+    return new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: style }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// "France (UTC+2)", "Royaume-Uni (UTC+1)", "temps universel coordonné": readable, in the screen's language.
+function zoneLabel(zone: string, locale: string, countries: Intl.DisplayNames | null): string {
+  if (zone === "UTC") return zoneName(zone, locale, "long") ?? zone;
+  const code = zoneCountry[zone];
+  const place = (code ? countries?.of(code) : null) ?? zoneName(zone, locale, "longGeneric") ?? zone.replace(/_/g, " ");
+  const offset = zoneName(zone, locale, "shortOffset");
+  return offset ? `${place} (${offset})` : place;
+}
 
 // Step 2: which column feeds which lead field, then the values that need a decision (owners who are not CRM users,
 // status words we do not know, countries we do not recognise, the date order). Nothing is sent yet.
@@ -62,7 +77,8 @@ export function MatchStep({
   team,
   defaultTimeZone,
   sameFileBefore,
-  onChange,
+  saved,
+  onStateChange,
   onBack,
   onCheck,
   normalise,
@@ -72,10 +88,11 @@ export function MatchStep({
   team: TeamMember[];
   defaultTimeZone: string;
   sameFileBefore: ImportBatch | null;
-  onChange: (choices: MatchChoices) => void;
+  saved: MatchState | null;
+  onStateChange: (state: MatchState) => void;
   onBack: () => void;
-  onCheck: (rows: NormalisedRecord[]) => void;
-  normalise: (options: NormaliseOptions) => Promise<NormalisedRecord[]>;
+  onCheck: (rows: NormalisedRecord[], timeZone: string) => void;
+  normalise: (options: NormaliseOptions, signal: AbortSignal) => Promise<NormalisedRecord[]>;
 }) {
   const t = useTranslations("Import.match");
   const ts = useTranslations("Leads.status");
@@ -83,21 +100,27 @@ export function MatchStep({
   const modKey = useModKey();
   const locale = useLocale();
   const { headers, records } = file.parsed;
-  const fingerprint = useMemo(() => headerFingerprint(file.parsed.rawHeaders), [file.parsed.rawHeaders]);
   const suggested = useMemo(() => autoMap(headers), [headers]);
-  // A matching remembered for this exact header row wins over the suggestions. This step only ever renders in the
-  // browser (after a file is chosen), so storage can be read on the first render.
-  const [remembered] = useState(() => readMapping(fingerprint, headers.length));
-  const [mapping, setMapping] = useState<Target[]>(() => remembered ?? suggested.targets);
+  // Choices already made for this file win; then a matching remembered for this exact header row; then the
+  // suggestions. This step only ever renders in the browser (after a file is chosen), so storage can be read here.
+  const [remembered] = useState(() => (saved ? null : readMapping(file.headerKey, headers.length)));
+  const [mapping, setMapping] = useState<Target[]>(() => saved?.mapping ?? remembered ?? suggested.targets);
   const restored = remembered !== null;
-  const [statusChoices, setStatusChoices] = useState<Map<string, LeadStatus>>(() => new Map());
-  const [defaultStatus, setDefaultStatus] = useState<LeadStatus>("cold");
-  const [ownerChoices, setOwnerChoices] = useState<Map<string, string | null>>(() => new Map());
-  const [countryChoices, setCountryChoices] = useState<Map<string, string | null>>(() => new Map());
-  const [timeZone, setTimeZone] = useState(defaultTimeZone);
+  const [statusChoices, setStatusChoices] = useState<Map<string, LeadStatus>>(() => saved?.statusChoices ?? new Map());
+  const [defaultStatus, setDefaultStatus] = useState<LeadStatus>(() => saved?.defaultStatus ?? "cold");
+  const [ownerChoices, setOwnerChoices] = useState<Map<string, string | null>>(() => saved?.ownerChoices ?? new Map());
+  const [countryChoices, setCountryChoices] = useState<Map<string, string | null>>(() => saved?.countryChoices ?? new Map());
+  const [timeZone, setTimeZone] = useState(() => saved?.timeZone ?? defaultTimeZone);
+  const [dateOrder, setDateOrder] = useState<DateOrder | null>(() => saved?.dateOrder ?? null);
   const [preparing, setPreparing] = useState(false);
+  const preparingRun = useRef<AbortController | null>(null);
 
-  useEffect(() => onChange({ timeZone }), [timeZone, onChange]);
+  useEffect(() => {
+    onStateChange({ mapping, statusChoices, defaultStatus, ownerChoices, countryChoices, dateOrder, timeZone });
+  }, [mapping, statusChoices, defaultStatus, ownerChoices, countryChoices, dateOrder, timeZone, onStateChange]);
+
+  // Leaving the step (Choose another file, Past imports, another page) stops the cleaning: it never starts a check.
+  useEffect(() => () => preparingRun.current?.abort(), []);
 
   const statusCol = mapping.indexOf("status");
   const ownerCol = mapping.indexOf("owner");
@@ -109,14 +132,37 @@ export function MatchStep({
   const countries = columnValues(records, countryCol, "country");
   const dateGuess = columnDateOrder(records, dateCol);
   const countryOptions = useMemo(() => countriesByName(locale), [locale]);
-  const [dateOrder, setDateOrder] = useState<DateOrder | null>(null);
   const order: DateOrder = dateOrder ?? (dateGuess ? suggestDateOrder(dateGuess) : "dmy");
+  const sample = columnDateSample(records, dateCol);
+  const zoneOptions = useMemo(() => {
+    let countryNames: Intl.DisplayNames | null = null;
+    try {
+      countryNames = new Intl.DisplayNames([locale], { type: "region" });
+    } catch {
+      // Older engines: the zone's own name is used instead.
+    }
+    return [...new Set([defaultTimeZone, ...timeZones])].map((zone) => ({ zone, label: zoneLabel(zone, locale, countryNames) }));
+  }, [defaultTimeZone, locale]);
+
+  // "Day first (03/04/2025 → 3 April 2025)": the same date from the file, read each way.
+  const orderLabel = (o: DateOrder) => {
+    if (sample) {
+      const read = normaliseDate(sample, { order: o, timeZone: "UTC", nowLocal: "9999-12-31T23:59:59" });
+      const m = read.value ? /^(\d{4})-(\d{2})-(\d{2})/.exec(read.value) : null;
+      if (m) {
+        const date = format.dateTime(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))), { dateStyle: "long", timeZone: "UTC" });
+        return t(o === "dmy" ? "dmyExample" : "mdyExample", { raw: sample, date });
+      }
+    }
+    return t(o);
+  };
 
   const matchOwner = useMemo(() => createOwnerMatcher(team), [team]);
   const unknownStatuses = statuses.filter((s) => !suggestStatus(s.label) && !statusChoices.has(s.key));
   const unknownCountries = countries.filter((c) => !matchCountry(c.label));
   const nameMissing = !mapping.includes("name");
   const blocked = nameMissing ? t("needName") : unknownStatuses.length > 0 ? t("needStatus", { count: unknownStatuses.length }) : null;
+  const ownersMatched = owners.filter((o) => matchOwner(o.label)).length;
 
   // Up to three example values per column, read once per file (stops as soon as every column has three).
   const examples = useMemo(() => {
@@ -136,22 +182,25 @@ export function MatchStep({
   }, [headers, records]);
 
   const check = async () => {
-    if (blocked || preparing) return;
-    saveMapping(fingerprint, mapping);
+    if (blocked || preparingRun.current) return;
+    saveMapping(file.headerKey, mapping);
+    const run = new AbortController();
+    preparingRun.current = run;
     setPreparing(true);
-    // Cleans every row in slices of 1,000, letting the page answer in between (tens of thousands of rows take a moment).
-    const rows = await normalise({
-      mapping,
-      team,
-      dateOrder: order,
-      timeZone,
-      statusChoices,
-      defaultStatus,
-      ownerChoices,
-      countryChoices,
-    });
-    setPreparing(false);
-    onCheck(rows);
+    try {
+      // Cleans every row in slices, letting the page answer in between (tens of thousands of rows take a moment).
+      const rows = await normalise(
+        { mapping, team, dateOrder: order, timeZone, statusChoices, defaultStatus, ownerChoices, countryChoices },
+        run.signal,
+      );
+      if (run.signal.aborted) return;
+      setPreparing(false);
+      onCheck(rows, timeZone);
+    } catch {
+      if (!run.signal.aborted) setPreparing(false);
+    } finally {
+      preparingRun.current = null;
+    }
   };
 
   // Cmd/Ctrl+Enter: the step's main action.
@@ -173,11 +222,13 @@ export function MatchStep({
         <h2 ref={headingRef} id="import-step-heading" tabIndex={-1} className="text-xl font-bold tracking-[-0.03em] text-balance focus:outline-none">
           {t("title")}
         </h2>
-        <p className="text-muted-foreground">
+        <p className="text-muted-foreground wrap-anywhere">
           {t("fileLine", {
             file: file.name,
-            rows: format.number(file.parsed.rowCount),
-            columns: format.number(headers.length),
+            rows: file.parsed.rowCount,
+            rowsFormatted: format.number(file.parsed.rowCount),
+            columns: headers.length,
+            columnsFormatted: format.number(headers.length),
             separator: file.parsed.delimiter === "\t" ? t("tab") : file.parsed.delimiter,
           })}
         </p>
@@ -185,8 +236,9 @@ export function MatchStep({
         {sameFileBefore ? (
           <Notice tone="amber">
             {t("sameFile", {
-              date: format.dateTime(new Date(sameFileBefore.created_at), { dateStyle: "medium" }),
-              count: format.number(sameFileBefore.imported),
+              date: format.dateTime(new Date(sameFileBefore.imported_at ?? sameFileBefore.created_at), { dateStyle: "medium" }),
+              count: sameFileBefore.imported,
+              formatted: format.number(sameFileBefore.imported),
             })}
           </Notice>
         ) : null}
@@ -248,7 +300,12 @@ export function MatchStep({
       {owners.length > 0 ? (
         <ValueSection
           title={t("ownerTitle")}
-          hint={t("ownerHint", { matched: owners.filter((o) => matchOwner(o.label)).length, total: owners.length })}
+          hint={t("ownerHint", {
+            matched: ownersMatched,
+            matchedFormatted: format.number(ownersMatched),
+            total: owners.length,
+            totalFormatted: format.number(owners.length),
+          })}
         >
           {owners.map((o) => {
             const suggestion = matchOwner(o.label);
@@ -299,15 +356,15 @@ export function MatchStep({
         <ValueSection title={t("dateTitle")} hint={dateGuess.order === "mixed" ? t("dateMixed") : t("dateHint")}>
           <ValueRow label={t("dateOrder")} count={null}>
             <Select aria-label={t("dateOrder")} value={order} onChange={(e) => setDateOrder(e.target.value as DateOrder)}>
-              <option value="dmy">{t("dmy")}</option>
-              <option value="mdy">{t("mdy")}</option>
+              <option value="dmy">{orderLabel("dmy")}</option>
+              <option value="mdy">{orderLabel("mdy")}</option>
             </Select>
           </ValueRow>
           <ValueRow label={t("timeZone")} count={null}>
             <Select aria-label={t("timeZone")} value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
-              {[...new Set([defaultTimeZone, ...timeZones])].map((zone) => (
+              {zoneOptions.map(({ zone, label }) => (
                 <option key={zone} value={zone}>
-                  {zone.replace(/_/g, " ")}
+                  {label}
                 </option>
               ))}
             </Select>
@@ -315,12 +372,20 @@ export function MatchStep({
         </ValueSection>
       ) : null}
 
-      <div className="sticky bottom-24 z-10 -mx-4 flex flex-col gap-3 border-t border-border bg-card px-4 pt-4 pb-2 sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:p-0">
+      <div className="import-action-bar sticky bottom-24 z-10 -mx-4 flex flex-col gap-3 border-t border-border bg-card px-4 pt-4 pb-2 sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-between sm:border-0 sm:p-0">
         <Button variant="link" onClick={onBack}>
           {t("back")}
         </Button>
         <div className="flex flex-col gap-2 sm:items-end">
-          <Button variant="neutral" onClick={() => void check()} disabled={Boolean(blocked) || preparing}>
+          {/* While the rows are prepared the button stays focusable (aria-disabled): a disabled button would drop the
+              keyboard focus to the page. */}
+          <Button
+            variant="neutral"
+            onClick={() => void check()}
+            disabled={Boolean(blocked)}
+            aria-disabled={preparing || undefined}
+            className={cn(preparing && "opacity-60")}
+          >
             {preparing ? t("preparing") : t("check")}
             {modKey ? <Kbd className="max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
           </Button>
@@ -423,7 +488,7 @@ function Notice({ tone, children }: { tone: "amber" | "red"; children: React.Rea
   return (
     <p className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-sm">
       <span aria-hidden="true" className={tone === "amber" ? "mt-1.5 size-1.5 shrink-0 rounded-full bg-status-amber" : "mt-1.5 size-1.5 shrink-0 rounded-full bg-status-red"} />
-      <span>{children}</span>
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </p>
   );
 }

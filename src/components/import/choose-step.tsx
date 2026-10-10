@@ -1,36 +1,26 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { FileUp } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { prepareAnalysis } from "@/components/import/analysis";
 import { ProgressBar } from "@/components/import/progress";
-import { ImportFileError, checkFileMeta, decodeBytes, parseCsvText, prepareCountryNames, sha256Hex, type ParsedCsv } from "@/lib/import";
-import type { ImportBatch } from "@/lib/import-server";
+import { readImportFile, type LoadedFile } from "@/components/import/read-file";
+import { ImportFileError } from "@/lib/import";
 import { cn } from "@/lib/utils";
 
-export type LoadedFile = {
-  name: string;
-  size: number;
-  sha256: string;
-  encoding: "utf-8" | "windows-1252";
-  parsed: ParsedCsv;
-};
+export type { LoadedFile } from "@/components/import/read-file";
 
 type ReadState = { kind: "idle" } | { kind: "reading"; done: number; total: number } | { kind: "error"; code: string; rowNo: number | null };
 
-// Step 1: pick a CSV file. It is read in this browser only (never uploaded as a file): decoded once (UTF-8, or Western
-// European if that fails), parsed in slices so the screen keeps responding, and checked against the limits.
+// Step 1: pick a CSV file. It is read in this browser only (read-file.ts) and checked against the limits. Leaving the
+// step (another step, Past imports, another page) stops a read that is still running: it never calls back.
 export function ChooseStep({
   headingRef,
-  resume,
-  onCancelResume,
+  announce,
   onLoaded,
 }: {
   headingRef: React.Ref<HTMLHeadingElement>;
-  resume: ImportBatch | null;
-  onCancelResume: () => void;
+  announce: (text: string) => void;
   onLoaded: (file: LoadedFile) => void;
 }) {
   const t = useTranslations("Import.choose");
@@ -39,32 +29,30 @@ export function ChooseStep({
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<ReadState>({ kind: "idle" });
   const [dragging, setDragging] = useState(false);
+  const reading = useRef<AbortController | null>(null);
+
+  useEffect(() => () => reading.current?.abort(), []);
 
   const read = async (picked: File | undefined) => {
-    if (!picked || state.kind === "reading") return;
+    if (!picked || reading.current) return;
+    const controller = new AbortController();
+    reading.current = controller;
     try {
-      checkFileMeta(picked);
       setState({ kind: "reading", done: 0, total: picked.size });
-      const bytes = new Uint8Array(await picked.arrayBuffer());
-      const decoded = decodeBytes(bytes);
-      // The matching screen needs the country names: build them while the file is read, between parsing slices.
-      setTimeout(prepareCountryNames, 0);
-      const sha256 = await sha256Hex(bytes);
-      if (resume && resume.file_sha256 && resume.file_sha256 !== sha256) {
-        setState({ kind: "error", code: "not_same_file", rowNo: null });
-        return;
-      }
-      const parsed = await parseCsvText(decoded.text, {
-        sepHint: decoded.sepHint,
+      announce(t("reading"));
+      const loaded = await readImportFile(picked, {
+        signal: controller.signal,
         onProgress: (p) => setState({ kind: "reading", done: p.done, total: p.total }),
       });
-      await prepareAnalysis(parsed.headers, parsed.records);
+      if (controller.signal.aborted) return;
       setState({ kind: "idle" });
-      onLoaded({ name: picked.name, size: picked.size, sha256, encoding: decoded.encoding, parsed });
+      onLoaded(loaded);
     } catch (cause) {
+      if (controller.signal.aborted) return;
       if (cause instanceof ImportFileError) setState({ kind: "error", code: cause.code, rowNo: cause.rowNo });
       else setState({ kind: "error", code: "unreadable", rowNo: null });
     } finally {
+      reading.current = null;
       if (inputRef.current) inputRef.current.value = "";
     }
   };
@@ -73,9 +61,9 @@ export function ChooseStep({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
         <h2 ref={headingRef} id="import-step-heading" tabIndex={-1} className="text-xl font-bold tracking-[-0.03em] text-balance focus:outline-none">
-          {resume ? t("resumeTitle", { file: resume.filename }) : t("title")}
+          {t("title")}
         </h2>
-        <p className="max-w-[65ch] text-muted-foreground">{resume ? t("resumeBody") : t("body")}</p>
+        <p className="max-w-[65ch] text-muted-foreground">{t("body")}</p>
       </div>
       <label
         htmlFor={inputId}
@@ -90,8 +78,10 @@ export function ChooseStep({
           void read(event.dataTransfer.files[0]);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-start gap-4 rounded-lg border border-dashed border-border bg-background p-6 transition-colors sm:p-8",
-          "focus-within:border-foreground/60 hover:border-foreground/40",
+          "group flex cursor-pointer flex-col items-start gap-4 rounded-lg border border-dashed border-border bg-background p-6 transition-[border-color,background-color] sm:p-8",
+          "hover:border-foreground/40",
+          // The file field itself is visually hidden, so the whole zone carries the keyboard focus ring.
+          "has-[:focus-visible]:border-foreground/60 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
           dragging && "border-foreground/60 bg-muted",
         )}
       >
@@ -106,6 +96,7 @@ export function ChooseStep({
           <span className="text-sm text-muted-foreground">{t("limits", { rows: format.number(50000) })}</span>
           <span className="text-sm text-muted-foreground">{t("excelHint")}</span>
         </span>
+        {/* Never disabled while reading (a disabled field would drop the keyboard focus); a second pick waits. */}
         <input
           ref={inputRef}
           id={inputId}
@@ -113,15 +104,15 @@ export function ChooseStep({
           name="file"
           accept=".csv,.txt,text/csv,text/plain"
           className="sr-only"
-          disabled={state.kind === "reading"}
+          aria-busy={state.kind === "reading" || undefined}
           onChange={(event) => void read(event.target.files?.[0])}
         />
-        <span className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 font-bold text-primary-foreground">
+        <span className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 font-bold text-primary-foreground transition-transform duration-150 group-active:scale-[0.97]">
           {t("button")}
         </span>
       </label>
       {state.kind === "reading" ? (
-        <div className="flex flex-col gap-2" aria-live="polite">
+        <div className="flex flex-col gap-2">
           <ProgressBar value={state.done} max={state.total} label={t("reading")} />
           <p className="text-sm text-muted-foreground">{t("reading")}</p>
         </div>
@@ -133,13 +124,6 @@ export function ChooseStep({
         </div>
       ) : null}
       <p className="text-sm text-muted-foreground">{t("safe")}</p>
-      {resume ? (
-        <div>
-          <Button variant="link" onClick={onCancelResume}>
-            {t("resumeCancel")}
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -34,6 +34,25 @@ export function columnDateOrder(records: readonly ParsedRecord[], column: number
   return remember(records, `date:${column}`, () => detectDateOrder(records.map((r) => r.cells[column])));
 }
 
+const NUMERIC_DATE = /^(\d{1,2})([/.-])(\d{1,2})\2(\d{4}|\d{2})(?=$|[ T])/;
+
+/** A date from the column to show both date orders with: one that reads either way (03/04/2025) when there is one. */
+export function columnDateSample(records: readonly ParsedRecord[], column: number): string | null {
+  if (column < 0) return null;
+  return remember(records, `dateSample:${column}`, () => {
+    let first: string | null = null;
+    for (const record of records) {
+      const m = NUMERIC_DATE.exec(record.cells[column]?.trim() ?? "");
+      if (!m) continue;
+      const a = Number(m[1]);
+      const b = Number(m[3]);
+      if (a >= 1 && a <= 12 && b >= 1 && b <= 12) return m[0];
+      first ??= m[0];
+    }
+    return first;
+  });
+}
+
 const nextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 /** Works out the lists for the columns the auto-match suggests, one per task. */

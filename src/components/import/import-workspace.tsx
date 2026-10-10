@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   checkImport,
@@ -11,16 +11,21 @@ import {
   stageRows,
   startImport,
   type CheckSummary,
+  type CommitStep,
 } from "@/app/(app)/leads/import/actions";
 import { useStepUp } from "@/components/auth/step-up-dialog";
 import { useToast } from "@/components/ui/toast";
+import { endRun, progressAnnouncer, startRun, useActiveRuns } from "@/components/import/active-runs";
 import { CheckStep } from "@/components/import/check-step";
-import { ChooseStep, type LoadedFile } from "@/components/import/choose-step";
+import { ChooseStep } from "@/components/import/choose-step";
+import { DiscardDialog } from "@/components/import/discard-dialog";
 import { ImportHistory } from "@/components/import/import-history";
-import { MatchStep, type MatchChoices } from "@/components/import/match-step";
+import { readMapping } from "@/components/import/mapping-store";
+import { MatchStep, type MatchState } from "@/components/import/match-step";
+import type { LoadedFile } from "@/components/import/read-file";
 import { ImportStopped, attempt, type Runner } from "@/components/import/run";
 import { Stepper, type StepId } from "@/components/import/stepper";
-import { iterChunks, normaliseInSlices, type ImportRow, type NormalisedRecord } from "@/lib/import";
+import { autoMap, iterChunks, normaliseInSlices, type ImportRow, type NormalisedRecord } from "@/lib/import";
 import type { ImportBatch, ImportErrorCode, ImportIssue } from "@/lib/import-server";
 import type { TeamMember } from "@/lib/leads";
 
@@ -39,10 +44,16 @@ export type Phase =
 export type OpenBatch = {
   id: string;
   filename: string;
+  /** The checked file's SHA-256: choosing the same file again on the results screen is checked against it. */
+  fileSha256: string | null;
   summary: CheckSummary;
   issues: ImportIssue[] | null; // null while loading
   issuesError: boolean;
+  /** After an import that stopped part way: leads already added, and rows still to go. */
+  progress: { imported: number; remaining: number } | null;
 };
+
+type ErrorKey = ImportErrorCode | "discard_failed";
 
 const stepOf: Record<Phase["kind"], StepId> = {
   choose: "choose",
@@ -53,6 +64,25 @@ const stepOf: Record<Phase["kind"], StepId> = {
   importing: "import",
   done: "import",
 };
+
+function openBatchOf(item: ImportBatch): OpenBatch {
+  return {
+    id: item.id,
+    filename: item.filename,
+    fileSha256: item.file_sha256,
+    summary: {
+      status: item.status,
+      row_count: item.row_count,
+      ready: item.issue_counts.ready ?? 0,
+      duplicates: item.duplicates,
+      rejected: item.rejected,
+      issue_counts: item.issue_counts,
+    },
+    issues: null,
+    issuesError: false,
+    progress: null,
+  };
+}
 
 export function ImportWorkspace({
   initialImports,
@@ -68,33 +98,84 @@ export function ImportWorkspace({
   me: string;
 }) {
   const t = useTranslations("Import");
+  const format = useFormatter();
   const queryClient = useQueryClient();
   const toast = useToast();
   const stepUp = useStepUp(stepUpSeconds);
+  const activeRuns = useActiveRuns();
   const [phase, setPhase] = useState<Phase>({ kind: "choose" });
   const [file, setFile] = useState<LoadedFile | null>(null);
-  const [choices, setChoices] = useState<MatchChoices | null>(null);
+  const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [batch, setBatch] = useState<OpenBatch | null>(null);
-  // An import started earlier whose upload did not finish: continuing needs the same file again.
-  const [resume, setResume] = useState<ImportBatch | null>(null);
+  // The rows cleaned for a check (company names on the results screen), with the import they were sent to.
+  const [checked, setChecked] = useState<{ batchId: string; rows: NormalisedRecord[] } | null>(null);
   const [imports, setImports] = useState<ImportBatch[] | null>(initialImports);
-  const [error, setError] = useState<ImportErrorCode | null>(null);
-  const records = useRef<NormalisedRecord[]>([]);
+  const [historyFailed, setHistoryFailed] = useState(initialImports === null);
+  const [error, setError] = useState<ErrorKey | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+  // The import whose Discard waits for a yes, and which part of the page asked (focus goes back there).
+  const [discarding, setDiscarding] = useState<string | null>(null);
+  const discardFrom = useRef<"results" | "history">("results");
   const busy = phase.kind === "sending" || phase.kind === "checking" || phase.kind === "importing";
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const historyHeadingRef = useRef<HTMLHeadingElement>(null);
+  // Leaving the page within the app does not stop a running check or import (it goes on while the tab is open), but
+  // nothing it finds is drawn on a page that is gone. `session` changes whenever the screen moves on to another file
+  // or import, so late answers for the one left behind are ignored too.
+  const mounted = useRef(false);
+  const session = useRef(0);
+  const isLive = useCallback((token: number) => mounted.current && session.current === token, []);
 
   const runner: Runner = useMemo(() => ({ requireFresh: stepUp.requireFresh }), [stepUp.requireFresh]);
-
-  const refreshImports = useCallback(async () => {
-    try {
-      const result = await listImports({});
-      if (result.ok) setImports(result.data);
-    } catch {
-      // History stays as it was; the next action refreshes it again.
-    }
+  const n = useCallback((value: number) => format.number(value), [format]);
+  const announce = useCallback((text: string) => {
+    if (mounted.current) setAnnouncement(text);
   }, []);
 
-  // Leaving the page while rows are being sent or imported would pause the import: ask first.
+  const refreshImports = useCallback(async () => {
+    let ok = false;
+    try {
+      const result = await listImports({});
+      if (result.ok && mounted.current) setImports(result.data);
+      ok = result.ok;
+    } catch {
+      // Shown below: the list stays as it was, with "Try again".
+    }
+    if (mounted.current) setHistoryFailed(!ok);
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // Coming back to the page (or an import that was still running in this tab finishing): Past imports shows where
+  // every import really stands.
+  const lastRuns = useRef(activeRuns);
+  useEffect(() => {
+    const ended = [...lastRuns.current].some((id) => !activeRuns.has(id));
+    lastRuns.current = activeRuns;
+    if (ended) void refreshImports();
+  }, [activeRuns, refreshImports]);
+  useEffect(() => {
+    let current = true;
+    listImports({})
+      .then((result) => {
+        if (!current || !result.ok) return;
+        setImports(result.data);
+        setHistoryFailed(false);
+      })
+      .catch(() => {
+        // The list from the page load stays.
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  // Closing or reloading the tab while rows are being sent or imported would pause the work: ask first.
   useEffect(() => {
     if (!busy) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -102,16 +183,18 @@ export function ImportWorkspace({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [busy]);
 
-  // Each new step moves focus to its heading (screen readers hear where they are).
+  // Each new step (and each step returned to after a failure) moves focus to its heading: screen readers hear where
+  // they are, and the keyboard never starts again from the top of the page.
   const focusHeading = useCallback(() => requestAnimationFrame(() => headingRef.current?.focus()), []);
 
   const fail = useCallback(
     (cause: unknown, back: Phase) => {
       const code = cause instanceof ImportStopped ? cause.code : "unavailable";
-      if (code !== "cancelled") setError(code);
+      setError(code === "cancelled" ? null : code);
       setPhase(back);
+      focusHeading();
     },
-    [],
+    [focusHeading],
   );
 
   const loadIssues = useCallback(
@@ -139,67 +222,96 @@ export function ImportWorkspace({
     [stepUp],
   );
 
-  // Check: clean every row here, send them in chunks, let the database find problems and duplicates.
+  // Check: clean every row here, send them in chunks, let the database find problems and duplicates. A check that
+  // stops part way is thrown away (best effort), so "Check file" again starts a fresh one.
   const runCheck = useCallback(
-    async (rows: NormalisedRecord[]) => {
-      if (!file || !(await stepUp.ensureFresh(180))) return;
+    async (rows: NormalisedRecord[], zone: string) => {
+      if (!file) return;
+      const token = session.current;
+      if (!(await stepUp.ensureFresh(180)) || !isLive(token)) return;
       setError(null);
-      records.current = rows;
       const payloads: ImportRow[] = rows.map((r) => r.payload);
-      setPhase({ kind: "sending", done: 0, total: payloads.length });
+      const total = payloads.length;
+      const sendingProgress = progressAnnouncer(announce);
+      setPhase({ kind: "sending", done: 0, total });
+      sendingProgress(0, total, t("check.sending", { done: n(0), total: n(total) }));
       focusHeading();
+      let batchId: string | null = null;
       try {
-        const batchId =
-          resume?.id ??
-          (
-            await attempt(runner, () =>
-              startImport({
-                filename: file.name,
-                sha256: file.sha256,
-                rowCount: file.parsed.rowCount,
-                lastRowNo: file.parsed.lastRowNo,
-                timeZone: choices?.timeZone ?? timeZone,
-              }),
-            )
-          ).batchId;
+        const created = await attempt(runner, () =>
+          startImport({
+            filename: file.name,
+            sha256: file.sha256,
+            rowCount: file.parsed.rowCount,
+            lastRowNo: file.parsed.lastRowNo,
+            timeZone: zone,
+          }),
+        );
+        batchId = created.batchId;
+        startRun(created.batchId);
         let sent = 0;
         // Each group is measured just before it is sent, so the page never pauses to measure them all.
         for (const chunk of iterChunks(payloads)) {
-          await attempt(runner, () => stageRows({ batchId, rows: chunk }));
+          // The screen moved on to another file or import: this check is abandoned.
+          if (mounted.current && session.current !== token) throw new ImportStopped("cancelled");
+          await attempt(runner, () => stageRows({ batchId: created.batchId, rows: chunk }));
           sent += chunk.length;
-          setPhase({ kind: "sending", done: sent, total: payloads.length });
+          if (isLive(token)) {
+            setPhase({ kind: "sending", done: sent, total });
+            sendingProgress(sent, total, t("check.sending", { done: n(sent), total: n(total) }));
+          }
         }
-        setPhase({ kind: "checking" });
-        const summary = await attempt(runner, () => checkImport({ batchId }));
-        setResume(null);
-        setBatch({ id: batchId, filename: file.name, summary, issues: null, issuesError: false });
+        if (isLive(token)) {
+          setPhase({ kind: "checking" });
+          announce(t("check.duplicates"));
+        }
+        const summary = await attempt(runner, () => checkImport({ batchId: created.batchId }));
+        // Left meanwhile: the check waits in Past imports ("Checked, not imported").
+        if (!isLive(token)) return;
+        setChecked({ batchId: created.batchId, rows });
+        setBatch({ id: created.batchId, filename: file.name, fileSha256: file.sha256, summary, issues: null, issuesError: false, progress: null });
         setPhase({ kind: "review" });
         focusHeading();
-        void refreshImports();
-        void loadIssues(batchId);
+        void loadIssues(created.batchId);
       } catch (cause) {
-        fail(cause, { kind: "match" });
+        if (isLive(token)) fail(cause, { kind: "match" });
+        if (batchId) await discardImport({ batchId }).catch(() => null);
+      } finally {
+        if (batchId) endRun(batchId);
         void refreshImports();
       }
     },
-    [file, choices, timeZone, resume, runner, stepUp, focusHeading, refreshImports, loadIssues, fail],
+    [file, runner, stepUp, isLive, announce, t, n, focusHeading, refreshImports, loadIssues, fail],
   );
 
-  // Import: the ready rows go in 1,000 per call (fewer after a timeout) until none are left. Safe to resume.
+  // Import: the ready rows go in 1,000 per call (fewer after a timeout) until none are left. Safe to resume: the
+  // counts come from the database (imported_total), so a resumed import shows everything already added. If it stops,
+  // the screen goes back to `back` (where the person was).
   const runImport = useCallback(
-    async (batchId: string, expected: number | null) => {
-      if (!(await stepUp.ensureFresh(180))) return;
+    async (target: OpenBatch, start: { done: number; total: number | null }, back: { phase: Phase; batch: OpenBatch | null }) => {
+      const token = session.current;
+      if (!(await stepUp.ensureFresh(180)) || !isLive(token)) return;
       setError(null);
+      setBatch(target);
       let size = 1000;
-      let added = 0;
       let late = 0;
-      setPhase({ kind: "importing", done: 0, total: expected });
+      let done = start.done;
+      let total = start.total;
+      let last: CommitStep | null = null;
+      const importingProgress = progressAnnouncer(announce);
+      const say = () =>
+        total
+          ? t("check.importing", { done, doneFormatted: n(done), total: n(total) })
+          : t("check.importingCount", { done, doneFormatted: n(done) });
+      setPhase({ kind: "importing", done, total });
+      importingProgress(done, total ?? 0, say());
       focusHeading();
+      startRun(target.id);
       try {
         for (;;) {
-          let step;
+          let step: CommitStep;
           try {
-            step = await attempt(runner, () => commitImportStep({ batchId, size }));
+            step = await attempt(runner, () => commitImportStep({ batchId: target.id, size }));
           } catch (cause) {
             if (cause instanceof ImportStopped && cause.code === "timeout" && size > 250) {
               size = Math.max(250, Math.floor(size / 2));
@@ -207,43 +319,61 @@ export function ImportWorkspace({
             }
             throw cause;
           }
-          added += step.imported_now;
+          last = step;
           late += step.late_duplicates;
-          setPhase({ kind: "importing", done: added, total: expected ?? added + step.remaining });
+          done = step.imported_total;
+          total = step.imported_total + step.remaining;
+          if (isLive(token)) {
+            setPhase({ kind: "importing", done, total });
+            importingProgress(done, total, say());
+          }
           if (step.status === "imported") break;
         }
-        setPhase({ kind: "done", added, late });
-        focusHeading();
+        if (isLive(token)) {
+          setPhase({ kind: "done", added: done, late });
+          focusHeading();
+        }
         void queryClient.invalidateQueries({ queryKey: ["leads"] });
       } catch (cause) {
-        fail(cause, batch ? { kind: "review" } : { kind: "choose" });
+        if (isLive(token)) {
+          const progress = last ? { imported: last.imported_total, remaining: last.remaining } : target.progress;
+          setBatch(back.batch && back.batch.id === target.id ? { ...back.batch, progress } : back.batch);
+          fail(cause, back.phase);
+        }
       } finally {
+        endRun(target.id);
         void refreshImports();
       }
     },
-    [batch, runner, stepUp, focusHeading, queryClient, refreshImports, fail],
+    [runner, stepUp, isLive, announce, t, n, focusHeading, queryClient, refreshImports, fail],
   );
 
   const startOver = useCallback(() => {
+    session.current += 1;
     setPhase({ kind: "choose" });
     setFile(null);
-    setChoices(null);
+    setMatchState(null);
     setBatch(null);
-    setResume(null);
+    setChecked(null);
     setError(null);
-    records.current = [];
     focusHeading();
   }, [focusHeading]);
 
   const discard = useCallback(
     async (batchId: string) => {
-      if (!(await stepUp.ensureFresh(60))) return;
+      // The Discard button that asked was in the dialog that has just closed: after a code, focus goes to the heading
+      // of the part of the page that asked.
+      const focusTarget = () => (discardFrom.current === "history" ? historyHeadingRef : headingRef).current;
+      if (!(await stepUp.ensureFresh(60, focusTarget)) || !mounted.current) return;
       try {
         await attempt(runner, () => discardImport({ batchId }));
+        if (!mounted.current) return;
         toast.show(t("toast.discarded"));
         if (batch?.id === batchId) startOver();
       } catch (cause) {
-        setError(cause instanceof ImportStopped && cause.code !== "cancelled" ? cause.code : null);
+        if (!mounted.current) return;
+        const code = cause instanceof ImportStopped ? cause.code : "unavailable";
+        setError(code === "cancelled" ? null : code === "unavailable" || code === "timeout" ? "discard_failed" : code);
       } finally {
         void refreshImports();
       }
@@ -251,37 +381,30 @@ export function ImportWorkspace({
     [batch, runner, stepUp, toast, t, refreshImports, startOver],
   );
 
-  // From the history: review a checked import (no file needed), resume a paused one, or continue an upload.
+  // From the history: review a checked import (rows without the file; choosing it again adds the names), or resume
+  // a paused one.
   const openFromHistory = useCallback(
-    async (item: ImportBatch, action: "review" | "resume" | "continue") => {
+    async (item: ImportBatch, action: "review" | "resume") => {
       setError(null);
-      if (action === "continue") {
-        setResume(item);
-        setFile(null);
-        setBatch(null);
-        setPhase({ kind: "choose" });
-        focusHeading();
-        return;
-      }
-      const summary: CheckSummary = {
-        status: item.status,
-        row_count: item.row_count,
-        ready: item.issue_counts.ready ?? 0,
-        duplicates: item.duplicates,
-        rejected: item.rejected,
-        issue_counts: item.issue_counts,
-      };
-      setBatch({ id: item.id, filename: item.filename, summary, issues: null, issuesError: false });
       if (action === "resume") {
-        await runImport(item.id, null);
+        // The code is asked for (if needed) before the screen changes; if the import stops, it comes back here.
+        await runImport(openBatchOf(item), { done: item.imported, total: null }, { phase, batch });
         return;
       }
+      session.current += 1;
+      const token = session.current;
+      setBatch(openBatchOf(item));
       setFile((f) => (f && f.sha256 === item.file_sha256 ? f : null));
       setPhase({ kind: "review" });
       focusHeading();
-      if (await stepUp.ensureFresh(60)) void loadIssues(item.id);
+      if (await stepUp.ensureFresh(60)) {
+        if (isLive(token)) void loadIssues(item.id);
+      } else if (isLive(token)) {
+        // No code: the rows show their error state with "Try again" (which asks again).
+        setBatch((b) => (b && b.id === item.id ? { ...b, issuesError: true } : b));
+      }
     },
-    [runImport, loadIssues, stepUp, focusHeading],
+    [phase, batch, runImport, loadIssues, stepUp, isLive, focusHeading],
   );
 
   const sameFileBefore = useMemo(
@@ -289,8 +412,17 @@ export function ImportWorkspace({
     [file, imports],
   );
 
+  // The company name column of the file in memory: the matching chosen on this screen, else the one remembered for
+  // this header row, else the suggestion (used for names when the cleaned rows are not in memory).
+  const nameColumn = useMemo(() => {
+    if (!file) return -1;
+    const chosen = matchState?.mapping.indexOf("name") ?? -1;
+    if (chosen >= 0) return chosen;
+    return (readMapping(file.headerKey, file.parsed.headers.length) ?? autoMap(file.parsed.headers).targets).indexOf("name");
+  }, [file, matchState]);
+
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,880px)_320px] lg:items-start">
       <section aria-labelledby="import-step-heading" className="flex min-w-0 flex-col gap-6 rounded-lg bg-card p-4 sm:p-8">
         <Stepper current={stepOf[phase.kind]} />
         {error ? (
@@ -302,11 +434,13 @@ export function ImportWorkspace({
         {phase.kind === "choose" ? (
           <ChooseStep
             headingRef={headingRef}
-            resume={resume}
-            onCancelResume={() => setResume(null)}
+            announce={announce}
             onLoaded={(loaded) => {
+              session.current += 1;
               setError(null);
               setFile(loaded);
+              setMatchState(null);
+              setChecked(null);
               setPhase({ kind: "match" });
               focusHeading();
             }}
@@ -319,10 +453,11 @@ export function ImportWorkspace({
             team={team}
             defaultTimeZone={timeZone}
             sameFileBefore={sameFileBefore}
-            onChange={setChoices}
+            saved={matchState}
+            onStateChange={setMatchState}
             onBack={startOver}
-            onCheck={(rows) => void runCheck(rows)}
-            normalise={(c) => normaliseInSlices(file.parsed.records, c, { sliceSize: 500 })}
+            onCheck={(rows, zone) => void runCheck(rows, zone)}
+            normalise={(options, signal) => normaliseInSlices(file.parsed.records, options, { sliceSize: 500, signal })}
           />
         ) : null}
         {phase.kind !== "choose" && phase.kind !== "match" ? (
@@ -331,27 +466,61 @@ export function ImportWorkspace({
             phase={phase}
             batch={batch}
             file={file}
-            records={records.current}
-            onImport={() => batch && void runImport(batch.id, batch.summary.ready)}
-            onDiscard={() => batch && void discard(batch.id)}
+            records={checked && batch && checked.batchId === batch.id ? checked.rows : null}
+            nameColumn={nameColumn}
+            onImport={() => {
+              if (!batch) return;
+              const total = batch.progress ? batch.progress.imported + batch.progress.remaining : batch.summary.ready;
+              void runImport(batch, { done: batch.progress?.imported ?? 0, total }, { phase: { kind: "review" }, batch });
+            }}
+            onDiscard={() => {
+              if (!batch) return;
+              discardFrom.current = "results";
+              setDiscarding(batch.id);
+            }}
             onRetryIssues={() => batch && void loadIssues(batch.id)}
             onStartOver={startOver}
+            onFileChosen={(loaded) => {
+              setFile(loaded);
+              setMatchState(null);
+            }}
           />
         ) : null}
       </section>
       <ImportHistory
         imports={imports}
+        failed={historyFailed}
+        onRetry={() => void refreshImports()}
+        headingRef={historyHeadingRef}
         me={me}
         busy={busy}
+        running={activeRuns}
         stepUp={stepUp}
         runner={runner}
         onOpen={(item, action) => void openFromHistory(item, action)}
-        onDiscard={(item) => void discard(item.id)}
+        onDiscard={(item) => {
+          discardFrom.current = "history";
+          setDiscarding(item.id);
+        }}
         onChanged={() => {
           void refreshImports();
           void queryClient.invalidateQueries({ queryKey: ["leads"] });
         }}
       />
+      <DiscardDialog
+        open={discarding !== null}
+        onKeep={() => setDiscarding(null)}
+        onConfirm={() => {
+          if (!discarding) return;
+          setDiscarding(null);
+          void discard(discarding);
+        }}
+        onCloseFocus={() => (discardFrom.current === "history" ? historyHeadingRef : headingRef).current?.focus()}
+      />
+      {/* Progress for screen readers, about every tenth of the work (the visible counts change with every chunk). */}
+      <p className="sr-only" aria-live="polite">
+        {announcement}
+      </p>
       {stepUp.dialog}
     </div>
   );
