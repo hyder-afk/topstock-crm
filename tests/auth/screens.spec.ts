@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, nextWindow, totp } from "./helpers";
+import { appReady, createUser, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -77,6 +77,11 @@ test.beforeAll(async ({ browser }) => {
   mkdirSync(dir, { recursive: true });
   secret = await createUser(withFactor, password, true);
   await createUser(noFactor, password, false);
+  // Made-up leads for the leads screens, owned by the signed-in screenshot user (an admin named Inès Garnier).
+  setRole(withFactor, "admin");
+  sql(`update public.profiles set first_name = 'Inès', last_name = 'Garnier'
+       where id = (select id from auth.users where email = '${withFactor}')`);
+  seedLeads([withFactor]);
 
   const b = await signIn(browser, noFactor);
   states.setup = await b.context.storageState();
@@ -134,6 +139,26 @@ test("app shell: leads and more in full, the other sections in brief", async ({ 
   for (const section of ["pipeline", "inventory", "tasks", "analytics"]) {
     await shoot(browser, "full", `/${section}`, section, undefined, lightMatrix);
   }
+});
+
+test("leads: list with a lead open, add a lead, filters", async ({ browser }) => {
+  const first = sql(`select id from public.companies
+                     order by coalesce(last_activity_at, '-infinity'::timestamptz) desc, id desc limit 1`);
+  await shoot(browser, "full", `/leads?lead=${first}`, "leads-preview", async (page) => {
+    await expect(page.locator("aside h2")).toBeVisible();
+  });
+  await shoot(browser, "full", "/leads", "leads-add", async (page) => {
+    await appReady(page);
+    await page.getByRole("button", { name: /^(Add lead|Ajouter un prospect)$/ }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(250);
+  });
+  await shoot(browser, "full", "/leads", "leads-filters", async (page) => {
+    await appReady(page);
+    await page.getByRole("button", { name: /^(Filters|Filtres)/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(250);
+  });
 });
 
 test("command menu and shortcuts list", async ({ browser }) => {

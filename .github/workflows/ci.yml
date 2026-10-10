@@ -76,8 +76,9 @@ jobs:
           anon=$(jq -r '.ANON_KEY // .PUBLISHABLE_KEY // empty' "$RUNNER_TEMP/sb.json")
           service=$(jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty' "$RUNNER_TEMP/sb.json")
           mail=$(jq -r '.MAILPIT_URL // .INBUCKET_URL // "http://127.0.0.1:54324"' "$RUNNER_TEMP/sb.json")
+          db=$(jq -r '.DB_URL // empty' "$RUNNER_TEMP/sb.json")
           rm "$RUNNER_TEMP/sb.json"
-          test -n "$url" && test -n "$anon" && test -n "$service"
+          test -n "$url" && test -n "$anon" && test -n "$service" && test -n "$db"
           echo "::add-mask::$service"
           {
             echo "LOCAL_URL=$url"
@@ -85,6 +86,7 @@ jobs:
             echo "SUPABASE_LOCAL_URL=$url"
             echo "SUPABASE_LOCAL_SERVICE_ROLE_KEY=$service"
             echo "MAILPIT_URL=$mail"
+            echo "SUPABASE_LOCAL_DB_URL=$db"
           } >> "$GITHUB_ENV"
       - name: Build against the local stack
         run: NEXT_PUBLIC_SUPABASE_URL="$LOCAL_URL" NEXT_PUBLIC_SUPABASE_ANON_KEY="$LOCAL_ANON" npm run build

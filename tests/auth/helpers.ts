@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 
@@ -147,4 +148,53 @@ export async function appReady(page: Page) {
 // set in a React commit shows up one frame later. Waiting two frames (~33 ms) covers it.
 export async function twoFrames(page: Page) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+// Local stack only: runs SQL as the throwaway database's superuser, for fixtures the app cannot create on its own
+// (fixed roles, many fake leads). SUPABASE_LOCAL_DB_URL must point at 127.0.0.1 or localhost (env() refuses others).
+export function sql(query: string) {
+  return execFileSync("psql", [env("SUPABASE_LOCAL_DB_URL"), "-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", query], {
+    encoding: "utf8",
+  }).trim();
+}
+
+const testEmail = /^[a-z0-9.-]+@example\.test$/;
+function emailLiteral(email: string) {
+  if (!testEmail.test(email)) throw new Error(`not a test address: ${email}`);
+  return `'${email}'`;
+}
+
+export function setRole(email: string, role: "admin" | "manager" | "rep") {
+  sql(`update public.profiles set role = '${role}' where id = (select id from auth.users where email = ${emailLiteral(email)})`);
+}
+
+// Replaces every lead with `count` made-up companies (names from fixed word lists, @example.com emails, +33 6 00
+// numbers), owned in turn by the given test users, with a contact on every third one.
+export function seedLeads(ownerEmails: string[], count = 120) {
+  const owners = ownerEmails.map(emailLiteral).join(", ");
+  sql(`
+    delete from public.companies;
+    with o as (select array_agg(p.id order by u.email) as ids, min(p.org_id::text)::uuid as org
+               from public.profiles p join auth.users u on u.id = p.id where u.email in (${owners})),
+    w as (select array['Atelier','Comptoir','Maison','Brasserie','Distribution','Halles','Épicerie','Société'] as pre,
+                 array['Verdane','Nordlys','Brécy','Altamar','Corvel','Lunéa','Marsac','Ophir','Tessan','Valmont',
+                       'Ysor','Quillan','Ardent','Belmar','Cazal','Dorval'] as nm,
+                 array['cold','warm','negotiation','customer','cool_off','do_not_contact','disqualified'] as st,
+                 array['FR','BE','MA','ES','DE','FR','FR'] as co,
+                 array['Lyon','Bruxelles','Casablanca','Valencia','Köln','Marseille','Lille'] as ci)
+    insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country, last_activity_at, created_at)
+    select o.org, w.pre[i % 8 + 1] || ' ' || w.nm[i / 8 % 16 + 1], o.ids[i % cardinality(o.ids) + 1], w.st[(i * 3) % 7 + 1],
+           '+33 6 00 00 ' || lpad((i % 100)::text, 2, '0') || ' ' || lpad(((i * 7) % 100)::text, 2, '0'),
+           'contact' || i || '@example.com', w.ci[i % 7 + 1], w.co[i % 7 + 1],
+           case when i % 9 = 0 then null else now() - i * interval '13 hours' end,
+           now() - i * interval '1 day'
+    from generate_series(0, ${count - 1}) as i, o, w;
+    insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
+    select c.org_id, c.id, (array['Inès','Malik','Sofia','Théo','Amina','Lucas'])[n % 6 + 1],
+           (array['Moreau','Benali','Ferreira','Lambert','Haddad','Rousseau'])[n % 6 + 1],
+           (array['Buyer','Owner','Purchasing manager'])[n % 3 + 1], 'person' || n || '@example.com',
+           '+33 6 11 00 ' || lpad((n % 100)::text, 2, '0') || ' 00'
+    from (select c.*, row_number() over (order by c.created_at desc) as n from public.companies c) c
+    where c.n % 3 = 1;
+  `);
 }

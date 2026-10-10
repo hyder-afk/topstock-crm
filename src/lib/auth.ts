@@ -38,3 +38,10 @@ const allowedNext = ["/set-password"] as const;
 export function safeNext(value: unknown): string {
   return allowedNext.find((p) => p === value) ?? "/";
 }
+
+// Route handlers (JSON APIs) answer 401 instead of redirecting; the same aal2 rule applies.
+export async function apiSession() {
+  const state = await getGate();
+  if (state.gate !== "ok" || !state.claims) return null;
+  return { supabase: state.supabase, claims: state.claims };
+}

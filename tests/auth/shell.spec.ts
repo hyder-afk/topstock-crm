@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, twoFrames } from "./helpers";
+import { appReady, createUser, fullSession, sql, twoFrames } from "./helpers";
 
 // The app shell and dock (Day 2): sections open by tap, keyboard and bead drag; phones show five items.
 test.describe.configure({ mode: "serial" });
@@ -53,8 +53,7 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
 
     await dock(page).getByRole("link", { name: "Leads", exact: true }).click();
     await expect(page).toHaveURL(/\/leads$/);
-    await expect(page.locator("main h1")).toHaveText("Leads");
-    await expect(page.getByRole("heading", { name: "No leads yet" })).toBeVisible();
+    await expect(page.locator("main h1")).toContainText("Leads");
     await expect(dock(page).getByRole("link", { name: "Leads", exact: true })).toHaveAttribute("aria-current", "page");
     await beadSettledOver(page, "Leads");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -237,7 +236,7 @@ test.describe("keyboard and command menu", () => {
     await page.keyboard.type("prosp");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/leads$/);
-    await expect(page.locator("main h1")).toHaveText("Prospects");
+    await expect(page.locator("main h1")).toContainText("Prospects");
     await context.close();
   });
 
@@ -262,25 +261,34 @@ test.describe("keyboard and command menu", () => {
 
     await open(page, "/more");
     const firstName = page.getByLabel("First name");
-    if (process.env.LOCAL_AUTH_ONLY) {
-      // scripts/local-auth has no data API, so the name cannot be read: the form says so and stays locked, so saving
-      // cannot blank a name it never saw. CI (full stack) runs the typing check below instead.
+    await firstName.click();
+    await page.keyboard.type("gl");
+    await expect(page).toHaveURL(/\/more$/);
+    await expect(firstName).toHaveValue(/gl$/);
+    await context.close();
+  });
+
+  test("when the name cannot be read, More locks the form and Home hides the add-name link", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    // Make the profile read fail for every signed-in user of the throwaway database, then put it back.
+    sql("revoke select on public.profiles from authenticated");
+    try {
+      await open(page, "/more");
       await expect(page.getByRole("main").getByRole("alert")).toHaveText(
         "Couldn’t load your name just now. Reload the page to try again.",
       );
-      await expect(firstName).toBeDisabled();
+      await expect(page.getByLabel("First name")).toBeDisabled();
       await expect(page.getByRole("button", { name: "Save name" })).toBeDisabled();
-    } else {
-      await firstName.click();
-      await page.keyboard.type("gl");
-      await expect(page).toHaveURL(/\/more$/);
-      await expect(firstName).toHaveValue(/gl$/);
+      await open(page, "/");
+      await expect(page.getByRole("link", { name: "Add your first name to the greeting" })).toHaveCount(0);
+    } finally {
+      sql("grant select on public.profiles to authenticated");
     }
     await context.close();
   });
 
   test("saving a first name puts it in the Home greeting", async ({ browser }) => {
-    test.skip(!!process.env.LOCAL_AUTH_ONLY, "scripts/local-auth has no data API; CI runs this on the full Supabase stack");
     const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
     await open(page, "/");
