@@ -175,6 +175,34 @@ test.describe("country matching", () => {
     for (const [, code] of COUNTRY_ALIASES) expect(countryCodes).toContain(code);
   });
 
+  test("short and former names Intl does not give", () => {
+    const expected: Array<[string, string]> = [
+      ["Hong Kong", "HK"],
+      ["HONG-KONG", "HK"],
+      ["Macau", "MO"],
+      ["Macao", "MO"],
+      ["The Netherlands", "NL"],
+      ["Netherlands", "NL"],
+      ["Korea", "KR"],
+      ["South Korea", "KR"],
+      ["Corée du Sud", "KR"],
+      ["North Korea", "KP"],
+      ["Burma", "MM"],
+      ["Myanmar", "MM"],
+      ["Birmanie", "MM"],
+      ["Swaziland", "SZ"],
+      ["Eswatini", "SZ"],
+      ["Macedonia", "MK"],
+      ["North Macedonia", "MK"],
+      ["Macédoine du Nord", "MK"],
+      ["Palestine", "PS"],
+      ["Territoires palestiniens", "PS"],
+    ];
+    for (const [raw, code] of expected) expect(matchCountry(raw), raw).toBe(code);
+    // Every code an alias gives is one the database accepts (two capital letters, in the list the UI offers).
+    for (const [, code] of COUNTRY_ALIASES) expect(code).toMatch(/^[A-Z]{2}$/);
+  });
+
   test("unknown or blank countries give null", () => {
     expect(matchCountry("Atlantis")).toBeNull();
     expect(matchCountry("Narnia")).toBeNull();

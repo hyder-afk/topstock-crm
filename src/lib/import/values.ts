@@ -96,6 +96,24 @@ export const COUNTRY_ALIASES: ReadonlyArray<readonly [string, string]> = [
   ["UAE", "AE"],
   ["Czech Republic", "CZ"],
   ["Ivory Coast", "CI"],
+  // Intl gives "Hong Kong SAR China", "Myanmar (Burma)", "Eswatini", "Palestinian Territories"...
+  ["Hong Kong", "HK"],
+  ["Macau", "MO"],
+  ["Macao", "MO"],
+  ["The Netherlands", "NL"],
+  ["Korea", "KR"],
+  ["South Korea", "KR"],
+  ["Republic of Korea", "KR"],
+  ["Corée", "KR"],
+  ["Burma", "MM"],
+  ["Myanmar", "MM"],
+  ["Birmanie", "MM"],
+  ["Swaziland", "SZ"],
+  ["Macedonia", "MK"],
+  ["North Macedonia", "MK"],
+  ["Macédoine", "MK"],
+  ["Palestine", "PS"],
+  ["State of Palestine", "PS"],
 ];
 
 let countryIndex: Map<string, string> | null = null;
