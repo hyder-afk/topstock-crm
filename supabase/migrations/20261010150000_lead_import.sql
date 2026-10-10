@@ -591,7 +591,7 @@ begin
 
   with s as (
     select st.row_no, st.problems, st.owner_id, st.last_activity_local, st.email_key, st.phone_key, st.name_key,
-           st.db_problem
+           st.db_problem, st.phone is not null as has_phone
       from private.lead_import_staging st
      where st.batch_id = p_batch
   ), r as (
@@ -617,8 +617,10 @@ begin
              min(j.row_no) filter (where not j.rejected) over (partition by j.email_key) end as e_keep,
            case when j.phone_key is not null then
              min(j.row_no) filter (where not j.rejected) over (partition by j.phone_key) end as p_keep,
-           case when j.email_key is null and j.phone_key is null and j.name_key is not null then
-             coalesce(min(j.row_no) filter (where not j.rejected and (j.email_key is not null or j.phone_key is not null))
+           -- Company + city only for a row with no email and no phone of its own (any phone, even one too short to be a
+           -- key: two shops of a chain in one city with different numbers stay two leads).
+           case when j.email_key is null and not j.has_phone and j.name_key is not null then
+             coalesce(min(j.row_no) filter (where not j.rejected and (j.email_key is not null or j.has_phone))
                         over (partition by j.name_key),
                       min(j.row_no) filter (where not j.rejected) over (partition by j.name_key))
            end as n_keep
@@ -631,7 +633,7 @@ begin
            case when not w.rejected and w.phone_key is not null then
              (select c.id from public.companies c where c.org_id = b.org_id and c.phone_key = w.phone_key
                order by c.created_at, c.id limit 1) end as ex_phone,
-           case when not w.rejected and w.email_key is null and w.phone_key is null and w.name_key is not null then
+           case when not w.rejected and w.email_key is null and not w.has_phone and w.name_key is not null then
              (select c.id from public.companies c where c.org_id = b.org_id and c.name_key = w.name_key
                order by c.created_at, c.id limit 1) end as ex_name
       from w
@@ -773,7 +775,7 @@ begin
            case when not p.bad and p.phone_key is not null then
              (select c.id from public.companies c where c.org_id = b.org_id and c.phone_key = p.phone_key
                order by c.created_at, c.id limit 1) end as ex_phone,
-           case when not p.bad and p.email_key is null and p.phone_key is null and p.name_key is not null then
+           case when not p.bad and p.email_key is null and p.phone is null and p.name_key is not null then
              (select c.id from public.companies c where c.org_id = b.org_id and c.name_key = p.name_key
                order by c.created_at, c.id limit 1) end as ex_name
       from picked p

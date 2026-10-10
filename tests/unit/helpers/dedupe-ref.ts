@@ -114,7 +114,7 @@ export type DedupeResult =
 
 /**
  * Outcome per row, in the SQL order: rejected; already in the CRM by email, phone, then name (name only for rows with
- * no email and no phone key; the oldest lead wins, here the first in `existing`); repeated in the file by email, phone,
+ * no email and no phone of their own, even a phone too short to be a key; the oldest lead wins, here the first in `existing`); repeated in the file by email, phone,
  * then name (keeper = first row of the name group with contact details, else the first row); else ready.
  */
 export function dedupe(rows: ReadonlyArray<{ row_no: number; rejected: boolean; payload: unknown }>, existing: readonly ExistingLead[]): DedupeResult[] {
@@ -136,7 +136,7 @@ export function dedupe(rows: ReadonlyArray<{ row_no: number; rejected: boolean; 
       const p = r.payload as StagedRow;
       const e = emailKey(p.email);
       const ph = phoneKey(p.phone);
-      return { row_no: r.row_no, e, ph, n: nameKey(p.name, p.city, p.country), hasContact: e !== null || ph !== null };
+      return { row_no: r.row_no, e, ph, n: nameKey(p.name, p.city, p.country), hasContact: e !== null || p.phone !== null };
     });
   const minBy = (key: (s: (typeof staged)[number]) => string | null, filter: (s: (typeof staged)[number]) => boolean = () => true) => {
     const map = new Map<string, number>();

@@ -789,10 +789,11 @@ declare
   t record;
 begin
   perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
-  batch := public.create_lead_import('rules.csv', null, 6, 7);
+  batch := public.create_lead_import('rules.csv', null, 7, 8);
   perform public.stage_lead_import_rows(batch, jsonb_build_array(
-    -- A phone of 6 or 7 digits gives no phone key (that needs 8 to 15 digits), so the row counts as having no phone:
-    -- its name, city and country decide, and the second Joe's Pizza is a repeat of the first.
+    -- Two shops of a chain in one city with different phones are two leads, even when the numbers are too short (6 or
+    -- 7 digits) to be phone keys: company + city decides only for a row with no email and no phone of its own (row 8,
+    -- which repeats the first shop that has a phone).
     jsonb_build_object('row_no', 2, 'name', 'Joe''s Pizza', 'lead_status', 'cold', 'phone', '555-0123',
                        'city', 'Springfield', 'country', 'US'),
     jsonb_build_object('row_no', 3, 'name', 'Joe''s Pizza', 'lead_status', 'cold', 'phone', '555-0199',
@@ -804,10 +805,11 @@ begin
                        'fixes', jsonb_build_array('owner_unassigned')),
     -- Midnight on 1 Jan 1990 in Paris is in range; a second earlier is not.
     jsonb_build_object('row_no', 6, 'name', 'New Year 1990', 'lead_status', 'cold', 'last_activity', '1990-01-01T00:00:00'),
-    jsonb_build_object('row_no', 7, 'name', 'Before 1990', 'lead_status', 'cold', 'last_activity', '1989-12-31T23:59:59')));
+    jsonb_build_object('row_no', 7, 'name', 'Before 1990', 'lead_status', 'cold', 'last_activity', '1989-12-31T23:59:59'),
+    jsonb_build_object('row_no', 8, 'name', 'Joe''s Pizza', 'lead_status', 'cold', 'city', 'Springfield', 'country', 'US')));
   r := public.validate_lead_import(batch);
   for t in select * from (values
-      (2, 'ready', null, null, null), (3, 'duplicate_file', 'name', 2, null),
+      (2, 'ready', null, null, null), (3, 'ready', null, null, null), (8, 'duplicate_file', 'name', 2, null),
       (4, 'ready', null, null, null), (5, 'duplicate_file', 'email', 4, null),
       (6, 'ready', null, null, null), (7, 'rejected', null, null, 'date_out_of_range')
     ) as e (row_no, outcome, match_key, match_row_no, reason) loop
@@ -937,14 +939,21 @@ begin
      or (select count(*) from private.lead_import_staging where batch_id = batch) <> 0 then
     raise exception 'FAIL: a direct discard left working rows';
   end if;
-  batch := public.create_lead_import('patch-undo.csv', null, 2, 3);
-  perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Patch C", "lead_status": "cold"},
-    {"row_no": 3, "name": "Patch D", "lead_status": "cold"}]');
+  -- With a repeated row and a rejected row: the counts are taken before the working rows go.
+  batch := public.create_lead_import('patch-undo.csv', null, 4, 5);
+  perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Patch C", "lead_status": "cold",
+    "email": "patch-c@example.com"}, {"row_no": 3, "name": "Patch D", "lead_status": "cold"},
+    {"row_no": 4, "name": "Patch C again", "lead_status": "cold", "email": "PATCH-C@example.com"},
+    {"row_no": 5, "problems": ["name_missing"]}]');
   perform public.validate_lead_import(batch);
   perform public.commit_lead_import(batch, 1);
   update public.import_batches set status = 'rolling_back' where id = batch;
   if (select count(*) from private.lead_import_staging where batch_id = batch) <> 0 then
     raise exception 'FAIL: a direct undo of a paused import left working rows';
+  end if;
+  if (select (duplicates, rejected) from public.import_batches where id = batch) <> (1, 1) then
+    raise exception 'FAIL: the counts of a paused import were taken after its working rows were deleted: %',
+      (select row(duplicates, rejected, issue_counts) from public.import_batches where id = batch);
   end if;
   if (public.rollback_lead_import(batch) ->> 'status') <> 'rolled_back' then
     raise exception 'FAIL: undo after a direct status change';
@@ -961,9 +970,9 @@ begin
                              U&'leads\0085.csv', U&'leads\061C.csv', U&'leads\+0E0041.csv', U&'leads\2060.csv',
                              U&'leads\180E.csv', U&'leads\FFF9.csv', U&'leads\200E.csv', E'leads\t.csv', 'a\b.csv'] loop
     perform pg_temp.expect_error(format('select public.create_lead_import(%L, null, 1, 2)', bad), '23514');
+    perform pg_temp.expect_error(format('insert into public.import_batches (filename, row_count, last_row_no) values (%L, 1, 2)',
+                                        bad), '23514');
   end loop;
-  perform pg_temp.expect_error(format('insert into public.import_batches (filename, row_count, last_row_no) values (%L, 1, 2)',
-                                      U&'leads\202E.csv'), '23514');
   -- Accents, spaces and brackets are fine.
   perform public.discard_lead_import(public.create_lead_import('Prospects été 2026 (v2).csv', null, 1, 2));
 end $$;

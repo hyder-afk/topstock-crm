@@ -78,7 +78,7 @@ plpgsql is used because a SQL function with a SET clause is re-planned on every 
 - `null` if fewer than 8 or more than 15 digits; more than 15 means two numbers in one cell.
 - Otherwise `right(digits, 9)`, so `+33 (0)6 12 34 56 78`, `06.12.34.56.78` and `0033 6 12 34 56 78` all give `612345678`, and UK and US national and international forms match too.
 - Belgian 8-digit numbers do not match across formats (accepted).
-- The browser accepts a phone of 6 or 7 digits (`minPhoneDigits: 6`), but such a number gives **no phone key**. The row then counts as having no phone, so the name rule below applies to it: two "Joe's Pizza, Springfield, US" rows with `555-0123` and `555-0199` are one company (the second is "Repeated in this file" by name). Kept on purpose: 6 or 7 digits are too few to tell two numbers apart reliably, and real French, UK and US numbers have 9 digits or more. Attack test: `rules.csv` in section 8 of `import_attack.sql`.
+- The browser accepts a phone of 6 or 7 digits (`minPhoneDigits: 6`), but such a number gives **no phone key** (too few digits to match two numbers reliably), so it never makes two rows the same company. The row still *has* a phone, so the name rule below does not apply to it either: two "Joe's Pizza, Springfield, US" rows with `555-0123` and `555-0199` are both imported, as open question 2 recommends for chain stores; a third "Joe's Pizza" row with no email and no phone repeats the first. Attack test: `rules.csv` in section 8 of `import_attack.sql`.
 
 **`private.lead_name_key(name text, city text, country text)`**
 - **Same key under any locale**: Supabase runs ICU (en-US) and the local test runner libc (C.UTF-8); they disagree on `[[:punct:]]`, `\m`/`\M` and `lower()` (a Turkish locale even lower-cases `I` to `ı`). So the function uses no character class and no word boundary, lower-cases Latin letters with its own map, and writes both character sets as fixed code point ranges with escapes only. A test over every code point and 20,000 random names found no difference between the two.
@@ -500,7 +500,7 @@ language sql stable set search_path = '' as $$
 
 **3.8 Dedupe rules and order** (one place: `validate_lead_import`, plus the commit re-check)
 1. Rejected rows never block anyone and are never matched.
-2. Keys: email key, phone key (last 9 digits, 8–15 digits), name key (name + city + country; city required). The name key is used only for rows with **no email and no phone key**; a phone of 6 or 7 digits (which the browser accepts) gives no phone key, so such a row is name-deduped (section 2.1).
+2. Keys: email key, phone key (last 9 digits, 8–15 digits), name key (name + city + country; city required). The name key is used only for rows with **no email and no phone** of their own (any phone value, even a 6 or 7 digit one that gives no phone key; section 2.1).
 3. **Already in the CRM** takes precedence: email, then phone, then name (for rows with no contact only). The match is the oldest lead by `(created_at, id)`.
 4. **Repeated in this file**: an earlier row shares the email or phone key (`match_row_no` = the first row with that key). For a row with no contact, the keeper of its name group is the first row in the group *with* contact details, else the first row. Because each keeper is the earliest row of its group, no two imported rows ever share a key, and a chain of repeats always points at an earlier row.
 5. Duplicates are skipped and never merged; the import never changes existing leads.
