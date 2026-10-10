@@ -160,5 +160,11 @@ test.describe("duplicate keys: TypeScript copy and SQL on one shared table", () 
     expect(migration).toContain("'Œ', 'oe'), 'œ', 'oe'), 'Æ', 'ae'), 'æ', 'ae'), 'ß', 'ss'));");
     expect(nameKey("ẞ", "x", null)).toBe("ß|x|");
     expect(nameKey("ß", "x", null)).toBe("ss|x|");
+    // The two steps only a database with another locale would miss (the local runner and CI agree without them): the
+    // map lower-cases A-Z itself (a Turkish lower() gives "ı"), and a final Greek sigma becomes "σ" in city and name.
+    for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+      expect(FOLD_TO[FOLD_FROM.indexOf(letter)], letter).toBe(letter.toLowerCase());
+    }
+    expect(body.split("'ς', 'σ')").length - 1).toBe(2);
   });
 });
