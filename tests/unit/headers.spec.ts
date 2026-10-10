@@ -52,6 +52,31 @@ test.describe("header mapping", () => {
     expect(targets).toEqual(["phone", "city", "name", "owner", "email", "status"]);
   });
 
+  test("company words win over the generic Name / Nom, whatever the column order", () => {
+    expect(autoMap(["Prénom", "Nom", "Société"]).targets).toEqual(["ignore", "ignore", "name"]);
+    expect(autoMap(["Name", "Company name"]).targets).toEqual(["ignore", "name"]);
+    expect(autoMap(["Nom", "Raison sociale", "Ville"]).targets).toEqual(["ignore", "name", "city"]);
+    expect(autoMap(["Nom commercial", "Commercial"]).targets).toEqual(["name", "owner"]);
+    // Alone, Name and Nom are still the company.
+    expect(autoMap(["Name", "City"]).targets).toEqual(["name", "city"]);
+    expect(autoMap(["Nom", "Ville"]).targets).toEqual(["name", "city"]);
+    const { targets, matched } = autoMap(["Prénom", "Nom", "Société"]);
+    expect(targets[1]).toBe("ignore");
+    expect(matched[1]).toBe(false);
+  });
+
+  test("headers about the owner or a web domain are not the lead's email, phone or name", () => {
+    expect(autoMap(["Owner email"]).targets).toEqual(["ignore"]);
+    expect(autoMap(["Email Domain"]).targets).toEqual(["ignore"]);
+    expect(autoMap(["Company Domain Name"]).targets).toEqual(["ignore"]);
+    expect(autoMap(["Téléphone du commercial", "E-mail du responsable"]).targets).toEqual(["ignore", "ignore"]);
+    expect(autoMap(["Owner email", "Email"]).targets).toEqual(["ignore", "email"]);
+    // An owner word with an owner synonym is still the owner column.
+    expect(autoMap(["Account owner"]).targets).toEqual(["owner"]);
+    expect(autoMap(["Owner name"]).targets).toEqual(["owner"]);
+    expect(autoMap(["Nom du commercial"]).targets).toEqual(["owner"]);
+  });
+
   test("HubSpot Country/Region and Région map to country", () => {
     expect(autoMap(["Country/Region"]).targets).toEqual(["country"]);
     expect(autoMap(["Région"]).targets).toEqual(["country"]);

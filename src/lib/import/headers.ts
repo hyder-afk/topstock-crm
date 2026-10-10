@@ -16,7 +16,8 @@ export function normaliseHeader(header: string): string {
     .trim();
 }
 
-// Synonyms after normaliseHeader. Exact matches win over "contains" matches.
+// Synonyms after normaliseHeader. Exact matches win over "contains" matches, and these specific words win over the
+// generic ones below.
 const SYNONYMS: ReadonlyArray<readonly [FieldTarget, readonly string[]]> = [
   [
     "name",
@@ -29,9 +30,8 @@ const SYNONYMS: ReadonlyArray<readonly [FieldTarget, readonly string[]]> = [
       "nom de la societe",
       "nom de l entreprise",
       "nom societe",
+      "nom commercial",
       "account name",
-      "name",
-      "nom",
     ],
   ],
   ["owner", ["company owner", "owner", "lead owner", "contact owner", "proprietaire", "responsable", "commercial"]],
@@ -46,21 +46,36 @@ const SYNONYMS: ReadonlyArray<readonly [FieldTarget, readonly string[]]> = [
   ["country", ["country region", "country", "pays", "region"]],
 ];
 
+// Generic words: an exact match counts only when no column has a specific synonym of the same field, so in
+// "Prénom, Nom, Société" the company is "Société", not the contact's last name.
+const GENERIC_SYNONYMS: ReadonlyArray<readonly [FieldTarget, readonly string[]]> = [["name", ["name", "nom"]]];
+
+// A header with one of these words is about the lead's owner ("Owner email", "Téléphone du commercial"): a "contains"
+// match can only make it the owner column, and not even that when it names the owner's email or phone.
+const OWNER_WORDS = ["owner", "proprietaire", "charge", "chargee", "responsable", "rep", "commercial", "commerciale"];
+// "Email Domain" or "Company Domain Name" holds a web domain, never one of the lead's fields.
+const DOMAIN_WORDS = ["domain", "domaine"];
+const CONTACT_WORDS = SYNONYMS.filter(([target]) => target === "email" || target === "phone").flatMap(([, w]) => w);
+
 // Columns of a problems file (and similar) that are never imported, so a fixed file re-imports with no remapping.
 const IGNORED = new Set(["row", "ligne", "problem", "probleme", "problems", "problemes"]);
 
-function exactTarget(key: string): FieldTarget | "ignore" | null {
-  if (IGNORED.has(key)) return "ignore";
-  for (const [target, words] of SYNONYMS) if (words.includes(key)) return target;
+function exactTarget(key: string, list: typeof SYNONYMS): FieldTarget | null {
+  for (const [target, words] of list) if (words.includes(key)) return target;
   return null;
 }
+
+const hasWord = (padded: string, words: readonly string[]) => words.some((word) => padded.includes(` ${word} `));
 
 // "contains" match on whole words; the longest synonym wins (so "date de derniere activite client" is last_activity).
 function containsTarget(key: string, taken: ReadonlySet<FieldTarget>): FieldTarget | null {
   const padded = ` ${key} `;
+  if (hasWord(padded, DOMAIN_WORDS)) return null;
+  const aboutOwner = hasWord(padded, OWNER_WORDS);
+  if (aboutOwner && hasWord(padded, CONTACT_WORDS)) return null;
   let best: { target: FieldTarget; length: number } | null = null;
-  for (const [target, words] of SYNONYMS) {
-    if (taken.has(target)) continue;
+  for (const [target, words] of [...SYNONYMS, ...GENERIC_SYNONYMS]) {
+    if (taken.has(target) || (aboutOwner && target !== "owner")) continue;
     for (const word of words) {
       if (word.length > (best?.length ?? 0) && padded.includes(` ${word} `)) best = { target, length: word.length };
     }
@@ -74,14 +89,18 @@ export type AutoMapping = {
   matched: boolean[];
 };
 
-/** Suggests a target per column: exact synonyms first, then "contains"; each field feeds from one column only. */
+/**
+ * Suggests a target per column: exact specific synonyms first, then exact generic ones, then "contains"; each field
+ * feeds from one column only.
+ */
 export function autoMap(headers: readonly string[]): AutoMapping {
   const keys = headers.map(normaliseHeader);
   const targets: Target[] = headers.map(() => "ignore");
   const matched = headers.map(() => false);
   const taken = new Set<FieldTarget>();
-  const exact = keys.map(exactTarget);
-  exact.forEach((target, i) => {
+  const specific = keys.map((key) => (IGNORED.has(key) ? "ignore" : exactTarget(key, SYNONYMS)));
+  const exact = keys.map((key, i) => specific[i] ?? exactTarget(key, GENERIC_SYNONYMS));
+  const assign = (target: FieldTarget | "ignore" | null, i: number) => {
     if (target === "ignore") {
       matched[i] = true;
     } else if (target && !taken.has(target)) {
@@ -89,6 +108,10 @@ export function autoMap(headers: readonly string[]): AutoMapping {
       matched[i] = true;
       taken.add(target);
     }
+  };
+  specific.forEach(assign);
+  exact.forEach((target, i) => {
+    if (specific[i] === null) assign(target, i);
   });
   keys.forEach((key, i) => {
     // A second "Email" column stays "Don't import" rather than being matched to some other field.
