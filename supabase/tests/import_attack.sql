@@ -827,6 +827,32 @@ begin
   perform public.discard_lead_import(batch);
 end $$;
 
+-- The tagging rule while an import is held in "committing": a direct insert by the uploader with a date in the future
+-- or before 31 Dec 1989 (UTC) is refused, and another admin cannot tag leads into it.
+do $$
+declare
+  batch uuid;
+  bad_date text;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  batch := public.create_lead_import('held.csv', null, 2, 3);
+  perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Held A", "lead_status": "cold"},
+    {"row_no": 3, "name": "Held B", "lead_status": "cold"}]');
+  perform public.validate_lead_import(batch);
+  perform public.commit_lead_import(batch, 1);
+  foreach bad_date in array array['now() + interval ''1 day''', '''1989-12-30 23:59:59+00''', '''1989-06-01 12:00:00+00'''] loop
+    perform pg_temp.expect_error(format($q$insert into public.companies (name, import_batch_id, last_activity_at)
+                                           values ('Probe', %L, %s)$q$, batch, bad_date), '42501');
+  end loop;
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000b', 'aal2', 30);
+  perform pg_temp.expect_error(format($q$insert into public.companies (name, import_batch_id) values ('Sneak', %L)$q$, batch),
+                               '42501');
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  if (public.rollback_lead_import(batch) ->> 'status') <> 'rolled_back' then
+    raise exception 'FAIL: undo of held.csv';
+  end if;
+end $$;
+
 -- Superuser view: no closed import keeps working rows.
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;  -- superuser: no caller
