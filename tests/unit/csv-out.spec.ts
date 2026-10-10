@@ -28,6 +28,19 @@ test.describe("csvCell", () => {
     for (const c of ["\uFF1D", "\uFF0B", "\uFF0D", "\uFF20"]) expect(csvCell(`${c}1`)).toBe(`"'${c}1"`);
   });
 
+  test("csv_cell_nul: NUL bytes are dropped, so the file never reads as binary", () => {
+    expect(csvCell("Ac\u0000me")).toBe('"Acme"');
+    expect(csvCell("\u0000=1")).toBe(`"'=1"`);
+    const csv = buildProblemsCsv({
+      delimiter: ",",
+      headers: ["Company name", "Email"],
+      records: [{ row_no: 2, cells: ["Ac\u0000me", "not-an-email"] }],
+      issues: [{ row_no: 2, messages: ["Email address doesn't look right"] }],
+      labels: { row: "Row", problem: "Problem" },
+    });
+    expect(csv).not.toContain("\u0000");
+  });
+
   test("csv_cell_quotes_newlines: always quoted, quotes doubled, newlines kept", () => {
     expect(csvCell("Le \"Petit\" Marché")).toBe("\"Le \"\"Petit\"\" Marché\"");
     expect(csvCell("Saint-Denis\nLa Plaine")).toBe("\"Saint-Denis\nLa Plaine\"");

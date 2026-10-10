@@ -31,6 +31,9 @@ const SYNONYMS: ReadonlyArray<readonly [FieldTarget, readonly string[]]> = [
       "nom de l entreprise",
       "nom societe",
       "nom commercial",
+      "commercial name",
+      "trade name",
+      "enseigne",
       "account name",
     ],
   ],
@@ -53,6 +56,9 @@ const GENERIC_SYNONYMS: ReadonlyArray<readonly [FieldTarget, readonly string[]]>
 // A header with one of these words is about the lead's owner ("Owner email", "Téléphone du commercial"): a "contains"
 // match can only make it the owner column, and not even that when it names the owner's email or phone.
 const OWNER_WORDS = ["owner", "proprietaire", "charge", "chargee", "responsable", "rep", "commercial", "commerciale"];
+// Company-name phrases that hold an owner word ("Nom commercial" is the trade name, not the sales rep): they do not make
+// a header about the owner.
+const NAME_PHRASES_WITH_OWNER_WORD = ["nom commercial", "commercial name"];
 // "Email Domain" or "Company Domain Name" holds a web domain, never one of the lead's fields.
 const DOMAIN_WORDS = ["domain", "domaine"];
 const CONTACT_WORDS = SYNONYMS.filter(([target]) => target === "email" || target === "phone").flatMap(([, w]) => w);
@@ -71,7 +77,8 @@ const hasWord = (padded: string, words: readonly string[]) => words.some((word) 
 function containsTarget(key: string, taken: ReadonlySet<FieldTarget>): FieldTarget | null {
   const padded = ` ${key} `;
   if (hasWord(padded, DOMAIN_WORDS)) return null;
-  const aboutOwner = hasWord(padded, OWNER_WORDS);
+  const withoutNamePhrases = NAME_PHRASES_WITH_OWNER_WORD.reduce((text, phrase) => text.replaceAll(` ${phrase} `, " "), padded);
+  const aboutOwner = hasWord(withoutNamePhrases, OWNER_WORDS);
   if (aboutOwner && hasWord(padded, CONTACT_WORDS)) return null;
   let best: { target: FieldTarget; length: number } | null = null;
   for (const [target, words] of [...SYNONYMS, ...GENERIC_SYNONYMS]) {

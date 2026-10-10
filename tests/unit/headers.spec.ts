@@ -77,6 +77,13 @@ test.describe("header mapping", () => {
     expect(autoMap(["Nom du commercial"]).targets).toEqual(["owner"]);
   });
 
+  test("a trade name (Nom commercial, Commercial name) is the company, not the sales rep", () => {
+    expect(autoMap(["Nom commercial de l'entreprise", "Commercial", "Ville"]).targets).toEqual(["name", "owner", "city"]);
+    expect(autoMap(["Commercial name", "Owner"]).targets).toEqual(["name", "owner"]);
+    expect(autoMap(["Nom commercial/Enseigne", "Commercial"]).targets).toEqual(["name", "owner"]);
+    expect(autoMap(["Trade name", "Enseigne"]).targets).toEqual(["name", "ignore"]);
+  });
+
   test("HubSpot Country/Region and Région map to country", () => {
     expect(autoMap(["Country/Region"]).targets).toEqual(["country"]);
     expect(autoMap(["Région"]).targets).toEqual(["country"]);

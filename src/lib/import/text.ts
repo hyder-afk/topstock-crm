@@ -67,10 +67,12 @@ export const PLACEHOLDERS: ReadonlySet<string> = new Set([
   "tbd",
 ]);
 
-// Characters that show as nothing: the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the soft hyphen and the blank
-// braille pattern (U+2800). A cell made only of them (and spaces) looks empty, so it is empty: a lead name made of
-// them is name_missing. The database only checks that a name is not empty, so this rule lives here.
-const FILLER_ONLY = /^[ \u00AD\u115F\u1160\u2800\u3164\uFFA0]+$/;
+// Characters that show as nothing: every Unicode "default ignorable" (Hangul fillers, soft hyphen, combining grapheme
+// joiner, variation selectors, Mongolian and Khmer invisible marks, musical formatting...) and the blank braille
+// pattern (U+2800). A cell made only of them (and spaces) looks empty, so it is empty: a lead name made of them is
+// name_missing. A name with a visible character keeps them ("❤️" keeps its variation selector). The database only
+// checks that a name is not empty, so this rule lives here.
+const FILLER_ONLY = /^[\s\p{Default_Ignorable_Code_Point}\u2800]+$/u;
 
 /** cleanText plus the placeholder rule: "n/a", "-", "inconnu"... and blank-looking cells become empty. */
 export function cleanCell(raw: string | undefined | null): string {

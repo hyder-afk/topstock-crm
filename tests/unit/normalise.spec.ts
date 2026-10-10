@@ -56,10 +56,37 @@ test.describe("cell cleaning", () => {
   });
 
   test("a cell made only of filler characters is empty", () => {
-    for (const filler of ["\u3164", "\u115F", "\u1160", "\uFFA0", "\u00AD", "\u2800", "\u3164 \u3164", " \u2800\u00AD "]) {
+    for (const filler of [
+      "\u3164",
+      "\u115F",
+      "\u1160",
+      "\uFFA0",
+      "\u00AD",
+      "\u2800",
+      "\u3164 \u3164",
+      " \u2800\u00AD ",
+      // Other characters that render as nothing (Unicode default ignorables), alone and mixed.
+      "\u034F",
+      "\uFE0F",
+      "\uFE00\uFE0F",
+      "\u17B4",
+      "\u17B5",
+      "\u180B\u180C\u180D",
+      "\u180F",
+      "\u{E0100}",
+      "\u{1D173}",
+      "\u{1BCA0}",
+      "\u206A\u206F",
+      "\uFFF0",
+      "\u3164\uFE0F",
+      "\u2800\u034F",
+    ]) {
       expect(cleanCell(filler), JSON.stringify(filler)).toBe("");
     }
     expect(cleanCell("\u3164Atelier")).toBe("\u3164Atelier");
+    // A visible character keeps the cell, with its variation selectors.
+    expect(cleanCell("\u2764\uFE0F")).toBe("\u2764\uFE0F");
+    expect(cleanCell("1\uFE0F\u20E3")).toBe("1\uFE0F\u20E3");
     expect(cleanCell("Super\u00ADmarch\u00E9")).toBe("Super\u00ADmarch\u00E9");
   });
 

@@ -9,9 +9,12 @@ import type { Delimiter } from "./rules";
 // the same pattern to remove the guard again (text.ts stripFormulaGuard), so the two always agree.
 export const FORMULA_START = /^[ \u00A0]*[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/;
 
-/** One CSV cell: formula guard, then always quoted with inner quotes doubled. */
+/**
+ * One CSV cell: NUL bytes dropped (the importer removes them anyway, and one in the file's first 64 KB makes it look
+ * like a binary file), formula guard, then always quoted with inner quotes doubled.
+ */
 export function csvCell(value: string | number | null | undefined): string {
-  let s = value === null || value === undefined ? "" : String(value);
+  let s = value === null || value === undefined ? "" : String(value).replace(/\u0000/g, "");
   if (FORMULA_START.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
