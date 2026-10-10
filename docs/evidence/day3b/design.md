@@ -78,6 +78,7 @@ plpgsql is used because a SQL function with a SET clause is re-planned on every 
 - `null` if fewer than 8 or more than 15 digits; more than 15 means two numbers in one cell.
 - Otherwise `right(digits, 9)`, so `+33 (0)6 12 34 56 78`, `06.12.34.56.78` and `0033 6 12 34 56 78` all give `612345678`, and UK and US national and international forms match too.
 - Belgian 8-digit numbers do not match across formats (accepted).
+- The browser accepts a phone of 6 or 7 digits (`minPhoneDigits: 6`), but such a number gives **no phone key**. The row then counts as having no phone, so the name rule below applies to it: two "Joe's Pizza, Springfield, US" rows with `555-0123` and `555-0199` are one company (the second is "Repeated in this file" by name). Kept on purpose: 6 or 7 digits are too few to tell two numbers apart reliably, and real French, UK and US numbers have 9 digits or more. Attack test: `rules.csv` in section 8 of `import_attack.sql`.
 
 **`private.lead_name_key(name text, city text, country text)`**
 - **Same key under any locale**: Supabase runs ICU (en-US) and the local test runner libc (C.UTF-8); they disagree on `[[:punct:]]`, `\m`/`\M` and `lower()` (a Turkish locale even lower-cases `I` to `ı`). So the function uses no character class and no word boundary, lower-cases Latin letters with its own map, and writes both character sets as fixed code point ranges with escapes only. A test over every code point and 20,000 random names found no difference between the two.
@@ -126,11 +127,13 @@ alter table public.import_batches drop constraint import_batches_status_check;
 alter table public.import_batches add constraint import_batches_status_check
   check (status in ('staged','dry_run','committing','imported','rolling_back','rolled_back','discarded'));
 alter table public.import_batches add constraint import_batches_row_count_max check (row_count <= 50000),
-  add constraint import_batches_filename_safe check (char_length(filename) >= 1 and filename !~ '[[:cntrl:]/\\]');
+  add constraint import_batches_filename_safe check (char_length(filename) >= 1 and filename !~
+    '[\u0001-\u001F\u007F-\u009F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB\U000E0000-\U000E007F/\\]');
 create unique index import_batches_one_writer_idx on public.import_batches (org_id) where status in ('committing','rolling_back');
 create index import_batches_history_idx on public.import_batches (org_id, created_at desc, id desc);
 ```
 - `failed` is dropped. The build checks dev first with a read-only MCP query: there must be 0 rows with status `failed`.
+- The file name refuses `/`, `\` and the characters the browser removes from cells (`INVISIBLE_CHARS` in `src/lib/import/text.ts`: C0 and C1 controls, zero-width characters, the BOM, bidi marks, embeddings, overrides and isolates, U+180E, U+FFF9–B, tag characters), written as code point ranges so the rule is the same under any database locale. A right-to-left override can never reorder a name in the history, even through a direct insert.
 - `duplicates` keeps its meaning as the total of both duplicate kinds; the breakdown is in `issue_counts`.
 
 **Grants**
@@ -159,15 +162,16 @@ grant update (status) on public.import_batches to authenticated;
 | From → to | Who | Precondition (in trigger) | Trigger sets |
 |---|---|---|---|
 | staged/dry_run → dry_run | uploader only (42501) | staging rows = `row_count`, none `pending` | `duplicates`, `rejected`, `issue_counts`, `checked_at` |
-| staged/dry_run → discarded | any admin | none | none |
+| staged/dry_run → discarded | any admin | none | deletes the staging rows |
 | dry_run → committing | uploader only | the one-writer index (raises 23505; RPCs turn it into hint `busy`) | none |
-| committing → imported | uploader only | no `ready` rows; recount; assert `imported + duplicates + rejected = row_count` | `imported`, `duplicates`, `rejected`, `issue_counts`, `imported_at` |
-| committing/imported → rolling_back | any admin | one-writer index | `rolled_back_by`; from `committing`: `imported` = tagged companies, and duplicates/rejected/issue_counts from staging |
-| rolling_back → rolled_back | any admin | `private.lead_import_untouched(id, 1)` returns nothing | `kept` = companies still tagged, `rolled_back_at` |
+| committing → imported | uploader only | no `ready` rows; recount; assert `imported + duplicates + rejected = row_count` | `imported`, `duplicates`, `rejected`, `issue_counts`, `imported_at`; deletes the staging rows |
+| committing/imported → rolling_back | any admin | one-writer index | `rolled_back_by`; from `committing`: `imported` = tagged companies, and duplicates/rejected/issue_counts from staging; deletes the staging rows |
+| rolling_back → rolled_back | any admin | `private.lead_import_untouched(id, 1)` returns nothing | `kept` = companies still tagged, `rolled_back_at`; deletes the staging rows (normally none are left) |
 
 - **Every final move recomputes every counter from the staging rows.** Rows that changed during the import (late duplicates) can therefore never leave a batch stuck in `committing`. This fixes the judges' fatal flaw.
+- **Every closing move deletes the batch's staging rows** (after the counts, which read them), whoever changes the status: a direct PATCH to `discarded` or `rolling_back` leaves no lead values behind. The functions no longer delete the rows themselves. Like the rest of the guard, this is skipped for the superuser; `create_lead_import`'s clean-up catches those rows.
 - Counts are read under the caller's RLS. Callers are always admins with a fresh code, because the update policy already requires one.
-- `issue_counts` keys hold counts only: `ready`, `duplicate_file`, `duplicate_existing`, `by_email`, `by_phone`, `by_name`, `with_fixes`, plus one key per problem, fix and reason code.
+- `issue_counts` keys hold counts only: `ready`, `duplicate_file`, `duplicate_existing`, `by_email`, `by_phone`, `by_name`, `with_fixes`, plus one key per problem, fix and reason code. Fix codes count only rows that are `ready` or `imported` (the screen shows them under "Added with a change"); problem and reason codes count every row.
 - The existing `audit_row` trigger records the insert and every status change with its counters (filename, hash and counts; no lead data).
 
 ### 2.3 Staging table (private schema: no REST or GraphQL endpoint; RLS still on)
@@ -230,13 +234,15 @@ create policy companies_import_columns on public.companies as restrictive for in
   (import_batch_id is null and last_activity_at is null)
   or (import_batch_id is not null
       and (select private.is_admin()) and (select private.has_recent_aal2(600))
-      and (last_activity_at is null or (last_activity_at >= '1990-01-01' and last_activity_at <= now()))
+      and (last_activity_at is null
+           or (last_activity_at >= timestamptz '1989-12-31 00:00:00+00' and last_activity_at <= now()))
       and exists (select 1 from public.import_batches b where b.id = companies.import_batch_id
                   and b.kind = 'leads' and b.status = 'committing' and b.uploaded_by = (select auth.uid()))));
 ```
 - It is restrictive, so the existing permissive `companies_insert` (org check) is untouched and `create_lead` is unaffected.
 - The Day 3a checks in `rls_attack.sql` still pass: a backdated insert and a tagged insert by a rep are now refused by this policy, which raises the same `42501` that the tests catch. `update ... set import_batch_id` is still refused by the column grant.
 - Nobody can tag an existing lead into a batch, so Undo can only reach leads that an import inserted.
+- **One meaning of "1 Jan 1990" everywhere.** The browser (`date_too_old`), `validate_lead_import` and `commit_lead_import` compare the *local* time in the file's time zone with `timestamp '1990-01-01 00:00:00'`. That day starts at 31 Dec 1989, 10:00 UTC at the earliest (UTC+14), so the policy's lower bound is 31 Dec 1989, 00:00 UTC, written with its offset. (A bare `'1990-01-01'` is fixed in the migration session's time zone, UTC on Supabase, and refused midnight on 1 Jan 1990 in Paris, failing the whole chunk.) A row that passed the check can never fail this rule, and a direct insert still cannot backdate a lead before that day or date it in the future. The future bound is the same `now()` in the commit's `bad` test and in the policy.
 
 ### 2.5 The one definition of an untouched lead
 
@@ -275,7 +281,7 @@ language sql stable set search_path = '' as $$
 **`create_lead_import(p_filename text, p_file_sha256 text, p_row_count int, p_last_row_no int, p_timezone text) returns uuid`**
 1. Fresh-admin check.
 2. `p_timezone` must be in `pg_timezone_names`.
-3. Clean up: this org's `staged`/`dry_run` batches untouched for more than 24 h (by `updated_at`) become `discarded`. Staging rows of `discarded`, `imported` and `rolled_back` batches are deleted.
+3. Clean up: this org's `staged`/`dry_run` batches untouched for more than 24 h (by `updated_at`) become `discarded` (the guard deletes their staging rows). Any staging rows still left on a closed batch (a status the superuser changed, which the guard skips) are deleted.
 4. Insert the batch. The trigger enforces the caps.
 
 **`stage_lead_import_rows(p_batch uuid, p_rows jsonb) returns int`**
@@ -299,7 +305,7 @@ language sql stable set search_path = '' as $$
       - `cardinality(problems) > 0`;
       - else `lead_db_problem(…)`;
       - else `owner_unknown` (owner not a profile visible to the caller, so not in the org);
-      - else `date_out_of_range` (`last_activity_local at time zone tz > now()` or before 1990).
+      - else `date_out_of_range` (`last_activity_local at time zone tz > now()`, or `last_activity_local < timestamp '1990-01-01 00:00:00'`: local time, like the browser).
    2. **keepers among non-rejected rows**, with `has_contact = email_key or phone_key`:
       - `e_keep = min(row_no) over (partition by email_key)`;
       - `p_keep = min(row_no) over (partition by phone_key)`;
@@ -328,30 +334,32 @@ language sql stable set search_path = '' as $$
    - `ins`: `insert into public.companies (name, owner_id, lead_status, phone, email, city, country, last_activity_at, import_batch_id)` for rows with no late match. `owner_id` is kept only if still a visible profile, otherwise null (a removed owner becomes Unassigned instead of a refused chunk). `last_activity_at = last_activity_local at time zone tz`;
    - `upd`: mark staging rows `imported`, or `duplicate_existing` with `match_*`, `returning outcome`.
    - A row is marked in the same transaction that inserts it.
-3. If no `ready` rows remain: `status = 'imported'` (the trigger recounts and checks the sum), then `delete from private.lead_import_staging where batch_id = p_batch`.
-4. Returns `{status, imported_now, late_duplicates, remaining}`.
+3. If no `ready` rows remain: `status = 'imported'` (the trigger recounts, checks the sum and deletes the staging rows).
+4. Returns `{status, imported_now, late_duplicates, remaining, imported_total}`. `imported_total` is the number of leads tagged with the batch after the call, counted (through `companies_import_batch_idx`), so it is right after a pause, a resume, a retry or a replay; the screen shows it instead of adding up `imported_now`.
 
 **`preview_lead_import_rollback(p_batch uuid) returns jsonb`**
 - Admin, any code freshness. Counts only: `{tagged, removable (lead_import_untouched(p_batch, 50001)), kept}`.
 
 **`rollback_lead_import(p_batch uuid, p_max_rows int default 2000) returns jsonb`** (`p_max_rows` 1–5,000; any admin)
 1. Fresh-admin check. Lock the batch.
-   - `imported`/`committing`: set `rolling_back` (unique violation becomes hint `busy`), then delete all of the batch's staging rows.
+   - `imported`/`committing`: set `rolling_back` (unique violation becomes hint `busy`); the trigger deletes the batch's staging rows.
    - `rolled_back`: return done.
    - Other statuses: `not_ready`.
 2. **Statement A**: `ids := array(select c.id from public.companies c where c.id in (select private.lead_import_untouched(p_batch, p_max_rows)) order by c.id for update of c)`.
 3. **Statement B**, which takes a new snapshot: `delete from public.companies c where c.id = any(ids) and c.id in (select private.lead_import_untouched(p_batch, p_max_rows))`. It goes through `companies_delete` (manager or admin plus fresh code).
    - Why two statements: a contact or activity committed while A waited, or after A's snapshot, is seen by B and its lead is kept. A's locks then block new links (their FK check needs `FOR KEY SHARE`) until the call ends.
-4. If A returned fewer than `p_max_rows`: `status = 'rolled_back'` (the trigger checks nothing untouched remains and sets `kept`).
+4. If A returned fewer than `p_max_rows` **and** no untouched lead is left (`not exists (select 1 from private.lead_import_untouched(p_batch, 1))`): `status = 'rolled_back'` (the trigger checks the same and sets `kept`). A candidate that a teammate deleted while A waited makes the chunk short without being the end: the call then returns `rolling_back` and the next call removes the rest, instead of failing with `not_ready`. The extra check runs only on a short chunk.
 5. Returns `{status, removed_now, kept}`.
 6. Kept leads keep their `import_batch_id` for history.
 
 **`discard_lead_import(p_batch uuid) returns void`**
 - Fresh-admin check (CLAUDE.md: deletes need step-up).
-- `staged`/`dry_run` → `discarded`, then delete the staging rows. The batch row stays.
+- `staged`/`dry_run` → `discarded`; the trigger deletes the staging rows. The batch row stays.
+- The screen also calls it (best effort) when a Check fails after its import was created, so a retry starts a fresh import. An upload that did not finish (`staged`) cannot be continued from the screen: it can be discarded, and it expires after 24 h idle.
 
 **`list_lead_imports(p_limit int default 20, p_before_created timestamptz default null, p_before_id uuid default null, p_id uuid default null)`**
 - Admin, no fresh code. Keyset on `(created_at desc, id desc)`, `p_limit` 1–50; `p_id` selects one batch (deep links).
+- `imported`: for `committing` and `rolling_back` (running or paused), the number of leads tagged with the batch now, counted (at most one such batch per organisation, so one count per call: 4–6 ms with about 14,000 tagged leads in `perf_import.sql`); for other statuses the final counter.
 - Returns the batch fields including `file_sha256` (used for the "same file as before" warning without an extra call), the counters, `issue_counts`, timestamps, uploader id, first and last name, and the undoer's first name.
 
 **Error contract** (server actions and the route map these to codes; raw messages never leave the server):
@@ -492,7 +500,7 @@ language sql stable set search_path = '' as $$
 
 **3.8 Dedupe rules and order** (one place: `validate_lead_import`, plus the commit re-check)
 1. Rejected rows never block anyone and are never matched.
-2. Keys: email key, phone key (last 9 digits, 8–15 digits), name key (name + city + country; city required). The name key is used only for rows with **no email and no phone key**.
+2. Keys: email key, phone key (last 9 digits, 8–15 digits), name key (name + city + country; city required). The name key is used only for rows with **no email and no phone key**; a phone of 6 or 7 digits (which the browser accepts) gives no phone key, so such a row is name-deduped (section 2.1).
 3. **Already in the CRM** takes precedence: email, then phone, then name (for rows with no contact only). The match is the oldest lead by `(created_at, id)`.
 4. **Repeated in this file**: an earlier row shares the email or phone key (`match_row_no` = the first row with that key). For a row with no contact, the keeper of its name group is the first row in the group *with* contact details, else the first row. Because each keeper is the earliest row of its group, no two imported rows ever share a key, and a chain of repeats always points at an earlier row.
 5. Duplicates are skipped and never merged; the import never changes existing leads.
@@ -516,7 +524,7 @@ language sql stable set search_path = '' as $$
 - `ensureFresh(120)`, then `commitImportStep(batchId, size)` in a loop until `imported`.
 - `size` starts at 1,000 and is halved on `timeout`, down to 250.
 - A network error re-sends the same call, which is safe: the batch row lock serialises callers, rows are marked in the insert's transaction, and an imported batch answers done.
-- A determinate bar shows "Imported 12,000 of 28,410", with a `beforeunload` guard.
+- A determinate bar shows "Imported 12,000 of 28,410" (from `imported_total`, so a resumed import counts what the paused part added), with a `beforeunload` guard.
 - If the tab closes, the batch stays `committing` and history shows **Paused** (Resume for the uploader; Undo for any admin).
 - `busy` shows: "Another import is running (leads.csv, Henri)."
 
@@ -528,7 +536,7 @@ language sql stable set search_path = '' as $$
 **3.13 Discard, expiry, retention**
 - Discard (`staged`/`dry_run`, fresh code) deletes the staging rows.
 - Batches untouched for 24 h are discarded on the next import start.
-- Staging is deleted when a batch becomes imported or rolling_back.
+- Staging is deleted by the guard trigger on every move to discarded, imported, rolling_back or rolled_back, including a direct status change.
 - A paused (`committing`) batch keeps its remaining rows until Resume or Undo, and the import page shows an amber banner.
 - The raw file is never uploaded anywhere: there is no Storage bucket, and rejected rows carry no values.
 
@@ -563,20 +571,20 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 | 3 | Rep or manager | `is_admin()` in every import policy and RPC; page `notFound()` (cosmetic) | `import_rep_every_rpc_42501`, `import_rep_reads_no_batches_or_staging`, `import_manager_cannot_import_or_rollback`, `import_demoted_uploader_cannot_tag` (rep b1 promoted to admin, starts a batch in `committing`, is demoted, then a direct tagged insert must fail); e2e `rep_gets_404_and_no_entry_points`, `rep_direct_rpc_403` |
 | 4 | Another organisation | `org_id = current_org_id()` in every policy; `enforce_org_and_owner`; staging `org_id` pinned; batch subqueries run under RLS; owner must be visible | `import_other_org_admin_cannot_touch_batch` (P0002 or 42501 on every RPC, zero staging rows), `import_other_org_owner_rejected` (reason `owner_unknown`) |
 | 5 | Another admin's batch | uploader only for stage, validate and commit (policy, trigger and RPC); any admin may undo or discard | `import_other_admin_cannot_stage_validate_commit`, `import_any_admin_can_rollback` |
-| 6 | Going around the RPCs (direct PostgREST) | staging in unexposed `private`; batch update grant on `status` only; guard trigger checks every move and computes counters; companies import columns insert-only and gated | `import_status_skip_refused` (staged→committing, dry_run→imported, staged→dry_run with missing rows), `import_counters_not_writable`, `import_batch_delete_denied`, `import_companies_tag_rules` (last activity without batch; batch staged, dry_run or imported; someone else's committing batch; future or pre-1990 date with the batch held in committing), `update_import_batch_id_still_denied` (3a); e2e `staging_not_exposed` (404, and `Accept-Profile: private` → 406 on real PostgREST) |
+| 6 | Going around the RPCs (direct PostgREST) | staging in unexposed `private`; batch update grant on `status` only; guard trigger checks every move and computes counters; companies import columns insert-only and gated | `import_status_skip_refused` (staged→committing, dry_run→imported, staged→dry_run with missing rows), `import_counters_not_writable`, `import_batch_delete_denied`, `import_companies_tag_rules` (last activity without batch; batch staged, dry_run or imported; someone else's committing batch; future or before-31-Dec-1989 date with the batch held in committing, and the earliest 1 Jan 1990 instant, at UTC+14, accepted), `update_import_batch_id_still_denied` (3a); e2e `staging_not_exposed` (404, and `Accept-Profile: private` → 406 on real PostgREST) |
 | 7 | Mass assignment | Zod `strictObject`; `jsonb_to_recordset` fixed column list; column grants; `uploaded_by`, `status`, counters and `kind` from defaults or trigger | unit `schema_rejects_extra_keys`; `import_batch_insert_server_fields` (cannot name uploader, status or counters), `import_staging_columns_not_writable` (insert outcome, update problems → 42501; other `org_id` → 42501) |
 | 8 | SQL or filter injection | static SQL in every import function; values only as parameters or jsonb; no PostgREST filter strings | e2e: names `'); drop table companies; --` and `),id.eq.` stored verbatim |
 | 9 | CSV formula injection | `csvCell()` on every cell including full-width forms; importer strips one leading `'` | unit `csv_cell_*` (= + - @ tab CR, leading spaces, ＝, quotes, newlines, round trip); e2e parses the downloaded file and checks the `'` prefix on formula and `+33` cells |
-| 10 | XSS or spoofing through cells | React text only; bidi and control characters stripped | e2e `xss_name_is_text` (no dialog event); unit `bidi_and_control_stripped` |
+| 10 | XSS or spoofing through cells or the file name | React text only; bidi and control characters stripped; the file name refuses the same characters in the database (`import_batches_filename_safe`) | e2e `xss_name_is_text` (no dialog event); unit `bidi_and_control_stripped`; `import_filename_invisible_refused` (13 names through the function and a direct insert, 23514) |
 | 11 | Crafted CSV | `header:false` arrays plus `Map`; limits (15 MB, 50k rows, 100 columns, 2,000 characters per cell, 200 distinct unmatched values); quote errors stop; Excel magic bytes | unit `parse_proto_header`, `parse_quote_error_row`, `parse_sep_line`, `parse_bom`, `parse_multibyte_across_chunks`; e2e `xlsx_empty_too_many_rows_messages` |
 | 12 | Oversized or abusive requests | 1 MB action limit unchanged; Zod caps; SQL: 1,000 elements, 1 MiB payload, `row_no ≤ last_row_no` in policy, `row_count ≤ 50000`, 3 open batches, one writer per org | `import_stage_1001_rows_22023`, `import_payload_too_big`, `import_row_no_beyond_last_row_denied`, `import_row_count_50001_refused`, `import_fourth_open_batch_refused`, `import_second_writer_busy` |
 | 13 | Lead data in logs | constant-error pre-check (no value ever in SQLERRM or DETAIL); per-row `lead_db_problem` so CHECK "Failing row contains" never fires; actions log nothing; ESLint `no-console` on import code | `import_bad_values_constant_error` (planted uuid and date absent from SQLERRM and `PG_EXCEPTION_DETAIL`); e2e `rejected_rows_send_no_values` (inspects request bodies) |
 | 14 | Lead data in the audit log | minimal insert and undo rows; key columns and `search_text` stripped; staging not audited | `import_audit_minimal` (no name, email, phone or `*_key` in any audit row for the batch's leads; batch status rows present) |
-| 15 | Data kept too long | purge at imported, rolling_back, discard and 24 h idle; no file storage | `import_staging_purged` (each path, including back-dated `updated_at`) |
+| 15 | Data kept too long | the guard trigger purges at discarded, imported, rolling_back and rolled_back, however the status changes (function or direct PATCH); 24 h idle; no file storage | `import_staging_purged` (each path, including back-dated `updated_at`), `import_direct_status_patch_purges` (a direct PATCH to discarded, and of a paused import to rolling_back) |
 | 16 | Partial failure | one transaction per chunk; resumable states; validate refuses an incomplete upload; Undo works on a partial import | `import_validate_incomplete_refused`, `import_rollback_partial_commit`; e2e `resume_after_aborted_commit` |
 | 17 | Replay or double commit | batch row lock; mark-in-same-statement; `on conflict do nothing`; final states answer done; one-writer index | `import_restage_same_chunk_idempotent`, `import_commit_after_imported_noop`, `import_stage_after_check_refused`, `import_parallel_commits_insert_once` (two psql sessions) |
 | 18 | Late duplicates or stuck counters | re-check in every chunk; counters recomputed at every final move | `import_late_duplicate_skipped`, `import_counters_add_up` |
-| 19 | Undo abuse or data loss | admin plus fresh code (RPC and `companies_delete`); only tagged rows (no retagging); untouched only; deals always stay; two-statement delete | `import_rollback_keeps_worked_on` (edit, activity, contact, deal each keep one lead: kept = 4), `import_rollback_cannot_reach_untagged`, `import_rollback_twice_noop`, `import_rollback_waits_for_new_contact_and_keeps_lead` (two sessions), `import_fk_coverage` |
+| 19 | Undo abuse or data loss | admin plus fresh code (RPC and `companies_delete`); only tagged rows (no retagging); untouched only; deals always stay; two-statement delete | `import_rollback_keeps_worked_on` (edit, activity, contact, deal each keep one lead: kept = 4), `import_rollback_cannot_reach_untagged`, `import_rollback_twice_noop`, `import_rollback_waits_for_new_contact_and_keeps_lead` and `import_rollback_chunk_survives_deleted_lead` (two sessions), `import_fk_coverage` |
 | 20 | CSRF and error leakage | server actions' Origin check; GET route read-only, aal2, no-store; fixed error codes | e2e `error_copy_has_no_sql` |
 | 21 | Step-up brute force | Zod `^\d{6}$`; GoTrue verify rate limits; generic messages | e2e `wrong_code_message`, `rate_limited_message` (429 at the action boundary) |
 
@@ -648,7 +656,7 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
 
 | State | Badge | Actions |
 |---|---|---|
-| staged | Upload not finished | Continue (choose the same file) / Discard |
+| staged | Upload not finished | Discard (it cannot be continued; it expires after 24 h idle) |
 | dry_run | Checked, not imported | Review / Discard |
 | committing | Paused | Resume (uploader) / Undo |
 | imported | Imported (green) | Undo |
@@ -692,8 +700,10 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
   - Asserts: exact `outcome`, `match_key` and `match_row_no`; leads carry `import_batch_id`, owner and org; `last_activity_at` converted from Europe/Paris including the DST gap; reps see the leads; `imported + duplicates + rejected = row_count`.
   - Key-function tables: emails; phones (including multi-number cells and fewer than 8 digits); names (Łódź, legal forms only, punctuation, city required).
   - `import_reimport_same_file_adds_zero`; `import_last_activity_moves_forward` (a later activity moves the date forward).
+  - Section 8 (review fixes, one import each): `rules.csv` (a 7-digit phone is name-deduped; fix codes count only added rows; 1 Jan 1990 00:00 Paris is ready, one second earlier is `date_out_of_range`), `held.csv` (the tagging rule while an import is held in `committing`), `new-year-1990.csv` (midnight on 1 Jan 1990 in Paris and at UTC+14 imports), `total.csv` (`imported_total` and the history's running count while paused, after a resume and during an undo), the direct-PATCH purge, and the file name.
 - **`supabase/tests/import_concurrency.sh`** (`db-test.sh` and `db.yml`): two psql sessions for `import_parallel_commits_insert_once` and `import_rollback_waits_for_new_contact_and_keeps_lead`.
   - In the second: session 1 inserts a contact and sleeps 2 s before committing; session 2 runs a rollback chunk meanwhile. The lead must be kept.
+  - A third, `import_rollback_chunk_survives_deleted_lead`: session 1 deletes the first lead of a 3-lead import and holds its transaction; session 2 undoes 2 leads meanwhile and must return `rolling_back` with 1 removed (not fail), then finish on the next call.
 - **Mutation runs** recorded in `docs/evidence/day3b/mutations.md`; each must fail at least one check:
   1. remove `has_recent_aal2` from the staging insert policy
   2. remove `is_admin` from `companies_import_columns`
@@ -712,6 +722,13 @@ Database tests live in `supabase/tests/import_attack.sql` (and `import_concurren
   15. remove the minimal-audit branch
   16. skip the purge at imported
   17. remove the counter recount at `->imported`
+  18. remove the date bound from `companies_import_columns`, or put it back at 1 Jan 1990 UTC
+  19. remove the uploader check there
+  20. compare the check's 1990 bound in UTC instead of local time
+  21. drop one closing status (imported, discarded, rolling_back) from the guard's purge
+  22. the file name check back to `[[:cntrl:]]`
+  23. undo: a short chunk counts as the end
+  24. the running total counted per call; the history showing the counter for a paused import
   - The e2e REST check catches a mutation that moves staging into `public`.
 
 **B) Playwright end-to-end** (CI `auth-journey` on the real local Supabase stack; add `import` to the WebKit `testMatch` for the main journey)
