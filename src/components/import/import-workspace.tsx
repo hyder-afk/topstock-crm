@@ -193,7 +193,14 @@ export function ImportWorkspace({
 
   // Each new step (and each step returned to after a failure) moves focus to its heading: screen readers hear where
   // they are, and the keyboard never starts again from the top of the page.
-  const focusHeading = useCallback(() => requestAnimationFrame(() => headingRef.current?.focus()), []);
+  // The step heading takes the focus once React has drawn the screen this change belongs to (an effect after that
+  // commit), not on the next frame: a busy main thread (a large file just read) can run the frame first, which would
+  // focus the heading that is about to go and leave the focus on the page.
+  const [focusRequest, setFocusRequest] = useState(0);
+  const focusHeading = useCallback(() => setFocusRequest((n) => n + 1), []);
+  useEffect(() => {
+    if (focusRequest > 0) headingRef.current?.focus();
+  }, [focusRequest]);
 
   const fail = useCallback(
     (cause: unknown, back: Phase) => {
