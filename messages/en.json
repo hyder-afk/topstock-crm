@@ -134,6 +134,7 @@
     "placeholder": "Search sections and actions…",
     "empty": "No matches. Try a section name.",
     "goTo": "Go to",
+    "actions": "Actions",
     "appearance": "Appearance",
     "themeLight": "Light appearance",
     "themeDark": "Dark appearance",
@@ -141,7 +142,8 @@
     "language": "Language",
     "help": "Help and account",
     "shortcuts": "Keyboard shortcuts",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "importLeads": "Import leads"
   },
   "Shortcuts": {
     "title": "Keyboard shortcuts",
@@ -228,7 +230,8 @@
       "chipCountry": "Country: {value}",
       "chipCity": "City: {value}",
       "chipInactive": "No activity for {days} days",
-      "remove": "Remove filter {name}"
+      "remove": "Remove filter {name}",
+      "chipBatch": "From an import"
     },
     "never": "Never",
     "contacts": "{count, plural, =0 {No contacts} one {# contact} other {# contacts}}",
@@ -247,7 +250,8 @@
     "loadingMore": "Loading more leads",
     "end": "That is every lead for these filters.",
     "emptyTitle": "No leads yet",
-    "emptyBody": "Add your first lead here. Importing your lead sheet comes next.",
+    "emptyBody": "Import your lead sheet, or add your first lead by hand.",
+    "emptyBodyRep": "Add your first lead here.",
     "noMatchTitle": "No leads match these filters",
     "noMatchBody": "Try fewer filters or a shorter search.",
     "errorTitle": "Couldn't load leads",
@@ -320,6 +324,276 @@
       "email": "Enter a valid email address, or leave it empty.",
       "phone": "Use digits, spaces and + ( ) . / - only."
     },
-    "noName": "No name yet"
+    "noName": "No name yet",
+    "import": "Import",
+    "importFromSheet": "Import from a spreadsheet"
+  },
+  "StepUp": {
+    "title": "Confirm it’s you",
+    "body": "Imports change many leads at once. Enter the 6-digit code from your authenticator app. You’ll stay confirmed for 10 minutes.",
+    "codeLabel": "6-digit code",
+    "cancel": "Cancel",
+    "submit": "Confirm",
+    "checking": "Checking…",
+    "errors": {
+      "codeInvalid": "Enter the 6 digits from your authenticator app.",
+      "codeWrong": "That code didn’t work. Check your phone’s clock, or wait for the next code.",
+      "rateLimited": "Too many tries. Wait a minute, then try again.",
+      "unavailable": "We couldn’t check the code just now. Try again in a moment."
+    }
+  },
+  "Import": {
+    "title": "Import leads",
+    "subtitle": "Bring in leads from a CSV file. Nothing changes in your CRM until you confirm, and you can undo an import.",
+    "steps": {
+      "choose": "Choose file",
+      "match": "Match columns",
+      "check": "Check",
+      "import": "Import",
+      "counter": "Step {step} of {total}"
+    },
+    "errors": {
+      "step_up": "Confirm it’s you to continue.",
+      "forbidden": "Only admins can import leads.",
+      "incomplete": "Some rows didn’t arrive. Try again: rows already sent are kept.",
+      "not_staged": "This import isn’t taking rows any more. Start a new one.",
+      "not_ready": "This import can’t do that right now. Refresh the page to see where it stands.",
+      "too_many_open": "There are already 3 unfinished imports. Import or discard one first.",
+      "bad_transition": "That step isn’t possible for this import.",
+      "busy": "Another import or undo is running. Try again when it has finished.",
+      "invalid": "Something in the request wasn’t right. Refresh the page and try again.",
+      "not_found": "This import no longer exists. Refresh the page.",
+      "timeout": "The database took too long. Try again: nothing was added twice.",
+      "unavailable": "Connection lost. Nothing was added twice. Try again."
+    },
+    "toast": {
+      "discarded": "Import discarded."
+    },
+    "choose": {
+      "title": "Choose your file",
+      "body": "A CSV file with one header row. It stays on this computer: only the cleaned rows are sent when you check.",
+      "resumeTitle": "Choose {file} again",
+      "resumeBody": "To continue this import, choose the same file. We check that it’s exactly the same.",
+      "resumeCancel": "Start a new import instead",
+      "drop": "Drop your CSV here or choose a file",
+      "pick": "Choose a CSV file",
+      "limits": "Up to {rows} rows and 15 MB.",
+      "excelHint": "From Excel: File > Save a copy > CSV UTF-8.",
+      "button": "Choose file",
+      "reading": "Reading the file…",
+      "safe": "Nothing changes in your CRM until you confirm the import.",
+      "errors": {
+        "not_csv": "This isn’t a CSV file. Save it as CSV UTF-8 and choose it again.",
+        "too_big": "This file is bigger than 15 MB. Split it in two.",
+        "excel_file": "This is an Excel file. In Excel: File > Save a copy > CSV UTF-8, then choose that file.",
+        "not_text": "This file doesn’t contain text. Save it as CSV UTF-8.",
+        "empty": "This file is empty.",
+        "no_header": "This file has no header row. Add one with your column names.",
+        "no_rows": "This file has a header but no rows.",
+        "header_too_long": "A column name is longer than 200 characters. Check the first row.",
+        "too_many_columns": "This file has more than 100 columns. Is it the right file?",
+        "too_many_rows": "This file has more than {rows} rows. Split it in two.",
+        "quote_error": "Row {row} has an opening quote without a closing one. Fix it in your spreadsheet and save again.",
+        "aborted": "Reading stopped.",
+        "not_same_file": "This isn’t the same file. Choose the file you started this import with.",
+        "unreadable": "We couldn’t read this file. Save it again as CSV UTF-8."
+      }
+    },
+    "match": {
+      "title": "Match your columns",
+      "fileLine": "{file} · {rows} rows · {columns} columns · separated by {separator}",
+      "tab": "tabs",
+      "encodingNotice": "We read this file as Western European text. Check the accents in the examples below.",
+      "sameFile": "You imported this exact file on {date} ({count} leads). Every row would show as already in the CRM.",
+      "restored": "We used the matching you chose last time for these columns.",
+      "columnsTitle": "Columns",
+      "noHeader": "Column {n} (no name)",
+      "matched": "Matched",
+      "emptyColumn": "Empty column",
+      "targets": {
+        "name": "Company name",
+        "owner": "Owner",
+        "phone": "Phone",
+        "email": "Email",
+        "status": "Lead status",
+        "last_activity": "Last activity date",
+        "city": "City",
+        "country": "Country",
+        "ignore": "Don’t import"
+      },
+      "needName": "Choose the column with the company name.",
+      "needStatus": "{count, plural, one {# status word still needs a choice} other {# status words still need a choice}}",
+      "statusTitle": "Lead statuses",
+      "statusHint": "How each word in your file becomes a status.",
+      "statusFor": "Status for “{value}”",
+      "choose": "Choose…",
+      "blankStatus": "Empty status",
+      "ownerTitle": "Owners",
+      "ownerHint": "We matched {matched} of {total} owner names to your team. Invite missing people first, or reassign later from Leads.",
+      "ownerFor": "Owner for “{value}”",
+      "unassigned": "Unassigned",
+      "noName": "No name yet",
+      "countryTitle": "Countries we don’t recognise",
+      "countryHint": "Pick the country, or leave it blank.",
+      "countryFor": "Country for “{value}”",
+      "leaveBlank": "Leave blank",
+      "tooManyValues": "Many values aren’t countries. Is this the right column?",
+      "dateTitle": "Dates",
+      "dateHint": "How the last activity dates are written, and their time zone.",
+      "dateMixed": "This column mixes day-first and month-first dates. Rows that don’t fit the order you choose will be listed as problems.",
+      "dateOrder": "Date order",
+      "dmy": "Day first (31/12/2025)",
+      "mdy": "Month first (12/31/2025)",
+      "timeZone": "Time zone",
+      "rowsCount": "{count, plural, one {{formatted} row} other {{formatted} rows}}",
+      "needsChoice": "needs a choice",
+      "back": "Choose another file",
+      "preparing": "Preparing…",
+      "check": "Check file"
+    },
+    "check": {
+      "checkingTitle": "Checking your file",
+      "sending": "Sending rows… {done} of {total}",
+      "duplicates": "Looking for duplicates…",
+      "resultsTitle": "Check results",
+      "resultsBody": "{file} · {rows} rows. Nothing has been added yet.",
+      "tiles": {
+        "ready": "Will be added",
+        "existing": "Already in the CRM",
+        "existingHint": "Skipped",
+        "repeated": "Repeated in this file",
+        "repeatedHint": "Only the first is kept",
+        "rejected": "Can’t be imported"
+      },
+      "whyNot": "Why some rows can’t be imported",
+      "withChanges": "Added with a change",
+      "rowsTitle": "Rows to look at",
+      "download": "Download rows not imported (CSV)",
+      "downloadNow": "Download it now: we don’t keep a copy after the import. It opens in Excel, and once fixed it can be imported as is.",
+      "noFile": "Choose the same file again to see company names and download the rows not imported.",
+      "filterLabel": "Show rows",
+      "filters": {
+        "all": "All",
+        "rejected": "Can’t import",
+        "duplicate_file": "Repeated",
+        "duplicate_existing": "Already in CRM",
+        "fixed": "Changed"
+      },
+      "issuesError": "We couldn’t load the rows.",
+      "retry": "Try again",
+      "noRows": "No rows here.",
+      "colRow": "Row",
+      "colCompany": "Company",
+      "colWhat": "What happened",
+      "noName": "(no name)",
+      "chooseFileForNames": "Choose the file to see names",
+      "import": "{count, plural, one {Import {formatted} lead} other {Import {formatted} leads}}",
+      "nothingNew": "Nothing new to import.",
+      "discard": "Discard",
+      "csvRow": "Row",
+      "csvProblem": "Problem",
+      "csvSuffix": "rows-not-imported",
+      "importingTitle": "Importing",
+      "importing": "Imported {done} of {total}",
+      "importingCount": "Imported {done}",
+      "keepOpen": "Keep this tab open. If it closes, the import pauses and you can resume it from Past imports.",
+      "doneTitle": "{count, plural, one {{formatted} lead added} other {{formatted} leads added}}",
+      "doneBody": "Your team can see them now. You can undo this import from Past imports.",
+      "doneLate": "{count, plural, one {{formatted} lead was added by your team while you were importing, so it was skipped.} other {{formatted} leads were added by your team while you were importing, so they were skipped.}} You can undo this import from Past imports.",
+      "seeLeads": "See these leads",
+      "another": "Import another file"
+    },
+    "problems": {
+      "name_missing": "The company name is empty",
+      "name_too_long": "The company name is longer than 200 characters",
+      "columns_extra": "This row has more cells than the header",
+      "cell_too_long": "A cell is longer than 2,000 characters",
+      "email_invalid": "Email address doesn’t look right",
+      "phone_invalid": "Phone number doesn’t look right",
+      "phone_mangled": "Excel changed this phone number (it shows as a number like 3.36E+11)",
+      "phone_too_long": "Phone number is longer than 40 characters",
+      "date_invalid": "Last activity date isn’t a real date",
+      "date_future": "Last activity date is in the future",
+      "date_too_old": "Last activity date is before 1990",
+      "city_too_long": "City is longer than 120 characters",
+      "unknown": "This row can’t be imported"
+    },
+    "fixes": {
+      "email_dropped": "Email left out (it didn’t look right)",
+      "phone_dropped": "Phone left out (it didn’t look right)",
+      "date_dropped": "Last activity date left out",
+      "city_dropped": "City left out (too long)",
+      "owner_unassigned": "Owner isn’t a CRM user: comes in unassigned",
+      "country_dropped": "Country not recognised: left blank"
+    },
+    "reasons": {
+      "owner_unknown": "The owner isn’t in your team",
+      "date_out_of_range": "Last activity date is in the future or before 1990",
+      "db_name": "The company name can’t be saved",
+      "db_phone": "The phone number can’t be saved",
+      "db_email": "The email address can’t be saved",
+      "db_city": "The city can’t be saved",
+      "db_country": "The country can’t be saved",
+      "db_status": "The status can’t be saved"
+    },
+    "dupes": {
+      "file": {
+        "email": "Same email as row {row}",
+        "phone": "Same phone as row {row}",
+        "name": "Same company and city as row {row}"
+      },
+      "existing": {
+        "email": "Already in the CRM: {name} (same email)",
+        "phone": "Already in the CRM: {name} (same phone)",
+        "name": "Already in the CRM: {name} (same company and city)"
+      },
+      "existingNoName": {
+        "email": "Already in the CRM (same email)",
+        "phone": "Already in the CRM (same phone)",
+        "name": "Already in the CRM (same company and city)"
+      }
+    },
+    "history": {
+      "title": "Past imports",
+      "error": "Couldn’t load past imports. Refresh the page.",
+      "empty": "No imports yet. Your first import will show up here.",
+      "someone": "Someone",
+      "when": "{date} · {who}",
+      "status": {
+        "staged": "Upload not finished",
+        "dry_run": "Checked, not imported",
+        "committing": "Paused",
+        "imported": "Imported",
+        "rolling_back": "Undo paused",
+        "rolled_back": "{count, plural, =0 {Undone} other {Undone · {formatted} kept}}",
+        "discarded": "Discarded"
+      },
+      "continue": "Continue",
+      "review": "Review",
+      "resume": "Resume",
+      "seeLeads": "See leads",
+      "undo": "Undo import",
+      "resumeUndo": "Resume undo",
+      "discard": "Discard",
+      "counts": {
+        "added": "{count, plural, one {{formatted} added} other {{formatted} added}}",
+        "ready": "{count, plural, one {{formatted} ready} other {{formatted} ready}}",
+        "rows": "{count, plural, one {{formatted} row} other {{formatted} rows}}",
+        "existing": "{formatted} already in CRM",
+        "repeated": "{formatted} repeated",
+        "rejected": "{formatted} not imported"
+      }
+    },
+    "undo": {
+      "title": "Undo this import?",
+      "body": "This removes the {removable, plural, one {{removableFormatted} lead} other {{removableFormatted} leads}} added from {file} on {date} that nobody has worked on. {kept, plural, =0 {} one {{keptFormatted} lead your team worked on since (a call, note, contact, deal or any change, including a new owner) stays.} other {{keptFormatted} leads your team worked on since (a call, note, contact, deal or any change, including a new owner) stay.}}",
+      "loading": "Counting the leads from this import…",
+      "running": "Removed {done} of {total}",
+      "done": "Removed {removed}. Kept {kept}.",
+      "keep": "Keep everything",
+      "remove": "{count, plural, one {Remove {formatted} lead} other {Remove {formatted} leads}}",
+      "finish": "Finish undo",
+      "close": "Close"
+    }
   }
 }

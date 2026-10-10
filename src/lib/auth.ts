@@ -65,7 +65,11 @@ export function stepUpSecondsLeft(claims: Record<string, unknown>, nowMs = Date.
 // Admin-only pages: everyone else gets the standard 404 (the database refuses them too; this only hides the page).
 export async function requireAdmin() {
   const session = await requireSession();
-  const { data, error } = await session.supabase.from("profiles").select("role").eq("id", session.claims.sub).maybeSingle();
+  const { data, error } = await session.supabase
+    .from("profiles")
+    .select("role, timezone")
+    .eq("id", session.claims.sub)
+    .maybeSingle();
   if (error || data?.role !== "admin") notFound();
-  return session;
+  return { ...session, timezone: typeof data.timezone === "string" && data.timezone ? data.timezone : "Europe/Paris" };
 }
