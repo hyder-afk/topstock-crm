@@ -705,6 +705,8 @@ $$;
 -- Imports the next ready rows (up to p_max_rows) and returns how many remain; call again until status is 'imported'.
 -- Each call re-checks its rows against leads added since the check (skipped as already in the CRM) and marks each row
 -- in the same statement that inserts it, so a retry after a dropped connection never adds a lead twice.
+-- imported_total: the leads tagged with this import after the call, counted (not added up by the caller), so it is
+-- right after a pause, a resume or a retry.
 create function public.commit_lead_import(p_batch uuid, p_max_rows integer default 1000) returns jsonb
 language plpgsql volatile set search_path = '' as $$
 declare
@@ -712,6 +714,7 @@ declare
   v_imported integer := 0;
   v_late integer := 0;
   v_remaining integer;
+  v_total integer;
 begin
   perform private.assert_import_admin(true);
   if p_max_rows is null or p_max_rows not between 1 and 2000 then
@@ -725,7 +728,9 @@ begin
     raise exception 'only the person who started this import can import it' using errcode = '42501';
   end if;
   if b.status = 'imported' then
-    return jsonb_build_object('status', 'imported', 'imported_now', 0, 'late_duplicates', 0, 'remaining', 0);
+    select count(*) into v_total from public.companies c where c.import_batch_id = p_batch;
+    return jsonb_build_object('status', 'imported', 'imported_now', 0, 'late_duplicates', 0, 'remaining', 0,
+                              'imported_total', v_total);
   elsif b.status = 'dry_run' then
     begin
       update public.import_batches set status = 'committing' where id = p_batch;
@@ -797,8 +802,10 @@ begin
     update public.import_batches set status = 'imported' where id = p_batch;
     delete from private.lead_import_staging where batch_id = p_batch;
   end if;
+  select count(*) into v_total from public.companies c where c.import_batch_id = p_batch;
   return jsonb_build_object('status', case when v_remaining = 0 then 'imported' else 'committing' end,
-                            'imported_now', v_imported, 'late_duplicates', v_late, 'remaining', v_remaining);
+                            'imported_now', v_imported, 'late_duplicates', v_late, 'remaining', v_remaining,
+                            'imported_total', v_total);
 end;
 $$;
 
@@ -888,6 +895,9 @@ end;
 $$;
 
 -- Import history, newest first (keyset on created_at, id). Admins, without a fresh code. p_id: one import.
+-- imported: while an import or an undo runs or is paused, the leads tagged with it now, counted (the counter is only
+-- final at the end; there is at most one such import per organisation, counted through companies_import_batch_idx);
+-- otherwise the final counter.
 create function public.list_lead_imports(
   p_limit integer default 20,
   p_before_created timestamptz default null,
@@ -923,7 +933,11 @@ begin
     raise exception 'invalid page' using errcode = '22023';
   end if;
   return query
-    select b.id, b.filename, b.file_sha256, b.status, b.row_count, b.last_row_no, b.imported, b.duplicates, b.rejected,
+    select b.id, b.filename, b.file_sha256, b.status, b.row_count, b.last_row_no,
+           case when b.status in ('committing', 'rolling_back')
+                then (select count(*)::integer from public.companies c where c.import_batch_id = b.id)
+                else b.imported end,
+           b.duplicates, b.rejected,
            b.kept, b.issue_counts, b.source_timezone, b.created_at, b.updated_at, b.checked_at, b.imported_at,
            b.rolled_back_at, b.uploaded_by, u.first_name, u.last_name, r.first_name
       from public.import_batches b

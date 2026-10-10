@@ -885,6 +885,44 @@ begin
   end loop;
 end $$;
 
+-- The running total: counted, so it is right while paused and after a resume, in each call and in the history.
+do $$
+declare
+  batch uuid;
+  r jsonb;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  batch := public.create_lead_import('total.csv', null, 3, 4);
+  perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Total A", "lead_status": "cold"},
+    {"row_no": 3, "name": "Total B", "lead_status": "cold"}, {"row_no": 4, "name": "Total C", "lead_status": "cold"}]');
+  perform public.validate_lead_import(batch);
+  r := public.commit_lead_import(batch, 2);
+  if (r ->> 'status') <> 'committing' or (r ->> 'imported_total')::integer is distinct from 2 then
+    raise exception 'FAIL: running total after the first chunk %', r;
+  end if;
+  if (select imported from public.list_lead_imports(p_id => batch)) <> 2 then
+    raise exception 'FAIL: history should show the leads a paused import added';
+  end if;
+  r := public.commit_lead_import(batch, 2);  -- resumed
+  if (r ->> 'status') <> 'imported' or (r ->> 'imported_now')::integer <> 1 or (r ->> 'imported_total')::integer <> 3 then
+    raise exception 'FAIL: running total after a resume %', r;
+  end if;
+  -- (Each call is its own statement: a history read in the same statement would not see the call's changes.)
+  r := public.commit_lead_import(batch);  -- a replay after the end
+  if (r ->> 'imported_total')::integer <> 3 or (select imported from public.list_lead_imports(p_id => batch)) <> 3 then
+    raise exception 'FAIL: total after the import %', r;
+  end if;
+  -- While an undo runs (or is paused), the history counts the leads still there.
+  r := public.rollback_lead_import(batch, 1);
+  if (r ->> 'status') <> 'rolling_back' or (select imported from public.list_lead_imports(p_id => batch)) <> 2 then
+    raise exception 'FAIL: history during an undo %', r;
+  end if;
+  r := public.rollback_lead_import(batch);
+  if (r ->> 'status') <> 'rolled_back' or (select imported from public.list_lead_imports(p_id => batch)) <> 3 then
+    raise exception 'FAIL: history after the undo %', r;
+  end if;
+end $$;
+
 -- Superuser view: no closed import keeps working rows.
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;  -- superuser: no caller
