@@ -271,7 +271,8 @@ grant insert (batch_id, row_no, org_id, name, owner_id, lead_status, phone, emai
 grant update (outcome, reason, match_key, match_row_no, match_company_id) on private.lead_import_staging to authenticated;
 -- Not audited: the rows are temporary, and auditing them would copy lead data into the log.
 
--- Counts of a batch's staged rows: outcomes, duplicate kinds, and one key per problem, fix and reason code.
+-- Counts of a batch's staged rows: outcomes, duplicate kinds, and one key per problem, fix and reason code. Fix codes
+-- are counted only on rows that are (or will be) added, because the screen shows them as "Added with a change".
 create function private.lead_import_tally(p_batch uuid) returns jsonb
 language sql stable set search_path = '' as $$
   with s as (
@@ -289,7 +290,10 @@ language sql stable set search_path = '' as $$
            'by_name', count(*) filter (where match_key = 'name'),
            'with_fixes', count(*) filter (where cardinality(fixes) > 0 and outcome in ('ready', 'imported')))
          || coalesce((select jsonb_object_agg(code, n)
-                        from (select code, count(*) as n from s, unnest(s.problems || s.fixes) as code group by code) x),
+                        from (select code, count(*) as n
+                                from s, unnest(s.problems || case when s.outcome in ('ready', 'imported') then s.fixes
+                                                                  else '{}' end) as code
+                               group by code) x),
                      '{}')
          || coalesce((select jsonb_object_agg(reason, n)
                         from (select s.reason, count(*) as n from s where s.reason is not null group by s.reason) y),

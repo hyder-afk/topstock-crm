@@ -35,6 +35,22 @@ begin
 end;
 $$;
 
+-- Runs a statement that must succeed, then undoes it: a probe that is allowed leaves nothing behind.
+create function pg_temp.expect_ok(stmt text) returns void
+language plpgsql as $$
+begin
+  begin
+    execute stmt;
+    raise exception 'probe undone' using errcode = 'TS001';
+  exception
+    when sqlstate 'TS001' then
+      return;
+    when others then
+      raise exception 'FAIL: "%" gave %, expected it to succeed', stmt, sqlstate;
+  end;
+end;
+$$;
+
 -- The rows of the happy-path file: one case per row (row 1 is the header). See the expected outcomes further down.
 create function pg_temp.happy_rows() returns jsonb
 language sql as $$
@@ -763,6 +779,55 @@ do $$ begin
     raise exception 'FAIL: idle import not discarded';
   end if;
 end $$;
+
+-- 8. Review fixes, one import each -----------------------------------------------------------------------------------
+-- The check: short phones, fix counts, and dates around 1 Jan 1990 (local time, like the browser).
+do $$
+declare
+  batch uuid;
+  r jsonb;
+  t record;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  batch := public.create_lead_import('rules.csv', null, 6, 7);
+  perform public.stage_lead_import_rows(batch, jsonb_build_array(
+    -- A phone of 6 or 7 digits gives no phone key (that needs 8 to 15 digits), so the row counts as having no phone:
+    -- its name, city and country decide, and the second Joe's Pizza is a repeat of the first.
+    jsonb_build_object('row_no', 2, 'name', 'Joe''s Pizza', 'lead_status', 'cold', 'phone', '555-0123',
+                       'city', 'Springfield', 'country', 'US'),
+    jsonb_build_object('row_no', 3, 'name', 'Joe''s Pizza', 'lead_status', 'cold', 'phone', '555-0199',
+                       'city', 'Springfield', 'country', 'US'),
+    -- Two rows with a fix, the second a repeat of the first: only the first is "added with a change".
+    jsonb_build_object('row_no', 4, 'name', 'Fix One', 'lead_status', 'cold', 'email', 'fix@example.com',
+                       'fixes', jsonb_build_array('owner_unassigned')),
+    jsonb_build_object('row_no', 5, 'name', 'Fix Two', 'lead_status', 'cold', 'email', 'FIX@example.com',
+                       'fixes', jsonb_build_array('owner_unassigned')),
+    -- Midnight on 1 Jan 1990 in Paris is in range; a second earlier is not.
+    jsonb_build_object('row_no', 6, 'name', 'New Year 1990', 'lead_status', 'cold', 'last_activity', '1990-01-01T00:00:00'),
+    jsonb_build_object('row_no', 7, 'name', 'Before 1990', 'lead_status', 'cold', 'last_activity', '1989-12-31T23:59:59')));
+  r := public.validate_lead_import(batch);
+  for t in select * from (values
+      (2, 'ready', null, null, null), (3, 'duplicate_file', 'name', 2, null),
+      (4, 'ready', null, null, null), (5, 'duplicate_file', 'email', 4, null),
+      (6, 'ready', null, null, null), (7, 'rejected', null, null, 'date_out_of_range')
+    ) as e (row_no, outcome, match_key, match_row_no, reason) loop
+    if not exists (select 1 from private.lead_import_staging s
+                    where s.batch_id = batch and s.row_no = t.row_no and s.outcome = t.outcome
+                      and s.match_key is not distinct from t.match_key
+                      and s.match_row_no is not distinct from t.match_row_no
+                      and s.reason is not distinct from t.reason) then
+      raise exception 'FAIL: row % expected % % % %, got %', t.row_no, t.outcome, t.match_key, t.match_row_no, t.reason,
+        (select row(s.outcome, s.match_key, s.match_row_no, s.reason) from private.lead_import_staging s
+          where s.batch_id = batch and s.row_no = t.row_no);
+    end if;
+  end loop;
+  if (r -> 'issue_counts' ->> 'owner_unassigned')::integer <> 1 or (r -> 'issue_counts' ->> 'with_fixes')::integer <> 1 then
+    raise exception 'FAIL: fix counts should count only rows that are added %', r -> 'issue_counts';
+  end if;
+  perform public.discard_lead_import(batch);
+end $$;
+
+-- Superuser view: no closed import keeps working rows.
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;  -- superuser: no caller
 do $$ begin
