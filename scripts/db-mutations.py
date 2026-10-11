@@ -332,6 +332,9 @@ MUTATIONS_4A = [
      [("t.created_by = caller and t.created_at > now() - interval '60 seconds'", "t.created_by = caller and t.created_at > now() - interval '1 second'")]),
     ("Task guard: flood window of two minutes",
      [("t.created_by = caller and t.created_at > now() - interval '60 seconds'", "t.created_by = caller and t.created_at > now() - interval '2 minutes'")]),
+    ("Audit: a deleted entry without its length (D8)",
+     [("    diff := jsonb_build_object('old', (rec - 'body') || jsonb_build_object('body_len', char_length(rec ->> 'body')));\n",
+       "    diff := jsonb_build_object('old', rec - 'body');\n")]),
 ]
 
 
