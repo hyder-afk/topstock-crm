@@ -34,7 +34,7 @@ alter table public.activities
     or (type = 'note' and outcome is null)),
   -- Tab and line feed only: no other control character, DEL, or bidi embedding, override or isolate, so a note cannot
   -- reorder the text shown next to it. Code point ranges, so the rule is the same under any database locale.
-  add constraint activities_body_safe check (body is null or body !~ '[\u0001-\u0008\u000B-\u001F\u007F‪-‮⁦-⁩]');
+  add constraint activities_body_safe check (body is null or body !~ '[\u0001-\u0008\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]');
 
 -- Timeline pages walk (created_at, id) newest first on one lead; the author index serves the rate guard, "my calls
 -- today" and the user_id foreign key; the request index makes a replayed request find its first result.
@@ -130,7 +130,7 @@ begin
   if char_length(new.body) > 10000 then
     raise exception 'the text is too long' using errcode = '22023', hint = 'body_too_long';
   end if;
-  if new.body ~ '[\u0001-\u0008\u000B-\u001F\u007F‪-‮⁦-⁩]' then
+  if new.body ~ '[\u0001-\u0008\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]' then
     raise exception 'the text contains characters that are not allowed' using errcode = '22023', hint = 'body_chars';
   end if;
   return new;
@@ -194,7 +194,7 @@ alter table public.tasks
   add constraint tasks_meeting_timed check (kind <> 'meeting' or due_at is not null),
   add constraint tasks_not_done_and_cancelled check (done_at is null or cancelled_at is null),
   add constraint tasks_contact_needs_lead check (contact_id is null or company_id is not null),
-  add constraint tasks_title_safe check (title !~ '[\u0001-\u001F\u007F‪-‮⁦-⁩]');
+  add constraint tasks_title_safe check (title !~ '[\u0001-\u001F\u007F\u202A-\u202E\u2066-\u2069]');
 create index tasks_company_idx on public.tasks (company_id);                  -- FK, import undo, the lead page
 -- The creator's tasks by time: the created_by foreign key and the task flood guard (one short range read).
 create index tasks_created_by_idx on public.tasks (created_by, created_at);
@@ -287,7 +287,7 @@ begin
   if check_title then
     new.title := btrim(new.title);
     if new.title is null or char_length(new.title) not between 1 and 300
-       or new.title ~ '[\u0001-\u001F\u007F‪-‮⁦-⁩]' then
+       or new.title ~ '[\u0001-\u001F\u007F\u202A-\u202E\u2066-\u2069]' then
       raise exception 'a task title needs 1 to 300 characters, without control characters'
         using errcode = '22023', hint = 'task_title';
     end if;
