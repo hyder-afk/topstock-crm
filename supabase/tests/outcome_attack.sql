@@ -879,6 +879,34 @@ begin
     raise exception 'undo' using errcode = 'TS001';
   exception when sqlstate 'TS001' then null;
   end;
+  -- Undo clears only the mark this entry made: a mark that now carries another time (made again later) stays, on the
+  -- lead and on a contact.
+  begin
+    l := pg_temp.new_lead(d1);
+    k := pg_temp.new_contact(l);
+    perform pg_temp.act(admin);
+    r := public.log_activity(l, 'call', 'wrong_number', null, null, 'lead', null, null, 'Find the right number');
+    u := public.log_activity(l, 'call', 'wrong_number', null, k, 'contact', null, null, 'Find the right number');
+    perform pg_temp.su();
+    -- (Superuser with the guards off: within one transaction a new mark would carry the same time.)
+    alter table public.companies disable trigger lead_guard;
+    alter table public.contacts disable trigger contact_guard;
+    update public.companies set phone_wrong_at = now() - interval '1 minute' where id = l;
+    update public.contacts set phone_wrong_at = now() - interval '1 minute' where id = k;
+    alter table public.companies enable trigger lead_guard;
+    alter table public.contacts enable trigger contact_guard;
+    perform pg_temp.act(admin);
+    u := public.undo_activity((u ->> 'activity_id')::uuid);
+    r := public.undo_activity((r ->> 'activity_id')::uuid);
+    perform pg_temp.su();
+    if (select phone_wrong_at from public.companies where id = l) is null
+       or (select phone_wrong_at from public.contacts where id = k) is null
+       or (r -> 'restored' ->> 'phone_wrong')::boolean or (u -> 'restored' ->> 'contact_phone_wrong')::boolean then
+      raise exception 'FAIL: undo cleared a mark made at another time % %', r, u;
+    end if;
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
   -- The owner (a rep) with the only number wrong: the task is theirs.
   begin
     l := pg_temp.new_lead(d1);
@@ -907,7 +935,8 @@ begin
     perform pg_temp.act(b1);
     r := public.log_activity(l, 'call', 'wrong_number', null, k, 'contact', null, null, 'Find the right number');
     perform pg_temp.su();
-    if (select phone_wrong_at from public.contacts where id = k) is not null
+    if (select phone_wrong_at from public.contacts where id = k) is not null or (r ->> 'wrong_number_marked')::boolean
+       or (select wrong_contact_id from private.activity_undo where activity_id = (r ->> 'activity_id')::uuid) is not null
        or (select assignee_id from public.tasks where id = (r ->> 'task_id')::uuid) <> b1 then
       raise exception 'FAIL: a rep marked a colleague''s contact, or got no task %', r;
     end if;
@@ -1010,6 +1039,23 @@ begin
     exception when sqlstate 'TS001' then null;
     end;
   end loop;
+  -- Undo reopens a dismissed task only while it carries this entry's time.
+  begin
+    l := pg_temp.new_lead(d1, 'warm');
+    t_admin := pg_temp.new_task(l, admin, 'todo');
+    perform pg_temp.act(admin);
+    r := public.log_activity(l, 'call', 'do_not_contact');
+    perform pg_temp.su();
+    update public.tasks set cancelled_at = now() - interval '1 minute' where id = t_admin;   -- superuser, no claims
+    perform pg_temp.act(admin);
+    u := public.undo_activity((r ->> 'activity_id')::uuid);
+    perform pg_temp.su();
+    if (select cancelled_at from public.tasks where id = t_admin) is null or (u ->> 'tasks_reopened')::integer <> 0 then
+      raise exception 'FAIL: undo reopened a task dismissed at another time %', u;
+    end if;
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
   -- The owner (a rep) dismisses only the tasks they may change: not the admin's.
   begin
     l := pg_temp.new_lead(d1, 'warm');
@@ -1287,9 +1333,18 @@ begin
     get diagnostics n = row_count;
     if n <> 1 then raise exception 'FAIL: the author could not remove their fresh entry'; end if;
     insert into public.activities (company_id, type, body) values (l, 'note', 'older') returning id into e;
+    insert into public.tasks (company_id, title, source_activity_id) values (l, 'From the older note', e) returning id into t;
+    -- An admin without a code may not remove a task someone else made this way.
+    perform pg_temp.act(admin, 'aal2', null);
+    delete from public.tasks where id = t;
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'FAIL: an admin removed a colleague''s fresh task without a code'; end if;
     perform pg_temp.su();
     perform pg_temp.age_entry(e, 121);
     perform pg_temp.act(d1, 'aal2', null);
+    delete from public.tasks where id = t;
+    get diagnostics n = row_count;
+    if n <> 0 then raise exception 'FAIL: a task from an entry older than 2 minutes was deleted without a code'; end if;
     delete from public.activities where id = e;
     get diagnostics n = row_count;
     if n <> 0 then raise exception 'FAIL: an entry older than 2 minutes was deleted without a code'; end if;
@@ -1719,6 +1774,11 @@ begin
   if (select next_action_at from public.companies where id = l) <> now() + interval '5 days' then
     raise exception 'FAIL: a future date set before should stay';
   end if;
+  -- Only entering Cool off sets the default: a Cool off lead's date can be cleared (it then waits, design D5).
+  perform public.set_lead_next_action(l, null);
+  if (select next_action_at from public.companies where id = l) is not null then
+    raise exception 'FAIL: clearing a Cool off lead''s date put a default back';
+  end if;
   -- bulk_update_cool_off_with_date: "Until when?" sets the date for every lead; without it, 90 days; only with Cool off.
   l := public.create_lead('Day4b bulk one', null, 'cold');
   l2 := public.create_lead('Day4b bulk two', null, 'warm');
@@ -1897,7 +1957,8 @@ do $$
 declare
   admin constant uuid := '00000000-0000-0000-0000-00000000000a';
   l uuid := pg_temp.new_lead('00000000-0000-0000-0000-0000000000d1', lead_name => 'Day4b input rules');
-  other_k uuid := pg_temp.new_contact(pg_temp.new_lead('00000000-0000-0000-0000-0000000000d1'));
+  other_lead uuid := pg_temp.new_lead('00000000-0000-0000-0000-0000000000d1');
+  other_k uuid := pg_temp.new_contact(other_lead);
   today_west constant date := ((now() at time zone 'UTC') - interval '12 hours')::date;
   today_east constant date := ((now() at time zone 'UTC') + interval '14 hours')::date;
   q constant text := 'select public.log_activity(%L, %L, %L, %L, %L, null, %L, %L, %L)';
@@ -1941,6 +2002,8 @@ begin
   perform pg_temp.expect_error(format(q, l, 'call', 'connected', null, null, today_east + 1, null, null), '22023', 'task_title');
   perform pg_temp.expect_error(format('select public.log_activity(%L, %L, %L, null, null, %L)', l, 'call', 'wrong_number', 'lead'),
                                '22023', 'task_title');
+  perform pg_temp.expect_error(format('select public.log_activity(%L, %L, %L, null, null, %L)', other_lead, 'call',
+                                      'wrong_number', 'lead'), '22023', 'task_title');   -- a working contact: no task, title still needed
   perform pg_temp.expect_error(format(q, l, 'call', 'interested', null, null, today_east + 1, null, 'PLANTED-3141' || chr(7)),
                                '22023', 'task_title', 'PLANTED-3141');
   -- Lead and contact: missing, or a contact of another lead (P0002).
