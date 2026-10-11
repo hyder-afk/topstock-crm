@@ -865,6 +865,7 @@
     "empty": "Nothing logged yet. Calls, emails, messages, meetings and notes show here.",
     "emptyFiltered": "Nothing of this kind yet.",
     "error": "Couldn’t load the timeline.",
+    "errorOlder": "Couldn’t load older entries.",
     "retry": "Try again",
     "loadOlder": "Show older",
     "end": "That’s the whole history.",

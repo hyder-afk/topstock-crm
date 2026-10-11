@@ -453,6 +453,42 @@ test("timeline_pages_keyset (60 entries), deals_stock_empty_states and keyboard 
   await context.close();
 });
 
+test("timeline_older_page_error_waits_for_retry (60 entries, older page fails): an error with Try again, no loop", async ({ browser }) => {
+  const lead = makeLead("Comptoir Panne");
+  sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${userId(adminEmail)}', 'note', null, 'Entry ' || lpad(i::text, 2, '0'),
+              now() - interval '1 day' - i * interval '1 minute'
+       from public.companies c, generate_series(1, 60) i where c.id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  // Older pages (a keyset cursor) answer 502 until the route is lifted.
+  let failed = 0;
+  const older = (url: URL) => url.pathname === `/api/leads/${lead}/activities` && url.searchParams.has("before_at");
+  await page.route(older, async (route) => {
+    failed++;
+    await route.fulfill({ status: 502, contentType: "application/json", body: "{}" });
+  });
+  await gotoLead(page, lead, "timeline");
+  const articles = page.getByRole("tabpanel").getByRole("article");
+  await expect(articles).toHaveCount(30);
+  await page.getByRole("button", { name: "Show older" }).scrollIntoViewIfNeeded();
+  const alert = page.getByRole("tabpanel").getByRole("alert").filter({ hasText: "Couldn’t load older entries." });
+  await expect(alert).toBeVisible();
+  await expect(articles).toHaveCount(30);
+  // The end of the list stays in view, yet nothing is asked again until the reader presses Try again.
+  const after = failed;
+  expect(after).toBeGreaterThan(0);
+  await page.waitForTimeout(4000);
+  expect(failed).toBe(after);
+  await page.unroute(older);
+  await alert.getByRole("button", { name: "Try again" }).click();
+  await expect(articles).toHaveCount(60);
+  await expect(page.getByText("That’s the whole history.")).toBeVisible();
+  await expect(alert).toHaveCount(0);
+  // Only the browser's own notes about the 502 answers are expected in the console.
+  expect(errors.filter((e) => !/status of 502/.test(e))).toEqual([]);
+  await context.close();
+});
+
 test("timeline_virtualised_past_120 (150 entries): a feed with positions, the end reached, the menu and Show more work", async ({ browser }) => {
   const lead = makeLead("Comptoir Cent Cinquante");
   sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)

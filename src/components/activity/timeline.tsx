@@ -84,12 +84,13 @@ export const Timeline = memo(function Timeline({
   const query = useTimeline(leadId, filter, initial);
   const entries = query.data?.pages.flatMap((p) => p.entries) ?? [];
   const sentinel = useRef<HTMLDivElement>(null);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query;
 
-  // The next page loads when the end of the list comes into view; "Show older" does the same from the keyboard.
+  // The next page loads when the end of the list comes into view; "Show older" does the same from the keyboard. After an
+  // older page failed, the observer waits: the error and its Try again button show, and only a press loads again.
   useEffect(() => {
     const el = sentinel.current;
-    if (!el || !hasNextPage) return;
+    if (!el || !hasNextPage || isFetchNextPageError) return;
     const observer = new IntersectionObserver(
       (items) => {
         if (items.some((i) => i.isIntersecting) && !isFetchingNextPage) void fetchNextPage();
@@ -98,7 +99,7 @@ export const Timeline = memo(function Timeline({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
   return (
     <section aria-labelledby={`timeline-${leadId}`} className="flex flex-col gap-4">
@@ -142,7 +143,25 @@ export const Timeline = memo(function Timeline({
           )}
           <div ref={sentinel} className="flex flex-col items-start gap-2">
             {hasNextPage ? (
-              isFetchingNextPage ? (
+              isFetchNextPageError ? (
+                // Stays drawn while it tries again, so the Try again button keeps focus; skeleton rows show below.
+                <>
+                  <div role="alert" className="flex flex-col items-start gap-3 rounded-lg bg-card p-6">
+                    <p className="font-bold">{t("errorOlder")}</p>
+                    <Button
+                      variant="quiet"
+                      aria-disabled={isFetchingNextPage || undefined}
+                      className="aria-disabled:opacity-60"
+                      onClick={() => {
+                        if (!isFetchingNextPage) void fetchNextPage();
+                      }}
+                    >
+                      {t("retry")}
+                    </Button>
+                  </div>
+                  {isFetchingNextPage ? <TimelineSkeleton rows={2} /> : null}
+                </>
+              ) : isFetchingNextPage ? (
                 <TimelineSkeleton rows={2} />
               ) : (
                 <Button variant="quiet" onClick={() => void fetchNextPage()}>
