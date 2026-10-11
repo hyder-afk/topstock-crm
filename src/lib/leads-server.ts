@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { TIMELINE_PAGE_SIZE, type ActivityType, type TimelineEntry, type TimelinePage } from "@/lib/activities";
+import type { LeadTask } from "@/lib/tasks";
 import {
   filterParams,
   pageSize,
@@ -61,4 +63,35 @@ export async function fetchViews(supabase: SupabaseClient): Promise<SavedView[] 
     const view = savedView.safeParse(row);
     return view.success ? [view.data] : [];
   });
+}
+
+// One page of a lead's timeline (keyset, newest first). Shared by the lead page (first page, server-rendered) and
+// GET /api/leads/<id>/activities. Asks for one row more than a page to know whether there is another page. Returns
+// "invalid" when the database refuses the request itself (a bad cursor or filter), null when it could not answer.
+export async function fetchTimelinePage(
+  supabase: SupabaseClient,
+  leadId: string,
+  type: ActivityType | null,
+  cursor: { before_at: string; before_id: string } | null,
+): Promise<TimelinePage | "invalid" | null> {
+  const { data, error } = await supabase.rpc("list_lead_activities", {
+    p_company: leadId,
+    p_types: type ? [type] : null,
+    p_before_at: cursor?.before_at ?? null,
+    p_before_id: cursor?.before_id ?? null,
+    p_limit: TIMELINE_PAGE_SIZE + 1,
+  });
+  if (error?.code === "22023") return "invalid";
+  if (error) return null;
+  const rows = (data ?? []) as TimelineEntry[];
+  const hasMore = rows.length > TIMELINE_PAGE_SIZE;
+  const entries = hasMore ? rows.slice(0, TIMELINE_PAGE_SIZE) : rows;
+  const last = entries[entries.length - 1];
+  return { entries, next: hasMore && last ? { before_at: last.created_at, before_id: last.id } : null };
+}
+
+// A lead's open tasks the caller can see (list_lead_tasks: due first, undated last).
+export async function fetchLeadTasks(supabase: SupabaseClient, leadId: string): Promise<LeadTask[] | null> {
+  const { data, error } = await supabase.rpc("list_lead_tasks", { p_company: leadId, p_include_done: false, p_limit: 20 });
+  return error ? null : ((data ?? []) as LeadTask[]);
 }
