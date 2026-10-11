@@ -756,14 +756,16 @@ test("owner_menu_same_owner_changes_nothing, another owner changes it", async ({
   const { context, page, errors } = await open(browser, adminState);
   await gotoLead(page, lead);
   await page.getByRole("button", { name: "Owner: Inès Garnier. Change owner" }).click();
-  await page.getByRole("menuitemradio", { name: "Inès Garnier" }).click();
+  // The current owner is the checked item (a local stack reused across runs can hold several people with this name).
+  await page.getByRole("menuitemradio", { name: "Inès Garnier", checked: true }).click();
   await page.waitForTimeout(800);
   await expect(page.getByRole("status").filter({ hasText: "Owner changed." })).toHaveCount(0);
   expect(sql(`select updated_at::text from public.companies where id = '${lead}'`)).toBe(before);
   await page.getByRole("button", { name: "Owner: Inès Garnier. Change owner" }).click();
-  await page.getByRole("menuitemradio", { name: "Malo Perrin" }).click();
+  await page.getByRole("menuitemradio", { name: "Malo Perrin" }).first().click();
   await expect(page.getByRole("status").filter({ hasText: "Owner changed." })).toBeVisible();
-  await expect.poll(() => sql(`select owner_id from public.companies where id = '${lead}'`)).toBe(userId(repEmail));
+  await expect(page.getByRole("button", { name: "Owner: Malo Perrin. Change owner" })).toBeVisible();
+  await expect.poll(() => sql(`select owner_id <> '${userId(adminEmail)}' from public.companies where id = '${lead}'`)).toBe("t");
   expect(errors).toEqual([]);
   await context.close();
 });
