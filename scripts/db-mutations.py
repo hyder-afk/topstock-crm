@@ -312,6 +312,18 @@ MUTATIONS_4A = [
      [("   where c.id = old.company_id and c.last_activity_at = old.created_at;", "   where c.id = old.company_id;")]),
     ("Activity guard: a maintenance session's own previous date replaced",
      [("coalesce(new.prev_last_activity_at, base);", "base;")]),
+    ("Activity guard: link-emptying exception lets a link move to another record (depth 2)",
+     [("\n       and (new.contact_id is null or new.contact_id is not distinct from old.contact_id)\n       and (new.deal_id is null or new.deal_id is not distinct from old.deal_id)\n       and (new.user_id is null or new.user_id is not distinct from old.user_id) then",
+       " then")]),
+    ("Activity guard: link-emptying exception lets any column change (depth 2)",
+     [("    if pg_trigger_depth() > 1 and changed <@ array['contact_id', 'deal_id', 'user_id']\n",
+       "    if pg_trigger_depth() > 1\n")]),
+    ("Task guard: link-emptying exception lets a link move to another record (depth 2)",
+     [("\n       and (new.assignee_id is null or new.assignee_id is not distinct from old.assignee_id)\n       and (new.contact_id is null or new.contact_id is not distinct from old.contact_id)\n       and (new.created_by is null or new.created_by is not distinct from old.created_by)\n       and (new.source_activity_id is null or new.source_activity_id is not distinct from old.source_activity_id) then",
+       " then")]),
+    ("Task guard: link-emptying exception lets any column change (depth 2)",
+     [("    if pg_trigger_depth() > 1 and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id']\n",
+       "    if pg_trigger_depth() > 1\n")]),
 ]
 
 

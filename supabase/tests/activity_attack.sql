@@ -629,6 +629,35 @@ do $$ begin
     raise exception 'FAIL: deleting a person lost their entries or tasks, or kept the links';
   end if;
 end $$;
+-- The link-emptying exception itself (threat 5: "FK columns to null, all else equal"). A referential update runs one
+-- trigger level down, so these probes run there too: a temporary table whose trigger executes the statement it is
+-- given. Superuser with b1's claims, so only the guards decide. Only links that become empty may pass; a link moved to
+-- another record, or any other column, is refused at that depth as well.
+create temporary table depth2 (stmt text);
+create function pg_temp.run_depth2() returns trigger language plpgsql as $$
+begin
+  execute new.stmt;
+  return null;
+end;
+$$;
+create trigger depth2_run after insert on pg_temp.depth2 for each row execute function pg_temp.run_depth2();
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2'); end $$;
+do $$
+declare stmt text;
+begin
+  foreach stmt in array array[
+    $q$update public.activities set contact_id = '12000000-0000-0000-0000-0000000000b1' where body = 'Bea likes blue'$q$,
+    $q$update public.activities set type = 'email', outcome = 'sent' where id = '52000000-0000-0000-0000-0000000000b1'$q$,
+    $q$update public.tasks set created_by = '00000000-0000-0000-0000-0000000000b1' where title = 'For Fay'$q$,
+    $q$update public.tasks set kind = 'call' where title = 'For Fay'$q$] loop
+    perform pg_temp.expect_error(format('insert into pg_temp.depth2 values (%L)', stmt), '42501', 'not_editable');
+  end loop;
+  -- The same route lets a link become empty, so the probes above do reach the exception.
+  perform pg_temp.expect_ok(format('insert into pg_temp.depth2 values (%L)',
+    $q$update public.activities set contact_id = null where id = '52000000-0000-0000-0000-0000000000b1'$q$));
+  perform pg_temp.expect_ok(format('insert into pg_temp.depth2 values (%L)',
+    $q$update public.tasks set created_by = null where title = 'For Fay'$q$));
+end $$;
 
 -- 9. Last activity when an entry is deleted (D9, threat 6) -----------------------------------------------------------
 -- Lead P has the sheet's date (15 Jan 2026) and no entries. Rep b1 logs twice, in two transactions.
