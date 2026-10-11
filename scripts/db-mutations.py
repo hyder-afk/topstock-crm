@@ -5,9 +5,11 @@ section 8.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import and activity attack tests, the two-session test, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|all] [numbers...]  (about 15 s per mutation; default: all
-sets, numbers apply within one set). Writes one Markdown table per set to stdout. A protection with two layers is also
-removed together with its second layer (one mutation each way).
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|all] [numbers...]  (about 30 s per mutation; default: all
+sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
+when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
+mutation each way). A row marked SURVIVES is such a layer that no test can see on its own, because the other layer stops
+the same thing: it must stay NOT CAUGHT, and the row removing both layers must be caught.
 An edit is (old, new) on the set's own migration, or (path, old, new) on another one. Day 4a redefines the import
 "untouched" rule and the audit trigger, so the Day 3b mutations of those two functions edit the Day 4a migration.
 """
@@ -19,6 +21,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MIG_3A = ROOT / "supabase/migrations/20261010090000_leads_are_companies.sql"
 MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
+SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
     ("Working rows: insert without a fresh code",
@@ -31,7 +34,7 @@ MUTATIONS_3B = [
      [("                            and lead_import_staging.row_no between 2 and b.last_row_no));", "));")]),
     ("Tagging leads: no admin check",
      [("      and (select private.is_admin()) and (select private.has_recent_aal2(600))\n      and (last_activity_at is null",
-       "      and (select private.has_recent_aal2(600))\n      and (last_activity_at is null")]),
+       "      and (select private.has_recent_aal2(600))\n      and (last_activity_at is null")], SURVIVES),
     ("Tagging leads: no admin check in the rule nor in who sees imports (both layers)",
      [("      and (select private.is_admin()) and (select private.has_recent_aal2(600))\n      and (last_activity_at is null",
        "      and (select private.has_recent_aal2(600))\n      and (last_activity_at is null"),
@@ -128,8 +131,8 @@ MUTATIONS_3B = [
 ]
 
 
-# Day 4a (activity hardening). Rows 1 to 13 are the design's list (section 8.3, 4a), in order; the rest remove every
-# other protection the migration adds, one at a time.
+# Day 4a (activity hardening). Rows 1 to 13 are the design's list (section 8.3, 4a), in order; the rest remove, one at a
+# time, the other protections listed in docs/evidence/day4a/mutations.md (that file says what the list covers).
 MUTATIONS_4A = [
     ("Activities insert policy: manager exception back (G1)",
      [("with check (\n  org_id = (select private.current_org_id()) and user_id = (select auth.uid())\n  and exists (select 1 from public.companies c where c.id = activities.company_id)",
@@ -204,7 +207,7 @@ MUTATIONS_4A = [
     ("Activity guard: no safe-character pre-check",
      [("    raise exception 'the text contains characters that are not allowed' using errcode = '22023', hint = 'body_chars';\n", "    null;\n")]),
     ("Activity guard: CRLF not folded on insert",
-     [("    new.prev_last_activity_at := base;\n    new.body := replace(new.body, E'\\r\\n', E'\\n');\n", "    new.prev_last_activity_at := base;\n")]),
+     [("    new.edited_at := null;\n    new.body := replace(new.body, E'\\r\\n', E'\\n');\n", "    new.edited_at := null;\n")]),
     ("Activities: a call without an outcome passes the CHECK",
      [("(type = 'call' and outcome is not null and outcome in", "(type = 'call' and outcome in")]),
     ("Activities: no safe-character CHECK",
@@ -341,6 +344,57 @@ MUTATIONS_4A = [
     ("Activity time (Day 3a trigger): a session with no signed-in user may change it after the fact",
      [(MIG_3A, "  if tg_op = 'UPDATE' then\n    new.created_at := old.created_at;\n  elsif (select auth.uid()) is not null then",
        "  if tg_op = 'UPDATE' then\n    null;\n  elsif (select auth.uid()) is not null then")]),
+    # Tested before this round, but without a row.
+    ("Tasks: date-or-time CHECK dropped",
+     [("  add constraint tasks_one_due check (due_date is null or due_at is null),", "  add constraint tasks_one_due check (true),")]),
+    ("Tasks: meeting-time CHECK dropped",
+     [("  add constraint tasks_meeting_timed check (kind <> 'meeting' or due_at is not null),",
+       "  add constraint tasks_meeting_timed check (true),")]),
+    ("Tasks: done-and-dismissed CHECK dropped",
+     [("  add constraint tasks_not_done_and_cancelled check (done_at is null or cancelled_at is null),",
+       "  add constraint tasks_not_done_and_cancelled check (true),")]),
+    ("Tasks: safe-title CHECK dropped",
+     [("  add constraint tasks_title_safe check (title !~", "  add constraint tasks_title_safe check (true or title !~")]),
+    ("Tasks: kind CHECK dropped",
+     [("  add column kind text not null default 'todo' check (kind in ('todo', 'call', 'meeting')),",
+       "  add column kind text not null default 'todo',")]),
+    ("Tasks: lead FK without cascade (a lead with a task cannot be deleted)",
+     [("  add column company_id uuid references public.companies (id) on delete cascade,",
+       "  add column company_id uuid references public.companies (id),")]),
+    ("Tasks: creator FK without set null (a person who created a task cannot leave)",
+     [("  add column created_by uuid references public.profiles (id) on delete set null,",
+       "  add column created_by uuid references public.profiles (id),")]),
+    ("Tasks: source entry FK without set null (an entry with a follow-up cannot be deleted)",
+     [("  add column source_activity_id uuid references public.activities (id) on delete set null,",
+       "  add column source_activity_id uuid references public.activities (id),")]),
+    ("Tasks: update grant on kind too",
+     [("      update (title, due_date, due_at, assignee_id, contact_id, done_at, cancelled_at) on public.tasks to authenticated;",
+       "      update (title, due_date, due_at, assignee_id, contact_id, done_at, cancelled_at, kind) on public.tasks to authenticated;")]),
+    # Policy layers: each one alone, and the pairs where one layer stands behind another.
+    ("Activities update policy: USING without the author rule",
+     [("  using (org_id = (select private.current_org_id()) and user_id = (select auth.uid()))\n  with check (org_id",
+       "  using (org_id = (select private.current_org_id()))\n  with check (org_id")]),
+    ("Activities update policy: WITH CHECK without the author rule (behind USING, the grant and the guard)",
+     [("  with check (org_id = (select private.current_org_id()) and user_id = (select auth.uid()));",
+       "  with check (org_id = (select private.current_org_id()));")], SURVIVES),
+    ("Activities update policy: no author rule in USING nor in WITH CHECK (both layers)",
+     [("  using (org_id = (select private.current_org_id()) and user_id = (select auth.uid()))\n  with check (org_id = (select private.current_org_id()) and user_id = (select auth.uid()));",
+       "  using (org_id = (select private.current_org_id()))\n  with check (org_id = (select private.current_org_id()));")]),
+    ("Tasks update policy: USING without the role clause (behind tasks_select and WITH CHECK)",
+     [("  using (org_id = (select private.current_org_id())\n         and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())))\n  with check",
+       "  using (org_id = (select private.current_org_id()))\n  with check")], SURVIVES),
+    ("Tasks update policy: no role clause in USING nor in who sees tasks (both layers)",
+     [("  using (org_id = (select private.current_org_id())\n         and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())))\n  with check",
+       "  using (org_id = (select private.current_org_id()))\n  with check"),
+      ("for select to authenticated using (\n  org_id = (select private.current_org_id())\n  and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())));",
+       "for select to authenticated using (\n  org_id = (select private.current_org_id()));")]),
+    ("Tasks update policy: WITH CHECK without the role clause (behind the owner rule of enforce_org_and_owner)",
+     [("  with check (org_id = (select private.current_org_id())\n              and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin()))\n              and (company_id",
+       "  with check (org_id = (select private.current_org_id())\n              and (company_id")], SURVIVES),
+    ("Tasks update policy: no role clause in WITH CHECK, and reps may change an owner (both layers)",
+     [("  with check (org_id = (select private.current_org_id())\n              and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin()))\n              and (company_id",
+       "  with check (org_id = (select private.current_org_id())\n              and (company_id"),
+      (MIG_3A, "        raise exception 'only managers and admins can change the owner' using errcode = '42501';\n", "        null;\n")]),
 ]
 
 
@@ -352,8 +406,8 @@ def run_set(name: str, only: set) -> int:
     print(f"\n### {name}\n")
     print("| # | Protection removed | Result | First failure |")
     print("|---|---|---|---|")
-    survived = 0
-    for i, (title, edits) in enumerate(mutations, 1):
+    counts = {"caught": 0, "documented": 0, "unexpected": 0}
+    for i, (title, edits, *flags) in enumerate(mutations, 1):
         if only and i not in only:
             continue
         files = {}
@@ -364,7 +418,7 @@ def run_set(name: str, only: set) -> int:
             text = files[path]
             if text.count(old) != 1:
                 print(f"| {i} | {title} | NOT APPLIED (pattern found {text.count(old)} times in {path.name}) | |")
-                survived += 1
+                counts["unexpected"] += 1
                 applied = False
                 break
             files[path] = text.replace(old, new)
@@ -384,9 +438,16 @@ def run_set(name: str, only: set) -> int:
         # Invisible characters (a file-name test prints a bidi override) as escapes, so the table reads right.
         first = "".join(c if c.isprintable() else f"\\u{ord(c):04X}" for c in first)
         caught = run.returncode != 0
-        survived += 0 if caught else 1
-        print(f"| {i} | {title} | {'caught' if caught else '**NOT CAUGHT**'} | {first} |", flush=True)
-    return survived
+        if SURVIVES in flags:
+            result = "caught, but listed as NOT CAUGHT" if caught else "**NOT CAUGHT** (documented: two layers)"
+            counts["unexpected" if caught else "documented"] += 1
+        else:
+            result = "caught" if caught else "**NOT CAUGHT**"
+            counts["caught" if caught else "unexpected"] += 1
+        print(f"| {i} | {title} | {result} | {first} |", flush=True)
+    print(f"\n{name}: {sum(counts.values())} rows run: {counts['caught']} caught, {counts['documented']} documented "
+          f"two-layer rows not caught, {counts['unexpected']} not as listed", flush=True)
+    return counts["unexpected"]
 
 
 def main() -> int:
@@ -396,8 +457,8 @@ def main() -> int:
         chosen, args = args[1], args[2:]
     only = {int(a) for a in args}  # optional: mutation numbers to run (within one set)
     names = list(SETS) if chosen == "all" else [chosen]
-    survived = sum(run_set(n, only) for n in names)
-    return 1 if survived else 0
+    unexpected = sum(run_set(n, only) for n in names)
+    return 1 if unexpected else 0
 
 
 if __name__ == "__main__":

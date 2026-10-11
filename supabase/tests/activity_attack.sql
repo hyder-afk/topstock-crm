@@ -1113,6 +1113,26 @@ begin
   perform pg_temp.expect_error($q$insert into public.tasks (contact_id, title) values ('12000000-0000-0000-0000-0000000000d1', 'x')$q$, '42501');
   perform pg_temp.expect_ok(format('update public.tasks set contact_id = null where id = %L', current_setting('t.task1')));
 end $$;
+-- A rep cannot give a task away, not even one an admin gave them (only managers and admins change the assignee), but
+-- may work on it.
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2'); end $$;
+do $$
+declare v uuid;
+begin
+  insert into public.tasks (company_id, title, assignee_id)
+  values ('32000000-0000-0000-0000-0000000000d1', 'For Dee, from the admin', '00000000-0000-0000-0000-0000000000d1')
+  returning id into v;
+  perform set_config('t.task_for_d', v::text, false);
+end $$;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2'); end $$;
+do $$ begin
+  perform pg_temp.expect_error(format('update public.tasks set assignee_id = %L where id = %L',
+                                      '00000000-0000-0000-0000-0000000000b1', current_setting('t.task_for_d')), '42501');
+  perform pg_temp.expect_error(format('update public.tasks set assignee_id = null where id = %L',
+                                      current_setting('t.task_for_d')), '42501');
+  perform pg_temp.expect_ok(format('update public.tasks set title = %L, done_at = now() where id = %L',
+                                   'For Dee, seen', current_setting('t.task_for_d')));
+end $$;
 -- task_delete_stale_code_denied: deleting needs a fresh code.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2'); end $$;
 do $$
