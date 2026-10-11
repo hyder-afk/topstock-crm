@@ -201,13 +201,25 @@ test("cross_site_action_refused: a server action sent with another Origin change
   await expect(composer.getByRole("textbox", { name: "Note" })).toHaveValue("From another site");
   expect(captured).not.toBeNull();
   const { headers, body } = captured as unknown as { headers: Record<string, string>; body: string };
+  // Each replay gets a request id of its own (the body's one UUID that is not the lead's), so the database cannot
+  // answer it as a replay of an earlier one: a row appears exactly when the action ran.
+  const ids = [...new Set(body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g) ?? [])].filter((id) => id !== lead);
+  expect(ids).toHaveLength(1);
+  const withNewRequest = () => body.split(ids[0]).join(crypto.randomUUID());
+  // First the same request with the page's own Origin: it runs (proves the replay itself is sound).
+  expect(headers.origin).toBe(new URL(page.url()).origin);
+  const same = await context.request.post(`/leads/${lead}`, { headers, data: withNewRequest(), maxRedirects: 0 });
+  expect(same.status()).toBe(200);
+  const after = String(Number(before) + 1);
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe(after);
+  // Then with another site's Origin: refused, and nothing more is written.
   const replay = await context.request.post(`/leads/${lead}`, {
     headers: { ...headers, origin: "https://evil.example" },
-    data: body,
+    data: withNewRequest(),
     maxRedirects: 0,
   });
   expect(replay.status()).toBe(500);
-  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe(before);
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe(after);
   await context.close();
 });
 

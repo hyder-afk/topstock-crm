@@ -203,6 +203,27 @@ test("call_panel_each_outcome: status, next call, tasks and marks, checked in th
     const kinds = sql(`select coalesce(string_agg(kind, ','), '') from public.tasks where company_id = '${c.lead}' and done_at is null and cancelled_at is null`);
     expect(kinds, c.outcome).toBe(c.task ?? "");
   }
+  // Closing with an outcome picked and a note typed (11e9eda): first "Call not logged", and Log it brings both back; a
+  // second close ends the panel and nothing is logged.
+  const closed = makeLead("Atelier Fermé");
+  await gotoLead(page, closed);
+  await page.getByRole("link", { name: "Call", exact: true }).first().click();
+  await panel(page).getByRole("button", { name: "End call" }).click();
+  await page.keyboard.press("Digit2");
+  await expect(panel(page).locator('[data-outcome="voicemail"]')).toHaveAttribute("aria-pressed", "true");
+  await panel(page).getByLabel("Note").fill("Left a message about the spring order");
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Escape");
+  await expect(panel(page).getByText("Call not logged.")).toBeVisible();
+  await panel(page).getByRole("button", { name: "Log it" }).click();
+  await expect(panel(page).locator('[data-outcome="voicemail"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(panel(page).getByLabel("Note")).toHaveValue("Left a message about the spring order");
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Escape");
+  await expect(panel(page).getByText("Call not logged.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(panel(page)).toHaveCount(0);
+  expect(sql(`select count(*) from public.activities where company_id = '${closed}'`)).toBe("0");
   // Wrong number on a contact's number (called from the contacts card): only that number is marked, and no "find the
   // right number" task is made while the main line still works.
   const withContact = makeLead("Atelier Contact");
@@ -428,6 +449,43 @@ test("timeline_pages_keyset (60 entries), deals_stock_empty_states and keyboard 
   expect((await context.request.get(`/api/leads/${lead}/activities?before_at=2026-01-01T00:00:00Z`)).status()).toBe(400);
   expect((await context.request.get(`/api/leads/${lead}/activities?types=sms`)).status()).toBe(400);
   expect((await context.request.get(`/api/leads/${lead}/activities?limit=1000`)).status()).toBe(400);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("timeline_virtualised_past_120 (150 entries): a feed with positions, the end reached, the menu and Show more work", async ({ browser }) => {
+  const lead = makeLead("Comptoir Cent Cinquante");
+  sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${userId(adminEmail)}', 'note', null,
+              'Entry ' || lpad(i::text, 3, '0') || case when i = 150 then repeat(E'\nline', 9) else '' end,
+              now() - interval '1 day' - i * interval '1 minute'
+       from public.companies c, generate_series(1, 150) i where c.id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead, "timeline");
+  const panelEl = page.getByRole("tabpanel");
+  const end = panelEl.getByText("That’s the whole history.");
+  for (let i = 0; i < 20 && !(await end.isVisible()); i++) {
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(300);
+  }
+  await expect(end).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  // Past 120 entries only the rows near the window are in the page; each says where it is in the whole list.
+  const feed = panelEl.getByRole("feed", { name: "Timeline" });
+  await expect(feed.getByRole("article").first()).toHaveAttribute("aria-setsize", "150");
+  expect(await feed.getByRole("article").count()).toBeLessThan(60);
+  const oldest = feed.getByRole("article").filter({ hasText: "Entry 150" });
+  await expect(oldest).toHaveAttribute("aria-posinset", "150");
+  // The oldest entry's Show more and its menu still work in a virtualised row.
+  await oldest.getByRole("button", { name: "Show more" }).click();
+  await expect(oldest.getByRole("button", { name: "Show more" })).toHaveCount(0);
+  await oldest.getByRole("button", { name: "Entry options" }).click();
+  await expect(page.getByRole("menuitem", { name: "Edit text" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem", { name: "Edit text" })).toHaveCount(0);
+  // Back at the top, the newest entry is drawn again.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(feed.getByRole("article").filter({ hasText: "Entry 001" })).toHaveAttribute("aria-posinset", "1");
   expect(errors).toEqual([]);
   await context.close();
 });
