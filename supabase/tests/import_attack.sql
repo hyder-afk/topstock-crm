@@ -135,10 +135,11 @@ begin
      or private.lead_db_problem('x', null, null, null, null, 'hot') <> 'db_status' then
     raise exception 'FAIL: lead_db_problem';
   end if;
-  -- Only contacts, activities, deals and tasks (Day 4a) point at a lead: the "untouched" rule checks exactly these.
+  -- Only contacts, activities, deals, tasks (Day 4a) and holds (Day 6a) point at a lead: the "untouched" rule checks
+  -- exactly these.
   if (select array_agg(conrelid::regclass::text order by conrelid::regclass::text) from pg_constraint
        where contype = 'f' and confrelid = 'public.companies'::regclass)
-     is distinct from array['activities', 'contacts', 'deals', 'tasks'] then
+     is distinct from array['activities', 'contacts', 'deals', 'private.stock_reservations', 'tasks'] then
     raise exception 'FAIL: a new table references leads; update private.lead_import_untouched';
   end if;
 end $$;
