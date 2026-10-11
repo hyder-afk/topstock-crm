@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo } from "motion/react";
 import { PhoneOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -57,15 +57,21 @@ function focusWithin(el: HTMLElement | null) {
   return !active || active === document.body || !!el?.contains(active);
 }
 
-// Focus the opener again if it is still on screen; otherwise the page's <main> (made focusable for this only).
+// Focus the opener again if it is still rendered; otherwise the page's <main> (made focusable for this only, without the
+// focus ring: a ring around the whole page says nothing). An opener scrolled out of view gets the focus without pulling
+// the page back up to it.
 function focusBack(opener: HTMLElement | null) {
   if (opener?.isConnected && opener.getClientRects().length > 0) {
-    opener.focus();
+    const r = opener.getBoundingClientRect();
+    opener.focus({ preventScroll: r.bottom <= 0 || r.top >= window.innerHeight });
     if (document.activeElement === opener) return;
   }
   const main = document.getElementById("main");
   if (!main) return;
-  if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+  if (!main.hasAttribute("tabindex")) {
+    main.setAttribute("tabindex", "-1");
+    main.style.outline = "none";
+  }
   main.focus({ preventScroll: true });
 }
 
@@ -76,7 +82,13 @@ const whoOf = (target: CallTarget) => (target.contactName ? `${target.leadName} 
 type Slot = { call: CallState | null; next: CallState | null; nudge: number };
 
 export function CallPanelProvider({ children }: { children: React.ReactNode }) {
-  const [{ call, next, nudge }, setSlot] = useState<Slot>({ call: null, next: null, nudge: 0 });
+  const [slot, setSlot] = useState<Slot>({ call: null, next: null, nudge: 0 });
+  const { call, next, nudge } = slot;
+  // The latest committed slot, for `close`: a Save that awaited the server must see a call queued during that wait.
+  const slotRef = useRef(slot);
+  useEffect(() => {
+    slotRef.current = slot;
+  }, [slot]);
   const undo = useUndoActivity();
 
   // A second Call never drops an open call silently (design 7.3): once End call was pressed (or "Call not logged" is
@@ -95,7 +107,8 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
     setSlot((s) => (s.call && s.call.phase !== "calling" ? { ...s, next: fresh, nudge: s.nudge + 1 } : { ...s, call: fresh, next: null }));
   }, []);
 
-  const change = useCallback((c: CallState) => setSlot((s) => ({ ...s, call: c })), []);
+  // Only the open call may change the slot: a panel still playing its exit animation must not bring itself back.
+  const change = useCallback((c: CallState) => setSlot((s) => (s.call?.startedAt === c.startedAt ? { ...s, call: c } : s)), []);
 
   // U or Cmd/Ctrl+Z: undo the last entry this tab logged, within 2 minutes, when nobody is typing and no dialog is open.
   useEffect(() => {
@@ -118,13 +131,12 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
   // Closing (Save, Don't log, second close): focus goes back to the Call button before the panel unmounts, because the
   // exit animation keeps the focused element alive until it leaves and the focus would then drop to <body>.
   // A waiting call opens next; the focus then goes to the Call button that started it.
-  const close = useCallback(
-    (restoreFocus: boolean) => {
-      if (restoreFocus) focusBack(next ? next.opener : (call?.opener ?? null));
-      setSlot((s) => ({ ...s, call: s.next, next: null }));
-    },
-    [call?.opener, next],
-  );
+  const close = useCallback((startedAt: number, restoreFocus: boolean) => {
+    const cur = slotRef.current;
+    if (cur.call?.startedAt !== startedAt) return;
+    if (restoreFocus) focusBack(cur.next ? cur.next.opener : cur.call.opener);
+    setSlot((s) => (s.call?.startedAt === startedAt ? { ...s, call: s.next, next: null } : s));
+  }, []);
 
   const api = useMemo(() => ({ startCall, activeLeadId: call?.target.leadId ?? null }), [startCall, call?.target.leadId]);
   return (
@@ -159,13 +171,16 @@ function CallPanel({
 }: {
   call: CallState;
   onChange: (c: CallState) => void;
-  onClose: (restoreFocus: boolean) => void;
+  onClose: (startedAt: number, restoreFocus: boolean) => void;
   queuedWho: string | null;
   nudge: number;
 }) {
   const t = useTranslations("CallPanel");
   const tOut = useTranslations("Outcomes");
   const reduce = useReducedMotion();
+  // False while the panel plays its exit animation (after Save or a close): it then takes no more keys or actions, so an
+  // Esc or Cmd/Ctrl+Enter in that half second cannot log the call twice or touch the call that opened next.
+  const isPresent = useIsPresent();
   const mod = useModKey() ?? "Ctrl";
   const log = useLogActivity();
   const headingId = useId();
@@ -199,7 +214,9 @@ function CallPanel({
   );
 
   // Ends the panel. Focus returns to the opener only if it was in the panel (or lost), not if the person has moved on.
-  const finish = useCallback(() => onClose(focusWithin(panelRef.current)), [onClose]);
+  const finish = useCallback(() => {
+    if (isPresent) onClose(call.startedAt, focusWithin(panelRef.current));
+  }, [isPresent, onClose, call.startedAt]);
 
   const endCall = useCallback(() => {
     onChange({ ...call, phase: "outcome" });
@@ -208,12 +225,13 @@ function CallPanel({
   // Closing before Save never loses a call silently: first "Call not logged · Log it" (a chosen outcome and the note are
   // kept for Log it), then a second close (or Don't log) ends the panel.
   const dismiss = useCallback(() => {
+    if (!isPresent) return;
     if (phase === "notLogged") finish();
     else onChange({ ...call, phase: "notLogged" });
-  }, [phase, finish, onChange, call]);
+  }, [isPresent, phase, finish, onChange, call]);
 
   const save = useCallback(async () => {
-    if (!outcome || !ready) return;
+    if (!outcome || !ready || !isPresent) return;
     setSaving(true);
     const res = await log({
       input: {
@@ -231,7 +249,7 @@ function CallPanel({
     });
     setSaving(false);
     if (res.ok) finish();
-  }, [outcome, ready, log, target, note, follow, viewerZone, finish]);
+  }, [outcome, ready, isPresent, log, target, note, follow, viewerZone, finish]);
 
   // End call moves the focus to the pad (design 7.3).
   useEffect(() => {
@@ -267,6 +285,7 @@ function CallPanel({
 
   // Keys while the panel is open: digits pick an outcome (by position), Esc closes, Cmd/Ctrl+Enter saves.
   useEffect(() => {
+    if (!isPresent) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
       if (document.querySelector("[role=dialog]")) return;
@@ -289,7 +308,7 @@ function CallPanel({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [phase, save, dismiss, pick, onChange, call]);
+  }, [isPresent, phase, save, dismiss, pick, onChange, call]);
 
   // Grow from the Call button: the transform origin is that button's centre, relative to where the panel sits.
   const [origin, setOrigin] = useState("50% 100%");
