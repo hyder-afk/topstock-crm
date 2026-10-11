@@ -56,8 +56,9 @@ begin
     values (('50000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
             ('30000000-0000-0000-0000-0000000000' || who.tag)::uuid,
             ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'note', who.usr);
-    insert into public.tasks (id, org_id, contact_id, title, assignee_id)
+    insert into public.tasks (id, org_id, company_id, contact_id, title, assignee_id)
     values (('60000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
+            ('30000000-0000-0000-0000-0000000000' || who.tag)::uuid,
             ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'Call back', who.usr);
     insert into public.files (id, org_id, contact_id, storage_path, mime, size, uploaded_by)
     values (('70000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
@@ -239,6 +240,7 @@ begin
 end $$;
 
 -- 3b. Deals, tasks and files stay with their owner: rep B's and the other org's rows are invisible ----------
+-- (Each table is updated through a column the client may write: tasks have column grants since Day 4a.)
 do $$
 declare
   t text;
@@ -249,7 +251,8 @@ begin
     if n <> 0 then raise exception 'FAIL: rep A can read rep B or other-org rows in %', t; end if;
     execute format('select count(*) from public.%I where id::text like %L', t, '%a1') into n;
     if n <> 1 then raise exception 'FAIL: rep A should see own row in %', t; end if;
-    execute format('update public.%I set updated_at = now() where id::text like %L or id::text like %L', t, '%b1', '%c1');
+    execute format('update public.%I set %s where id::text like %L or id::text like %L', t,
+                   case t when 'tasks' then 'title = ''x''' else 'updated_at = now()' end, '%b1', '%c1');
     get diagnostics n = row_count;
     if n <> 0 then raise exception 'FAIL: rep A updated a foreign row in %', t; end if;
     execute format('delete from public.%I where id::text like %L or id::text like %L', t, '%b1', '%c1');
@@ -301,11 +304,12 @@ begin
     exception when insufficient_privilege then null;
     end;
   end loop;
-  -- Linking to one's own records still works, and anyone may log on any lead of the org.
-  insert into public.activities (company_id, contact_id, deal_id, type)
-  values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1',
-          '40000000-0000-0000-0000-0000000000a1', 'call');
-  insert into public.tasks (contact_id, title) values ('10000000-0000-0000-0000-0000000000a1', 'Follow up');
+  -- Linking to one's own records still works, and anyone may log on any lead of the org. (Since Day 4a a call
+  -- needs its outcome, and deal_id is not a client column until Day 5; a task names its lead with its contact.)
+  insert into public.activities (company_id, contact_id, type, outcome)
+  values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'call', 'no_answer');
+  insert into public.tasks (company_id, contact_id, title)
+  values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'Follow up');
   insert into public.deals (company_id, stage_id)
   values ('30000000-0000-0000-0000-0000000000a1', (select id from public.pipeline_stages where position = 1));
 end $$;
@@ -319,14 +323,23 @@ begin
   if (select last_activity_at from public.companies where id = '30000000-0000-0000-0000-0000000000a1') < now() - interval '1 minute' then
     raise exception 'FAIL: logging a call did not move the last-activity date';
   end if;
-  -- A client-chosen time is ignored: the server's clock decides, so nobody can push a lead's last activity ahead.
-  insert into public.activities (company_id, type, created_at)
-  values ('30000000-0000-0000-0000-0000000000a1', 'note', now() + interval '5 years');
+  -- A client cannot even name the time (column grants since Day 4a): the server's clock decides, so nobody can push a
+  -- lead's last activity ahead. activity_attack.sql proves the trigger layer (a time sent anyway is replaced).
+  begin
+    insert into public.activities (company_id, type, created_at)
+    values ('30000000-0000-0000-0000-0000000000a1', 'note', now() + interval '5 years');
+    raise exception 'FAIL: a client named an activity time';
+  exception when insufficient_privilege then null;
+  end;
   if (select max(created_at) from public.activities where company_id = '30000000-0000-0000-0000-0000000000a1') > now() + interval '1 minute'
      or (select last_activity_at from public.companies where id = '30000000-0000-0000-0000-0000000000a1') > now() + interval '1 minute' then
     raise exception 'FAIL: an activity dated in the future moved the last-activity date';
   end if;
-  update public.activities set created_at = now() + interval '5 years' where id = '50000000-0000-0000-0000-0000000000a1';
+  begin
+    update public.activities set created_at = now() + interval '5 years' where id = '50000000-0000-0000-0000-0000000000a1';
+    raise exception 'FAIL: an activity time was changed after the fact';
+  exception when insufficient_privilege then null;
+  end;
   if (select created_at from public.activities where id = '50000000-0000-0000-0000-0000000000a1') > now() + interval '1 minute' then
     raise exception 'FAIL: an activity time was changed after the fact';
   end if;

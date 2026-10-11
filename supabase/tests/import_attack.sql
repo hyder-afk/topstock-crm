@@ -135,10 +135,10 @@ begin
      or private.lead_db_problem('x', null, null, null, null, 'hot') <> 'db_status' then
     raise exception 'FAIL: lead_db_problem';
   end if;
-  -- Only contacts, activities and deals point at a lead: the "untouched" rule checks exactly these.
+  -- Only contacts, activities, deals and tasks (Day 4a) point at a lead: the "untouched" rule checks exactly these.
   if (select array_agg(conrelid::regclass::text order by conrelid::regclass::text) from pg_constraint
        where contype = 'f' and confrelid = 'public.companies'::regclass)
-     is distinct from array['activities', 'contacts', 'deals'] then
+     is distinct from array['activities', 'contacts', 'deals', 'tasks'] then
     raise exception 'FAIL: a new table references leads; update private.lead_import_untouched';
   end if;
 end $$;
@@ -517,9 +517,8 @@ begin
   -- One edit, one activity, one contact, one deal.
   perform public.bulk_update_leads(array(select id from public.companies where import_batch_id = batch and name = 'Alpha SARL'),
                                    p_status => 'customer');
-  insert into public.activities (company_id, type, user_id)
-  values ((select id from public.companies where import_batch_id = batch and name = 'Beta'), 'call',
-          '00000000-0000-0000-0000-00000000000a');
+  insert into public.activities (company_id, type, outcome)  -- the author is the caller (Day 4a)
+  values ((select id from public.companies where import_batch_id = batch and name = 'Beta'), 'call', 'no_answer');
   perform public.add_contact((select id from public.companies where import_batch_id = batch and name = 'Café Gamma S.A.R.L.'), 'Ana');
   insert into public.deals (company_id, stage_id, owner_id)
   select (select id from public.companies where import_batch_id = batch and name = '東京商事'), s.id,
