@@ -9,8 +9,8 @@ threat table of the Day 4 design (section 6). The final commit and the check res
 
 How: the builder re-read the code against each threat row 4b delivers and named the test that proves it; every test
 named below ran on this branch's final code (`bash scripts/db-test.sh`, `npm run test:unit`, the local Chromium auth
-e2e suites; results in `README.md`). WebKit e2e and Semgrep run in CI only. This is not the `/security-review` slash
-command (not available to the builder in this session); it runs on the PR before merge with the advisor loop.
+e2e suites; results in `README.md`). WebKit e2e and Semgrep run in CI only. The `/security-review` slash command ran
+on the final head after the review round; its result is the section "`/security-review` on f2c900b" below.
 
 ## Code checks
 
@@ -100,3 +100,48 @@ Not 4b: threats 13 to 15 (claims), 17 (calling hours in the queue), 20 to 25 (fi
   page anyway); residual: a lead opened from that cache within 5 minutes first shows what the prefetch saw, then the
   query cache refreshes it.
 - No new route, action, RPC or grant in this round; the client text rule now refuses C1 controls like the database.
+
+## `/security-review` on f2c900b (11 Oct, night, after the review round)
+
+The `/security-review` slash command, run as the skill prescribes: one sub-task searched the whole PR diff
+(`git diff origin/main...f2c900b`) for high-confidence vulnerabilities, with every PostgREST path (granted columns,
+upserts, each RPC) and each caller kind (same or other org, aal1 or aal2, rep, manager, admin) in its prompt. A
+false-positive filter sub-task was to run per finding; none was needed. **Result: no findings** (no HIGH or MEDIUM issue
+at confidence 0.7 or above).
+
+| Area | Result |
+|---|---|
+| RPCs in the migration | All SECURITY INVOKER, `search_path = ''`, static SQL (only the grant loop uses `format`); aal2 required; revoked from public and anon, granted to authenticated; RLS decides every row |
+| `log_activity` | Editability from `SELECT … FOR UPDATE` under `companies_update`; contact must be on the lead; owner takeover only on unassigned leads and only for managers; tasks through `tasks_update` and `task_guard`; another org fails on the org-scoped select |
+| `undo_activity` | Own entry under 120 s; the undo record is consumed first; each restore only when the current value is the one the entry wrote, written through RLS; records in `private`, not exposed |
+| New delete policy branches | No-code branches reach only the caller's own fresh rows; everything else still needs a fresh code |
+| `private.activity_undo` | RLS, restrictive `require_mfa`, own rows, WITH CHECK on the entry's author, no update grant |
+| DEFINER `lock_activity_lead` / `audit_row` | Lock nothing for aal1 or another org; read and write nothing else / write only `audit_log` from row values |
+| Guards and new column grants | Update-only grants behind editor-only policies; no insert grant, so upserts cannot set them; server-set mark times; zone from a closed list with a constant message |
+| SQL injection | User text reaches SQL only as parameters; no `.or()` or filter strings |
+| Server actions and routes | Zod strictObject, then `requireSession()` / `apiSession()`; named RPC arguments; codes only; routes GET only, `no-store` |
+| XSS and URL sinks | No `dangerouslySetInnerHTML`, `innerHTML` or `eval`; `tel:`, `mailto:`, `wa.me` built from digits or percent-encoded parts; the Back URL is limited to `/leads` paths |
+| CI and config | `pull_request` with `contents: read`, `persist-credentials: false`, a throwaway local database; `no-console` widened |
+
+## Review round (11 Oct, night)
+
+A four-lens review (security, database, app, design; a skeptic per finding) found 23 findings: the security lens found
+none; 22 were confirmed and fixed (README "Review round"), 1 refuted. Security-relevant changes:
+
+- **`lead_guard` rule 5** (migration lines 403-408): on an update, a past Cool off date is replaced by +90 days only when
+  the date is empty or the statement left a past date unchanged; a past date the statement itself writes is kept. That
+  is what `undo_activity` writes when it puts back a due Cool off lead. Inserts are unchanged. Proved by
+  `outcome_attack.sql` block 6b (fails with either half of the fix removed) and mutation rows 8, 45, 46, 91 to 94.
+- **`bulk_update_leads`** refuses a return date that is not in the future (22023, hint `bounds`), since the guard no
+  longer replaces such a date (section 12 cases).
+- **`undo_activity`** reports `restored.next_action_at` only when the stored date is the one put back (block 6c).
+- **Nothing new is reachable:** no new route, server action, RPC, table, policy or grant came with the round; the app
+  changes are in client components, messages and tests.
+- **Test-only WebKit console filter** (`tests/auth/helpers.ts`, `isCancelledPrefetch`, used only in
+  `lead-page.spec.ts`): it ignores exactly "Fetch API cannot load http://localhost:3100/…?_rsc=… due to access control
+  checks" (anchored regex, same-origin RSC requests only), WebKit's wording for a fetch the page cancelled. Every other
+  console error still fails a test. No app code changed for it.
+
+Residual (low): a direct editor update can still put a lead in Cool off with a past date it writes itself (the lead then
+shows as due at once). Only on leads the caller may edit, who could set that date anyway; the app always sends tomorrow
+or later.
