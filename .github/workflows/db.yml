@@ -38,6 +38,8 @@ jobs:
         run: bash supabase/tests/activity_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Stock engine attack test (Day 6a)
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/stock_attack.sql
+      - name: Stock engine under concurrency (2 to 20 sessions, Day 6a)
+        run: bash supabase/tests/stock_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions
