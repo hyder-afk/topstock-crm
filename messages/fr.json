@@ -747,7 +747,7 @@
     "dismissLog": "Ne pas le noter"
   },
   "CallPanel": {
-    "calling": "Appel de {who}",
+    "calling": "Appel vers {who}",
     "howDidItGo": "Comment ça s’est passé ?",
     "away": "{minutes, plural, one {Absent environ # min} other {Absent environ # min}}",
     "close": "Fermer le panneau d’appel",

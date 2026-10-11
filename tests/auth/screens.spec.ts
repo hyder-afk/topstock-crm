@@ -225,7 +225,7 @@ test("lead page: summary, timeline, call panel, details, until when, do not cont
       a?.addEventListener("click", (e) => e.preventDefault(), { once: true });
       a?.click();
     });
-    const panel = page.getByRole("region", { name: /^(Calling|Appel de)/ });
+    const panel = page.getByRole("region", { name: /^(Calling|Appel vers)/ });
     await panel.getByRole("button", { name: /^(End call|Raccrocher)$/ }).click();
     await page.keyboard.press("Digit5");
     await expect(panel.locator('[data-outcome="interested"]')).toHaveAttribute("aria-pressed", "true");
