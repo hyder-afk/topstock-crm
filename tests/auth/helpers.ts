@@ -175,6 +175,15 @@ export async function settled(page: Page) {
   await expect.poll(() => pending.size, { timeout: 15_000 }).toBe(0);
 }
 
+// WebKit reports a fetch the page itself cancelled as "Fetch API cannot load <url> due to access control checks". Next.js
+// cancels its own link prefetches (requests to this app with ?_rsc=) when a server action refreshes the page or a new
+// navigation starts; Chromium logs nothing for that. Only that exact case is ignored: same-origin RSC requests cannot
+// fail a real access-control check, and every other console error still counts.
+const cancelledPrefetch = /^(?:Fetch API cannot load )?(?:http:)?\/\/?localhost:3100\/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$/;
+export function isCancelledPrefetch(text: string) {
+  return cancelledPrefetch.test(text);
+}
+
 // Local stack only: runs SQL as the throwaway database's superuser, for fixtures the app cannot create on its own
 // (fixed roles, many fake leads). SUPABASE_LOCAL_DB_URL must point at 127.0.0.1 or localhost (env() refuses others).
 export function sql(query: string) {

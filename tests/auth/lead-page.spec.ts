@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { ageStepUp, appReady, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // The lead page (Day 4b, design 8.5): open from the list and back, J/K, local time, the call panel and every outcome,
 // email and WhatsApp with one-tap logging, notes (edit, undo, delete with a fresh code, draft), read-only and Do not
@@ -62,7 +62,7 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
   const page = await context.newPage();
   trackRequests(page);
   const errors: string[] = [];
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   return { context, page, errors };
 }
