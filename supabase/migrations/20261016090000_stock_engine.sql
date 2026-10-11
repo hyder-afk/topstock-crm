@@ -33,11 +33,11 @@ declare
   fold_to constant text := 'abcdefghijklmnopqrstuvwxyz 0123456789-abcdefghijklmnopqrstuvwxyzaaaaaaceeeeiiiidnoooooouuuuyaaaaaaceeeeiiiidnoooooouuuuyyaaaaaaccccccccddddeeeeeeeeeegggggggghhhhiiiiiiiiiijjkkkllllllllllnnnnnnnnnoooooorrrrrrssssssssttttttuuuuuuuuuuuuwwyyyzzzzzzs';
   -- Deleted, as part of the word they sit in: soft hyphens, combining accents (a decomposed "é"), zero-width characters
   -- and the byte order mark.
-  glue constant text := '[­̀-ͯ᪰-᫿᷀-᷿​-‍⁠⃐-⃿︠-︯﻿]';
+  glue constant text := '[\u00AD\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u200B-\u200D\u2060\u20D0-\u20FF\uFE20-\uFE2F\uFEFF]';
   -- Turned into spaces: the same set as Day 3b's lead name key (ASCII other than letters and digits, controls, Latin-1
   -- punctuation and symbols, × ÷, General Punctuation to Miscellaneous Symbols and Arrows, CJK and full-width
   -- punctuation, emoji, tag characters).
-  punct constant text := '[\u0001-/:-@[-`{-¿×÷ʼ̀-ͯ;΄-΅·،-؍؛-؜؟٪-٭۔ ᪰-᫿᷀-᷿ -⯿⸀-⹿　-〄〈-〠〪-〰〶-〷〽-〿゠・︀-﹯﻿＀-／：-＠［-｀｛-･￠-￿\U0001F000-\U0001FBFF\U000E0000-\U000E007F\U000E0100-\U000E01EF]';
+  punct constant text := '[\u0001-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u00BF\u00D7\u00F7\u02BC\u0300-\u036F\u037E\u0384-\u0385\u0387\u060C-\u060D\u061B-\u061C\u061F\u066A-\u066D\u06D4\u1680\u1AB0-\u1AFF\u1DC0-\u1DFF\u2000-\u2BFF\u2E00-\u2E7F\u3000-\u3004\u3008-\u3020\u302A-\u3030\u3036-\u3037\u303D-\u303F\u30A0\u30FB\uFE00-\uFE6F\uFEFF\uFF00-\uFF0F\uFF1A-\uFF20\uFF3B-\uFF40\uFF5B-\uFF65\uFFE0-\uFFFF\U0001F000-\U0001FBFF\U000E0000-\U000E007F\U000E0100-\U000E01EF]';
   n text;
 begin
   n := replace(replace(replace(replace(replace(translate(coalesce(name, ''), fold_from, fold_to),
@@ -64,7 +64,7 @@ create table public.locations (
   org_id uuid not null references public.orgs (id),
   kind text not null check (kind in ('warehouse', 'transit')),
   name text not null check (char_length(name) between 1 and 80 and name = btrim(name)
-                            and name !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                            and name !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (org_id, kind)
@@ -102,7 +102,7 @@ begin
   end if;
   new.name := btrim(new.name);
   if new.name is null or char_length(new.name) not between 1 and 80
-     or new.name ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.name ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'a place name needs 1 to 80 characters, without control characters'
       using errcode = '22023', hint = 'location_name';
   end if;
@@ -135,10 +135,10 @@ create table public.products (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint products_name_check check (char_length(name) between 1 and 200 and name = btrim(name)
-    and name !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+    and name !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   constraint products_category_check check (category is null or (char_length(category) between 1 and 80
     and category = btrim(category)
-    and category !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]')),
+    and category !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]')),
   constraint products_unit_check check (unit in ('piece', 'pair')),
   constraint products_carton_check check (pieces_per_carton between 1 and 1000000),
   constraint products_pallet_check check (cartons_per_pallet between 1 and 10000),
@@ -195,14 +195,14 @@ begin
   -- Constant messages before the CHECKs, so a product name never reaches the logs.
   new.name := btrim(new.name);
   if new.name is null or char_length(new.name) not between 1 and 200
-     or new.name ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'
+     or new.name ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'
      or private.product_name_key(new.name) = '' then
     raise exception 'a product name needs 1 to 200 characters with a letter or a digit, without control characters'
       using errcode = '22023', hint = 'product_name';
   end if;
   new.category := nullif(btrim(new.category), '');
   if char_length(new.category) > 80
-     or new.category ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.category ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'a category needs at most 80 characters, without control characters'
       using errcode = '22023', hint = 'category';
   end if;
@@ -409,7 +409,7 @@ create table private.stock_reservations (
   status text not null default 'active' check (status in ('active', 'released', 'fulfilled', 'expired')),
   hold_until date not null,                                                        -- inclusive, Europe/Paris
   note text check (char_length(note) <= 300
-                   and note !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                   and note !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   split_from uuid references private.stock_reservations (id),                      -- the part moved by Arrived
   restored_from uuid references private.stock_reservations (id),                   -- put back by a sale's Undo (6d)
   created_by uuid not null,
@@ -455,7 +455,7 @@ create table private.stock_movements (
                                 'manual', 'deal_lost', 'deal_deleted', 'expired', 'sold', 'sale_undone',
                                 'sale_cancelled', 'arrived', 'import', 'import_undo')),
   note text check (char_length(note) <= 500
-                   and note !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                   and note !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   company_id uuid,                                     -- history: no FK (the row is immutable)
   deal_id uuid,
   reservation_id uuid references private.stock_reservations (id),
@@ -599,7 +599,7 @@ begin
   end if;
   new.note := nullif(btrim(new.note), '');
   if char_length(new.note) > (case when new.kind = 'reserve' then 300 else 500 end)
-     or new.note ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.note ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
   end if;
   if new.kind <> 'transfer_in' then
@@ -1127,7 +1127,7 @@ begin
     raise exception 'say why in a note' using errcode = '22023', hint = 'note_required';
   end if;
   if char_length(v_note) > (case when p_kind = 'reserve' then 300 else 500 end)
-     or v_note ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or v_note ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
   end if;
   if v_place not in ('warehouse', 'transit') then

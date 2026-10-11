@@ -557,6 +557,13 @@ begin
   perform pg_temp.expect_error($q$insert into private.stock_movements (product_id, location_id, kind, qty, reason)
     values ('7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid, 'receive', 1, 'received')$q$,
     '22023', 'document');
+  -- A hold's end date is checked by the guard too (a direct insert skips the RPC's check).
+  perform pg_temp.expect_error($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty,
+    company_id, hold_until) values (gen_random_uuid(), '7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid,
+    'reserve', 1, '33000000-0000-0000-0000-0000000000b1', current_date + 91)$q$, '22023', 'hold_until');
+  perform pg_temp.expect_error($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty,
+    company_id) values (gen_random_uuid(), '7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid,
+    'reserve', 1, '33000000-0000-0000-0000-0000000000b1')$q$, '22023', 'hold_until');
   -- movement_server_fields_not_writable: the engine's columns are not even grantable to name.
   perform pg_temp.expect_error($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason,
     user_id) values (gen_random_uuid(), '7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid, 'receive',
@@ -862,6 +869,8 @@ begin
   update public.products set archived_at = now() where id = '7a000000-0000-0000-0000-000000000009';
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL: a rep archived a product'; end if;
+  -- Only admins run the stock check.
+  perform pg_temp.expect_error('select * from public.check_stock_integrity()', '42501', 'forbidden');
   -- rep_cost_null: reps never see costs.
   if exists (select 1 from private.product_costs) then raise exception 'FAIL: a rep sees costs'; end if;
   perform pg_temp.expect_error($q$insert into private.product_costs (product_id, cost_per_piece, source)
