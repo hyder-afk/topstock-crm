@@ -1005,6 +1005,14 @@ declare
   v_group constant uuid := gen_random_uuid();
   h record;
 begin
+  -- The holds' products first (lock order deal, product, levels), then the holds in a separate statement: under READ
+  -- COMMITTED it takes a fresh snapshot, so an Arrived holding a product has committed and its moves are seen. Read
+  -- before that lock, a hold Arrived moved to the warehouse (or the part it split off there) was missed: the apply step
+  -- skips a deal_lost release whose hold changed place, and the lost deal kept it (concurrency case 9e).
+  perform 1 from public.products p
+   where p.id in (select r.product_id from private.stock_reservations r where r.deal_id = v_deal and r.status = 'active')
+   order by p.id
+     for share;
   for h in select r.id, r.product_id, r.location_id from private.stock_reservations r
             where r.deal_id = v_deal and r.status = 'active'
             order by r.product_id, r.location_id, r.created_at, r.id loop

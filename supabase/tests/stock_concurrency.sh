@@ -15,7 +15,8 @@
 #     Neither may end in a deadlock (40P01).
 #  8. count_vs_receive: a count waits for a receipt and sets the exact number (the change is worked out under the lock).
 #  9. reserve_vs_deal_lost, in both orders, (c) with an expired hold at the level and (d) with the hold inserted straight
-#     into the ledger: a lost deal keeps no active hold, and no deadlock (40P01).
+#     into the ledger, and (e) Arrived holding the product while the deal is lost (one hold moved whole, one split): a
+#     lost deal keeps no active hold, and no deadlock (40P01).
 # 10. twenty_reservers_one_product: 240 pieces, 20 sessions each hold 24: exactly 10 succeed (wall clock printed).
 # 11. random_ops_three_sessions: 3 sessions x 100 mixed operations on 5 products, one transaction each: no deadlock,
 #     no unexpected error, integrity clean.
@@ -446,6 +447,29 @@ as_user "$CR1" "update public.deals set status = 'lost', lost_reason = 'price' w
 wait $p1 || fail "reserve_vs_deal_lost (d): the direct hold failed: $(head -3 "$WORKDIR/x.out")"
 [ "$(as_owner "select count(*) from private.stock_reservations where deal_id = '$DEAL' and status = 'active';")" = "0" ] \
   && [ "$(level "$(p 16)" warehouse)" = "100/0" ] || fail "reserve_vs_deal_lost (d): a lost deal kept an active hold"
+# e) Arrived holds the product's lock and has moved the deal's two transit holds (30 moved whole, 40 split: 20 to the
+#    warehouse, 20 left in transit) when the deal is lost. The trigger locks the holds' products before it reads the
+#    holds, so it waits for Arrived and then releases all three where they are now (read before the lock, the moved
+#    hold and the split part were missed and the lost deal kept 50 pieces held).
+opening "$(p 17)" 0 100
+as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+mv "$CR1" "$(p 17)" reserve 30 "p_location => 'transit', p_company => '$LB', p_deal => '$DEAL'" \
+  || fail "reserve_vs_deal_lost (e): the first hold failed"
+mv "$CR1" "$(p 17)" reserve 40 "p_location => 'transit', p_company => '$LB', p_deal => '$DEAL'" \
+  || fail "reserve_vs_deal_lost (e): the second hold failed"
+as_user "$CM" "begin;
+select public.post_stock_movement(p_product => '$(p 17)', p_kind => 'transfer', p_qty => 50) \g /dev/null
+select pg_sleep(2) \g /dev/null
+commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
+sleep 0.5
+as_user "$CR1" "update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';" >/dev/null \
+  || fail "reserve_vs_deal_lost (e): losing the deal failed"
+wait $p1 || fail "reserve_vs_deal_lost (e): Arrived failed: $(head -3 "$WORKDIR/x.out")"
+[ "$(as_owner "select count(*) from private.stock_reservations where product_id = '$(p 17)' and split_from is not null;")" = "1" ] \
+  || fail "reserve_vs_deal_lost (e): Arrived did not split the second hold"
+[ "$(as_owner "select count(*) from private.stock_reservations where deal_id = '$DEAL' and status = 'active';")" = "0" ] \
+  && [ "$(level "$(p 17)" transit)" = "50/0" ] && [ "$(level "$(p 17)" warehouse)" = "50/0" ] \
+  || fail "reserve_vs_deal_lost (e): a lost deal kept an active hold: transit $(level "$(p 17)" transit), warehouse $(level "$(p 17)" warehouse)"
 integrity "reserve_vs_deal_lost"
 
 # 10. twenty_reservers_one_product ---------------------------------------------------------------------------------------------
