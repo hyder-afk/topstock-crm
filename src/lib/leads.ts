@@ -140,6 +140,17 @@ export type Contact = {
   title: string | null;
   email: string | null;
   phone: string | null;
+  /** Day 4b: the number was marked wrong at this time (cleared when the number changes). */
+  phone_wrong_at?: string | null;
+};
+
+export type LeadTaskSummary = {
+  id: string;
+  title: string;
+  kind: "todo" | "call" | "meeting";
+  due_date: string | null;
+  due_at: string | null;
+  assignee_id: string | null;
 };
 
 export type LeadDetail = {
@@ -155,6 +166,16 @@ export type LeadDetail = {
   owner: { id: string; first_name: string; last_name: string } | null;
   can_edit: boolean;
   contacts: Contact[];
+  // Day 4b (get_lead extended): calling zone, next call, wrong-number mark, tries, tasks, import (admins only).
+  timezone?: string | null;
+  call_zone_key?: string;
+  can_set_timezone?: boolean;
+  next_action_at?: string | null;
+  phone_wrong_at?: string | null;
+  attempts?: number;
+  open_task_count?: number;
+  next_task?: LeadTaskSummary | null;
+  import?: { id: string; filename: string; created_at: string } | null;
 };
 
 export type TeamMember = { id: string; first_name: string; last_name: string; role: "admin" | "manager" | "rep" };
@@ -207,6 +228,21 @@ export function mailHref(address: string) {
   return at < 0
     ? `mailto:${encodeURIComponent(local)}`
     : `mailto:${encodeURIComponent(local)}@${encodeURIComponent(address.slice(at + 1))}`;
+}
+
+// The composer's "Open in Mail and log" (Day 4 design 7.2): every part percent-encoded, so a "?", "&" or "#" in the
+// subject or the text cannot start another field. Line breaks: none in the subject (a line break there is how a careless
+// mail app would let a value add a header), CRLF in the body as RFC 6068 asks; the body is cut at 1,500 characters
+// (some mail apps refuse longer links).
+export const MAILTO_BODY_MAX = 1500;
+export function mailtoHref(address: string, subject: string, body: string) {
+  const fields: string[] = [];
+  const cleanSubject = subject.replace(/[\r\n]+/g, " ").trim();
+  if (cleanSubject) fields.push(`subject=${encodeURIComponent(cleanSubject)}`);
+  const cleanBody = [...body.replace(/\r\n?/g, "\n")].slice(0, MAILTO_BODY_MAX).join("").replace(/\n/g, "\r\n");
+  if (cleanBody.trim()) fields.push(`body=${encodeURIComponent(cleanBody)}`);
+  const to = mailHref(address);
+  return fields.length ? `${to}?${fields.join("&")}` : to;
 }
 
 // tel: links keep only digits and a leading plus.
