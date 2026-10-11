@@ -268,8 +268,10 @@ export function LeadPage({
           </div>
         )}
       </div>
+      {/* Do not contact: the quick actions (with Note) give way to the banner, so below desktop width, where there is no
+          rail composer, this opens the sheet's composer (notes, calls and meetings stay loggable at every width). */}
       {dnc ? (
-        <div className="flex gap-2 sm:hidden">
+        <div className="flex gap-2 lg:hidden">
           <Button variant="quiet" onClick={() => openComposer("note")}>
             {t("addNote")}
           </Button>
