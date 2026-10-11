@@ -1879,6 +1879,11 @@ begin
   if (select next_action_at from public.companies where id = l) <> now() + interval '90 days' then
     raise exception 'FAIL: a Cool off lead made by maintenance has no return date';
   end if;
+  -- A new Cool off lead with a past date (an old retry date in a sheet) comes back in 90 days, not at once.
+  l := pg_temp.new_lead(d1, 'cool_off', now() - interval '3 days');
+  if (select next_action_at from public.companies where id = l) <> now() + interval '90 days' then
+    raise exception 'FAIL: a new Cool off lead with a past date would come back at once';
+  end if;
 end $$;
 
 -- 13. Tasks through the RPCs: create (idempotent), done and dismissed as switches with server times, the lead's list -
