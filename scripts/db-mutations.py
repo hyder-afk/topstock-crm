@@ -290,6 +290,15 @@ MUTATIONS_4A = [
        "create unique index tasks_creator_request_idx on public.tasks (request_id)")]),
     ("Activities: request id not unique",
      [("create unique index activities_author_request_idx", "create index activities_author_request_idx")]),
+    # Review round 1 (docs/log.md, 11 Oct): protections that had a test but no row, or neither.
+    ("Activity guard: C1 controls pass the safe-character pre-check",
+     [("  if new.body ~ '[\\u0001-\\u0008\\u000B-\\u001F\\u007F-\\u009F", "  if new.body ~ '[\\u0001-\\u0008\\u000B-\\u001F\\u007F")]),
+    ("Activities: C1 controls pass the safe-character CHECK",
+     [("body !~ '[\\u0001-\\u0008\\u000B-\\u001F\\u007F-\\u009F", "body !~ '[\\u0001-\\u0008\\u000B-\\u001F\\u007F")]),
+    ("Task guard: C1 controls pass the title pre-check",
+     [("       or new.title ~ '[\\u0001-\\u001F\\u007F-\\u009F", "       or new.title ~ '[\\u0001-\\u001F\\u007F")]),
+    ("Tasks: C1 controls pass the title CHECK",
+     [("tasks_title_safe check (title !~ '[\\u0001-\\u001F\\u007F-\\u009F", "tasks_title_safe check (title !~ '[\\u0001-\\u001F\\u007F")]),
 ]
 
 

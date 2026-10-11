@@ -421,18 +421,22 @@ begin
   perform pg_temp.expect_error(format('insert into public.activities (company_id, type, body) values (%L, %L, %L)',
     '32000000-0000-0000-0000-0000000000d1', 'note', 'PLANTED-SECRET ' || repeat('x', 9986)), '22023', 'body_too_long',
     'PLANTED-SECRET');
-  -- Control characters (other than tab and line feed), DEL, a lone CR, bidi embeddings, overrides and isolates.
-  foreach c in array array[1, 8, 11, 12, 13, 31, 127, 8234, 8238, 8294, 8297] loop
+  -- Control characters (other than tab and line feed), DEL, a lone CR, C1 controls (133 is NEL, a line break in some
+  -- viewers; 155 is CSI, a terminal escape), bidi embeddings, overrides and isolates.
+  foreach c in array array[1, 8, 11, 12, 13, 31, 127, 128, 133, 155, 159, 8234, 8238, 8294, 8297] loop
     perform pg_temp.expect_error(format('insert into public.activities (company_id, type, body) values (%L, %L, %L)',
       '32000000-0000-0000-0000-0000000000d1', 'note', 'PLANTED-SECRET a' || chr(c) || 'b'), '22023', 'body_chars',
       'PLANTED-SECRET');
   end loop;
-  -- Tab and line feed are fine; CRLF is stored as LF.
+  -- Tab and line feed are fine; CRLF is stored as LF. Accents, the euro sign, a no-break space (U+00A0, just past the
+  -- C1 range) and an emoji joined with U+200D are fine too.
   insert into public.activities (company_id, type, body)
   values ('32000000-0000-0000-0000-0000000000d1', 'note', E'col1\tcol2\r\nnext line\nlast') returning id into v;
   if (select body from public.activities where id = v) is distinct from E'col1\tcol2\nnext line\nlast' then
     raise exception 'FAIL: tab, LF and CRLF handling';
   end if;
+  perform pg_temp.expect_ok(format('insert into public.activities (company_id, type, body) values (%L, %L, %L)',
+    '32000000-0000-0000-0000-0000000000d1', 'note', 'Déjà vu, 12' || chr(160) || '€ ' || chr(128105) || chr(8205) || chr(128187)));
 end $$;
 
 -- The CHECKs behind the guard (superuser, no claims: the guard steps aside, the table still refuses).
@@ -447,6 +451,8 @@ begin
   perform pg_temp.expect_error(format(ins, 'email', 'no_answer', null), '23514');
   perform pg_temp.expect_error(format(ins, 'note', null, 'a' || chr(8238) || 'b'), '23514');
   perform pg_temp.expect_error(format(ins, 'note', null, 'a' || chr(13) || 'b'), '23514');
+  perform pg_temp.expect_error(format(ins, 'note', null, 'a' || chr(133) || 'b'), '23514');
+  perform pg_temp.expect_error(format(ins, 'note', null, 'a' || chr(155) || '[31m'), '23514');
   perform pg_temp.expect_error(format(ins, 'note', null, repeat('x', 10001)), '23514');
   perform pg_temp.expect_ok(format(ins, 'call', 'connected', E'a\tb\nc'));
 end $$;
@@ -804,6 +810,11 @@ begin
                                '22023', 'task_title', 'PLANTED-SECRET');
   perform pg_temp.expect_error(format('insert into public.tasks (title) values (%L)', 'PLANTED-SECRET' || chr(8297) || 'x'),
                                '22023', 'task_title', 'PLANTED-SECRET');
+  perform pg_temp.expect_error(format('insert into public.tasks (title) values (%L)', 'PLANTED-SECRET' || chr(133) || 'x'),
+                               '22023', 'task_title', 'PLANTED-SECRET');
+  perform pg_temp.expect_error(format('insert into public.tasks (title) values (%L)', 'PLANTED-SECRET' || chr(155) || 'x'),
+                               '22023', 'task_title', 'PLANTED-SECRET');
+  perform pg_temp.expect_ok(format('insert into public.tasks (title) values (%L)', 'Rappeler Zoé' || chr(160) || '€'));
   perform pg_temp.expect_error(format('update public.tasks set title = %L where id = %L', 'PLANTED-SECRET' || chr(1), t1),
                                '22023', 'task_title', 'PLANTED-SECRET');
   perform pg_temp.expect_ok(format('insert into public.tasks (title) values (%L)', repeat('t', 300)));
@@ -881,6 +892,8 @@ begin
   perform pg_temp.expect_error(format(ins, 'title, done_at, cancelled_at', '''x'', now(), now()'), '23514');
   perform pg_temp.expect_error(format(ins, 'title, contact_id', '''x'', ''12000000-0000-0000-0000-0000000000b1'''), '23514');
   perform pg_temp.expect_error(format(ins, 'title', quote_literal('a' || chr(8238) || 'b')), '23514');
+  perform pg_temp.expect_error(format(ins, 'title', quote_literal('a' || chr(133) || 'b')), '23514');
+  perform pg_temp.expect_error(format(ins, 'title', quote_literal('a' || chr(155) || 'b')), '23514');
   perform pg_temp.expect_error(format(ins, 'title, kind', '''x'', ''chore'''), '23514');
 end $$;
 
