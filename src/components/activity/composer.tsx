@@ -23,6 +23,7 @@ import {
   type CallOutcome,
   type Outcome,
 } from "@/lib/activities";
+import { readDraftRaw, writeDraft } from "@/lib/drafts";
 import { MAILTO_BODY_MAX, mailtoHref, personName, type LeadDetail } from "@/lib/leads";
 import { whatsappHref } from "@/lib/phone";
 import { isTyping } from "@/lib/shortcuts";
@@ -37,38 +38,12 @@ import { cn } from "@/lib/utils";
 // saving waits and the text is kept.
 export type ComposerMode = { type: ActivityType; meeting?: "book" | "held" | "no_show"; nonce: number };
 
-type Draft = { type: ActivityType; body: string; subject: string };
-const DRAFT_PREFIX = "topstock.draft.";
-const DRAFT_INDEX = "topstock.drafts";
-
-function readDraft(leadId: string): Draft | null {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(DRAFT_PREFIX + leadId) ?? "null");
-    if (!parsed || typeof parsed !== "object") return null;
-    const d = parsed as Record<string, unknown>;
-    if (!(ACTIVITY_TYPES as readonly unknown[]).includes(d.type) || typeof d.body !== "string" || typeof d.subject !== "string") return null;
-    return { type: d.type as ActivityType, body: d.body.slice(0, BODY_MAX), subject: d.subject.slice(0, 200) };
-  } catch {
-    return null;
-  }
-}
-
-function writeDraft(leadId: string, draft: Draft | null) {
-  try {
-    const index = (JSON.parse(window.localStorage.getItem(DRAFT_INDEX) ?? "[]") as unknown[]).filter(
-      (id): id is string => typeof id === "string" && id !== leadId,
-    );
-    if (draft && (draft.body.trim() || draft.subject.trim())) {
-      window.localStorage.setItem(DRAFT_PREFIX + leadId, JSON.stringify(draft));
-      index.unshift(leadId);
-    } else {
-      window.localStorage.removeItem(DRAFT_PREFIX + leadId);
-    }
-    for (const old of index.splice(50)) window.localStorage.removeItem(DRAFT_PREFIX + old);
-    window.localStorage.setItem(DRAFT_INDEX, JSON.stringify(index));
-  } catch {
-    // Storage blocked or full: the draft lives only while the page is open.
-  }
+function readDraft(leadId: string): { type: ActivityType; body: string; subject: string } | null {
+  const parsed = readDraftRaw(leadId);
+  if (!parsed || typeof parsed !== "object") return null;
+  const d = parsed as Record<string, unknown>;
+  if (!(ACTIVITY_TYPES as readonly unknown[]).includes(d.type) || typeof d.body !== "string" || typeof d.subject !== "string") return null;
+  return { type: d.type as ActivityType, body: d.body.slice(0, BODY_MAX), subject: d.subject.slice(0, 200) };
 }
 
 const noopSubscribe = () => () => {};
@@ -275,7 +250,7 @@ export function Composer({ lead, mode, autoFocus = false, onSaved }: { lead: Lea
               )}
             >
               <Icon aria-hidden="true" strokeWidth={1.75} className="size-4" />
-              <span className="max-w-full truncate">{t(`types.${k}`)}</span>
+              <span className="max-w-full text-center break-words">{t(`types.${k}`)}</span>
             </button>
           );
         })}
@@ -321,7 +296,7 @@ export function Composer({ lead, mode, autoFocus = false, onSaved }: { lead: Lea
           ) : null}
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="font-bold">{t("subject")}</span>
-            <Input value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} autoComplete="off" />
+            <Input name="subject" value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} autoComplete="off" />
           </label>
         </>
       ) : null}
@@ -365,6 +340,8 @@ export function Composer({ lead, mode, autoFocus = false, onSaved }: { lead: Lea
         <span className="text-sm font-bold">{type === "email" ? t("emailBody") : t("noteLabel")}</span>
         <Textarea
           ref={bodyRef}
+          name="body"
+          autoComplete="off"
           value={body}
           dir="auto"
           placeholder={t(`placeholder.${type}`)}

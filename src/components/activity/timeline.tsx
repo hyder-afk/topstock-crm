@@ -54,16 +54,26 @@ function useViewerZone() {
 export function Timeline({
   leadId,
   initial,
+  initialFilter = "all",
   me,
   stepUp,
 }: {
   leadId: string;
   initial: TimelinePage | null;
+  initialFilter?: TimelineFilter;
   me: { id: string; role: string };
   stepUp: StepUp;
 }) {
   const t = useTranslations("Timeline");
-  const [filter, setFilter] = useState<TimelineFilter>("all");
+  const [filter, setFilterState] = useState<TimelineFilter>(initialFilter);
+  // The filter is in the URL (?filter=calls…), like the tab: a reload or a shared link shows the same list.
+  const setFilter = (next: TimelineFilter) => {
+    setFilterState(next);
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete("filter");
+    else url.searchParams.set("filter", next);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+  };
   const query = useTimeline(leadId, filter, initial);
   const entries = query.data?.pages.flatMap((p) => p.entries) ?? [];
   const sentinel = useRef<HTMLDivElement>(null);
@@ -145,12 +155,15 @@ export function EntryList({
   me,
   stepUp,
   grouped = true,
+  compact = false,
 }: {
   entries: TimelineEntry[];
   leadId: string;
   me: { id: string; role: string };
   stepUp: StepUp;
   grouped?: boolean;
+  /** Inside a card (Summary): rows divided by lines instead of cards of their own. */
+  compact?: boolean;
 }) {
   const t = useTranslations("Timeline");
   const format = useFormatter();
@@ -180,10 +193,10 @@ export function EntryList({
       {groups.map((g) => (
         <div key={g.label + g.items[0].id} className="flex flex-col gap-2">
           {grouped ? <h3 className="font-mono text-xs text-muted-foreground">{g.label}</h3> : null}
-          <ol className="flex flex-col gap-2">
+          <ol className={cn("flex flex-col", compact ? "divide-y divide-border" : "gap-2")}>
             {g.items.map((e) => (
               <li key={e.id} style={{ contentVisibility: "auto", containIntrinsicSize: "auto 112px" }}>
-                <EntryItem entry={e} leadId={leadId} me={me} stepUp={stepUp} now={now} fresh={!seen.has(e.id)} />
+                <EntryItem entry={e} leadId={leadId} me={me} stepUp={stepUp} now={now} fresh={!seen.has(e.id)} compact={compact} grouped={grouped} />
               </li>
             ))}
           </ol>
@@ -200,6 +213,8 @@ function EntryItem({
   stepUp,
   now,
   fresh,
+  compact,
+  grouped,
 }: {
   entry: TimelineEntry;
   leadId: string;
@@ -207,6 +222,8 @@ function EntryItem({
   stepUp: StepUp;
   now: Date | null;
   fresh: boolean;
+  compact: boolean;
+  grouped: boolean;
 }) {
   const t = useTranslations("Timeline");
   const tTypes = useTranslations("Composer.types");
@@ -226,6 +243,7 @@ function EntryItem({
   const bodyRef = useRef<HTMLParagraphElement>(null);
   const [clamped, setClamped] = useState(false);
   const Icon = typeIcon[entry.type];
+  const Heading = grouped ? "h4" : "h3";
   const author = entry.is_mine ? t("you") : personName({ first_name: entry.user_first_name, last_name: entry.user_last_name }) || t("someone");
   const created = new Date(entry.created_at);
   const absolute = format.dateTime(created, { dateStyle: "full", timeStyle: "short" });
@@ -307,7 +325,7 @@ function EntryItem({
       animate={{ opacity: entry.pending ? 0.6 : 1, y: 0 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
       aria-busy={entry.pending || undefined}
-      className="flex gap-3 rounded-lg bg-card p-4"
+      className={cn("flex gap-3", compact ? "py-3" : "rounded-lg bg-card p-4")}
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
         <Icon aria-hidden="true" strokeWidth={1.75} className="size-[18px]" />
@@ -315,10 +333,11 @@ function EntryItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start gap-2">
           <div className="flex min-w-0 flex-1 flex-col">
-            <h4 className="text-sm font-bold break-words">
+            {/* Under a day heading (h3) in the timeline; directly under the card's heading (h2) in Summary. */}
+            <Heading className="text-sm font-bold break-words">
               {tTypes(entry.type)}
               {entry.outcome ? ` · ${tOut(entry.outcome)}` : ""}
-            </h4>
+            </Heading>
             <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
               <span>{author}</span>
               {entry.contact_name ? (

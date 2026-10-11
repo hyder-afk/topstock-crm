@@ -232,7 +232,7 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
       transition={reduce ? { duration: 0.12 } : springs.sheet}
       style={{ transformOrigin: origin }}
       className={cn(
-        "dock-glass fixed z-40 flex max-h-[calc(100dvh-24px)] flex-col overflow-y-auto border border-border text-foreground shadow-[0_16px_48px_rgb(14_14_16/0.22)]",
+        "dock-glass fixed z-40 flex max-h-[calc(100dvh-24px)] flex-col overflow-y-auto overscroll-contain border border-border text-foreground shadow-[0_16px_48px_rgb(14_14_16/0.22)]",
         "inset-x-0 bottom-0 rounded-t-[24px] pb-[calc(16px+env(safe-area-inset-bottom,0px))]",
         "sm:inset-x-auto sm:right-6 sm:bottom-[104px] sm:w-[320px] sm:rounded-[24px] sm:pb-4",
       )}
@@ -241,11 +241,11 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
       <motion.div
         drag="y"
         dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.6 }}
+        dragElastic={{ top: 0.08, bottom: 0.6 }}
         dragSnapToOrigin
         onDragEnd={onDragEnd}
         style={{ touchAction: "none" }}
-        className="flex cursor-grab items-start gap-2 px-5 pt-3 active:cursor-grabbing"
+        className="flex cursor-grab items-start gap-2 px-5 pt-3 select-none active:cursor-grabbing"
       >
         <span aria-hidden="true" className="absolute top-1.5 left-1/2 h-1 w-9 -translate-x-1/2 rounded-full bg-border sm:hidden" />
         <div className="min-w-0 flex-1 pt-2">
@@ -322,7 +322,7 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
             ) : null}
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-bold">{t("note")}</span>
-              <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxRows={6} className="min-h-16 text-sm" dir="auto" />
+              <Textarea name="note" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} maxRows={6} className="min-h-16 text-sm" dir="auto" />
             </label>
             <Button type="submit" variant="neutral" width="full" aria-disabled={!ready || undefined} disabled={!outcome}>
               {saving ? t("saving") : outcome === "do_not_contact" ? tOut("confirmDncAction") : t("save")}

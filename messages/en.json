@@ -30,7 +30,8 @@
   "NotFound": {
     "title": "This page isn’t here",
     "body": "It may have moved, or it isn’t open to your account.",
-    "home": "Go to Home"
+    "home": "Go to Home",
+    "backToLeads": "Back to leads"
   },
   "Auth": {
     "signInTitle": "Sign in",
@@ -698,7 +699,6 @@
     "emailContact": "Email {name}",
     "whatsappContact": "WhatsApp {name}",
     "tasks": {
-      "title": "Open tasks",
       "today": "Today",
       "tomorrow": "Tomorrow",
       "noDate": "No date",
@@ -706,7 +706,6 @@
       "markDone": "Mark “{title}” done",
       "done": "Done: {title}.",
       "undo": "Undo",
-      "empty": "No open tasks on this lead.",
       "error": "Couldn’t load the tasks.",
       "retry": "Try again"
     },
@@ -728,7 +727,8 @@
       "zoneSaved": "Time zone saved.",
       "nextSaved": "Next call saved.",
       "nextCleared": "Next call cleared."
-    }
+    },
+    "noNextStepDnc": "No next step."
   },
   "QuickActions": {
     "call": "Call",

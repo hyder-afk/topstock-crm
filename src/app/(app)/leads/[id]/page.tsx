@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { LeadPage } from "@/components/lead/lead-page";
+import { TIMELINE_FILTERS, type TimelineFilter } from "@/lib/activities";
 import { requireSession, stepUpSecondsLeft } from "@/lib/auth";
 import { LEAD_TABS, type LeadDetail, type LeadTab } from "@/lib/leads";
 import { fetchLeadTasks, fetchTeam, fetchTimelinePage } from "@/lib/leads-server";
@@ -15,6 +16,8 @@ export default async function LeadRoute({ params, searchParams }: PageProps<"/le
   const query = await searchParams;
   const tabParam = Array.isArray(query.tab) ? query.tab[0] : query.tab;
   const tab: LeadTab = (LEAD_TABS as readonly string[]).includes(tabParam ?? "") ? (tabParam as LeadTab) : "summary";
+  const filterParam = Array.isArray(query.filter) ? query.filter[0] : query.filter;
+  const filter: TimelineFilter = (TIMELINE_FILTERS as readonly string[]).includes(filterParam ?? "") ? (filterParam as TimelineFilter) : "all";
   const [lead, timeline, tasks, team] = await Promise.all([
     supabase.rpc("get_lead", { p_id: id.data }),
     fetchTimelinePage(supabase, id.data, null, null),
@@ -34,6 +37,7 @@ export default async function LeadRoute({ params, searchParams }: PageProps<"/le
       me={{ id: claims.sub, role }}
       stepUpSeconds={stepUpSecondsLeft(claims)}
       initialTab={tab}
+      initialFilter={filter}
     />
   );
 }

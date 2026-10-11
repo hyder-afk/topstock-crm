@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +21,8 @@ import { addDays, localDate, primaryZone, spanEnds, zoneChoices, zoneCity, zoneN
 // others); the calling zone (countries with several zones only, from a closed list: "Automatic: hours that suit the
 // whole country" until one is picked); the next call date (at most 2 years ahead); when the lead was added and, for
 // admins, the import it came from; the contacts.
+const noopSubscribe = () => () => {};
+
 export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: TeamMember[]; canAssign: boolean }) {
   const t = useTranslations("LeadPage.details");
   const tPreview = useTranslations("Leads.preview");
@@ -33,6 +35,10 @@ export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: 
   const toast = useToast();
   const id = useId();
   const [formKey, setFormKey] = useState(0);
+  // Zone and country names come from the browser's Intl data, which can word them differently from the server's: shown
+  // once in the browser only, so the first render matches the server's.
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  const zoneLabel = (z: string) => (mounted ? `${zoneCity(z)} · ${zoneName(z, locale)}` : zoneCity(z));
   const choices = zoneChoices(lead.country);
   const key = lead.call_zone_key ?? "Europe/Paris";
   const zone = primaryZone(key);
@@ -94,7 +100,18 @@ export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: 
   return (
     <div className="flex flex-col gap-4">
       <Card title={t("lead")}>
-        {lead.can_edit ? (
+        {lead.can_edit && !mounted ? (
+          // Country names and their order come from the browser's Intl data (it can differ from the server's): the form
+          // is drawn in the browser only, with a placeholder of its shape first.
+          <div aria-hidden="true" className="flex flex-col gap-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <div className="h-4 w-24 rounded-sm bg-muted motion-safe:animate-pulse" />
+                <div className="h-11 rounded-md bg-muted motion-safe:animate-pulse" />
+              </div>
+            ))}
+          </div>
+        ) : lead.can_edit ? (
           <LeadForm
             key={formKey}
             initial={leadToValues(lead)}
@@ -130,29 +147,40 @@ export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: 
       <Card title={t("calling")}>
         <div className="flex flex-col gap-4 text-sm">
           {choices ? (
-            <label className="flex flex-col gap-1.5">
-              <span className="font-bold">{t("timezone")}</span>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={`${id}-zone`} className="font-bold">
+                {t("timezone")}
+              </label>
               {lead.can_set_timezone ? (
-                <Select id={`${id}-zone`} data-focus="timezone" value={lead.timezone ?? ""} onChange={(e) => void saveZone(e.target.value)}>
+                <Select
+                  id={`${id}-zone`}
+                  name="timezone"
+                  data-focus="timezone"
+                  aria-describedby={`${id}-zone-hint`}
+                  value={lead.timezone ?? ""}
+                  onChange={(e) => void saveZone(e.target.value)}
+                >
                   <option value="">
                     {ends ? t("autoSpan", { from: zoneCity(ends[1]), to: zoneCity(ends[0]) }) : t("auto", { zone: zoneCity(key) })}
                   </option>
                   {choices.map((z) => (
                     <option key={z} value={z}>
-                      {`${zoneCity(z)} · ${zoneName(z, locale)}`}
+                      {zoneLabel(z)}
                     </option>
                   ))}
                 </Select>
               ) : (
-                <span>{lead.timezone ? `${zoneCity(lead.timezone)} · ${zoneName(lead.timezone, locale)}` : t("autoShort")}</span>
+                <span id={`${id}-zone`}>{lead.timezone ? zoneLabel(lead.timezone) : t("autoShort")}</span>
               )}
-              <span className="text-xs text-muted-foreground">{t("timezoneHint")}</span>
-            </label>
+              <span id={`${id}-zone-hint`} className="text-xs text-muted-foreground">
+                {t("timezoneHint")}
+              </span>
+            </div>
           ) : (
             <p>
               <span className="font-bold">{t("timezone")}</span>
               <span className="block text-muted-foreground">
-                {lead.country ? `${zoneCity(key)} · ${zoneName(key, locale)}` : t("noCountry")}
+                {lead.country ? zoneLabel(key) : t("noCountry")}
               </span>
             </p>
           )}
@@ -165,6 +193,7 @@ export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: 
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   id={`${id}-next`}
+                  name="next_action_at"
                   data-focus="next"
                   type="datetime-local"
                   value={next}

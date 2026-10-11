@@ -30,7 +30,8 @@
   "NotFound": {
     "title": "Page introuvable",
     "body": "Elle a peut-être été déplacée, ou elle n’est pas ouverte à votre compte.",
-    "home": "Aller à l’accueil"
+    "home": "Aller à l’accueil",
+    "backToLeads": "Retour aux prospects"
   },
   "Auth": {
     "signInTitle": "Connexion",
@@ -698,7 +699,6 @@
     "emailContact": "Écrire à {name}",
     "whatsappContact": "WhatsApp {name}",
     "tasks": {
-      "title": "Tâches en cours",
       "today": "Aujourd’hui",
       "tomorrow": "Demain",
       "noDate": "Sans date",
@@ -706,7 +706,6 @@
       "markDone": "Marquer « {title} » comme terminée",
       "done": "Terminée : {title}.",
       "undo": "Annuler",
-      "empty": "Aucune tâche en cours sur ce prospect.",
       "error": "Impossible de charger les tâches.",
       "retry": "Réessayer"
     },
@@ -728,7 +727,8 @@
       "zoneSaved": "Fuseau enregistré.",
       "nextSaved": "Prochain appel enregistré.",
       "nextCleared": "Prochain appel effacé."
-    }
+    },
+    "noNextStepDnc": "Pas de prochaine étape."
   },
   "QuickActions": {
     "call": "Appeler",
@@ -757,7 +757,7 @@
     "discard": "Ne pas noter",
     "note": "Note",
     "saving": "Enregistrement…",
-    "save": "Enregistrer dans l’historique"
+    "save": "Enregistrer"
   },
   "Composer": {
     "label": "Noter une activité",
@@ -803,7 +803,7 @@
     "mailCut": "L’application de messagerie reçoit les {max} premiers caractères ; tout le texte est noté.",
     "openMailAndLog": "Ouvrir dans Mail et noter",
     "openWhatsAppAndLog": "Ouvrir WhatsApp et noter",
-    "save": "Enregistrer dans l’historique",
+    "save": "Enregistrer",
     "saving": "Enregistrement…",
     "offline": "Vous êtes hors ligne. Votre note est conservée.",
     "tooLong": "Cela dépasse 10 000 caractères.",

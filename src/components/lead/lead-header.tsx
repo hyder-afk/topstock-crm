@@ -90,9 +90,10 @@ export function LeadHeader({
             <span className="text-sm text-muted-foreground">{ownerName ?? tLeads("unassigned")}</span>
           )}
         </div>
+        {/* Place and local time: one line from tablet width, two lines on phones. */}
         <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
-          {place.length ? <span>{place.join(" · ")}</span> : null}
-          {place.length ? <span aria-hidden="true" className="text-muted-foreground">·</span> : null}
+          {place.length ? <span className="max-sm:basis-full">{place.join(" · ")}</span> : null}
+          {place.length ? <span aria-hidden="true" className="text-muted-foreground max-sm:hidden">·</span> : null}
           <LocalTime
             callZoneKey={lead.call_zone_key ?? "Europe/Paris"}
             country={lead.country}

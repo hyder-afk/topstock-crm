@@ -114,8 +114,8 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
 }
 
 /**
- * The next step (Summary): the next open task with its check; or the next call attempt on the lead's side ("Thu
- * ≈ 10:00 their time · Change"); or "No next step" with date chips that add a call task.
+ * The next step (Summary): the lead's open tasks with their round checks, the next one first; the next call attempt on
+ * the lead's side ("Thu 10:00 their time · Change"); or "No next step" with date chips that add a call task.
  */
 export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadDetail; initialTasks: LeadTask[] | null; onChangeNext: () => void }) {
   const t = useTranslations("LeadPage");
@@ -153,22 +153,20 @@ export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadD
     toast.show(t("taskAdded"));
   };
 
-  let content: React.ReactNode;
-  if (tasks.isPending) {
-    content = <div aria-hidden="true" className="h-11 rounded-md bg-muted motion-safe:animate-pulse" />;
-  } else if (first) {
-    content = (
-      <ul>
-        <TaskRow task={first} leadId={lead.id} now={now} />
-      </ul>
-    );
-  } else if (lead.next_action_at && lead.lead_status !== "do_not_contact") {
-    const at = new Date(lead.next_action_at);
-    content = (
+  const nextAttempt =
+    lead.next_action_at && lead.lead_status !== "do_not_contact" ? (
       <p className="flex flex-wrap items-center gap-x-2 text-sm">
         <span>
           {t("nextAttempt", {
-            when: format.dateTime(at, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: theirZone }),
+            when: format.dateTime(new Date(lead.next_action_at), {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+              hourCycle: "h23",
+              timeZone: theirZone,
+            }),
           })}
         </span>
         {lead.can_edit ? (
@@ -177,12 +175,40 @@ export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadD
           </button>
         ) : null}
       </p>
+    ) : null;
+
+  let content: React.ReactNode;
+  if (tasks.isPending) {
+    content = <div aria-hidden="true" className="h-11 rounded-md bg-muted motion-safe:animate-pulse" />;
+  } else if (tasks.isError) {
+    content = (
+      <div role="alert" className="flex flex-col items-start gap-2">
+        <p className="text-sm">{t("tasks.error")}</p>
+        <Button variant="quiet" onClick={() => void tasks.refetch()}>
+          {t("tasks.retry")}
+        </Button>
+      </div>
     );
+  } else if (first) {
+    // Every open task the viewer can see, the next one first; then when the lead comes back to the queue.
+    content = (
+      <div className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-1">
+          {tasks.data.map((task) => (
+            <TaskRow key={task.id} task={task} leadId={lead.id} now={now} />
+          ))}
+        </ul>
+        {nextAttempt}
+      </div>
+    );
+  } else if (nextAttempt) {
+    content = nextAttempt;
   } else {
     content = (
       <div className="flex flex-col gap-2">
-        <p className="text-sm text-muted-foreground">{t("noNextStep")}</p>
-        {now ? (
+        <p className="text-sm text-muted-foreground">{lead.lead_status === "do_not_contact" ? t("noNextStepDnc") : t("noNextStep")}</p>
+        {/* No call is planned for a lead that asked not to be contacted. */}
+        {now && lead.lead_status !== "do_not_contact" ? (
           <div className="flex flex-wrap gap-1.5">
             {DATE_CHIPS.map((c) => (
               <button
@@ -201,38 +227,6 @@ export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadD
     );
   }
   return <Card title={t("nextStep")}>{content}</Card>;
-}
-
-/** The lead's open tasks (the rail at desktop width, Summary on phones). */
-export function TasksCard({ lead, initialTasks }: { lead: LeadDetail; initialTasks: LeadTask[] | null }) {
-  const t = useTranslations("LeadPage.tasks");
-  const tasks = useLeadTasks(lead.id, initialTasks);
-  const now = useClientNow(60_000);
-  return (
-    <Card title={t("title")}>
-      {tasks.isPending ? (
-        <div aria-hidden="true" className="flex flex-col gap-2">
-          <div className="h-9 rounded-md bg-muted motion-safe:animate-pulse" />
-          <div className="h-9 rounded-md bg-muted motion-safe:animate-pulse" />
-        </div>
-      ) : tasks.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-2">
-          <p className="text-sm">{t("error")}</p>
-          <Button variant="quiet" onClick={() => void tasks.refetch()}>
-            {t("retry")}
-          </Button>
-        </div>
-      ) : tasks.data.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("empty")}</p>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {tasks.data.map((task) => (
-            <TaskRow key={task.id} task={task} leadId={lead.id} now={now} />
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
 }
 
 /** Contacts with Call, Email and WhatsApp each; a wrong number is struck through ("Marked wrong · Fix"). */

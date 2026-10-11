@@ -17,20 +17,20 @@ import { EntryList, Timeline } from "@/components/activity/timeline";
 import { fetchTimeline, timelineKey, useTimeline } from "@/components/activity/use-activities";
 import { fetchLead, leadKey, rowBefore, useLeadChanges } from "@/components/leads/use-leads";
 import { DetailsTab } from "@/components/lead/details-tab";
-import { Card, ContactsCard, NextStepCard, TasksCard } from "@/components/lead/lead-cards";
+import { Card, ContactsCard, NextStepCard } from "@/components/lead/lead-cards";
 import { LeadHeader } from "@/components/lead/lead-header";
 import { listNeighbours, readListReturn } from "@/components/lead/lead-nav";
 import { QuickActions } from "@/components/lead/quick-actions";
-import type { TimelinePage } from "@/lib/activities";
+import type { TimelineFilter, TimelinePage } from "@/lib/activities";
 import { LEAD_TABS, personName, type LeadDetail, type LeadStatus, type LeadTab, type TeamMember } from "@/lib/leads";
 import { isTyping } from "@/lib/shortcuts";
 import type { LeadTask } from "@/lib/tasks";
 
 // The lead page (Day 4 design 7.1). Server-rendered with the lead, the first timeline page and its tasks; the browser
 // keeps them in the query cache (shared with the leads preview). 1440: the header full width with the actions on the
-// right, then the tabs, then a two-column body (the tab, and a sticky rail with the composer, the tasks and the
-// contacts). 390: a back link, the header stacked, five equal actions, the tabs as a sideways strip; the rail's cards
-// fold into Summary and the composer opens as a sheet. J and K move to the next or previous lead of the list it was
+// right, then the tabs, then a two-column body (the tab, and a sticky rail with the composer and the contacts; the next
+// step with the open tasks leads Summary). 390: a back link, the header stacked, five equal actions, the tabs as a
+// sideways strip; the contacts fold into Summary and the composer opens as a sheet. J and K move to the next or previous lead of the list it was
 // opened from; Back returns to that list where it was. Files stays hidden until Day 4d (design D16).
 
 const wide = "(min-width: 1024px)";
@@ -49,6 +49,7 @@ export function LeadPage({
   me,
   stepUpSeconds,
   initialTab,
+  initialFilter,
 }: {
   initialLead: LeadDetail;
   initialTimeline: TimelinePage | null;
@@ -57,6 +58,7 @@ export function LeadPage({
   me: { id: string; role: TeamMember["role"] };
   stepUpSeconds: number;
   initialTab: LeadTab;
+  initialFilter: TimelineFilter;
 }) {
   const t = useTranslations("LeadPage");
   const tLeads = useTranslations("Leads");
@@ -270,7 +272,6 @@ export function LeadPage({
               <>
                 <NextStepCard lead={lead} initialTasks={initialTasks} onChangeNext={() => showDetails("next")} />
                 <div className="flex flex-col gap-4 lg:hidden">
-                  <TasksCard lead={lead} initialTasks={initialTasks} />
                   <ContactsCard lead={lead} readOnlyContact={false} />
                 </div>
                 <Card
@@ -288,7 +289,7 @@ export function LeadPage({
                   ) : entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t("noEntries")}</p>
                   ) : (
-                    <EntryList entries={entries.slice(0, 3)} leadId={id} me={me} stepUp={stepUp} grouped={false} />
+                    <EntryList entries={entries.slice(0, 3)} leadId={id} me={me} stepUp={stepUp} grouped={false} compact />
                   )}
                 </Card>
                 <Card title={t("tabs.deals")}>
@@ -296,7 +297,7 @@ export function LeadPage({
                 </Card>
               </>
             ) : tab === "timeline" ? (
-              <Timeline leadId={id} initial={initialTimeline} me={me} stepUp={stepUp} />
+              <Timeline leadId={id} initial={initialTimeline} initialFilter={initialFilter} me={me} stepUp={stepUp} />
             ) : tab === "deals" ? (
               <EmptyState icon={Handshake} title={t("dealsTitle")} body={t("dealsEmpty")} />
             ) : tab === "stock" ? (
@@ -309,14 +310,13 @@ export function LeadPage({
         <aside aria-label={t("railLabel")} className="hidden min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:flex">
           {/* One composer at a time (it holds the draft): the rail's from desktop width, the sheet's below. */}
           {isWide ? composerCard : null}
-          <TasksCard lead={lead} initialTasks={initialTasks} />
           <ContactsCard lead={lead} readOnlyContact={false} />
         </aside>
       </div>
 
       {/* Phones and tablets: the composer as a sheet (Note, Meeting). */}
       <Dialog open={sheet && !isWide} onOpenChange={setSheet}>
-        <DialogContent className={`${phoneSheet} max-h-[calc(100dvh-24px)] overflow-y-auto sm:w-[min(520px,calc(100%-32px))]`}>
+        <DialogContent className={`${phoneSheet} max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain sm:w-[min(520px,calc(100%-32px))]`}>
           <div className="flex flex-col gap-4 p-5 sm:p-6">
             <DialogTitle className="text-xl font-bold">{t("composerTitle")}</DialogTitle>
             <DialogDescription className="sr-only">{t("composerBody", { lead: lead.name })}</DialogDescription>

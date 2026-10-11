@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 // hint, not a disabled button. After WhatsApp or Email opens, a chip offers to log it with one tap (with Undo).
 // Phones: five equal labelled icon actions; from tablet width, a row of labelled buttons.
 const item =
-  "group flex min-w-0 flex-1 flex-col items-center gap-1.5 text-xs text-muted-foreground transition-transform duration-150 active:scale-[0.97] sm:flex-none sm:flex-row sm:gap-2 sm:rounded-md sm:bg-muted sm:px-4 sm:py-0 sm:min-h-11 sm:text-sm sm:font-bold sm:text-foreground sm:hover:brightness-95 dark:sm:hover:brightness-125";
+  "group flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center text-[0.6875rem] leading-tight text-muted-foreground transition-transform duration-150 active:scale-[0.97] sm:flex-none sm:flex-row sm:gap-2 sm:rounded-md sm:bg-muted sm:px-4 sm:py-0 sm:min-h-11 sm:text-sm sm:font-bold sm:text-foreground sm:hover:brightness-95 dark:sm:hover:brightness-125";
 const circle =
   "grid size-12 place-items-center rounded-full bg-muted text-foreground sm:size-auto sm:rounded-none sm:bg-transparent";
 

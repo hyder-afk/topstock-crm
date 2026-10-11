@@ -139,6 +139,7 @@ export function FollowUpPicker({
             <span className="text-muted-foreground">{t("date")}</span>
             <input
               type="date"
+              name="follow_up_date"
               value={value.date ?? ""}
               min={today}
               max={addDays(today, 365)}
@@ -151,6 +152,7 @@ export function FollowUpPicker({
           <span className="text-muted-foreground">{required ? t("timeRequired") : t("time")}</span>
           <input
             type="time"
+            name="follow_up_time"
             value={value.time ?? ""}
             aria-describedby={`${id}-time`}
             aria-invalid={required && !!value.date && !value.time ? true : undefined}
