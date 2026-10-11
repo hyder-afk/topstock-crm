@@ -87,8 +87,10 @@ alter table public.companies
 -- Kept by the database: after a contact is added, removed, moved to another lead, or its number or wrong-number mark
 -- changes, each lead concerned gets has_contact_phone again, written only where the value changes. A working number
 -- has at least one digit and no wrong-number mark. DEFINER because nobody is granted the column (only this trigger
--- writes it); trigger-only and revoked. Lock order: the contact (locked by the statement that fired this), then the lead, as in
--- log_activity and undo_activity; two leads (a contact moved) are taken in id order.
+-- writes it); trigger-only and revoked. Lock order: the contact (locked by the statement that fired this), then the
+-- lead, as in log_activity and undo_activity; two leads (a contact moved) are taken in id order. Known limit: deleting a
+-- lead locks the lead, then its contacts (the cascade), so a contact number changed on that same lead at that same
+-- moment can end in a deadlock error for one of the two (nothing is half-written; the person retries).
 create function private.sync_contact_phone() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -101,6 +103,10 @@ begin
      where x.id is not null
      order by x.id
   loop
+    -- The lead first, then a statement of its own: two contacts of one lead changed at once take turns here, and the
+    -- second one sees the first one's committed change (without the lock each would miss the other's and the flag
+    -- could stay true with no number left).
+    perform 1 from public.companies c where c.id = v_lead for no key update;
     update public.companies c
        set has_contact_phone = s.has_phone
       from (select exists (select 1 from public.contacts k
@@ -815,8 +821,8 @@ $$;
 
 -- ===========================================================================
 -- Part 8. The lead page and log_activity, redefined (same signatures): get_lead says who is working the lead in the
--- queue; log_activity releases the caller's queue claim when the call came from the queue (step 9). Everything else is
--- Day 4b's text unchanged.
+-- queue; log_activity releases the caller's queue claim when the call came from the queue (step 9) and locks the lead
+-- FOR NO KEY UPDATE (step 3). Everything else is Day 4b's text unchanged.
 -- ===========================================================================
 -- One lead, as Day 4b, plus worked_by (design 4.1: 4c adds it). Null when it is missing or not visible.
 create or replace function public.get_lead(p_id uuid) returns jsonb
@@ -1015,8 +1021,11 @@ begin
     elsif p_contact is not null then
       perform 1 from public.contacts k where k.id = p_contact for key share;
     end if;
+    -- (4c: FOR NO KEY UPDATE, not FOR UPDATE: it still makes outcomes on one lead take turns, and it no longer blocks
+    -- the key-share lock a foreign key check takes, so a teammate claiming this lead in the queue never waits for the
+    -- call being saved, nor deadlocks with its claim release in step 9.)
     select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
-      into v_lead from public.companies c where c.id = p_company for update;
+      into v_lead from public.companies c where c.id = p_company for no key update;
     v_editable := found;
     if not v_editable then
       select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
