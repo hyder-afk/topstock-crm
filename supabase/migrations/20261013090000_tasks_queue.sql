@@ -569,21 +569,20 @@ begin
   v_today := (now() at time zone v_tz)::date;
   v_end := (v_today + 1)::timestamp at time zone v_tz;
   with per_zone as (
+    -- One pass: the live claims of others joined once (a hash of a few hundred rows), each count a filter.
     select c.call_zone,
-           count(*) filter (where d.ranked and d.due and not d.taken) as due_free,
-           count(*) filter (where d.ranked and d.later and not d.taken) as later,
-           count(*) filter (where d.ranked and d.due and d.taken) as taken,
-           count(*) filter (where d.no_number) as no_number
+           count(*) filter (where c.queue_rank is not null and (c.next_action_at is null or c.next_action_at <= now())
+                              and q.company_id is null) as due_free,
+           count(*) filter (where c.queue_rank is not null and c.next_action_at > now() and c.next_action_at < v_end
+                              and q.company_id is null) as later,
+           count(*) filter (where c.queue_rank is not null and (c.next_action_at is null or c.next_action_at <= now())
+                              and q.company_id is not null) as taken,
+           count(*) filter (where c.queue_rank is null and c.lead_status in ('cold', 'warm', 'negotiation', 'cool_off')
+                              and not ((coalesce(c.phone ~ '[0-9]', false) and c.phone_wrong_at is null)
+                                       or c.has_contact_phone)) as no_number
       from public.companies c
-      cross join lateral (
-        select c.queue_rank is not null as ranked,
-               (c.next_action_at is null or c.next_action_at <= now()) as due,
-               coalesce(c.next_action_at > now() and c.next_action_at < v_end, false) as later,
-               exists (select 1 from private.queue_claims q
-                        where q.company_id = c.id and q.expires_at > now() and q.user_id <> caller) as taken,
-               (c.lead_status in ('cold', 'warm', 'negotiation', 'cool_off')
-                and not ((coalesce(c.phone ~ '[0-9]', false) and c.phone_wrong_at is null) or c.has_contact_phone))
-                 as no_number) d
+      left join (select x.company_id from private.queue_claims x
+                  where x.expires_at > now() and x.user_id <> caller) q on q.company_id = c.id
      where p_scope = 'team' or c.owner_id = caller or (p_scope = 'mine_unassigned' and c.owner_id is null)
      group by c.call_zone)
   select jsonb_build_object(
@@ -1257,66 +1256,79 @@ begin
     return query
       select t.id, t.title, t.kind, t.due_date, t.due_at, t.done_at, t.assignee_id, p.first_name, p.last_name,
              t.company_id, c.name, c.call_zone, c.lead_status, t.contact_id,
-             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, s.sort_at,
+             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, t.sort_at,
              v_mgr or t.assignee_id = caller or t.created_by = caller
-        from public.tasks t
-        cross join lateral (select coalesce(t.due_at, t.due_date::timestamp at time zone v_tz) as sort_at) s
+        from (select x.id, x.title, x.kind, x.due_date, x.due_at, x.done_at, x.assignee_id, x.company_id, x.contact_id,
+                     x.created_by, s.sort_at
+                from public.tasks x
+                cross join lateral (select coalesce(x.due_at, x.due_date::timestamp at time zone v_tz) as sort_at) s
+               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null and x.cancelled_at is null
+                 and (x.due_date < v_today or x.due_at < now())
+                 and (p_after_id is null or (s.sort_at, x.id) > (p_after_sort, p_after_id))
+               order by s.sort_at, x.id
+               limit p_limit) t
         left join public.profiles p on p.id = t.assignee_id
         left join public.companies c on c.id = t.company_id
         left join public.contacts k on k.id = t.contact_id
-       where (p_scope = 'team' or t.assignee_id = caller) and t.done_at is null and t.cancelled_at is null
-         and (t.due_date < v_today or t.due_at < now())
-         and (p_after_id is null or (s.sort_at, t.id) > (p_after_sort, p_after_id))
-       order by s.sort_at, t.id
-       limit p_limit;
+       order by t.sort_at, t.id;
   elsif p_bucket = 'today' then
     return query
       select t.id, t.title, t.kind, t.due_date, t.due_at, t.done_at, t.assignee_id, p.first_name, p.last_name,
              t.company_id, c.name, c.call_zone, c.lead_status, t.contact_id,
-             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, s.sort_at,
+             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, t.sort_at,
              v_mgr or t.assignee_id = caller or t.created_by = caller
-        from public.tasks t
-        cross join lateral (select coalesce(t.due_at, t.due_date::timestamp at time zone v_tz) as sort_at) s
+        from (select x.id, x.title, x.kind, x.due_date, x.due_at, x.done_at, x.assignee_id, x.company_id, x.contact_id,
+                     x.created_by, s.sort_at
+                from public.tasks x
+                cross join lateral (select coalesce(x.due_at, x.due_date::timestamp at time zone v_tz) as sort_at) s
+               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null and x.cancelled_at is null
+                 and (x.due_date = v_today or (x.due_at >= now() and x.due_at < v_tomorrow))
+                 and (p_after_id is null or (s.sort_at, x.id) > (p_after_sort, p_after_id))
+               order by s.sort_at, x.id
+               limit p_limit) t
         left join public.profiles p on p.id = t.assignee_id
         left join public.companies c on c.id = t.company_id
         left join public.contacts k on k.id = t.contact_id
-       where (p_scope = 'team' or t.assignee_id = caller) and t.done_at is null and t.cancelled_at is null
-         and (t.due_date = v_today or (t.due_at >= now() and t.due_at < v_tomorrow))
-         and (p_after_id is null or (s.sort_at, t.id) > (p_after_sort, p_after_id))
-       order by s.sort_at, t.id
-       limit p_limit;
+       order by t.sort_at, t.id;
   elsif p_bucket = 'upcoming' then
     return query
       select t.id, t.title, t.kind, t.due_date, t.due_at, t.done_at, t.assignee_id, p.first_name, p.last_name,
              t.company_id, c.name, c.call_zone, c.lead_status, t.contact_id,
-             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, s.sort_at,
+             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, t.sort_at,
              v_mgr or t.assignee_id = caller or t.created_by = caller
-        from public.tasks t
-        cross join lateral (select coalesce(t.due_at, t.due_date::timestamp at time zone v_tz) as sort_at) s
+        from (select x.id, x.title, x.kind, x.due_date, x.due_at, x.done_at, x.assignee_id, x.company_id, x.contact_id,
+                     x.created_by, s.sort_at
+                from public.tasks x
+                cross join lateral (select coalesce(x.due_at, x.due_date::timestamp at time zone v_tz) as sort_at) s
+               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null and x.cancelled_at is null
+                 and (x.due_date > v_today or x.due_at >= v_tomorrow or (x.due_date is null and x.due_at is null))
+                 and (p_after_id is null
+                      or (p_after_sort is not null and (s.sort_at is null or (s.sort_at, x.id) > (p_after_sort, p_after_id)))
+                      or (p_after_sort is null and s.sort_at is null and x.id > p_after_id))
+               order by s.sort_at nulls last, x.id
+               limit p_limit) t
         left join public.profiles p on p.id = t.assignee_id
         left join public.companies c on c.id = t.company_id
         left join public.contacts k on k.id = t.contact_id
-       where (p_scope = 'team' or t.assignee_id = caller) and t.done_at is null and t.cancelled_at is null
-         and (t.due_date > v_today or t.due_at >= v_tomorrow or (t.due_date is null and t.due_at is null))
-         and (p_after_id is null
-              or (p_after_sort is not null and (s.sort_at is null or (s.sort_at, t.id) > (p_after_sort, p_after_id)))
-              or (p_after_sort is null and s.sort_at is null and t.id > p_after_id))
-       order by s.sort_at nulls last, t.id
-       limit p_limit;
+       order by t.sort_at nulls last, t.id;
   else
     return query
       select t.id, t.title, t.kind, t.due_date, t.due_at, t.done_at, t.assignee_id, p.first_name, p.last_name,
              t.company_id, c.name, c.call_zone, c.lead_status, t.contact_id,
-             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, t.done_at,
+             nullif(btrim(k.first_name || ' ' || k.last_name), ''), t.created_by, t.sort_at,
              v_mgr or t.assignee_id = caller or t.created_by = caller
-        from public.tasks t
+        from (select x.id, x.title, x.kind, x.due_date, x.due_at, x.done_at, x.assignee_id, x.company_id, x.contact_id,
+                     x.created_by, s.sort_at
+                from public.tasks x
+                cross join lateral (select x.done_at as sort_at) s
+               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is not null
+                 and (p_after_id is null or (x.done_at, x.id) < (p_after_sort, p_after_id))
+               order by x.done_at desc, x.id desc
+               limit p_limit) t
         left join public.profiles p on p.id = t.assignee_id
         left join public.companies c on c.id = t.company_id
         left join public.contacts k on k.id = t.contact_id
-       where (p_scope = 'team' or t.assignee_id = caller) and t.done_at is not null
-         and (p_after_id is null or (t.done_at, t.id) < (p_after_sort, p_after_id))
-       order by t.done_at desc, t.id desc
-       limit p_limit;
+       order by t.done_at desc, t.id desc;
   end if;
 end;
 $$;
