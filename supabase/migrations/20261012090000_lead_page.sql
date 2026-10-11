@@ -653,7 +653,7 @@ language sql stable set search_path = '' as $$
   from public.companies c
   left join public.profiles o on o.id = c.owner_id
   cross join lateral (select (select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()) as can_edit) e
-  cross join lateral (select private.caller_zone() as tz) z
+  cross join lateral (select private.caller_zone() as tz offset 0) z  -- offset 0: worked out once, not once per task
   where c.id = p_id
 $$;
 
