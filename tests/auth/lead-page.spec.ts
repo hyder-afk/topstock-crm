@@ -293,6 +293,8 @@ test("phone_return_how_did_it_go: back from the phone app after 5 s asks how it 
   await setVisibility("visible");
   await expect(page.getByRole("heading", { name: "How did it go?" })).toBeVisible();
   await expect(panel(page)).toContainText("Away about 3 min");
+  // The outcome keys are 56 px tall on phones (design 7.9).
+  expect((await panel(page).locator('[data-outcome="voicemail"]').boundingBox())!.height).toBeGreaterThanOrEqual(56);
   await panel(page).getByRole("button", { name: /^Voicemail/ }).tap();
   await panel(page).getByRole("button", { name: /^Save to timeline/ }).tap();
   await expect.poll(() => latest(lead)).toBe("call:voicemail");
@@ -507,6 +509,98 @@ test("status_menu_cool_off_until_when", async ({ browser }) => {
   expect(days).toBeLessThanOrEqual(31);
   expect(errors).toEqual([]);
   await context.close();
+});
+
+test("task_check_keeps_focus (next check, then the card heading) and a refused task Undo says so", async ({ browser }) => {
+  const lead = makeLead("Comptoir Focus");
+  sql(`insert into public.tasks (org_id, company_id, title, kind, due_date, assignee_id)
+       select org_id, id, v.title, 'call', (now() at time zone 'Europe/Paris')::date + v.d, '${userId(adminEmail)}'
+       from public.companies, (values ('Send the price list', 0), ('Confirm the samples', 1)) as v (title, d) where id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead);
+  const card = page.getByRole("region", { name: "Next step" });
+  const first = card.getByRole("checkbox", { name: "Mark “Send the price list” done" });
+  const second = card.getByRole("checkbox", { name: "Mark “Confirm the samples” done" });
+  await first.focus();
+  await page.keyboard.press("Space");
+  await expect(first).toHaveCount(0);
+  await expect(second).toBeFocused();
+  // A colleague deletes the task before Undo: the reopen is refused and the toast says so.
+  await expect(toast(page)).toContainText("Done: Send the price list.");
+  sql(`delete from public.tasks where company_id = '${lead}' and title = 'Send the price list'`);
+  await toast(page).getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "This is gone, or not visible to you." })).toBeVisible();
+  await expect(first).toHaveCount(0);
+  // The last task leaves: focus goes to the card's heading, not to the top of the page.
+  await second.focus();
+  await page.keyboard.press("Space");
+  await expect(second).toHaveCount(0);
+  await expect(card.getByRole("heading", { name: "Next step" })).toBeFocused();
+  await expect.poll(() => sql(`select count(*) from public.tasks where company_id = '${lead}' and done_at is not null`)).toBe("1");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("owner_menu_same_owner_changes_nothing, another owner changes it", async ({ browser }) => {
+  const lead = makeLead("Atelier Même Main", { owner: adminEmail });
+  const before = sql(`select updated_at::text from public.companies where id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead);
+  await page.getByRole("button", { name: "Owner: Inès Garnier. Change owner" }).click();
+  await page.getByRole("menuitemradio", { name: "Inès Garnier" }).click();
+  await page.waitForTimeout(800);
+  await expect(page.getByRole("status").filter({ hasText: "Owner changed." })).toHaveCount(0);
+  expect(sql(`select updated_at::text from public.companies where id = '${lead}'`)).toBe(before);
+  await page.getByRole("button", { name: "Owner: Inès Garnier. Change owner" }).click();
+  await page.getByRole("menuitemradio", { name: "Malo Perrin" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Owner changed." })).toBeVisible();
+  await expect.poll(() => sql(`select owner_id from public.companies where id = '${lead}'`)).toBe(userId(repEmail));
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("details_next_call_follows_an_outcome: Change shows the new date and Save stays off", async ({ browser }) => {
+  const lead = makeLead("Halles du Lundi");
+  sql(`update public.companies set next_action_at = now() + interval '5 days' where id = '${lead}'`);
+  const local = () => sql(`select to_char(next_action_at at time zone 'Europe/Paris', 'YYYY-MM-DD"T"HH24:MI') from public.companies where id = '${lead}'`);
+  const before = local();
+  const { context, page, errors } = await open(browser, adminState);
+  // The Details tab is drawn first, then kept (hidden) while the call is logged from Summary.
+  await gotoLead(page, lead, "details");
+  const input = page.getByLabel("Next call", { exact: true });
+  await expect(input).toHaveValue(before);
+  await page.getByRole("tab", { name: "Summary" }).click();
+  await page.getByRole("link", { name: "Call", exact: true }).first().click();
+  await panel(page).getByRole("button", { name: "End call" }).click();
+  // The outcome keys stay 44 px from tablet width (design 7.9).
+  expect((await panel(page).locator('[data-outcome="no_answer"]').boundingBox())!.height).toBeLessThan(48);
+  await panel(page).getByRole("button", { name: /^No answer/ }).click();
+  await panel(page).getByRole("button", { name: /^Save to timeline/ }).click();
+  await expect.poll(() => latest(lead)).toBe("call:no_answer");
+  const after = local();
+  expect(after).not.toBe(before);
+  await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Change", exact: true }).click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue(after);
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveAttribute("aria-disabled", "true");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("calling hours that open on another day read naturally in French and English (clock fixed)", async ({ browser }) => {
+  const lead = makeLead("Mercerie du Samedi", { city: "Lyon", country: "FR" });
+  // Saturday 10 Oct 2026, 12:00 UTC: 14:00 in Lyon, closed until Monday 09:00.
+  for (const [locale, text] of [
+    ["fr", /ouvre lun\. à 09:00 \(dans /],
+    ["en", /opens Mon 09:00 \(in /],
+  ] as const) {
+    const { context, page, errors } = await open(browser, adminState, { locale });
+    await page.clock.setFixedTime(new Date("2026-10-10T12:00:00Z"));
+    await gotoLead(page, lead);
+    await expect(page.getByText(text)).toBeVisible();
+    expect(errors).toEqual([]);
+    await context.close();
+  }
 });
 
 test("phone_390_full_flow: tap a row, the lead page, a note from the sheet, no sideways scroll", async ({ browser }) => {
