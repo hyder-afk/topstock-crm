@@ -79,7 +79,11 @@ export const LeadHeader = memo(function LeadHeader({
                 <ChevronDown aria-hidden="true" strokeWidth={1.75} className="size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                <DropdownMenuRadioGroup value={lead.owner?.id ?? ""} onValueChange={(v) => onOwner(v || null)}>
+                <DropdownMenuRadioGroup value={lead.owner?.id ?? ""} onValueChange={(v) => {
+                    // Radix reports the item already selected too: picking the current owner again changes nothing.
+                    if ((v || null) !== (lead.owner?.id ?? null)) onOwner(v || null);
+                  }}
+                >
                   {team.map((m) => (
                     <DropdownMenuRadioItem key={m.id} value={m.id}>
                       {personName(m) || tLeads("noName")}

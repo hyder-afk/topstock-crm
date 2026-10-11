@@ -48,6 +48,13 @@ export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { 
     ? `${localDate(zone, new Date(lead.next_action_at))}T${format.dateTime(new Date(lead.next_action_at), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone })}`
     : "";
   const [next, setNext] = useState(nextValue);
+  // The tab stays mounted (a hidden Activity boundary): when the next call changes elsewhere (an outcome, Undo, Cool
+  // off), the input takes the new value, so Save never writes back the old one.
+  const [seenNext, setSeenNext] = useState(nextValue);
+  if (seenNext !== nextValue) {
+    setSeenNext(nextValue);
+    setNext(nextValue);
+  }
   const today = localDate(zone, new Date());
 
   const saveZone = async (value: string) => {

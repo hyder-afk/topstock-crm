@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 
 // The outcome pad (Day 4 design 5.5 and 7.3), shared by the call panel and the composer: keys 1 to 7 and 0 (read
 // through event.code by the parent, so AZERTY works), each button names its key (aria-keyshortcuts). Selected is the
-// neutral fill: status colours never fill controls (DESIGN.md).
+// neutral fill: status colours never fill controls (DESIGN.md). Keys are 56 px tall on phones, 44 px from tablet width
+// (design 7.9: the pad is the main touch surface during a call).
 export function OutcomePad({
   value,
   onChange,
@@ -38,7 +39,7 @@ export function OutcomePad({
             disabled={disabled[o]}
             onClick={() => onChange(o)}
             className={cn(
-              "flex min-h-11 min-w-0 items-center justify-between gap-2 rounded-md px-3 text-left text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-50",
+              "flex min-h-14 min-w-0 items-center sm:min-h-11 justify-between gap-2 rounded-md px-3 text-left text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-50",
               on ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
             )}
           >
