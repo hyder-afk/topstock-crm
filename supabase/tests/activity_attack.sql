@@ -471,22 +471,35 @@ begin
 end $$;
 
 -- 6. Flood guards: 60 entries and 60 tasks a minute per person (threat 32) --------------------------------------------
--- Rep e1 does nothing else, so its counts are exact. The first block also shows older entries do not count.
+-- Rep e1 does nothing else, so its counts are exact. Seeds (the superuser may date them): for entries and for tasks, 30
+-- from 30 seconds ago, which count, and 60 from 61 seconds ago, which do not. So 30 more pass and the 31st is refused:
+-- the limit is 60, and the window is a minute (a one-second window would let the 31st through; a two-minute one would
+-- refuse the first).
 begin;
 insert into public.activities (org_id, company_id, type, user_id, created_at)
-select c.org_id, c.id, 'note', '00000000-0000-0000-0000-0000000000e1', now() - interval '61 seconds'
-  from public.companies c, generate_series(1, 60) where c.id = '32000000-0000-0000-0000-0000000000e1';
+select c.org_id, c.id, 'note', '00000000-0000-0000-0000-0000000000e1', now() - s.age
+  from public.companies c,
+       (select interval '30 seconds' from generate_series(1, 30)
+        union all select interval '61 seconds' from generate_series(1, 60)) as s (age)
+ where c.id = '32000000-0000-0000-0000-0000000000e1';
+insert into public.tasks (org_id, company_id, title, assignee_id, created_by, created_at)
+select c.org_id, c.id, 'Seeded task', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000e1',
+       now() - s.age
+  from public.companies c,
+       (select interval '30 seconds' from generate_series(1, 30)
+        union all select interval '61 seconds' from generate_series(1, 60)) as s (age)
+ where c.id = '32000000-0000-0000-0000-0000000000e1';
 set local role authenticated;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000e1', 'aal2'); end $$;
 do $$ begin
-  for i in 1..60 loop
+  for i in 1..30 loop
     insert into public.activities (company_id, type) values ('32000000-0000-0000-0000-0000000000e1', 'note');
   end loop;
   perform pg_temp.expect_error($q$insert into public.activities (company_id, type) values ('32000000-0000-0000-0000-0000000000e1', 'note')$q$,
                                '22023', 'rate_limited');
   perform pg_temp.expect_error($q$insert into public.activities (company_id, type) values ('32000000-0000-0000-0000-0000000000b1', 'note')$q$,
                                '22023', 'rate_limited');
-  for i in 1..60 loop
+  for i in 1..30 loop
     insert into public.tasks (company_id, title) values ('32000000-0000-0000-0000-0000000000e1', 'Task ' || i);
   end loop;
   perform pg_temp.expect_error($q$insert into public.tasks (title) values ('One too many')$q$, '22023', 'rate_limited');

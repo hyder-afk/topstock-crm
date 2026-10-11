@@ -324,6 +324,14 @@ MUTATIONS_4A = [
     ("Task guard: link-emptying exception lets any column change (depth 2)",
      [("    if pg_trigger_depth() > 1 and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id']\n",
        "    if pg_trigger_depth() > 1\n")]),
+    ("Activity guard: flood window of one second (60 a second)",
+     [("a.user_id = caller and a.created_at > now() - interval '60 seconds'", "a.user_id = caller and a.created_at > now() - interval '1 second'")]),
+    ("Activity guard: flood window of two minutes",
+     [("a.user_id = caller and a.created_at > now() - interval '60 seconds'", "a.user_id = caller and a.created_at > now() - interval '2 minutes'")]),
+    ("Task guard: flood window of one second (60 a second)",
+     [("t.created_by = caller and t.created_at > now() - interval '60 seconds'", "t.created_by = caller and t.created_at > now() - interval '1 second'")]),
+    ("Task guard: flood window of two minutes",
+     [("t.created_by = caller and t.created_at > now() - interval '60 seconds'", "t.created_by = caller and t.created_at > now() - interval '2 minutes'")]),
 ]
 
 
