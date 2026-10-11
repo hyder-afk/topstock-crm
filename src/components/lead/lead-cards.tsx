@@ -24,11 +24,26 @@ function useViewerZone() {
   return useSyncExternalStore(noop, () => browserZone() ?? "Europe/Paris", () => "Europe/Paris");
 }
 
-export function Card({ title, action, children, className }: { title: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
+export function Card({
+  title,
+  action,
+  children,
+  className,
+  focusableTitle = false,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  /** The heading takes focus from script (tabIndex -1) when the control that had it leaves the card. */
+  focusableTitle?: boolean;
+}) {
   return (
     <section aria-label={title} className={cn("flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4 sm:p-5", className)}>
       <div className="flex min-h-9 items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-muted-foreground">{title}</h2>
+        <h2 tabIndex={focusableTitle ? -1 : undefined} data-card-title={focusableTitle || undefined} className="text-sm font-bold text-muted-foreground">
+          {title}
+        </h2>
         {action}
       </div>
       {children}
@@ -66,7 +81,14 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
   const dueLabel = useDueLabel();
   const overdue = now ? isOverdue(task, zone, now) : false;
 
-  const toggle = async () => {
+  const toggle = async (check: HTMLElement) => {
+    // The checked task leaves the list and its check with it: focus moves first to the next task's check, else the
+    // previous one, else the card's heading, so a keyboard or screen-reader user is not dropped to the top of the page.
+    const row = check.closest("li");
+    const sibling = (el: Element | null | undefined) => el?.querySelector<HTMLElement>('[role="checkbox"]') ?? null;
+    const target =
+      sibling(row?.nextElementSibling) ?? sibling(row?.previousElementSibling) ?? check.closest("section")?.querySelector<HTMLElement>("[data-card-title]");
+    target?.focus();
     const before = queryClient.getQueryData<LeadTask[]>(leadTasksKey(leadId));
     queryClient.setQueryData<LeadTask[]>(leadTasksKey(leadId), (old) => old?.filter((x) => x.id !== task.id));
     const res = await setTaskDone({ id: task.id, on: true }).catch(() => ({ ok: false as const, error: "unavailable" as const }));
@@ -79,8 +101,9 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
     toast.show(t("done", { title: task.title }), {
       label: t("undo"),
       run: async () => {
-        await setTaskDone({ id: task.id, on: false }).catch(() => null);
+        const again = await setTaskDone({ id: task.id, on: false }).catch(() => ({ ok: false as const, error: "unavailable" as const }));
         refreshLead(queryClient, leadId);
+        if (!again.ok) toast.show(tErr(again.error));
       },
     });
   };
@@ -92,7 +115,7 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
         role="checkbox"
         aria-checked={false}
         aria-label={t("markDone", { title: task.title })}
-        onClick={() => void toggle()}
+        onClick={(e) => void toggle(e.currentTarget)}
         className="group grid size-11 shrink-0 place-items-center rounded-full transition-transform duration-150 active:scale-[0.94] sm:size-9"
       >
         <span className="grid size-5 place-items-center rounded-full border-2 border-muted-foreground transition-colors group-hover:border-foreground">
@@ -230,7 +253,11 @@ export const NextStepCard = memo(function NextStepCard({ lead, initialTasks, onC
       </div>
     );
   }
-  return <Card title={t("nextStep")}>{content}</Card>;
+  return (
+    <Card title={t("nextStep")} focusableTitle>
+      {content}
+    </Card>
+  );
 });
 
 /** Contacts with Call, Email and WhatsApp each; a wrong number is struck through ("Marked wrong · Fix"). */
