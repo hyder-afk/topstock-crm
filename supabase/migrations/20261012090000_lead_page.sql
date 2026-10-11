@@ -1118,6 +1118,7 @@ declare
   v_lead record;
   r_status boolean := false;
   r_next boolean := false;
+  v_next_after timestamptz;
   r_owner boolean := false;
   r_phone boolean := false;
   r_contact boolean := false;
@@ -1159,7 +1160,10 @@ begin
                next_action_at = case when r_next then u.prev_next_action_at else c.next_action_at end,
                owner_id = case when r_owner then u.prev_owner_id else c.owner_id end,
                phone_wrong_at = case when r_phone then null else c.phone_wrong_at end
-         where c.id = v_company;
+         where c.id = v_company
+        returning c.next_action_at into v_next_after;
+        -- lead_guard rule 5 may replace a restored empty date with +90 days: report what was actually kept
+        r_next := r_next and v_next_after is not distinct from u.prev_next_action_at;
       end if;
     end if;
   end if;

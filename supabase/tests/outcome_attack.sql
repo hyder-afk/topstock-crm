@@ -1522,6 +1522,50 @@ begin
   if cases <> 3 then raise exception 'FAIL: undo into a due Cool off ran % cases', cases; end if;
 end $$;
 
+-- 6c. undo_into_cool_off_without_date: a Cool off lead whose date was cleared. Interested, then Undo: Cool off comes
+-- back, and lead_guard rule 5 gives the empty date +90 days, so the answer must not claim the date was restored.
+do $$
+declare
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  d1 constant uuid := '00000000-0000-0000-0000-0000000000d1';
+  l uuid;
+  r jsonb;
+  u jsonb;
+  kept timestamptz;
+  ran boolean := false;
+begin
+  begin
+    l := pg_temp.new_lead(d1, 'cool_off');
+    update public.companies set next_action_at = null where id = l;  -- already in Cool off: a date can be cleared
+    if (select next_action_at from public.companies where id = l) is not null then
+      raise exception 'FAIL: the Cool off fixture kept a date';
+    end if;
+    perform pg_temp.act(admin);
+    r := public.log_activity(l, 'call', 'interested', null, null, null, (now() at time zone 'UTC')::date + 2, null,
+                             'Follow up');
+    if r ->> 'status_after' <> 'warm' then
+      raise exception 'FAIL: Interested on a Cool off lead with no date: %', r;
+    end if;
+    perform pg_temp.act(admin, 'aal2', null);
+    u := public.undo_activity((r ->> 'activity_id')::uuid);
+    perform pg_temp.su();
+    kept := (select next_action_at from public.companies where id = l);
+    if (select lead_status from public.companies where id = l) <> 'cool_off'
+       or kept is null or kept not between now() + interval '90 days' - interval '1 minute'
+                                       and now() + interval '90 days' + interval '1 minute'
+       or not (u -> 'restored' ->> 'status')::boolean
+       or (u -> 'restored' ->> 'next_action_at')::boolean
+       or (u -> 'lead' ->> 'next_action_at')::timestamptz is distinct from kept then
+      raise exception 'FAIL: undo into Cool off with no date: (%, %), answer %',
+        (select lead_status from public.companies where id = l), kept, u;
+    end if;
+    ran := true;
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
+  if not ran then raise exception 'FAIL: undo into Cool off with no date did not run'; end if;
+end $$;
+
 -- 7. Replays: one request id per author gives one entry, one task, one status change (threat 10) --------------------
 do $$
 declare
