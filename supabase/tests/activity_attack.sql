@@ -585,8 +585,9 @@ begin
     raise exception 'FAIL: deleting an entry lost its task or kept the link';
   end if;
 end $$;
--- A person leaves (their login is deleted): their entries and tasks stay, with the links emptied. Run with an admin's
--- claims, so the guards see a signed-in caller and must recognise the referential updates.
+-- A person leaves (their profile is deleted, as when their login is removed): their entries and tasks stay, with the
+-- links emptied. The profile row is deleted directly (the auth schema belongs to the auth service on Supabase), with an
+-- admin's claims, so the guards see a signed-in caller and must recognise the referential updates.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f1', 'aal2'); end $$;
 do $$ begin
   insert into public.activities (company_id, type, body) values ('32000000-0000-0000-0000-0000000000d1', 'note', 'by Fay');
@@ -599,7 +600,7 @@ do $$ begin
 end $$;
 reset role;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2'); end $$;
-delete from auth.users where id = '00000000-0000-0000-0000-0000000000f1';
+delete from public.profiles where id = '00000000-0000-0000-0000-0000000000f1';
 do $$ begin
   if not exists (select 1 from public.activities where body = 'by Fay' and user_id is null)
      or not exists (select 1 from public.tasks where title = 'Fay''s task' and created_by is null and assignee_id is null)
