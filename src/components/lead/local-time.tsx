@@ -116,10 +116,11 @@ export function LocalTime({
       hours = t("outsideHours");
     } else {
       const sameDay = localDate(zone, opens) === localDate(zone, now);
-      const when = sameDay
-        ? time(zone, opens)
-        : format.dateTime(opens, { weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone });
-      hours = t("opensAt", { time: when, relative: format.relativeTime(opens, now) });
+      const relative = format.relativeTime(opens, now);
+      // Another day: the weekday and the time apart, so French reads "ouvre lun. à 09:00" (not "ouvre à lun. 09:00").
+      hours = sameDay
+        ? t("opensAt", { time: time(zone, opens), relative })
+        : t("opensAtDay", { day: format.dateTime(opens, { weekday: "short", timeZone: zone }), time: time(zone, opens), relative });
     }
   }
 

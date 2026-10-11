@@ -674,6 +674,7 @@
     "goodTime": "good time to call",
     "outsideHours": "outside calling hours",
     "opensAt": "outside calling hours · opens {time} ({relative})",
+    "opensAtDay": "outside calling hours · opens {day} {time} ({relative})",
     "zoneNotSet": "time zone not set",
     "setTimezone": "Set time zone",
     "dncBanner": "Asked not to be contacted. Call, WhatsApp and Email are hidden; the numbers stay on Details.",

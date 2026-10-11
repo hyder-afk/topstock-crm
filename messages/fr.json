@@ -674,6 +674,7 @@
     "goodTime": "bon moment pour appeler",
     "outsideHours": "hors des heures d’appel",
     "opensAt": "hors des heures d’appel · ouvre à {time} ({relative})",
+    "opensAtDay": "hors des heures d’appel · ouvre {day} à {time} ({relative})",
     "zoneNotSet": "fuseau non choisi",
     "setTimezone": "Choisir le fuseau",
     "dncBanner": "A demandé à ne plus être contacté. Appeler, WhatsApp et E-mail sont masqués ; les numéros restent dans Détails.",
