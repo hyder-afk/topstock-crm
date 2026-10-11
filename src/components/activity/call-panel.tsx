@@ -35,11 +35,38 @@ export type CallTarget = {
 };
 
 type Phase = "calling" | "outcome" | "notLogged";
-type CallState = { target: CallTarget; startedAt: number; phase: Phase; awayMs: number | null; origin: { x: number; y: number } | null };
+type CallState = {
+  target: CallTarget;
+  startedAt: number;
+  phase: Phase;
+  awayMs: number | null;
+  origin: { x: number; y: number } | null;
+  // The Call button that opened the panel: focus goes back to it when the panel closes (WCAG 2.4.3).
+  opener: HTMLElement | null;
+};
 type CallPanelApi = { startCall: (target: CallTarget, from?: HTMLElement | null) => void; activeLeadId: string | null };
 
 const CallPanelContext = createContext<CallPanelApi>({ startCall: () => {}, activeLeadId: null });
 export const useCallPanel = () => useContext(CallPanelContext);
+
+// True when the keyboard focus is inside `el` or was lost to the page (its focused element unmounted), so moving it is ours
+// to do; false when the person has already moved on to something else.
+function focusWithin(el: HTMLElement | null) {
+  const active = document.activeElement;
+  return !active || active === document.body || !!el?.contains(active);
+}
+
+// Focus the opener again if it is still on screen; otherwise the page's <main> (made focusable for this only).
+function focusBack(opener: HTMLElement | null) {
+  if (opener?.isConnected && opener.getClientRects().length > 0) {
+    opener.focus();
+    if (document.activeElement === opener) return;
+  }
+  const main = document.getElementById("main");
+  if (!main) return;
+  if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+  main.focus({ preventScroll: true });
+}
 
 export function CallPanelProvider({ children }: { children: React.ReactNode }) {
   const [call, setCall] = useState<CallState | null>(null);
@@ -53,6 +80,7 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
       phase: "calling",
       awayMs: null,
       origin: rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null,
+      opener: from ?? null,
     });
   }, []);
 
@@ -74,12 +102,22 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [undo]);
 
+  // Closing (Save, Don't log, second close): focus goes back to the Call button before the panel unmounts, because the
+  // exit animation keeps the focused element alive until it leaves and the focus would then drop to <body>.
+  const close = useCallback(
+    (restoreFocus: boolean) => {
+      if (restoreFocus) focusBack(call?.opener ?? null);
+      setCall(null);
+    },
+    [call?.opener],
+  );
+
   const api = useMemo(() => ({ startCall, activeLeadId: call?.target.leadId ?? null }), [startCall, call?.target.leadId]);
   return (
     <CallPanelContext.Provider value={api}>
       {children}
       <AnimatePresence>
-        {call ? <CallPanel key={call.startedAt} call={call} onChange={setCall} onClose={() => setCall(null)} /> : null}
+        {call ? <CallPanel key={call.startedAt} call={call} onChange={setCall} onClose={close} /> : null}
       </AnimatePresence>
     </CallPanelContext.Provider>
   );
@@ -96,7 +134,7 @@ function useClock(startedAt: number, running: boolean) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c: CallState) => void; onClose: () => void }) {
+function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c: CallState) => void; onClose: (restoreFocus: boolean) => void }) {
   const t = useTranslations("CallPanel");
   const tOut = useTranslations("Outcomes");
   const reduce = useReducedMotion();
@@ -105,6 +143,7 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
   const headingId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<HTMLDivElement>(null);
+  const logItRef = useRef<HTMLButtonElement>(null);
   const hiddenAt = useRef<number | null>(null);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [note, setNote] = useState("");
@@ -129,6 +168,9 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
     [target.callZoneKey],
   );
 
+  // Ends the panel. Focus returns to the opener only if it was in the panel (or lost), not if the person has moved on.
+  const finish = useCallback(() => onClose(focusWithin(panelRef.current)), [onClose]);
+
   const endCall = useCallback(() => {
     onChange({ ...call, phase: "outcome" });
   }, [call, onChange]);
@@ -136,9 +178,9 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
   // Closing before Save never loses a call silently: first "Call not logged · Log it" (a chosen outcome and the note are
   // kept for Log it), then a second close (or Don't log) ends the panel.
   const dismiss = useCallback(() => {
-    if (phase === "notLogged") onClose();
+    if (phase === "notLogged") finish();
     else onChange({ ...call, phase: "notLogged" });
-  }, [phase, onClose, onChange, call]);
+  }, [phase, finish, onChange, call]);
 
   const save = useCallback(async () => {
     if (!outcome || !ready) return;
@@ -158,12 +200,14 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
       ownerName: target.ownerName,
     });
     setSaving(false);
-    if (res.ok) onClose();
-  }, [outcome, ready, log, target, note, follow, viewerZone, onClose]);
+    if (res.ok) finish();
+  }, [outcome, ready, log, target, note, follow, viewerZone, finish]);
 
   // End call moves the focus to the pad (design 7.3).
   useEffect(() => {
     if (phase === "outcome") padRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    // "Call not logged" replaces the form (and the focused pad key with it): put the focus on Log it.
+    if (phase === "notLogged" && focusWithin(panelRef.current)) logItRef.current?.focus();
   }, [phase]);
 
   // The phone app takes over after tel: (page hidden). Back after 5 s or more: "How did it go?".
@@ -289,10 +333,10 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
           <div role="status" className="flex flex-col gap-3">
             <p className="text-sm">{t("dismissed")}</p>
             <div className="flex gap-2">
-              <Button variant="neutral" onClick={() => onChange({ ...call, phase: "outcome" })}>
+              <Button ref={logItRef} variant="neutral" onClick={() => onChange({ ...call, phase: "outcome" })}>
                 {t("logIt")}
               </Button>
-              <Button variant="quiet" onClick={onClose}>
+              <Button variant="quiet" onClick={finish}>
                 {t("discard")}
               </Button>
             </div>
