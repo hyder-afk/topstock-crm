@@ -8,6 +8,7 @@
 --  - as the superuser with a user's claims: only the triggers apply, which proves a guard on its own (as if a grant or
 --    a policy were loosened by mistake);
 --  - inside a transaction that switches one trigger off: proves a policy on its own.
+-- Checks compare with IS DISTINCT FROM, so a value that is missing (null) fails them instead of passing unnoticed.
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
@@ -78,7 +79,7 @@ declare
 begin
   if (select array_agg(role::text order by id) from public.profiles
        where id in ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000e1',
-                    '00000000-0000-0000-0000-0000000000f1')) <> array['rep', 'rep', 'rep'] then
+                    '00000000-0000-0000-0000-0000000000f1')) is distinct from array['rep', 'rep', 'rep'] then
     raise exception 'FAIL: the new fixture users should be reps';
   end if;
   -- Leads: LB (rep b1's), LD (rep d1's), LE (rep e1's), LF (b1's, deleted later), LP (b1's, for the last-activity rule,
@@ -218,7 +219,7 @@ begin
   -- activity_author_forced_for_admin: an admin logs on a rep's lead; the entry is the admin's.
   insert into public.activities (company_id, type, body) values ('32000000-0000-0000-0000-0000000000b1', 'note', 'admin note')
   returning id into v;
-  if (select user_id from public.activities where id = v) <> '00000000-0000-0000-0000-00000000000a' then
+  if (select user_id from public.activities where id = v) is distinct from '00000000-0000-0000-0000-00000000000a' then
     raise exception 'FAIL: an admin entry is not stored as the admin';
   end if;
   perform set_config('t.admin_note', v::text, false);
@@ -250,7 +251,7 @@ begin
   -- The team logs on any lead of the org; the entry is the caller's.
   insert into public.activities (company_id, type, body) values ('32000000-0000-0000-0000-0000000000b1', 'note', 'd1 note on B')
   returning id into v;
-  if (select user_id from public.activities where id = v) <> '00000000-0000-0000-0000-0000000000d1' then
+  if (select user_id from public.activities where id = v) is distinct from '00000000-0000-0000-0000-0000000000d1' then
     raise exception 'FAIL: an entry on a colleague''s lead is not stored as its author';
   end if;
   perform set_config('t.d_note', v::text, false);
@@ -270,9 +271,9 @@ begin
     values ('32000000-0000-0000-0000-0000000000d1', 'note', '00000000-0000-0000-0000-0000000000b1',
             now() + interval '5 years', now(), timestamptz '2000-01-01 00:00:00+00', '00000000-0000-0000-0000-0000000000cc')
     returning user_id, created_at, edited_at, prev_last_activity_at, org_id into r;
-    if r.user_id <> '00000000-0000-0000-0000-00000000000a' or r.created_at <> now() or r.edited_at is not null
+    if r.user_id is distinct from '00000000-0000-0000-0000-00000000000a' or r.created_at is distinct from now() or r.edited_at is not null
        or r.prev_last_activity_at is distinct from before_date
-       or r.org_id <> (select id from public.orgs where name = 'TopStock Wholesale') then
+       or r.org_id is distinct from (select id from public.orgs where name = 'TopStock Wholesale') then
       raise exception 'FAIL: the guard kept a server column sent by the client: %', row_to_json(r);
     end if;
     raise exception 'probe undone' using errcode = 'TS001';
@@ -302,8 +303,8 @@ declare
 begin
   update public.activities set body = E'line one\r\nline two' where id = v;
   select body, edited_at, user_id, created_at into r from public.activities where id = v;
-  if r.body <> E'line one\nline two' or r.edited_at is null or r.edited_at <> now()
-     or r.user_id <> '00000000-0000-0000-0000-0000000000b1' then
+  if r.body is distinct from E'line one\nline two' or r.edited_at is null or r.edited_at is distinct from now()
+     or r.user_id is distinct from '00000000-0000-0000-0000-0000000000b1' then
     raise exception 'FAIL: an edit by the author (text with CRLF, edited_at set, author kept): %', row_to_json(r);
   end if;
   perform set_config('t.b_note_edited', r.edited_at::text, false);
@@ -335,7 +336,7 @@ declare
 begin
   -- A later transaction that writes the same text (once CRLF is folded) is no edit: edited_at stays.
   update public.activities set body = E'line one\r\nline two' where id = v;
-  if (select edited_at from public.activities where id = v) <> current_setting('t.b_note_edited')::timestamptz then
+  if (select edited_at from public.activities where id = v) is distinct from current_setting('t.b_note_edited')::timestamptz then
     raise exception 'FAIL: writing the same text moved edited_at';
   end if;
 end $$;
@@ -353,7 +354,7 @@ begin
     get diagnostics n = row_count;
     if n <> 0 then raise exception 'FAIL: % rewrote rep b1''s entry', who; end if;
   end loop;
-  if (select body from public.activities where id = current_setting('t.b_note')::uuid) <> E'line one\nline two' then
+  if (select body from public.activities where id = current_setting('t.b_note')::uuid) is distinct from E'line one\nline two' then
     raise exception 'FAIL: a colleague changed rep b1''s words';
   end if;
 end $$;
@@ -429,7 +430,7 @@ begin
   -- Tab and line feed are fine; CRLF is stored as LF.
   insert into public.activities (company_id, type, body)
   values ('32000000-0000-0000-0000-0000000000d1', 'note', E'col1\tcol2\r\nnext line\nlast') returning id into v;
-  if (select body from public.activities where id = v) <> E'col1\tcol2\nnext line\nlast' then
+  if (select body from public.activities where id = v) is distinct from E'col1\tcol2\nnext line\nlast' then
     raise exception 'FAIL: tab, LF and CRLF handling';
   end if;
 end $$;
@@ -529,7 +530,7 @@ begin
   if (select contact_id from public.tasks where id = t) is not null or not exists (select 1 from public.tasks where id = t) then
     raise exception 'FAIL: deleting a contact lost its task or kept the link';
   end if;
-  if (select body from public.activities where id = v) <> 'Bea likes blue' then
+  if (select body from public.activities where id = v) is distinct from 'Bea likes blue' then
     raise exception 'FAIL: deleting a contact changed an entry';
   end if;
 end $$;
@@ -579,7 +580,7 @@ begin
   values ('32000000-0000-0000-0000-0000000000b1', 'call', 'interested') returning id into v;
   insert into public.tasks (company_id, title, kind, source_activity_id)
   values ('32000000-0000-0000-0000-0000000000b1', 'Follow up', 'call', v) returning id into t;
-  if (select source_activity_id from public.tasks where id = t) <> v then raise exception 'FAIL: task from an entry'; end if;
+  if (select source_activity_id from public.tasks where id = t) is distinct from v then raise exception 'FAIL: task from an entry'; end if;
   delete from public.activities where id = v;
   if not exists (select 1 from public.tasks where id = t and source_activity_id is null) then
     raise exception 'FAIL: deleting an entry lost its task or kept the link';
@@ -637,7 +638,7 @@ begin
   select created_at, prev_last_activity_at into p1 from public.activities where id = current_setting('t.p1')::uuid;
   select created_at, prev_last_activity_at into p2 from public.activities where id = current_setting('t.p2')::uuid;
   if p1.created_at >= p2.created_at
-     or (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') <> p2.created_at then
+     or (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') is distinct from p2.created_at then
     raise exception 'FAIL: logging did not move the lead''s date to the newest entry';
   end if;
   -- Both remember the sheet's date: the second carries it forward from the first.
@@ -647,7 +648,7 @@ begin
   perform pg_temp.expect_error($q$insert into public.activities (company_id, type, prev_last_activity_at) values ('32000000-0000-0000-0000-0000000000a7', 'note', now())$q$, '42501');
   -- delete_old_entry_keeps_date
   delete from public.activities where id = current_setting('t.p1')::uuid;
-  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') <> p2.created_at then
+  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') is distinct from p2.created_at then
     raise exception 'FAIL: deleting an older entry moved the lead''s date';
   end if;
   -- undo_restores_previous_date: the last entry goes, so the date goes back to the sheet's (not to the deleted first
@@ -676,11 +677,11 @@ begin
   -- trigger runs as the table owner.
   insert into public.activities (company_id, type, body) values ('32000000-0000-0000-0000-0000000000a7', 'note', 'd1 on P')
   returning id into v;
-  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') <> now() then
+  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') is distinct from now() then
     raise exception 'FAIL: d1''s entry did not move the date';
   end if;
   delete from public.activities where id = v;
-  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') <> p3_at then
+  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') is distinct from p3_at then
     raise exception 'FAIL: deleting the newest entry should go back to the newest remaining one';
   end if;
 end $$;
@@ -696,7 +697,7 @@ begin
   insert into public.activities (company_id, type, body) values ('32000000-0000-0000-0000-0000000000a7', 'note', 'twin 2')
   returning id into w;
   delete from public.activities where id = v;
-  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') <> now() then
+  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a7') is distinct from now() then
     raise exception 'FAIL: deleting one of two same-time entries moved the date';
   end if;
   perform set_config('t.twin', w::text, false);
@@ -714,7 +715,7 @@ begin
           current_date + 1)
   returning id into v;
   select assignee_id, created_by, done_at, completed_by, cancelled_at into r from public.tasks where id = v;
-  if r.assignee_id <> '00000000-0000-0000-0000-0000000000d1' or r.created_by <> '00000000-0000-0000-0000-0000000000d1'
+  if r.assignee_id is distinct from '00000000-0000-0000-0000-0000000000d1' or r.created_by is distinct from '00000000-0000-0000-0000-0000000000d1'
      or r.done_at is not null or r.completed_by is not null or r.cancelled_at is not null then
     raise exception 'FAIL: a new task (assignee, creator, open): %', row_to_json(r);
   end if;
@@ -741,7 +742,7 @@ declare r record;
 begin
   update public.tasks set done_at = timestamptz '2000-01-01 00:00:00+00' where id = current_setting('t.task1')::uuid;
   select done_at, completed_by into r from public.tasks where id = current_setting('t.task1')::uuid;
-  if r.done_at <> now() or r.completed_by <> '00000000-0000-0000-0000-0000000000d1' then
+  if r.done_at is distinct from now() or r.completed_by is distinct from '00000000-0000-0000-0000-0000000000d1' then
     raise exception 'FAIL: done takes the server''s time and the caller: %', row_to_json(r);
   end if;
   perform set_config('t.task1_done', r.done_at::text, false);
@@ -752,7 +753,7 @@ begin
   -- Done again with another time: no change (the client never chooses the time).
   update public.tasks set done_at = timestamptz '2031-01-01 00:00:00+00' where id = current_setting('t.task1')::uuid;
   select done_at, completed_by into r from public.tasks where id = current_setting('t.task1')::uuid;
-  if r.done_at <> current_setting('t.task1_done')::timestamptz then
+  if r.done_at is distinct from current_setting('t.task1_done')::timestamptz then
     raise exception 'FAIL: a done task took a client time';
   end if;
   -- Done and dismissed at once: refused either way round.
@@ -762,13 +763,13 @@ begin
   select done_at, completed_by into r from public.tasks where id = current_setting('t.task1')::uuid;
   if r.done_at is not null or r.completed_by is not null then raise exception 'FAIL: reopening a task'; end if;
   update public.tasks set cancelled_at = timestamptz '2000-01-01 00:00:00+00' where id = current_setting('t.task1')::uuid;
-  if (select cancelled_at from public.tasks where id = current_setting('t.task1')::uuid) <> now() then
+  if (select cancelled_at from public.tasks where id = current_setting('t.task1')::uuid) is distinct from now() then
     raise exception 'FAIL: dismissing takes the server''s time';
   end if;
   perform pg_temp.expect_error(format('update public.tasks set done_at = now() where id = %L', current_setting('t.task1')),
                                '22023', 'state');
   update public.tasks set cancelled_at = timestamptz '2031-01-01 00:00:00+00' where id = current_setting('t.task1')::uuid;
-  if (select cancelled_at from public.tasks where id = current_setting('t.task1')::uuid) <> now() then
+  if (select cancelled_at from public.tasks where id = current_setting('t.task1')::uuid) is distinct from now() then
     raise exception 'FAIL: a dismissed task took a client time';
   end if;
   update public.tasks set cancelled_at = null where id = current_setting('t.task1')::uuid;
@@ -827,7 +828,7 @@ set role authenticated;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2'); end $$;
 do $$ begin
   update public.tasks set title = 'Call Basile back (late)' where id = current_setting('t.task1')::uuid;
-  if (select title from public.tasks where id = current_setting('t.task1')::uuid) <> 'Call Basile back (late)' then
+  if (select title from public.tasks where id = current_setting('t.task1')::uuid) is distinct from 'Call Basile back (late)' then
     raise exception 'FAIL: an overdue task could not be renamed';
   end if;
 end $$;
@@ -845,8 +846,8 @@ begin
     values ('32000000-0000-0000-0000-0000000000d1', 'Forged', '00000000-0000-0000-0000-0000000000b1', now(),
             '00000000-0000-0000-0000-0000000000b1', now())
     returning created_by, done_at, completed_by, cancelled_at, assignee_id into r;
-    if r.created_by <> '00000000-0000-0000-0000-0000000000d1' or r.done_at is not null or r.completed_by is not null
-       or r.cancelled_at is not null or r.assignee_id <> '00000000-0000-0000-0000-0000000000d1' then
+    if r.created_by is distinct from '00000000-0000-0000-0000-0000000000d1' or r.done_at is not null or r.completed_by is not null
+       or r.cancelled_at is not null or r.assignee_id is distinct from '00000000-0000-0000-0000-0000000000d1' then
       raise exception 'FAIL: the task guard kept a server column: %', row_to_json(r);
     end if;
     raise exception 'probe undone' using errcode = 'TS001';
@@ -1037,8 +1038,8 @@ begin
   end if;
   -- audit_activity_delete_has_no_body
   select diff_json -> 'old' into del from public.audit_log where table_name = 'activities' and action = 'delete' and record_id = v;
-  if del ? 'body' or (del ->> 'body_len')::integer <> 33 or del ->> 'type' <> 'note'
-     or del ->> 'user_id' <> '00000000-0000-0000-0000-0000000000b1' then
+  if del ? 'body' or (del ->> 'body_len')::integer is distinct from 33 or del ->> 'type' is distinct from 'note'
+     or del ->> 'user_id' is distinct from '00000000-0000-0000-0000-0000000000b1' then
     raise exception 'FAIL: a deleted entry should be audited without its text, with its length: %', del;
   end if;
   if exists (select 1 from public.audit_log where strpos(diff_json::text, 'AUDIT-MARKER') > 0
@@ -1070,7 +1071,7 @@ begin
                                                  {"row_no": 3, "name": "Day4a Import Two", "lead_status": "cold"}]');
   perform public.validate_lead_import(batch);
   r := public.commit_lead_import(batch);
-  if r ->> 'status' <> 'imported' then raise exception 'FAIL: import %', r; end if;
+  if r ->> 'status' is distinct from 'imported' then raise exception 'FAIL: import %', r; end if;
   insert into public.tasks (company_id, title)
   select id, 'Call the buyer' from public.companies where import_batch_id = batch and name = 'Day4a Import One';
   -- An admin's task with no assignee is the admin's (reps get theirs from the org/owner trigger).
@@ -1078,9 +1079,9 @@ begin
     raise exception 'FAIL: a task with no assignee should be its creator''s';
   end if;
   r := public.preview_lead_import_rollback(batch);
-  if r <> '{"tagged": 2, "removable": 1, "kept": 1}'::jsonb then raise exception 'FAIL: undo preview with a task %', r; end if;
+  if r is distinct from '{"tagged": 2, "removable": 1, "kept": 1}'::jsonb then raise exception 'FAIL: undo preview with a task %', r; end if;
   r := public.rollback_lead_import(batch);
-  if r ->> 'status' <> 'rolled_back' or (r ->> 'kept')::integer <> 1
+  if r ->> 'status' is distinct from 'rolled_back' or (r ->> 'kept')::integer is distinct from 1
      or not exists (select 1 from public.companies where import_batch_id = batch and name = 'Day4a Import One')
      or exists (select 1 from public.companies where import_batch_id = batch and name = 'Day4a Import Two') then
     raise exception 'FAIL: undo removed the lead with a task, or kept the other: %', r;
