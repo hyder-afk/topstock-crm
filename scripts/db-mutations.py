@@ -308,6 +308,10 @@ MUTATIONS_4A = [
        "create function private.lock_activity_lead() returns trigger\nlanguage plpgsql set search_path")]),
     ("Activity guard: no previous date for sessions with no signed-in user (the chain breaks after them)",
      [("      new.prev_last_activity_at := coalesce(new.prev_last_activity_at, base);\n", "")]),
+    ("Last activity on delete: any deleted entry moves the date (not only the one that set it)",
+     [("   where c.id = old.company_id and c.last_activity_at = old.created_at;", "   where c.id = old.company_id;")]),
+    ("Activity guard: a maintenance session's own previous date replaced",
+     [("coalesce(new.prev_last_activity_at, base);", "base;")]),
 ]
 
 

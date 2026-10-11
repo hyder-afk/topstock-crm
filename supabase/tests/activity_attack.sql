@@ -769,6 +769,42 @@ do $$ begin
       (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a8');
   end if;
 end $$;
+-- delete_old_entry_keeps_date where the newest remaining entry is older than the lead's date. Lead Q has the sheet's
+-- date (15 Jan 2026) and two older entries (1 Jan and 1 Jun 2025) from a maintenance session, which gave their
+-- previous date itself (1 Dec 2024) and keeps it. Deleting the oldest entry, which did not set the lead's date, leaves
+-- the date alone.
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.companies (id, org_id, name, owner_id, last_activity_at)
+select '32000000-0000-0000-0000-0000000000a9', id, 'Day4 Q', '00000000-0000-0000-0000-0000000000b1',
+       timestamptz '2026-01-15 10:00:00+00'
+  from public.orgs where name = 'TopStock Wholesale';
+insert into public.activities (id, org_id, company_id, type, body, user_id, created_at, prev_last_activity_at)
+select x.id, c.org_id, c.id, 'note', x.body, '00000000-0000-0000-0000-0000000000b1', x.at, timestamptz '2024-12-01 09:00:00+00'
+  from public.companies c,
+       (values ('52000000-0000-0000-0000-0000000000a9'::uuid, 'history one', timestamptz '2025-01-01 09:00:00+00'),
+               ('52000000-0000-0000-0000-0000000000aa'::uuid, 'history two', timestamptz '2025-06-01 09:00:00+00')) as x (id, body, at)
+ where c.id = '32000000-0000-0000-0000-0000000000a9';
+do $$ begin
+  if (select count(*) from public.activities where company_id = '32000000-0000-0000-0000-0000000000a9'
+        and prev_last_activity_at = timestamptz '2024-12-01 09:00:00+00') <> 2 then
+    raise exception 'FAIL: a maintenance session''s own previous date was not kept';
+  end if;
+end $$;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30); end $$;
+do $$
+declare n int;
+begin
+  delete from public.activities where id = '52000000-0000-0000-0000-0000000000a9';
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL: the admin could not delete an old entry'; end if;
+  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a9')
+       is distinct from timestamptz '2026-01-15 10:00:00+00' then
+    raise exception 'FAIL: deleting an entry that did not set the lead''s date moved it to %',
+      (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a9');
+  end if;
+end $$;
 
 -- 10. Tasks: the server keeps who and when; done and dismissed are switches (threats 3, 7, G3) -----------------------
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2'); end $$;
