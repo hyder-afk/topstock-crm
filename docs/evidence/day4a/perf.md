@@ -16,6 +16,13 @@ Design: `docs/evidence/day4/design.md` section 8.6 (part 1: P2, P7, P8). Re-runn
 Everything runs as a signed-in user with two-factor, row level security on. Machine: this cloud session, 4 vCPU.
 Three full runs, one after the other, with nothing else running.
 
+**Review round 1 re-run (the lead lock, commit a0f86ff).** The fix round adds a row lock on the lead to every entry
+insert and delete (`docs/log.md`, D9 under concurrency), so part 1 (P2 and the context timings) was run again: steps 1
+to 3 only, three runs of the final code, each right after a run of the code before the fix (17d0354, a separate copy),
+on the same machine with nothing else running; and, before those, three runs of the final code one after the other.
+P7 and P8 were not re-run: an import inserts no entries, the undo deletes only leads without entries, and the leads
+list reads no entries, so the lock never runs in them. The results sit below the first round's tables.
+
 ## P2: a timeline page (budget 5 / 8 / 10 ms)
 
 `list_lead_activities` itself arrives in 4b. This PR adds the index it needs (`activities_company_keyset_idx` on
@@ -30,6 +37,19 @@ Average of 5 warm runs after 10, milliseconds:
 | Page at row 5,000 (keyset) | 0.08 | 0.18 | 0.09 | 8 |
 | Calls only, first page | 0.09 | 0.19 | 0.09 | 10 |
 | First page, a typical lead (8 entries) | 0.06 | 0.14 | 0.08 | |
+
+Review round 1, milliseconds, the final code and the code before the fix in turn:
+
+| Case | Final code, run 1 / 2 / 3 | Before the fix, run 1 / 2 / 3 | Budget |
+|---|---|---|---|
+| First page, lead with 10,008 entries | 0.23 / 0.21 / 0.24 | 0.20 / 0.23 / 0.34 | 5 |
+| Page at row 5,000 (keyset) | 0.13 / 0.19 / 0.16 | 0.13 / 0.13 / 0.23 | 8 |
+| Calls only, first page | 0.14 / 0.15 / 0.18 | 0.19 / 0.13 / 0.26 | 10 |
+| First page, a typical lead (8 entries) | 0.11 / 0.12 / 0.13 | 0.12 / 0.11 / 0.18 | |
+
+The three runs of the final code one after the other gave 0.13 to 0.37 ms over the four cases. A timeline page takes
+no lock; every plan in the six final-code runs reads `activities_company_keyset_idx` (30 of 30 per run), with no sort
+and no sequential scan, and the generic plans look as below.
 
 **Generic-plan check.** Each case ran 10 times with `auto_explain` (nested statements, analyze). Runs 1 to 5 were
 custom plans (constants in the conditions); from run 6 the plans show `$1`..`$4`, that is PostgreSQL switched to the
@@ -66,6 +86,19 @@ date back), each undone; average of 5:
 | A typical lead | 1.24 / 1.34 / 1.21 ms | 0.95 / 1.11 / 0.99 ms |
 
 4b's P4 (`log_activity` with task creation, ≤ 15 ms) and P4b (`undo_activity`, ≤ 15 ms) build on these.
+
+Review round 1 (the insert now locks the lead first; the delete locks it before its update), same probe, average of 5:
+
+| Lead | Insert: final code, run 1 / 2 / 3 | Insert: before the fix | Delete: final code | Delete: before the fix |
+|---|---|---|---|---|
+| The lead with 10,008 entries | 3.18 / 3.86 / 3.76 ms | 4.38 / 3.05 / 4.95 ms | 2.00 / 2.15 / 2.26 ms | 2.58 / 1.80 / 3.00 ms |
+| A typical lead | 1.77 / 1.86 / 2.00 ms | 3.01 / 1.59 / 2.67 ms | 1.29 / 1.54 / 1.40 ms | 2.24 / 1.17 / 2.02 ms |
+
+The lock makes no difference that shows above the spread between runs: the code before the fix itself ranged 3.05 to
+4.95 ms on the busy lead in this session, against 2.42 to 3.79 ms in the first round's session (the machine was slower
+in this one). The three final-code runs one after the other: insert 3.24 / 5.65 / 3.32 ms and 1.68 / 3.04 / 1.84 ms, delete
+2.04 / 3.41 / 1.97 ms and 1.28 / 2.34 / 1.28 ms. All far below 4b's 15 ms budgets. A session waits on the lock only
+when another one writes an entry on the same lead at that moment, and only until that transaction ends.
 
 ## P7: Day 3b import and undo, re-timed (budget: average within +10% of `day3b/perf.md`)
 

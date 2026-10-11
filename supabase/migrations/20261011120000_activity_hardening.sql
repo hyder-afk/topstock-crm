@@ -10,7 +10,8 @@
 --  - the audit log no longer keeps a second copy of activity text (D8);
 --  - undoing an import keeps every lead that has a task.
 -- House rules (design section 3): every function sets search_path = ''; the guards are SECURITY INVOKER (only the
--- untouch trigger is DEFINER, like the touch trigger it mirrors); static SQL only; every CHECK that user input can reach
+-- untouch trigger, like the touch trigger it mirrors, and the lead lock before the guard are DEFINER, trigger-only and
+-- revoked); static SQL only; every CHECK that user input can reach
 -- has a pre-check with a constant message first, so "Failing row contains ..." never reaches the logs; clients get
 -- column grants only, and server-kept columns are set by BEFORE triggers (they need no column privilege).
 -- Files are unchanged here: they move to the lead, with their own guards, in 4d.
@@ -32,9 +33,10 @@ alter table public.activities
     or (type in ('email', 'whatsapp') and (outcome is null or outcome = 'sent'))
     or (type = 'meeting' and (outcome is null or outcome in ('held', 'no_show')))
     or (type = 'note' and outcome is null)),
-  -- Tab and line feed only: no other control character, DEL, or bidi embedding, override or isolate, so a note cannot
-  -- reorder the text shown next to it. Code point ranges, so the rule is the same under any database locale.
-  add constraint activities_body_safe check (body is null or body !~ '[\u0001-\u0008\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]');
+  -- Tab and line feed only: no other control character (C0, DEL or C1, as Day 3b's file names), and no bidi
+  -- embedding, override or isolate, so a note cannot reorder the text shown next to it. Joiners such as U+200D, which
+  -- emoji need, stay allowed. Code point ranges, so the rule is the same under any database locale.
+  add constraint activities_body_safe check (body is null or body !~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]');
 
 -- Timeline pages walk (created_at, id) newest first on one lead; the author index serves the rate guard, "my calls
 -- today" and the user_id foreign key; the request index makes a replayed request find its first result.
@@ -55,8 +57,32 @@ alter table public.activities
 revoke insert, update on public.activities from authenticated;
 grant insert (company_id, contact_id, type, outcome, body, request_id), update (body) on public.activities to authenticated;
 
--- The activity guard. Its name sorts before enforce_org_and_owner and set_activity_time, so it runs first. Sessions with
--- no signed-in user (fixtures, maintenance, imports by the service) are left alone, as Day 3a's triggers do.
+-- Entries on one lead take turns (D9 under concurrency). An insert locks its lead before the guard reads the lead's
+-- date, and the untouch trigger below locks it before it looks for the newest remaining entry, so each sees the entries
+-- the other committed: two deletes or undos at once on one lead, or an entry whose transaction started before the
+-- newest entry and is still open when that one is deleted, leave the lead on a date a remaining entry supports. The
+-- name sorts before activity_guard, so it runs first. DEFINER, because a SELECT ... FOR NO KEY UPDATE as the caller
+-- would quietly lock nothing on a lead the caller may log on but not change (row level security, spike S5 (b)). It
+-- reads and changes nothing; FOR NO KEY UPDATE does not block the foreign key checks (FOR KEY SHARE) on the lead.
+-- Lock order is contact, then lead, as in design 5.2 (log_activity locks the contact, then the lead): the entry's
+-- contact is taken FOR KEY SHARE first (what its foreign key check takes anyway), so an entry naming a contact never
+-- holds the lead while it waits for that contact, and the two paths cannot deadlock.
+create function private.lock_activity_lead() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.contact_id is not null then
+    perform 1 from public.contacts k where k.id = new.contact_id for key share;
+  end if;
+  perform 1 from public.companies c where c.id = new.company_id for no key update;
+  return new;
+end;
+$$;
+create trigger activity_date_lock before insert on public.activities
+  for each row execute function private.lock_activity_lead();
+
+-- The activity guard. Its name sorts before enforce_org_and_owner and set_activity_time, so it runs right after the
+-- lock. Sessions with no signed-in user (fixtures, maintenance, imports by the service) are left alone, as Day 3a's
+-- triggers do, except that their entries get the D9 previous date too, so the chain below holds after them.
 create function private.activity_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -65,16 +91,10 @@ declare
   base timestamptz;
   inherited timestamptz;
 begin
-  if caller is null then
-    return new;
-  end if;
-
   if tg_op = 'INSERT' then
-    new.user_id := caller;  -- G1: always the person signed in
-    new.edited_at := null;
-    -- D9: the lead's date before any entry still standing. It is the lead's current date, unless an entry set that
-    -- date: then it is that entry's own previous date, carried forward (for example the date from the import). So
-    -- deleting entries in any order puts the lead back on a date a remaining entry, or the sheet, supports.
+    -- D9, for every session: the lead's date before any entry still standing. It is the lead's current date, unless an
+    -- entry set that date: then it is that entry's own previous date, carried forward (for example the date from the
+    -- import). So deleting entries in any order puts the lead back on a date a remaining entry, or the sheet, supports.
     base := (select c.last_activity_at from public.companies c where c.id = new.company_id);
     if base is not null then
       select a.prev_last_activity_at into inherited
@@ -86,7 +106,14 @@ begin
         base := inherited;
       end if;
     end if;
+    if caller is null then
+      -- A maintenance session keeps a previous date it gives (history it imports); otherwise it gets the chain's.
+      new.prev_last_activity_at := coalesce(new.prev_last_activity_at, base);
+      return new;
+    end if;
     new.prev_last_activity_at := base;
+    new.user_id := caller;  -- G1: always the person signed in
+    new.edited_at := null;
     new.body := replace(new.body, E'\r\n', E'\n');
     if not coalesce(
            (new.type = 'call' and new.outcome in ('no_answer', 'voicemail', 'wrong_number', 'not_interested',
@@ -102,6 +129,8 @@ begin
                                limit 60) recent) >= 60 then
       raise exception 'too many entries in a minute' using errcode = '22023', hint = 'rate_limited';
     end if;
+  elsif caller is null then
+    return new;
   else
     -- The columns this statement changes (updated_at is kept by its own trigger).
     select coalesce(array_agg(n.key order by n.key), '{}') into changed
@@ -130,7 +159,7 @@ begin
   if char_length(new.body) > 10000 then
     raise exception 'the text is too long' using errcode = '22023', hint = 'body_too_long';
   end if;
-  if new.body ~ '[\u0001-\u0008\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]' then
+  if new.body ~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]' then
     raise exception 'the text contains characters that are not allowed' using errcode = '22023', hint = 'body_chars';
   end if;
   return new;
@@ -160,10 +189,12 @@ create policy activities_update on public.activities for update to authenticated
 -- neither a delete nor an undo can move a lead's date anywhere the history does not support. Deleting an older entry
 -- changes nothing; in a lead delete the lead row is already gone, so the update finds nothing. DEFINER like
 -- touch_company_activity, so deleting an entry on a lead someone else owns still corrects its date; trigger-only,
--- revoked from everyone below.
+-- revoked from everyone below. It locks the lead first and looks in a statement of its own: under READ COMMITTED that
+-- statement sees every delete and insert the lock waited for (see lock_activity_lead above).
 create function private.untouch_company_activity() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
+  perform 1 from public.companies c where c.id = old.company_id for no key update;
   update public.companies c
      set last_activity_at = greatest((select max(a.created_at) from public.activities a where a.company_id = old.company_id),
                                      old.prev_last_activity_at)
@@ -194,7 +225,7 @@ alter table public.tasks
   add constraint tasks_meeting_timed check (kind <> 'meeting' or due_at is not null),
   add constraint tasks_not_done_and_cancelled check (done_at is null or cancelled_at is null),
   add constraint tasks_contact_needs_lead check (contact_id is null or company_id is not null),
-  add constraint tasks_title_safe check (title !~ '[\u0001-\u001F\u007F\u202A-\u202E\u2066-\u2069]');
+  add constraint tasks_title_safe check (title !~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]');
 create index tasks_company_idx on public.tasks (company_id);                  -- FK, import undo, the lead page
 -- The creator's tasks by time: the created_by foreign key and the task flood guard (one short range read).
 create index tasks_created_by_idx on public.tasks (created_by, created_at);
@@ -287,7 +318,7 @@ begin
   if check_title then
     new.title := btrim(new.title);
     if new.title is null or char_length(new.title) not between 1 and 300
-       or new.title ~ '[\u0001-\u001F\u007F\u202A-\u202E\u2066-\u2069]' then
+       or new.title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]' then
       raise exception 'a task title needs 1 to 300 characters, without control characters'
         using errcode = '22023', hint = 'task_title';
     end if;
@@ -406,5 +437,5 @@ $$;
 -- ===========================================================================
 -- Function privileges: trigger functions are never callable by clients.
 -- ===========================================================================
-revoke all on function private.activity_guard(), private.task_guard(), private.untouch_company_activity()
-  from public, anon, authenticated;
+revoke all on function private.activity_guard(), private.task_guard(), private.untouch_company_activity(),
+  private.lock_activity_lead() from public, anon, authenticated;
