@@ -188,7 +188,8 @@ leaves a page (shared with the import tests); (4) **an accepted relaxation of th
 `^(?:Fetch API cannot load )?(?:http:)?//?localhost:3100/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$`:
 WebKit's wording for a fetch the page itself cancelled, here Next.js cancelling its own same-origin RSC link prefetches
 when a server action refreshes the page (Chromium logs nothing). Every other console error still fails. CI WebKit
-passed with it on 390e267 and f2c900b.
+passed with it on 390e267 and f2c900b; on b5e0fdc WebKit raised the same message as an uncaught page error instead of a
+console error, so the same filter now applies to `pageerror` too (every other page error still fails).
 
 **Kept for Day 7 polish** (logged): a Call pressed while the open call is still "Calling" replaces it; the focus
 fallback sets `tabindex=-1` and no outline on `<main>`, the skip link's target; the phone call sheet does not trap focus

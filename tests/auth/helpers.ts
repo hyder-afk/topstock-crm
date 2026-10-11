@@ -175,7 +175,8 @@ export async function settled(page: Page) {
   await expect.poll(() => pending.size, { timeout: 15_000 }).toBe(0);
 }
 
-// WebKit reports a fetch the page itself cancelled as "Fetch API cannot load <url> due to access control checks". Next.js
+// WebKit reports a fetch the page itself cancelled as "Fetch API cannot load <url> due to access control checks" (as a
+// console error, or as an uncaught page error when the fetch's promise is not awaited). Next.js
 // cancels its own link prefetches (requests to this app with ?_rsc=) when a server action refreshes the page or a new
 // navigation starts; Chromium logs nothing for that. Only that exact case is ignored: same-origin RSC requests cannot
 // fail a real access-control check, and every other console error still counts.

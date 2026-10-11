@@ -63,7 +63,8 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
   trackRequests(page);
   const errors: string[] = [];
   page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(m.text()));
-  page.on("pageerror", (e) => errors.push(e.message));
+  // WebKit reports the same cancelled prefetch either as a console error or as an uncaught page error.
+  page.on("pageerror", (e) => !isCancelledPrefetch(e.message) && errors.push(e.message));
   return { context, page, errors };
 }
 
