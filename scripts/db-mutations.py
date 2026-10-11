@@ -338,6 +338,9 @@ MUTATIONS_4A = [
     ("Tasks delete: no role clause (a fresh code deletes any task of the org)",
      [("  org_id = (select private.current_org_id()) and (select private.has_recent_aal2(600))\n  and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())));",
        "  org_id = (select private.current_org_id()) and (select private.has_recent_aal2(600)));")]),
+    ("Activity time (Day 3a trigger): a session with no signed-in user may change it after the fact",
+     [(MIG_3A, "  if tg_op = 'UPDATE' then\n    new.created_at := old.created_at;\n  elsif (select auth.uid()) is not null then",
+       "  if tg_op = 'UPDATE' then\n    null;\n  elsif (select auth.uid()) is not null then")]),
 ]
 
 

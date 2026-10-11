@@ -469,6 +469,18 @@ begin
   perform pg_temp.expect_error(format(ins, 'note', null, repeat('x', 10001)), '23514');
   perform pg_temp.expect_ok(format(ins, 'call', 'connected', E'a\tb\nc'));
 end $$;
+-- Day 3a's activity time rule, for sessions with no signed-in user (for everyone else the grant and the guard refuse
+-- first): an entry's time never changes after it is logged.
+do $$
+declare
+  v constant uuid := current_setting('t.b_call')::uuid;
+  before_at constant timestamptz := (select created_at from public.activities where id = current_setting('t.b_call')::uuid);
+begin
+  update public.activities set created_at = created_at - interval '1 day' where id = v;
+  if before_at is null or (select created_at from public.activities where id = v) is distinct from before_at then
+    raise exception 'FAIL: a session with no signed-in user changed an entry''s time';
+  end if;
+end $$;
 
 -- 6. Flood guards: 60 entries and 60 tasks a minute per person (threat 32) --------------------------------------------
 -- Rep e1 does nothing else, so its counts are exact. Seeds (the superuser may date them): for entries and for tasks, 30
