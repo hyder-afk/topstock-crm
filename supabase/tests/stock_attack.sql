@@ -1008,9 +1008,17 @@ begin
   perform set_config('request.jwt.claims', '', false);
 end $$;
 
+-- rep_cost_null, once costs exist (the check in section 5 runs before any): a rep still reads none of them.
+do $$ begin perform set_config('t.costs', (select count(*) from private.product_costs)::text, false); end $$;
+
 -- 6. Holds and deals ---------------------------------------------------------------------------------------------------
 set role authenticated;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30); end $$;
+do $$
+begin
+  if current_setting('t.costs')::int = 0 then raise exception 'FAIL: rep_cost_null needs costs to exist'; end if;
+  if exists (select 1 from private.product_costs) then raise exception 'FAIL: rep_cost_null: a rep sees costs'; end if;
+end $$;
 do $$
 declare
   p constant uuid := '7a000000-0000-0000-0000-000000000003';
