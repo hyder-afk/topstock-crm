@@ -546,6 +546,44 @@ test("timeline_show_more_failure_says_so: offline or an error answer keeps the e
   await context.close();
 });
 
+test("timeline_edit_focus: Edit text focuses the text box; Escape, Cancel and a save give focus back to the entry's options", async ({ browser }) => {
+  const lead = makeLead("Comptoir Focus");
+  sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${userId(adminEmail)}', 'note', null, 'Focus me', now() - interval '1 hour'
+       from public.companies c where c.id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead, "timeline");
+  const entry = page.getByRole("tabpanel").getByRole("article").first();
+  const options = entry.getByRole("button", { name: "Entry options" });
+  const edit = entry.getByRole("textbox", { name: "Text of the entry" });
+  const startEdit = async () => {
+    await options.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: "Edit text" }).click();
+    await expect(edit).toBeFocused();
+  };
+  // Escape.
+  await startEdit();
+  await page.keyboard.press("Escape");
+  await expect(edit).toHaveCount(0);
+  await expect(options).toBeFocused();
+  // Cancel.
+  await startEdit();
+  await entry.getByRole("button", { name: "Cancel" }).click();
+  await expect(edit).toHaveCount(0);
+  await expect(options).toBeFocused();
+  // A save from the keyboard.
+  await startEdit();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Focus kept");
+  await page.keyboard.press("Control+Enter");
+  await expect(entry).toContainText("Focus kept");
+  await expect(edit).toHaveCount(0);
+  await expect(options).toBeFocused();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("timeline_virtualised_past_120 (150 entries): a feed with positions, the end reached, the menu and Show more work", async ({ browser }) => {
   const lead = makeLead("Comptoir Cent Cinquante");
   sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)

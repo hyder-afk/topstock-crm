@@ -481,6 +481,11 @@ const EntryItem = memo(function EntryItem({
   const [askedOnce, setAskedOnce] = useState(false);
   if (confirming && !askedOnce) setAskedOnce(true);
   const bodyRef = useRef<HTMLParagraphElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const editChosen = useRef(false);
+  const refocus = useRef(false);
   const [clamped, setClamped] = useState(false);
   const Icon = typeIcon[entry.type];
   const Heading = grouped ? "h4" : "h3";
@@ -526,6 +531,19 @@ const EntryItem = memo(function EntryItem({
     opened?.set(entry.id, { full: text });
   };
 
+  // Escape, Cancel or a save closes the inline edit and unmounts what had focus: focus goes back to the entry's options
+  // button (where the edit began), after commit, unless the reader has since moved focus somewhere else.
+  const endEdit = () => {
+    const active = document.activeElement;
+    refocus.current = !active || active === document.body || !!formRef.current?.contains(active);
+    setEditing(false);
+  };
+  useEffect(() => {
+    if (editing || !refocus.current) return;
+    refocus.current = false;
+    menuRef.current?.focus();
+  }, [editing]);
+
   // A virtualised row stays drawn while it is being edited or asks to delete (the draft and the dialog live here).
   const busy = editing || confirming;
   useEffect(() => {
@@ -542,7 +560,7 @@ const EntryItem = memo(function EntryItem({
       toast.show(tErr("hint" in res && res.hint ? `hint.${res.hint}` : res.error));
       return;
     }
-    setEditing(false);
+    endEdit();
     setFull(null);
     queryClient.setQueriesData<InfiniteData<TimelinePage>>({ queryKey: ["timeline", leadId] }, (old) =>
       old
@@ -634,10 +652,21 @@ const EntryItem = memo(function EntryItem({
             </p>
           </div>
           {!entry.pending && (entry.is_mine || canDelete) ? (
-            <EntryMenu label={t("menu")}>
+            <EntryMenu
+              label={t("menu")}
+              triggerRef={menuRef}
+              // Picking Edit text: the menu closes into the text box, not back to its button (Radix's default).
+              onCloseAutoFocus={(e) => {
+                if (!editChosen.current) return;
+                editChosen.current = false;
+                e.preventDefault();
+                textRef.current?.focus();
+              }}
+            >
               {entry.is_mine ? (
                 <DropdownMenuItem
                   onSelect={() => {
+                    editChosen.current = true;
                     setDraft(full ?? entry.body ?? "");
                     setEditing(true);
                   }}
@@ -659,6 +688,7 @@ const EntryItem = memo(function EntryItem({
 
         {editing ? (
           <form
+            ref={formRef}
             className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault();
@@ -666,6 +696,7 @@ const EntryItem = memo(function EntryItem({
             }}
           >
             <Textarea
+              ref={textRef}
               aria-label={t("editLabel")}
               value={draft}
               autoFocus
@@ -676,7 +707,7 @@ const EntryItem = memo(function EntryItem({
                   e.preventDefault();
                   void saveEdit();
                 }
-                if (e.key === "Escape") setEditing(false);
+                if (e.key === "Escape") endEdit();
               }}
               className="text-sm"
             />
@@ -684,7 +715,7 @@ const EntryItem = memo(function EntryItem({
               <Button type="submit" variant="neutral" aria-disabled={saving || textLength(draft) > BODY_MAX || (entry.type === "note" && !draft.trim()) || undefined}>
                 {saving ? t("saving") : t("saveEdit")}
               </Button>
-              <Button variant="quiet" onClick={() => setEditing(false)}>
+              <Button variant="quiet" onClick={endEdit}>
                 {t("cancel")}
               </Button>
             </div>
@@ -760,12 +791,23 @@ const menuTrigger =
  * scroll real time); a press or Enter, Space or Down turns it into the menu, opened, which keeps focus inside as usual
  * and gives it back to its button when it closes.
  */
-function EntryMenu({ label, children }: { label: string; children: React.ReactNode }) {
+function EntryMenu({
+  label,
+  triggerRef,
+  onCloseAutoFocus,
+  children,
+}: {
+  label: string;
+  triggerRef?: React.Ref<HTMLButtonElement>;
+  onCloseAutoFocus?: (e: Event) => void;
+  children: React.ReactNode;
+}) {
   const [open, setOpen] = useState<boolean | null>(null);
   const icon = <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />;
   if (open === null) {
     return (
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
         aria-haspopup="menu"
@@ -788,10 +830,10 @@ function EntryMenu({ label, children }: { label: string; children: React.ReactNo
   }
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger aria-label={label} className={menuTrigger}>
+      <DropdownMenuTrigger ref={triggerRef} aria-label={label} className={menuTrigger}>
         {icon}
       </DropdownMenuTrigger>
-      <DropdownMenuContent>{children}</DropdownMenuContent>
+      <DropdownMenuContent onCloseAutoFocus={onCloseAutoFocus}>{children}</DropdownMenuContent>
     </DropdownMenu>
   );
 }
