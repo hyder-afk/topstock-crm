@@ -182,6 +182,10 @@ export type TeamMember = { id: string; first_name: string; last_name: string; ro
 
 export const pageSize = 50;
 
+// The lead page's tabs (Day 4b), in order; the selected one is in ?tab=. Files joins from Day 4d (design D16).
+export const LEAD_TABS = ["summary", "timeline", "deals", "stock", "details"] as const;
+export type LeadTab = (typeof LEAD_TABS)[number];
+
 // Form input (server actions validate again; the database checks once more).
 const phone = z
   .string()

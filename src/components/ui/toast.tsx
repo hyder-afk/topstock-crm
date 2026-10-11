@@ -4,28 +4,29 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 
-type Toast = { id: number; message: string; action?: { label: string; run: () => void } };
-type ToastApi = { show: (message: string, action?: Toast["action"]) => void };
+type Toast = { id: number; message: string; action?: { label: string; run: () => void }; duration: number };
+type ToastOptions = { duration?: number };
+type ToastApi = { show: (message: string, action?: Toast["action"], options?: ToastOptions) => void };
 
 const ToastContext = createContext<ToastApi>({ show: () => {} });
 export const useToast = () => useContext(ToastContext);
 
-// One message at a time, above the dock, announced politely. Stays 6 s (longer while hovered or focused) so there
-// is time to press Undo.
+// One message at a time, above the dock, announced politely. Stays 6 s by default (a logged call's Undo: 10 s; longer
+// while hovered or focused) so there is time to press Undo.
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const t = useTranslations("Common");
   const [toast, setToast] = useState<Toast | null>(null);
   const [paused, setPaused] = useState(false);
   const seq = useRef(0);
 
-  const show = useCallback<ToastApi["show"]>((message, action) => {
+  const show = useCallback<ToastApi["show"]>((message, action, options) => {
     seq.current += 1;
-    setToast({ id: seq.current, message, action });
+    setToast({ id: seq.current, message, action, duration: options?.duration ?? 6000 });
   }, []);
 
   useEffect(() => {
     if (!toast || paused) return;
-    const timer = window.setTimeout(() => setToast((cur) => (cur?.id === toast.id ? null : cur)), 6000);
+    const timer = window.setTimeout(() => setToast((cur) => (cur?.id === toast.id ? null : cur)), toast.duration);
     return () => window.clearTimeout(timer);
   }, [toast, paused]);
 

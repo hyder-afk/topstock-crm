@@ -3,15 +3,29 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { createTranslator } from "use-intl/core";
 
-// The import screens' words (Import, StepUp, NotFound): both languages have the same keys, French follows French
-// typography (a narrow no-break space before : ; ? ! and inside « », the typographic apostrophe), and the counts read
-// right in both languages, at 0 and 1 too.
+// The import screens' words (Import, StepUp, NotFound) and the lead page's (Day 4b: LeadPage, QuickActions, CallPanel,
+// Composer, Outcomes, Timeline, Errors, and the Leads and Shortcuts keys it added): both languages have the same keys,
+// French follows French typography (a narrow no-break space before : ; ? ! and inside « », the typographic
+// apostrophe), and the counts read right in both languages, at 0 and 1 too.
 type Messages = Record<string, unknown>;
 const load = (locale: string) =>
   JSON.parse(readFileSync(path.join(__dirname, "..", "..", "messages", `${locale}.json`), "utf8")) as Messages;
 const en = load("en");
 const fr = load("fr");
-const namespaces = ["Import", "StepUp", "NotFound"];
+const namespaces = [
+  "Import",
+  "StepUp",
+  "NotFound",
+  "LeadPage",
+  "QuickActions",
+  "CallPanel",
+  "Composer",
+  "Outcomes",
+  "Timeline",
+  "Errors",
+  "Leads",
+  "Shortcuts",
+];
 
 function entries(node: unknown, prefix = ""): [string, string][] {
   if (typeof node === "string") return [[prefix, node]];
@@ -26,7 +40,7 @@ const say = (messages: Messages, locale: string) => {
   return (key: string, values?: Record<string, string | number>) => (t as (k: string, v?: Record<string, string | number>) => string)(key, values);
 };
 
-test.describe("import messages", () => {
+test.describe("import and lead page messages", () => {
   test("English and French have the same keys", () => {
     for (const ns of namespaces) {
       expect(entries(fr[ns]).map(([key]) => key).sort()).toEqual(entries(en[ns]).map(([key]) => key).sort());
@@ -77,5 +91,32 @@ test.describe("import messages", () => {
     );
     expect(tf("Import.check.importing", { done: 1, doneFormatted: "1", total: "5" })).toBe("1 importé sur 5");
     expect(tf("Import.undo.running", { done: 2, doneFormatted: "2", total: "5" })).toBe("2 supprimés sur 5");
+  });
+
+  test("lead page counts and the follow-up titles", () => {
+    const tf = say(fr, "fr");
+    const te = say(en, "en");
+    expect(te("LeadPage.attempts", { count: 1 })).toBe("1 try in a row without reaching anyone");
+    expect(te("LeadPage.attempts", { count: 3 })).toBe("3 tries in a row without reaching anyone");
+    expect(tf("LeadPage.attempts", { count: 1 })).toBe("1 essai d’affilée sans joindre personne");
+    expect(tf("LeadPage.attempts", { count: 2 })).toBe("2 essais d’affilée sans joindre personne");
+    expect(te("CallPanel.away", { minutes: 3 })).toBe("Away about 3 min");
+    expect(te("Outcomes.taskTitle.followUp", { lead: "Maison Verdane" })).toBe("Follow up with Maison Verdane");
+    expect(tf("Outcomes.taskTitle.rightNumber", { lead: "Maison Verdane" })).toBe("Trouver le bon numéro de Maison Verdane");
+    expect(tf("LeadPage.position", { index: "3", total: "1 204" })).toBe("3 sur 1 204");
+    expect(tf("Leads.until.title")).toBe("Jusqu’à quand\u202f?");
+  });
+
+  test("every call outcome, kind of entry and database hint has words in both languages", () => {
+    for (const messages of [en, fr]) {
+      const t = messages as Record<string, Record<string, unknown>>;
+      for (const o of ["no_answer", "voicemail", "wrong_number", "not_interested", "interested", "meeting_booked", "do_not_contact", "connected", "sent", "held", "no_show"]) {
+        expect(typeof t.Outcomes[o]).toBe("string");
+      }
+      for (const k of ["call", "email", "whatsapp", "meeting", "note"]) expect(typeof (t.Composer.types as Record<string, unknown>)[k]).toBe("string");
+      for (const h of ["outcome", "body_required", "body_too_long", "body_chars", "dialled", "follow_up_required", "follow_up_range", "task_title", "bounds", "zone_not_in_country", "until_cool_off_only", "state", "task_kind", "task_due"]) {
+        expect(typeof (t.Errors.hint as Record<string, unknown>)[h]).toBe("string");
+      }
+    }
   });
 });

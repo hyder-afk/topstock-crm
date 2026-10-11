@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { RowSelectionState } from "@tanstack/react-table";
 import Link from "next/link";
@@ -21,7 +21,9 @@ import { LeadForm, emptyLead } from "@/components/leads/lead-form";
 import { LeadPreview } from "@/components/leads/lead-preview";
 import { LeadsTable } from "@/components/leads/leads-table";
 import { LeadsToolbar } from "@/components/leads/leads-toolbar";
-import { fetchLead, leadKey, rowBefore, useLeadChanges, useLeads } from "@/components/leads/use-leads";
+import { prefetchLead } from "@/components/activity/use-activities";
+import { saveListReturn } from "@/components/lead/lead-nav";
+import { rowBefore, useLeadChanges, useLeads } from "@/components/leads/use-leads";
 import {
   activeFilterCount,
   filtersToParams,
@@ -35,6 +37,7 @@ import {
   type TeamMember,
 } from "@/lib/leads";
 import type { SavedView } from "@/lib/leads-server";
+import { isTyping } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const columnsKey = "topstock.leads.hidden-columns";
@@ -144,15 +147,55 @@ export function LeadsWorkspace({
     },
     [activeId, navigate],
   );
+  // The full lead page (Day 4b): remembers this list's URL, query and scroll position for Back and J/K.
+  const router = useRouter();
+  const rememberList = useCallback(() => {
+    const scroll = document.querySelector<HTMLElement>("[data-leads-scroll]")?.scrollTop ?? 0;
+    saveListReturn({ url: urlFor(ui), key: filtersToParams(filters).toString(), scroll });
+  }, [ui, filters]);
+  const openPage = useCallback(
+    (id: string) => {
+      rememberList();
+      router.push(`/leads/${id}`);
+    },
+    [rememberList, router],
+  );
+  // Below desktop width a tap opens the lead page; on desktop the preview opens beside the list.
   const openLead = useCallback(
-    (id: string) => navigate({ filters, lead: id }, activeId ? "replace" : "push"),
-    [filters, activeId, navigate],
+    (id: string) => {
+      if (!window.matchMedia("(min-width: 1024px)").matches) openPage(id);
+      else navigate({ filters, lead: id }, activeId ? "replace" : "push");
+    },
+    [filters, activeId, navigate, openPage],
   );
   const closeLead = useCallback(() => navigate({ filters, lead: null }, "replace"), [filters, navigate]);
+  // Hover intent (120 ms on a row): the lead, its first timeline page and the lead page's code are fetched ahead.
+  const intent = useRef<number | null>(null);
   const prefetch = useCallback(
-    (id: string) => void queryClient.prefetchQuery({ queryKey: leadKey(id), queryFn: () => fetchLead(id), staleTime: 30_000 }),
-    [queryClient],
+    (id: string) => {
+      if (intent.current !== null) window.clearTimeout(intent.current);
+      intent.current = window.setTimeout(() => {
+        intent.current = null;
+        prefetchLead(queryClient, id);
+        router.prefetch(`/leads/${id}`);
+      }, 120);
+    },
+    [queryClient, router],
   );
+  useEffect(() => () => {
+    if (intent.current !== null) window.clearTimeout(intent.current);
+  }, []);
+  // O opens the lead shown in the preview as a full page (quiet while typing or in a dialog).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "o" || !activeId || event.defaultPrevented || event.isComposing) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target) || document.querySelector("[role=dialog]")) return;
+      event.preventDefault();
+      openPage(activeId);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeId, openPage]);
 
   const selectedRows = rows.filter((r) => rowSelection[r.id]);
   const before = selectedRows.map(rowBefore);
@@ -315,7 +358,7 @@ export function LeadsWorkspace({
           {activeId ? (
             // On phones the lead replaces the list: a short rise says "you went one level in" (desktop updates in place).
             <div key={activeId} className="max-lg:animate-page">
-              <LeadPreview id={activeId} team={team} canAssign={canAssign} onClose={closeLead} />
+              <LeadPreview id={activeId} team={team} canAssign={canAssign} onClose={closeLead} onOpenPage={rememberList} />
             </div>
           ) : (
             <div className="grid h-full place-items-center text-center">
