@@ -22,7 +22,8 @@ import { cn } from "@/lib/utils";
 // a note and Save to timeline (Cmd/Ctrl+Enter). Closing with nothing chosen says "Call not logged · Log it". After the
 // phone app took over (page hidden), coming back after 5 s or more asks "How did it go?" ("Away about 3 min": time
 // away, not the call's length). Digits 1 to 7 and 0 pick an outcome by key position (AZERTY-safe); U or Cmd/Ctrl+Z
-// undoes the last logged entry within 2 minutes when nobody is typing.
+// undoes the last logged entry within 2 minutes when nobody is typing. A second Call while the outcome step is open waits
+// behind the open call (nothing is dropped); closing puts the focus back on the Call button that opened the panel.
 export type CallTarget = {
   leadId: string;
   leadName: string;
@@ -68,21 +69,33 @@ function focusBack(opener: HTMLElement | null) {
   main.focus({ preventScroll: true });
 }
 
+const whoOf = (target: CallTarget) => (target.contactName ? `${target.leadName} · ${target.contactName}` : target.leadName);
+
+// `call` is the open panel; `next` is a call started while `call` still had its outcome step open; `nudge` counts those
+// presses so the open panel can pull the focus to itself.
+type Slot = { call: CallState | null; next: CallState | null; nudge: number };
+
 export function CallPanelProvider({ children }: { children: React.ReactNode }) {
-  const [call, setCall] = useState<CallState | null>(null);
+  const [{ call, next, nudge }, setSlot] = useState<Slot>({ call: null, next: null, nudge: 0 });
   const undo = useUndoActivity();
 
+  // A second Call never drops an open call silently (design 7.3): once End call was pressed (or "Call not logged" is
+  // showing), the open call keeps its outcome and note, and the new call waits behind it and opens when it is saved or
+  // not logged. While the first is still "Calling", nothing has been chosen yet and the new call replaces it.
   const startCall = useCallback((target: CallTarget, from?: HTMLElement | null) => {
     const rect = from?.getBoundingClientRect();
-    setCall({
+    const fresh: CallState = {
       target,
       startedAt: Date.now(),
       phase: "calling",
       awayMs: null,
       origin: rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null,
       opener: from ?? null,
-    });
+    };
+    setSlot((s) => (s.call && s.call.phase !== "calling" ? { ...s, next: fresh, nudge: s.nudge + 1 } : { ...s, call: fresh, next: null }));
   }, []);
+
+  const change = useCallback((c: CallState) => setSlot((s) => ({ ...s, call: c })), []);
 
   // U or Cmd/Ctrl+Z: undo the last entry this tab logged, within 2 minutes, when nobody is typing and no dialog is open.
   useEffect(() => {
@@ -104,12 +117,13 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
 
   // Closing (Save, Don't log, second close): focus goes back to the Call button before the panel unmounts, because the
   // exit animation keeps the focused element alive until it leaves and the focus would then drop to <body>.
+  // A waiting call opens next; the focus then goes to the Call button that started it.
   const close = useCallback(
     (restoreFocus: boolean) => {
-      if (restoreFocus) focusBack(call?.opener ?? null);
-      setCall(null);
+      if (restoreFocus) focusBack(next ? next.opener : (call?.opener ?? null));
+      setSlot((s) => ({ ...s, call: s.next, next: null }));
     },
-    [call?.opener],
+    [call?.opener, next],
   );
 
   const api = useMemo(() => ({ startCall, activeLeadId: call?.target.leadId ?? null }), [startCall, call?.target.leadId]);
@@ -117,7 +131,9 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
     <CallPanelContext.Provider value={api}>
       {children}
       <AnimatePresence>
-        {call ? <CallPanel key={call.startedAt} call={call} onChange={setCall} onClose={close} /> : null}
+        {call ? (
+          <CallPanel key={call.startedAt} call={call} onChange={change} onClose={close} queuedWho={next ? whoOf(next.target) : null} nudge={nudge} />
+        ) : null}
       </AnimatePresence>
     </CallPanelContext.Provider>
   );
@@ -134,7 +150,19 @@ function useClock(startedAt: number, running: boolean) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c: CallState) => void; onClose: (restoreFocus: boolean) => void }) {
+function CallPanel({
+  call,
+  onChange,
+  onClose,
+  queuedWho,
+  nudge,
+}: {
+  call: CallState;
+  onChange: (c: CallState) => void;
+  onClose: (restoreFocus: boolean) => void;
+  queuedWho: string | null;
+  nudge: number;
+}) {
   const t = useTranslations("CallPanel");
   const tOut = useTranslations("Outcomes");
   const reduce = useReducedMotion();
@@ -144,6 +172,8 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
   const panelRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<HTMLDivElement>(null);
   const logItRef = useRef<HTMLButtonElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const seenNudge = useRef(nudge);
   const hiddenAt = useRef<number | null>(null);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [note, setNote] = useState("");
@@ -210,6 +240,16 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
     if (phase === "notLogged" && focusWithin(panelRef.current)) logItRef.current?.focus();
   }, [phase]);
 
+  // Call was pressed again while this call waits for its outcome: bring the focus here, to what finishes it (Log it,
+  // Save, or the pad when nothing is picked yet). The waiting call is named above the timer.
+  useEffect(() => {
+    if (nudge === seenNudge.current) return;
+    seenNudge.current = nudge;
+    const firstKey = padRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? null;
+    const el = phase === "notLogged" ? logItRef.current : outcome ? saveRef.current : firstKey;
+    el?.focus();
+  }, [nudge, phase, outcome]);
+
   // The phone app takes over after tel: (page hidden). Back after 5 s or more: "How did it go?".
   useEffect(() => {
     const onVisibility = () => {
@@ -265,7 +305,7 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
   };
 
   const awayMinutes = call.awayMs ? Math.max(1, Math.round(call.awayMs / 60_000)) : null;
-  const who = target.contactName ? `${target.leadName} · ${target.contactName}` : target.leadName;
+  const who = whoOf(target);
 
   return (
     <motion.section
@@ -313,6 +353,9 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
       </motion.div>
 
       <div className="flex flex-col gap-3 px-5 pt-1">
+        <p role="status" className="text-sm font-bold text-pretty empty:hidden">
+          {queuedWho ? t("queued", { who: queuedWho }) : null}
+        </p>
         <div className="flex items-baseline justify-between gap-3">
           <span role="timer" className="font-mono text-3xl tabular-nums" aria-label={t("timer")}>
             {clock}
@@ -370,7 +413,7 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
               <span className="text-sm font-bold">{t("note")}</span>
               <Textarea name="note" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} maxRows={6} className="min-h-16 text-sm" dir="auto" />
             </label>
-            <Button type="submit" variant="neutral" width="full" aria-disabled={!ready || undefined} disabled={!outcome}>
+            <Button ref={saveRef} type="submit" variant="neutral" width="full" aria-disabled={!ready || undefined} disabled={!outcome}>
               {saving ? t("saving") : outcome === "do_not_contact" ? tOut("confirmDncAction") : t("save")}
               <span className="ml-1 hidden gap-1 sm:inline-flex" aria-hidden="true">
                 <Kbd className="border-transparent bg-primary-foreground/15 text-primary-foreground">{mod}</Kbd>

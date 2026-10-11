@@ -758,7 +758,8 @@
     "discard": "Don’t log",
     "note": "Note",
     "saving": "Saving…",
-    "save": "Save to timeline"
+    "save": "Save to timeline",
+    "queued": "Finish logging this call first. The call to {who} opens next."
   },
   "Composer": {
     "label": "Log activity",

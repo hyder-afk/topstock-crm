@@ -276,6 +276,55 @@ test("call_panel_survives_navigation, then undo_within_window puts the lead back
   await context.close();
 });
 
+test("call_panel_focus_returns (WCAG 2.4.3) and second_call_waits_for_the_open_one", async ({ browser }) => {
+  const lead = makeLead("Comptoir Double");
+  addContact(lead, "Ines", "06 11 22 33 44", null);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead);
+  const call = page.getByRole("link", { name: "Call", exact: true }).first();
+  const callInes = page.getByRole("link", { name: "Call Ines Test" }).first();
+  const save = panel(page).getByRole("button", { name: /^Save to timeline/ });
+  // Keyboard: End call puts the focus on the pad, Esc on "Call not logged" puts it on Log it, a second Esc closes the
+  // panel and the focus is back on the Call button (not on <body>).
+  await call.focus();
+  await page.keyboard.press("Enter");
+  await panel(page).getByRole("button", { name: "End call" }).click();
+  await expect(panel(page).locator("[data-outcome]").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(panel(page).getByRole("button", { name: "Log it" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(panel(page)).toHaveCount(0);
+  await expect(call).toBeFocused();
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("0");
+  // A second Call while the first has an outcome and a note: the first stays (nothing lost), names the waiting call and
+  // takes the focus; saving it opens the waiting call, and the focus goes back to the button that started that one.
+  await call.click();
+  await panel(page).getByRole("button", { name: "End call" }).click();
+  await page.keyboard.press("Digit2");
+  await panel(page).getByLabel("Note").fill("Asked for the spring price list");
+  await callInes.click();
+  await expect(panel(page)).toHaveCount(1);
+  await expect(panel(page)).toContainText("Finish logging this call first. The call to Comptoir Double · Ines Test opens next.");
+  await expect(panel(page).locator('[data-outcome="voicemail"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(panel(page).getByLabel("Note")).toHaveValue("Asked for the spring price list");
+  await expect(save).toBeFocused();
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(() => latest(lead)).toBe("call:voicemail");
+  expect(sql(`select body from public.activities where company_id = '${lead}'`)).toBe("Asked for the spring price list");
+  await expect(panel(page)).toHaveCount(1);
+  await expect(panel(page)).toContainText("Calling Comptoir Double · Ines Test");
+  await expect(callInes).toBeFocused();
+  await panel(page).getByRole("button", { name: "End call" }).click();
+  await page.keyboard.press("Digit1");
+  await page.keyboard.press("Control+Enter");
+  await expect(panel(page)).toHaveCount(0);
+  await expect.poll(() => latest(lead)).toBe("call:no_answer");
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}' and contact_id is not null`)).toBe("1");
+  await expect(callInes).toBeFocused();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("phone_return_how_did_it_go: back from the phone app after 5 s asks how it went", async ({ browser }) => {
   const lead = makeLead("Brasserie du Retour");
   const { context, page, errors } = await open(browser, adminState, { width: 390 });
