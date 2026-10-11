@@ -291,6 +291,9 @@ function VirtualEntryList({
     scrollMargin: margin,
     getItemKey: (i) => entries[i].id,
     rangeExtractor,
+    // Measure rows on the next frame: measuring inside the ResizeObserver callback changes their size in the same frame,
+    // which Safari reports as "ResizeObserver loop completed with undelivered notifications".
+    useAnimationFrameWithResizeObserver: true,
     // Scrolling moves the rows and sizes the list directly in the page; React draws only when the visible range changes.
     directDomUpdates: true,
     // top, not translate3d: one compositor layer per row made each frame's layer work grow with the rows drawn.
