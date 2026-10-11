@@ -157,20 +157,51 @@ export function isOpen(key: string, at: Date, skipLunch = false): boolean {
 export function nextOpening(key: string, at: Date, skipLunch = false): Date | null {
   if (isOpen(key, at, skipLunch)) return null;
   const step = 15 * 60_000;
-  let t = Math.ceil(at.getTime() / step) * step;
-  for (let i = 0; i < 8 * 96; i++, t += step) {
-    if (isOpen(key, new Date(t), skipLunch)) return new Date(t);
+  const start = at.getTime();
+  const end = start + 8 * 24 * 60 * 60_000;
+  const zones = spanEnds(key) ?? [key];
+  let t = Math.ceil(start / step) * step;
+  // Closed stretches are skipped in one jump (to the zone's next midnight, 05:00, the opening hour or the end of lunch)
+  // instead of 15 minutes at a time: the walk read the clock up to 768 times, about 30 ms at 4x CPU on a weekend.
+  while (t <= end) {
+    if (isOpen(key, new Date(t), skipLunch)) {
+      // A jump can overshoot by a daylight-saving hour: step back while the quarter before is open too.
+      while (t - step > start && isOpen(key, new Date(t - step), skipLunch)) t -= step;
+      return new Date(t);
+    }
+    let skip = 0;
+    for (const zone of zones) {
+      const p = localParts(zone, new Date(t));
+      const minutes =
+        !(CALL_WINDOW.weekdays as readonly number[]).includes(p.weekday) || p.minutes >= CALL_WINDOW.end
+          ? 1440 - p.minutes
+          : p.minutes < 300
+            ? 300 - p.minutes
+            : p.minutes < CALL_WINDOW.start
+              ? CALL_WINDOW.start - p.minutes
+              : skipLunch && zones.length === 1 && zone.startsWith("Europe/") && p.minutes >= CALL_WINDOW.lunch[0] && p.minutes < CALL_WINDOW.lunch[1]
+                ? CALL_WINDOW.lunch[1] - p.minutes
+                : 0;
+      skip = Math.max(skip, minutes);
+    }
+    t += Math.max(step, Math.floor((skip * 60_000) / step) * step);
   }
   return null;
 }
 
-/** The zone this browser is in (null when unknown). */
+/**
+ * The zone this browser is in (null when unknown). Worked out once per page load: it is read on every render of the
+ * timeline and the composer, and building an Intl.DateTimeFormat each time cost about 0.4 ms at 4x CPU.
+ */
+let zoneOnce: string | null | undefined;
 export function browserZone(): string | null {
+  if (zoneOnce !== undefined) return zoneOnce;
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    zoneOnce = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
   } catch {
-    return null;
+    zoneOnce = null;
   }
+  return zoneOnce;
 }
 
 /** The zone's own name in this language ("heure : Royaume-Uni", "Pacific Time"), or the IANA id when Intl has none. */

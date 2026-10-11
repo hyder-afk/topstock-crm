@@ -138,3 +138,32 @@ test("a time that happens twice is read as standard time, as PostgreSQL does", (
   expect(zonedInstant("2026-03-29", "09:00", "Europe/Paris").toISOString()).toBe("2026-03-29T07:00:00.000Z");
   expect(zonedInstant("2026-10-12", "09:00", "Asia/Kathmandu").toISOString()).toBe("2026-10-12T03:15:00.000Z");
 });
+
+// nextOpening skips closed stretches in jumps; it must answer exactly what the plain 15-minute walk answers. Every
+// 37 minutes over the four weeks around the 2026 clock changes (EU 29 Mar and 25 Oct, US 8 Mar and 1 Nov), for plain
+// zones (whole-hour, half-hour and 45-minute offsets, both hemispheres), a span, and the lunch switch.
+function walk(key: string, at: Date, skipLunch: boolean): Date | null {
+  if (isOpen(key, at, skipLunch)) return null;
+  const step = 15 * 60_000;
+  let t = Math.ceil(at.getTime() / step) * step;
+  for (let i = 0; i < 8 * 96; i++, t += step) if (isOpen(key, new Date(t), skipLunch)) return new Date(t);
+  return null;
+}
+
+test("nextOpening with jumps agrees with the 15-minute walk around every 2026 clock change", () => {
+  const zones = ["Europe/Paris", "America/New_York", "Asia/Kolkata", "Asia/Kathmandu", "Australia/Adelaide", "America/Santiago"];
+  const span = ["US", "CA", "AU", "BR"].map((c) => callZone(null, c)).find((k) => spanEnds(k));
+  expect(span, "a country called on a span").toBeTruthy();
+  const keys = [...zones, span as string];
+  for (const week of ["2026-03-05T00:00:00Z", "2026-03-26T00:00:00Z", "2026-10-22T00:00:00Z", "2026-10-29T00:00:00Z"]) {
+    for (let at = Date.parse(week); at < Date.parse(week) + 7 * 86_400_000; at += 37 * 60_000) {
+      for (const key of keys) {
+        for (const lunch of key.startsWith("Europe/") ? [false, true] : [false]) {
+          expect(nextOpening(key, new Date(at), lunch)?.toISOString() ?? null, `${key} ${new Date(at).toISOString()} lunch ${lunch}`).toBe(
+            walk(key, new Date(at), lunch)?.toISOString() ?? null,
+          );
+        }
+      }
+    }
+  }
+});

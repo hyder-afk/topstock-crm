@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Activity, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -10,7 +10,7 @@ import { useStepUp } from "@/components/auth/step-up-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
-import { TabList, TabPanel } from "@/components/ui/tabs";
+import { TabList, TabPanel, panelId } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shell/empty-state";
 import { Composer, type ComposerMode } from "@/components/activity/composer";
 import { EntryList, Timeline } from "@/components/activity/timeline";
@@ -32,6 +32,9 @@ import type { LeadTask } from "@/lib/tasks";
 // step with the open tasks leads Summary). 390: a back link, the header stacked, five equal actions, the tabs as a
 // sideways strip; the contacts fold into Summary and the composer opens as a sheet. J and K move to the next or previous lead of the list it was
 // opened from; Back returns to that list where it was. Files stays hidden until Day 4d (design D16).
+// Each tab's panel sits in a React Activity boundary: the selected one is shown, the others are drawn in the background
+// at low priority (hidden, effects off), so a tab switch only reveals a panel that is ready (design 8.6: 100 ms), and a
+// panel keeps its state (scroll in the timeline, a half-typed detail) when the reader comes back to it.
 
 const wide = "(min-width: 1024px)";
 const noopSubscribe = () => () => {};
@@ -39,6 +42,17 @@ function subscribeWide(cb: () => void) {
   const mq = window.matchMedia(wide);
   mq.addEventListener("change", cb);
   return () => mq.removeEventListener("change", cb);
+}
+
+// The lead as the leads list's change helpers expect it (for their optimistic update and Undo).
+function beforeOf(lead: LeadDetail) {
+  return rowBefore({
+    id: lead.id,
+    lead_status: lead.lead_status,
+    owner_id: lead.owner?.id ?? null,
+    owner_first_name: lead.owner?.first_name ?? null,
+    owner_last_name: lead.owner?.last_name ?? null,
+  });
 }
 
 export function LeadPage({
@@ -62,6 +76,7 @@ export function LeadPage({
 }) {
   const t = useTranslations("LeadPage");
   const tLeads = useTranslations("Leads");
+  const tTimeline = useTranslations("Timeline");
   const format = useFormatter();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -69,7 +84,10 @@ export function LeadPage({
   const leadQuery = useQuery({ queryKey: leadKey(id), queryFn: () => fetchLead(id), initialData: initialLead });
   const lead = leadQuery.data;
   const timeline = useTimeline(id, "all", initialTimeline);
-  const stepUp = useStepUp(stepUpSeconds, "bodyDelete");
+  const stepUpHook = useStepUp(stepUpSeconds, "bodyDelete");
+  // The same object between renders, so the memoised timeline rows do not draw again when the page does.
+  const { ensureFresh, requireFresh } = stepUpHook;
+  const stepUp = useMemo(() => ({ ensureFresh, requireFresh }), [ensureFresh, requireFresh]);
   const { changeStatus, changeOwner } = useLeadChanges(team);
   const isWide = useSyncExternalStore(subscribeWide, () => window.matchMedia(wide).matches, () => true);
   const [tab, setTabState] = useState<LeadTab>(initialTab);
@@ -77,7 +95,6 @@ export function LeadPage({
   const [sheet, setSheet] = useState(false);
   const [nav, setNav] = useState<ReturnType<typeof listNeighbours>>(null);
   const [backUrl, setBackUrl] = useState("/leads");
-  const panelRef = useRef<HTMLDivElement>(null);
   const canAssign = me.role === "admin" || me.role === "manager";
 
   // The list this lead was opened from (this tab only): Back, J/K and "3 of 1,204". Read once in the browser (storage
@@ -107,13 +124,13 @@ export function LeadPage({
       setTab("details");
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
-          const panel = panelRef.current;
+          const panel = document.getElementById(panelId(`lead-${id}`, "details"));
           const el = focus === "country" ? panel?.querySelector<HTMLElement>("select[name=country]") : focus ? panel?.querySelector<HTMLElement>(`[data-focus=${focus}]`) : null;
-          (el ?? panel?.querySelector<HTMLElement>("[role=tabpanel]"))?.focus();
+          (el ?? panel)?.focus();
         }),
       );
     },
-    [setTab],
+    [setTab, id],
   );
 
   const openComposer = useCallback(
@@ -123,6 +140,14 @@ export function LeadPage({
     },
     [],
   );
+
+  const showNext = useCallback(() => showDetails("next"), [showDetails]);
+  const closeSheet = useCallback(() => setSheet(false), []);
+  const onStatus = useCallback(
+    (status: LeadStatus, returnAt: string | null) => void (lead && changeStatus([beforeOf(lead)], status, returnAt)),
+    [changeStatus, lead],
+  );
+  const onOwner = useCallback((ownerId: string | null) => void (lead && changeOwner([beforeOf(lead)], ownerId)), [changeOwner, lead]);
 
   // J and K: the next and previous lead of the same list (quiet while typing, in a dialog, or with a modifier).
   useEffect(() => {
@@ -151,17 +176,11 @@ export function LeadPage({
   }
 
   const entries = timeline.data?.pages[0]?.entries ?? [];
+  const recent = entries.slice(0, 3);
   const latestCall = entries.find((e) => e.type === "call" && !e.pending) ?? null;
   const dncEntry = entries.find((e) => e.outcome === "do_not_contact") ?? null;
   const dnc = lead.lead_status === "do_not_contact";
   const ownerName = lead.owner ? personName(lead.owner) || tLeads("noName") : null;
-  const before = rowBefore({
-    id: lead.id,
-    lead_status: lead.lead_status,
-    owner_id: lead.owner?.id ?? null,
-    owner_first_name: lead.owner?.first_name ?? null,
-    owner_last_name: lead.owner?.last_name ?? null,
-  });
   const tabs = LEAD_TABS.map((tabId) => ({ id: tabId, label: t(`tabs.${tabId}`) }));
   const prefetchTab = (tabId: LeadTab) => {
     if (tabId === "timeline") {
@@ -227,8 +246,8 @@ export function LeadPage({
           team={team}
           canAssign={canAssign}
           latestCall={latestCall}
-          onStatus={(status: LeadStatus, returnAt) => void changeStatus([before], status, returnAt)}
-          onOwner={(ownerId) => void changeOwner([before], ownerId)}
+          onStatus={onStatus}
+          onOwner={onOwner}
           onShowDetails={showDetails}
         />
         {dnc ? (
@@ -245,7 +264,7 @@ export function LeadPage({
           </div>
         ) : (
           <div className="xl:shrink-0">
-            <QuickActions lead={lead} onComposer={openComposer} onShowDetails={() => showDetails("next")} />
+            <QuickActions lead={lead} onComposer={openComposer} onShowDetails={showNext} />
           </div>
         )}
       </div>
@@ -266,46 +285,63 @@ export function LeadPage({
       <TabList items={tabs} value={tab} onChange={setTab} onIntent={prefetchTab} label={t("tabsLabel")} idBase={`lead-${id}`} />
 
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-        <div ref={panelRef} className="min-w-0">
-          <TabPanel idBase={`lead-${id}`} id={tab} className="flex min-w-0 flex-col gap-4">
-            {tab === "summary" ? (
-              <>
-                <NextStepCard lead={lead} initialTasks={initialTasks} onChangeNext={() => showDetails("next")} />
-                <div className="flex flex-col gap-4 lg:hidden">
-                  <ContactsCard lead={lead} readOnlyContact={false} />
-                </div>
-                <Card
-                  title={t("recent")}
-                  action={
-                    entries.length > 0 ? (
-                      <Button variant="link" className="min-h-9 text-sm" onClick={() => setTab("timeline")}>
-                        {t("seeTimeline")}
-                      </Button>
-                    ) : null
-                  }
-                >
-                  {timeline.isPending ? (
-                    <div aria-hidden="true" className="h-20 rounded-md bg-muted motion-safe:animate-pulse" />
-                  ) : entries.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">{t("noEntries")}</p>
-                  ) : (
-                    <EntryList entries={entries.slice(0, 3)} leadId={id} me={me} stepUp={stepUp} grouped={false} compact />
-                  )}
-                </Card>
-                <Card title={t("tabs.deals")}>
-                  <p className="text-sm text-muted-foreground">{t("dealsEmpty")}</p>
-                </Card>
-              </>
-            ) : tab === "timeline" ? (
+        <div className="min-w-0">
+          <Activity mode={tab === "summary" ? "visible" : "hidden"}>
+            <TabPanel idBase={`lead-${id}`} id="summary" className="flex min-w-0 flex-col gap-4">
+              <NextStepCard lead={lead} initialTasks={initialTasks} onChangeNext={showNext} />
+              <div className="flex flex-col gap-4 lg:hidden">
+                <ContactsCard lead={lead} readOnlyContact={false} />
+              </div>
+              <Card
+                title={t("recent")}
+                action={
+                  entries.length > 0 ? (
+                    <Button variant="link" className="min-h-9 text-sm" onClick={() => setTab("timeline")}>
+                      {t("seeTimeline")}
+                    </Button>
+                  ) : null
+                }
+              >
+                {timeline.isPending ? (
+                  <div aria-hidden="true" className="h-20 rounded-md bg-muted motion-safe:animate-pulse" />
+                ) : timeline.isError && entries.length === 0 ? (
+                  <div role="alert" className="flex flex-col items-start gap-2">
+                    <p className="text-sm font-bold">{tTimeline("error")}</p>
+                    <Button variant="quiet" onClick={() => void timeline.refetch()}>
+                      {tTimeline("retry")}
+                    </Button>
+                  </div>
+                ) : entries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t("noEntries")}</p>
+                ) : (
+                  <EntryList entries={recent} leadId={id} me={me} stepUp={stepUp} grouped={false} compact />
+                )}
+              </Card>
+              <Card title={t("tabs.deals")}>
+                <p className="text-sm text-muted-foreground">{t("dealsEmpty")}</p>
+              </Card>
+            </TabPanel>
+          </Activity>
+          <Activity mode={tab === "timeline" ? "visible" : "hidden"}>
+            <TabPanel idBase={`lead-${id}`} id="timeline" className="flex min-w-0 flex-col gap-4">
               <Timeline leadId={id} initial={initialTimeline} initialFilter={initialFilter} me={me} stepUp={stepUp} />
-            ) : tab === "deals" ? (
+            </TabPanel>
+          </Activity>
+          <Activity mode={tab === "deals" ? "visible" : "hidden"}>
+            <TabPanel idBase={`lead-${id}`} id="deals" className="flex min-w-0 flex-col gap-4">
               <EmptyState icon={Handshake} title={t("dealsTitle")} body={t("dealsEmpty")} />
-            ) : tab === "stock" ? (
+            </TabPanel>
+          </Activity>
+          <Activity mode={tab === "stock" ? "visible" : "hidden"}>
+            <TabPanel idBase={`lead-${id}`} id="stock" className="flex min-w-0 flex-col gap-4">
               <EmptyState icon={Package} title={t("stockTitle")} body={t("stockEmpty")} />
-            ) : (
+            </TabPanel>
+          </Activity>
+          <Activity mode={tab === "details" ? "visible" : "hidden"}>
+            <TabPanel idBase={`lead-${id}`} id="details" className="flex min-w-0 flex-col gap-4">
               <DetailsTab lead={lead} team={team} canAssign={canAssign} />
-            )}
-          </TabPanel>
+            </TabPanel>
+          </Activity>
         </div>
         <aside aria-label={t("railLabel")} className="hidden min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:flex">
           {/* One composer at a time (it holds the draft): the rail's from desktop width, the sheet's below. */}
@@ -320,11 +356,11 @@ export function LeadPage({
           <div className="flex flex-col gap-4 p-5 sm:p-6">
             <DialogTitle className="text-xl font-bold">{t("composerTitle")}</DialogTitle>
             <DialogDescription className="sr-only">{t("composerBody", { lead: lead.name })}</DialogDescription>
-            <Composer lead={lead} mode={mode} onSaved={() => setSheet(false)} />
+            <Composer lead={lead} mode={mode} onSaved={closeSheet} />
           </div>
         </DialogContent>
       </Dialog>
-      {stepUp.dialog}
+      {stepUpHook.dialog}
     </div>
   );
 }

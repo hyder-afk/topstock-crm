@@ -1,5 +1,7 @@
 "use client";
 
+import { memo } from "react";
+
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { Building2, ChevronDown } from "lucide-react";
 import {
@@ -19,7 +21,8 @@ import type { TimelineEntry } from "@/lib/activities";
 // The lead page header (Day 4 design 7.1): a 44 px tile, the name (h1, wraps), the status (a menu for people who may
 // change the lead), the owner (a menu for managers and admins); then city · country · the lead's local time; then the
 // next call, the latest call outcome and the tries in a row without reaching anyone.
-export function LeadHeader({
+// Memoised: the lead page draws again on every tab switch (design 8.6: 100 ms).
+export const LeadHeader = memo(function LeadHeader({
   lead,
   team,
   canAssign,
@@ -106,4 +109,4 @@ export function LeadHeader({
       </div>
     </div>
   );
-}
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useSyncExternalStore } from "react";
+import { memo, useId, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,7 +23,8 @@ import { addDays, localDate, primaryZone, spanEnds, zoneChoices, zoneCity, zoneN
 // admins, the import it came from; the contacts.
 const noopSubscribe = () => () => {};
 
-export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: TeamMember[]; canAssign: boolean }) {
+// Memoised: the lead page draws again on every tab switch (design 8.6: 100 ms).
+export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: TeamMember[]; canAssign: boolean }) {
   const t = useTranslations("LeadPage.details");
   const tPreview = useTranslations("Leads.preview");
   const tForm = useTranslations("Leads.form");
@@ -251,4 +252,4 @@ export function DetailsTab({ lead, team, canAssign }: { lead: LeadDetail; team: 
       </div>
     </div>
   );
-}
+});

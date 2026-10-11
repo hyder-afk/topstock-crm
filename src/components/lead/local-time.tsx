@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { browserZone, isOpen, localDate, nextOpening, spanEnds } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
@@ -8,18 +8,49 @@ import { cn } from "@/lib/utils";
 const noop = () => () => {};
 
 // The browser's clock, refreshed every 30 s (not announced: it is not a live region, design 7.9). Null on the server and
-// during hydration, so the server and the first browser render agree.
+// during hydration, so the server and the first browser render agree. One shared clock per interval, read as an external
+// store: a part drawn for the first time in the browser (a tab prepared in a hidden Activity boundary) has the time at
+// once, and showing it again draws nothing new unless the clock moved on.
+type Clock = { subscribe: (listener: () => void) => () => void; snapshot: () => Date };
+const clocks = new Map<number, Clock>();
+const serverNow = () => null;
+
+function clockFor(intervalMs: number): Clock {
+  const found = clocks.get(intervalMs);
+  if (found) return found;
+  let now = new Date();
+  let timer: number | null = null;
+  const listeners = new Set<() => void>();
+  const clock: Clock = {
+    subscribe: (listener) => {
+      listeners.add(listener);
+      if (timer === null) {
+        timer = window.setInterval(() => {
+          now = new Date();
+          listeners.forEach((l) => l());
+        }, intervalMs);
+      }
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && timer !== null) {
+          window.clearInterval(timer);
+          timer = null;
+        }
+      };
+    },
+    snapshot: () => {
+      // Nobody listened for a while (no timer ran): the time is brought up to date before it is read.
+      if (timer === null && Date.now() - now.getTime() >= intervalMs) now = new Date();
+      return now;
+    },
+  };
+  clocks.set(intervalMs, clock);
+  return clock;
+}
+
 export function useClientNow(intervalMs = 30_000): Date | null {
-  const mounted = useSyncExternalStore(noop, () => true, () => false);
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    if (!mounted) return;
-    const tick = () => setNow(new Date());
-    tick();
-    const timer = window.setInterval(tick, intervalMs);
-    return () => window.clearInterval(timer);
-  }, [mounted, intervalMs]);
-  return now;
+  const clock = clockFor(intervalMs);
+  return useSyncExternalStore(clock.subscribe, clock.snapshot, serverNow);
 }
 
 /**

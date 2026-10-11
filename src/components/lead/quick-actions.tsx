@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { CalendarPlus, Mail, MessageCircle, NotebookPen, Phone, X } from "lucide-react";
 import { useCallPanel } from "@/components/activity/call-panel";
@@ -24,7 +24,8 @@ const item =
 const circle =
   "grid size-12 place-items-center rounded-full bg-muted text-foreground sm:size-auto sm:rounded-none sm:bg-transparent";
 
-export function QuickActions({
+// Memoised: the lead page draws again on every tab switch (design 8.6: 100 ms).
+export const QuickActions = memo(function QuickActions({
   lead,
   onComposer,
   onShowDetails,
@@ -181,4 +182,4 @@ export function QuickActions({
       ) : null}
     </div>
   );
-}
+});

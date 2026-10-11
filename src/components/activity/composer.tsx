@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,8 @@ function subscribeOnline(cb: () => void) {
   };
 }
 
-export function Composer({ lead, mode, autoFocus = false, onSaved }: { lead: LeadDetail; mode: ComposerMode | null; autoFocus?: boolean; onSaved?: () => void }) {
+// Memoised: the lead page draws again on every tab switch (design 8.6: 100 ms).
+export const Composer = memo(function Composer({ lead, mode, autoFocus = false, onSaved }: { lead: LeadDetail; mode: ComposerMode | null; autoFocus?: boolean; onSaved?: () => void }) {
   const t = useTranslations("Composer");
   const tOut = useTranslations("Outcomes");
   const mod = useModKey() ?? "Ctrl";
@@ -444,4 +445,4 @@ export function Composer({ lead, mode, autoFocus = false, onSaved }: { lead: Lea
       </div>
     </form>
   );
-}
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { springs } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,15 @@ export function TabList<T extends string>({
 }) {
   const reduce = useReducedMotion();
   const refs = useRef(new Map<T, HTMLButtonElement>());
+  // The pill follows the selected tab one frame later: the click's own frame only shows the new panel, and Motion
+  // measures the tabs for the slide once that layout is done (measuring in the same frame doubled the page's layout
+  // work; design 8.6 gives a tab switch 100 ms).
+  const [pill, setPill] = useState(value);
+  useEffect(() => {
+    if (pill === value) return;
+    const frame = requestAnimationFrame(() => setPill(value));
+    return () => cancelAnimationFrame(frame);
+  }, [pill, value]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const index = items.findIndex((i) => i.id === value);
@@ -86,7 +95,7 @@ export function TabList<T extends string>({
                 "focus-visible:outline-offset-[-2px]",
               )}
             >
-              {selected ? (
+              {item.id === pill ? (
                 <motion.span
                   layoutId="pill"
                   aria-hidden="true"
