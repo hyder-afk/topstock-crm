@@ -309,16 +309,24 @@ test("call_panel_focus_returns (WCAG 2.4.3) and second_call_waits_for_the_open_o
   await expect(panel(page).getByLabel("Note")).toHaveValue("Asked for the spring price list");
   await expect(save).toBeFocused();
   await page.keyboard.press("Control+Enter");
+  // Keys pressed at once, while the saved panel still plays its exit animation, reach only the call that opened next:
+  // Cmd/Ctrl+Enter does not log the saved call twice, and Esc says "Call not logged" for the new call instead of bringing
+  // the saved one back.
+  await expect(page.getByRole("heading", { name: "Calling Comptoir Double · Ines Test" })).toBeVisible();
+  await page.keyboard.press("Control+Enter");
+  await page.keyboard.press("Escape");
   await expect.poll(() => latest(lead)).toBe("call:voicemail");
   expect(sql(`select body from public.activities where company_id = '${lead}'`)).toBe("Asked for the spring price list");
   await expect(panel(page)).toHaveCount(1);
   await expect(panel(page)).toContainText("Calling Comptoir Double · Ines Test");
+  await expect(panel(page)).toContainText("Call not logged.");
   await expect(callInes).toBeFocused();
-  await panel(page).getByRole("button", { name: "End call" }).click();
+  await panel(page).getByRole("button", { name: "Log it" }).click();
   await page.keyboard.press("Digit1");
   await page.keyboard.press("Control+Enter");
   await expect(panel(page)).toHaveCount(0);
   await expect.poll(() => latest(lead)).toBe("call:no_answer");
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("2");
   expect(sql(`select count(*) from public.activities where company_id = '${lead}' and contact_id is not null`)).toBe("1");
   await expect(callInes).toBeFocused();
   expect(errors).toEqual([]);
