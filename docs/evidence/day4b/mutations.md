@@ -1,5 +1,48 @@
 # Day 4b: every protection removed one at a time, 11 Oct 2026
 
+## Review round: undo into a due Cool off lead (finding 1, 11 Oct)
+
+Undo of an outcome on a Cool off lead whose return date had come put the lead back in Cool off for 90 more days:
+`lead_guard` rule 5 treated the restored past date like an old retry date. Rule 5 now replaces, on an update, only an
+empty date or a past date the statement leaves unchanged; a past date the statement writes (undo) is kept, and
+`bulk_update_leads` refuses a return date that is not in the future (hint `bounds`). Tests: `outcome_attack.sql` 6b
+(Interested, Book meeting and Do not contact on a due Cool off lead, then undo: same status and date), section 12 (bulk
+with a past date and with now(); a new Cool off lead with a past date still gets 90 days).
+
+The day4b set now has 93 rows. Rows 8 and 45 edit the new condition; 91 to 93 are new. Run in a throwaway worktree on
+**fd6be15** (rows 8, 45, 46, 91, 92, 93 only): **6 of 6 caught**, 0 not as listed.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 8 | Lead guard: no Cool off default | caught | FAIL: Cool off with a past retry date would come back at once |
+| 45 | Lead guard: Cool off default only without a date (a past retry date brings the lead back at once: the design's literal rule) | caught | FAIL: Cool off with a past retry date would come back at once |
+| 46 | Lead guard: Cool off default on every update of a Cool off lead (its date cannot be cleared) | caught | FAIL: undo of interested on a due Cool off lead |
+| 91 | Lead guard: a past date the statement writes is replaced on entering Cool off (undo of a due Cool off lead: +90 days) | caught | FAIL: undo of interested on a due Cool off lead |
+| 92 | bulk_update_leads: a return date that is not in the future accepted | caught | FAIL: "select public.bulk_update_leads(..., 'cool_off', false, null, <yesterday>)" succeeded, expected 22023 |
+| 93 | Lead guard: a new Cool off lead keeps a past date (an imported old retry date brings it back at once) | caught | FAIL: a new Cool off lead with a past date would come back at once |
+
+## Review round 2: the undo answer after Cool off's default (verifier note 3, 11 Oct)
+
+`undo_activity` worked out `restored.next_action_at` before its update. On a Cool off lead whose date had been cleared,
+an outcome then Undo puts back Cool off with an empty date, `lead_guard` rule 5 gives it +90 days, and the answer still
+said the date was restored. The update now returns the stored date, and the flag is true only when that date is the one
+put back. Test: `outcome_attack.sql` 6c (status Cool off, date now()+90 days, `restored.status` true,
+`restored.next_action_at` false, `lead.next_action_at` the stored date). With the line removed, 6c fails with
+`restored.next_action_at: true` and a +90-day date.
+
+The day4b set now has 94 rows; 94 is new. Run in a throwaway worktree on **44d90e6** (rows 8, 45, 46, 91 to 94):
+**7 of 7 caught**, 0 not as listed.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 8 | Lead guard: no Cool off default | caught | FAIL: undo into Cool off with no date: (cool_off, <NULL>), answer {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status |
+| 45 | Lead guard: Cool off default only without a date (a past retry date brings the lead back at once: the design's literal rule) | caught | FAIL: Cool off with a past retry date would come back at once |
+| 46 | Lead guard: Cool off default on every update of a Cool off lead (its date cannot be cleared) | caught | FAIL: undo of interested on a due Cool off lead: (cool_off, 2027-01-09 20:10:01.909746+00), answer {"lead": {"owner_id": "00000000-0000-0000 |
+| 91 | Lead guard: a past date the statement writes is replaced on entering Cool off (undo of a due Cool off lead: +90 days) | caught | FAIL: undo of interested on a due Cool off lead: (cool_off, 2027-01-09 20:10:29.628342+00), answer {"lead": {"owner_id": "00000000-0000-0000 |
+| 92 | bulk_update_leads: a return date that is not in the future accepted | caught | FAIL: "select public.bulk_update_leads(array['ac825915-1444-4b7e-8f66-089eb5f6bc2e']::uuid[], 'cool_off', false, null, '2026-10-10 20:10:57. |
+| 93 | Lead guard: a new Cool off lead keeps a past date (an imported old retry date brings it back at once) | caught | FAIL: a new Cool off lead with a past date would come back at once |
+| 94 | undo_activity: restored.next_action_at claimed when lead_guard gave the empty Cool off date +90 days | caught | FAIL: undo into Cool off with no date: (cool_off, 2027-01-09 20:11:53.579115+00), answer {"lead": {"owner_id": "00000000-0000-0000-0000-0000 |
+
 ## Re-run after merging `main` (PR #13) and the lock changes (11 Oct, evening)
 
 After `origin/main` (Day 4a as merged, 1004fa5) was merged into this branch (2585163), and `log_activity` and the insert

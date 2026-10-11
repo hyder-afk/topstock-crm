@@ -453,8 +453,8 @@ MUTATIONS_4B = [
     ("Lead guard: next call bound checked even when unchanged (overdue or far leads stuck)",
      [("     and (tg_op = 'INSERT' or new.next_action_at is distinct from old.next_action_at)\n", "")]),
     ("Lead guard: no Cool off default",
-     [("     and (new.next_action_at is null or new.next_action_at <= now()) then\n    new.next_action_at := now() + interval '90 days';",
-       "     and (new.next_action_at is null or new.next_action_at <= now()) then\n    null;")]),
+     [("              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then\n    new.next_action_at := now() + interval '90 days';",
+       "              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then\n    null;")]),
     ("Activities: request id index not unique (Day 4a migration)",
      [(MIG_4A, "create unique index activities_author_request_idx", "create index activities_author_request_idx")]),
     ("Timeline keyset: <= instead of < (an entry repeated across pages)",
@@ -558,7 +558,9 @@ MUTATIONS_4B = [
     ("Contact guard trigger dropped",
      [("create trigger contact_guard before update on public.contacts\n  for each row execute function private.contact_guard();", "")]),
     ("Lead guard: Cool off default only without a date (a past retry date brings the lead back at once: the design's literal rule)",
-     [("     and (new.next_action_at is null or new.next_action_at <= now()) then", "     and new.next_action_at is null then")]),
+     [("     and (new.next_action_at is null\n          or (new.next_action_at <= now()\n"
+       "              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then",
+       "     and new.next_action_at is null then")]),
     ("Lead guard: Cool off default on every update of a Cool off lead (its date cannot be cleared)",
      [("  if new.lead_status = 'cool_off' and (tg_op = 'INSERT' or old.lead_status is distinct from 'cool_off')", "  if new.lead_status = 'cool_off'")]),
     ("Audit: next call and marks diffed",
@@ -665,6 +667,20 @@ MUTATIONS_4B = [
        "    if not (select private.has_aal2()) or v_org is null then")]),
     ("Insert lock: locks a contact of another organisation (holds it while being refused)",
      [("new.contact_id and (caller is null or k.org_id = v_org) for key share;", "new.contact_id for key share;")]),
+    # Review round (finding 1): undo into a due Cool off lead keeps its date.
+    ("Lead guard: a past date the statement writes is replaced on entering Cool off (undo of a due Cool off lead: +90 days)",
+     [("     and (new.next_action_at is null\n          or (new.next_action_at <= now()\n"
+       "              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then",
+       "     and (new.next_action_at is null or new.next_action_at <= now()) then")]),
+    ("bulk_update_leads: a return date that is not in the future accepted",
+     [("  if p_next_action_at <= now() then  -- lead_guard keeps a past date a statement writes (undo), so it is refused here\n"
+       "    raise exception 'the return date must be in the future' using errcode = '22023', hint = 'bounds';\n  end if;\n", "")]),
+    ("Lead guard: a new Cool off lead keeps a past date (an imported old retry date brings it back at once)",
+     [("              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then",
+       "              and new.next_action_at is not distinct from old.next_action_at)) then")]),
+    # Review round 2 (verifier note 3): undo reports the date as restored only when the stored date is the one put back.
+    ("undo_activity: restored.next_action_at claimed when lead_guard gave the empty Cool off date +90 days",
+     [("        r_next := r_next and v_next_after is not distinct from u.prev_next_action_at;\n", "")]),
 ]
 
 

@@ -372,7 +372,8 @@ grant update (phone_wrong_at) on public.contacts to authenticated;              
 --  4. a phone change clears the wrong-number mark; otherwise a mark goes from empty to the server's time, can be
 --     cleared, and any other change keeps the first time (the client never chooses it);
 --  5. a lead entering Cool off with no next call date, or one that is not in the future, comes back in 90 days (an old
---     retry date would otherwise bring it back at once). Imports, the edit form and direct writes included.
+--     retry date would otherwise bring it back at once). Imports, the edit form and direct writes included. On an
+--     update, a past date the same statement writes is kept: undo puts back the date a due Cool off lead had.
 create function private.lead_guard() returns trigger
 language plpgsql set search_path = '' as $$
 begin
@@ -400,7 +401,9 @@ begin
     end if;
   end if;
   if new.lead_status = 'cool_off' and (tg_op = 'INSERT' or old.lead_status is distinct from 'cool_off')
-     and (new.next_action_at is null or new.next_action_at <= now()) then
+     and (new.next_action_at is null
+          or (new.next_action_at <= now()
+              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then
     new.next_action_at := now() + interval '90 days';
   end if;
   return new;
@@ -1115,6 +1118,7 @@ declare
   v_lead record;
   r_status boolean := false;
   r_next boolean := false;
+  v_next_after timestamptz;
   r_owner boolean := false;
   r_phone boolean := false;
   r_contact boolean := false;
@@ -1156,7 +1160,10 @@ begin
                next_action_at = case when r_next then u.prev_next_action_at else c.next_action_at end,
                owner_id = case when r_owner then u.prev_owner_id else c.owner_id end,
                phone_wrong_at = case when r_phone then null else c.phone_wrong_at end
-         where c.id = v_company;
+         where c.id = v_company
+        returning c.next_action_at into v_next_after;
+        -- lead_guard rule 5 may replace a restored empty date with +90 days: report what was actually kept
+        r_next := r_next and v_next_after is not distinct from u.prev_next_action_at;
       end if;
     end if;
   end if;
@@ -1420,8 +1427,8 @@ end;
 $$;
 
 -- The status menu's "Until when?" for Cool off (design 3.2): bulk_update_leads gains p_next_action_at, allowed only
--- with p_status = 'cool_off' and bounded by lead_guard. Changes an approved Day 3a signature only to fix a real bug
--- (lead_guard rule 5 already gives every other path a 90-day return).
+-- with p_status = 'cool_off', in the future and bounded by lead_guard. Changes an approved Day 3a signature only to fix
+-- a real bug (lead_guard rule 5 already gives every other path a 90-day return).
 drop function public.bulk_update_leads(uuid[], text, boolean, uuid);
 create function public.bulk_update_leads(
   p_ids uuid[],
@@ -1442,6 +1449,9 @@ begin
   end if;
   if p_next_action_at is not null and p_status is distinct from 'cool_off' then
     raise exception 'a return date goes with Cool off only' using errcode = '22023', hint = 'until_cool_off_only';
+  end if;
+  if p_next_action_at <= now() then  -- lead_guard keeps a past date a statement writes (undo), so it is refused here
+    raise exception 'the return date must be in the future' using errcode = '22023', hint = 'bounds';
   end if;
   update public.companies
      set lead_status = coalesce(p_status, lead_status),

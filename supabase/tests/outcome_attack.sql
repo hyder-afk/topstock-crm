@@ -1474,6 +1474,98 @@ begin
   end if;
 end $$;
 
+-- 6b. undo_into_due_cool_off: a Cool off lead whose return date has come is the one the queue serves. An outcome that
+-- moves it out, then Undo, puts back Cool off and that same (past) date: lead_guard rule 5 keeps a date the statement
+-- writes, so the lead does not drop out of the queue for 90 days (design 5.3 and 5.5).
+do $$
+declare
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  d1 constant uuid := '00000000-0000-0000-0000-0000000000d1';
+  due constant timestamptz := date_trunc('second', now()) - interval '1 hour';
+  c record;
+  l uuid;
+  r jsonb;
+  u jsonb;
+  cases integer := 0;
+begin
+  for c in select * from (values ('interested', 'warm'), ('meeting_booked', 'warm'),
+                                 ('do_not_contact', 'do_not_contact')) as x (outcome, want_status) loop
+    begin
+      l := pg_temp.new_lead(d1, 'cool_off');
+      update public.companies set next_action_at = due where id = l;  -- already in Cool off: the date stays
+      if (select next_action_at from public.companies where id = l) <> due then
+        raise exception 'FAIL: the due Cool off fixture lost its date';
+      end if;
+      perform pg_temp.act(admin);
+      r := public.log_activity(l, 'call', c.outcome, null, null, null,
+                               case when c.outcome = 'interested' then (now() at time zone 'UTC')::date + 2 end,
+                               case when c.outcome = 'meeting_booked' then date_trunc('minute', now()) + interval '2 days' end,
+                               case when c.outcome in ('interested', 'meeting_booked') then 'Follow up' end);
+      if r ->> 'status_after' <> c.want_status then
+        raise exception 'FAIL: % on a due Cool off lead: %', c.outcome, r;
+      end if;
+      perform pg_temp.act(admin, 'aal2', null);
+      u := public.undo_activity((r ->> 'activity_id')::uuid);
+      perform pg_temp.su();
+      if (select lead_status from public.companies where id = l) <> 'cool_off'
+         or (select next_action_at from public.companies where id = l) is distinct from due
+         or not (u -> 'restored' ->> 'status')::boolean or not (u -> 'restored' ->> 'next_action_at')::boolean
+         or (u -> 'lead' ->> 'next_action_at')::timestamptz is distinct from due then
+        raise exception 'FAIL: undo of % on a due Cool off lead: (%, %), answer %', c.outcome,
+          (select lead_status from public.companies where id = l), (select next_action_at from public.companies where id = l), u;
+      end if;
+      raise exception 'undo' using errcode = 'TS001';
+    exception when sqlstate 'TS001' then null;
+    end;
+    cases := cases + 1;
+  end loop;
+  if cases <> 3 then raise exception 'FAIL: undo into a due Cool off ran % cases', cases; end if;
+end $$;
+
+-- 6c. undo_into_cool_off_without_date: a Cool off lead whose date was cleared. Interested, then Undo: Cool off comes
+-- back, and lead_guard rule 5 gives the empty date +90 days, so the answer must not claim the date was restored.
+do $$
+declare
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  d1 constant uuid := '00000000-0000-0000-0000-0000000000d1';
+  l uuid;
+  r jsonb;
+  u jsonb;
+  kept timestamptz;
+  ran boolean := false;
+begin
+  begin
+    l := pg_temp.new_lead(d1, 'cool_off');
+    update public.companies set next_action_at = null where id = l;  -- already in Cool off: a date can be cleared
+    if (select next_action_at from public.companies where id = l) is not null then
+      raise exception 'FAIL: the Cool off fixture kept a date';
+    end if;
+    perform pg_temp.act(admin);
+    r := public.log_activity(l, 'call', 'interested', null, null, null, (now() at time zone 'UTC')::date + 2, null,
+                             'Follow up');
+    if r ->> 'status_after' <> 'warm' then
+      raise exception 'FAIL: Interested on a Cool off lead with no date: %', r;
+    end if;
+    perform pg_temp.act(admin, 'aal2', null);
+    u := public.undo_activity((r ->> 'activity_id')::uuid);
+    perform pg_temp.su();
+    kept := (select next_action_at from public.companies where id = l);
+    if (select lead_status from public.companies where id = l) <> 'cool_off'
+       or kept is null or kept not between now() + interval '90 days' - interval '1 minute'
+                                       and now() + interval '90 days' + interval '1 minute'
+       or not (u -> 'restored' ->> 'status')::boolean
+       or (u -> 'restored' ->> 'next_action_at')::boolean
+       or (u -> 'lead' ->> 'next_action_at')::timestamptz is distinct from kept then
+      raise exception 'FAIL: undo into Cool off with no date: (%, %), answer %',
+        (select lead_status from public.companies where id = l), kept, u;
+    end if;
+    ran := true;
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
+  if not ran then raise exception 'FAIL: undo into Cool off with no date did not run'; end if;
+end $$;
+
 -- 7. Replays: one request id per author gives one entry, one task, one status change (threat 10) --------------------
 do $$
 declare
@@ -1807,6 +1899,11 @@ begin
                                '22023', 'until_cool_off_only');
   perform pg_temp.expect_error(format('select public.bulk_update_leads(array[%L]::uuid[], %L, false, null, %L)', l, 'cool_off',
                                       now() + interval '3 years'), '22023', 'bounds');
+  -- A return date that is not in the future is refused (lead_guard keeps a past date a statement writes, for undo).
+  perform pg_temp.expect_error(format('select public.bulk_update_leads(array[%L]::uuid[], %L, false, null, %L)', l, 'cool_off',
+                                      now() - interval '1 day'), '22023', 'bounds');
+  perform pg_temp.expect_error(format('select public.bulk_update_leads(array[%L]::uuid[], %L, false, null, %L)', l, 'cool_off',
+                                      now()), '22023', 'bounds');
   -- The Day 3a calls without the new argument still work.
   if public.bulk_update_leads(array[l], p_status => 'warm') <> 1 then raise exception 'FAIL: Day 3a bulk call'; end if;
   -- An imported Cool off row comes back in 90 days too.
@@ -1825,6 +1922,11 @@ begin
   l := pg_temp.new_lead(d1, 'cool_off');
   if (select next_action_at from public.companies where id = l) <> now() + interval '90 days' then
     raise exception 'FAIL: a Cool off lead made by maintenance has no return date';
+  end if;
+  -- A new Cool off lead with a past date (an old retry date in a sheet) comes back in 90 days, not at once.
+  l := pg_temp.new_lead(d1, 'cool_off', now() - interval '3 days');
+  if (select next_action_at from public.companies where id = l) <> now() + interval '90 days' then
+    raise exception 'FAIL: a new Cool off lead with a past date would come back at once';
   end if;
 end $$;
 
