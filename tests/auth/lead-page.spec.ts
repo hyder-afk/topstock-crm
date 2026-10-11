@@ -562,6 +562,14 @@ test("dnc_lead_logs_at_every_width: no Email or WhatsApp in the composer, a note
     await expect
       .poll(() => sql(`select body from public.activities where company_id = '${lead}' order by created_at desc, id desc limit 1`))
       .toBe(`Asked again not to be called (${width})`);
+    if (width === 390) {
+      // Phone tap targets are 44 px: Add contact, and See the whole timeline once there is an entry (finding 19).
+      for (const name of ["Add contact", "See the whole timeline"]) {
+        const target = page.getByRole("button", { name, exact: true });
+        await expect(target).toBeVisible();
+        expect((await target.boundingBox())?.height ?? 0, name).toBeGreaterThanOrEqual(44);
+      }
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
     await context.close();
@@ -578,6 +586,19 @@ test("meeting_quick_action: focus on Book a meeting (1440); on a phone it wins o
     const book = page.getByRole("form", { name: "Log activity" }).getByRole("button", { name: "Book a meeting" });
     await expect(book).toHaveAttribute("aria-pressed", "true");
     await expect(book).toBeFocused();
+    // Switched to a note, then the window crosses 1024 px and back (an iPad turning): the rail composer mounts again
+    // with the note, not the old Meeting request.
+    const kinds = page.getByRole("form", { name: "Log activity" }).getByRole("group", { name: "Kind of entry" });
+    await kinds.getByRole("button", { name: "Note" }).click();
+    await page.getByRole("form", { name: "Log activity" }).getByRole("textbox", { name: "Note" }).fill("Call back after the fair");
+    await expect
+      .poll(() => page.evaluate((id) => window.localStorage.getItem(`topstock.draft.${id}`) ?? "", lead))
+      .toContain("Call back after the fair");
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await expect(page.getByRole("form", { name: "Log activity" })).toHaveCount(0);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(kinds.getByRole("button", { name: "Note" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("form", { name: "Log activity" }).getByRole("textbox", { name: "Note" })).toHaveValue("Call back after the fair");
     expect(errors).toEqual([]);
     await context.close();
   }
@@ -587,7 +608,10 @@ test("meeting_quick_action: focus on Book a meeting (1440); on a phone it wins o
   await page.getByRole("button", { name: "Note", exact: true }).tap();
   const sheet = page.getByRole("dialog", { name: "Log activity" });
   await sheet.getByRole("textbox", { name: "Note" }).fill("Showroom visit for the spring range");
-  await page.waitForTimeout(500);
+  // The draft is saved after a short pause: wait for it in storage, not for a fixed time.
+  await expect
+    .poll(() => page.evaluate((id) => window.localStorage.getItem(`topstock.draft.${id}`) ?? "", lead))
+    .toContain("Showroom visit for the spring range");
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   // Meeting opens on Book a meeting (not the draft's Note), keeps the text, and the time starts at 10:00.
