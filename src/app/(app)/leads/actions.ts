@@ -57,12 +57,22 @@ export async function updateLead(id: unknown, input: unknown): Promise<ActionRes
 }
 
 // Bulk and single changes from the list and the preview. Returns how many leads changed (others are not yours).
-export async function setLeadsStatus(leadIds: unknown, status: unknown): Promise<ActionResult<{ changed: number }>> {
+// Cool off may carry a return date ("Until when?", Day 4b): at most 2 years ahead (the database's lead guard); without
+// one the database brings the lead back in 90 days.
+const until = z.iso.datetime({ offset: true }).nullable().optional();
+
+export async function setLeadsStatus(leadIds: unknown, status: unknown, returnAt?: unknown): Promise<ActionResult<{ changed: number }>> {
   const parsedIds = ids.safeParse(leadIds);
   const parsedStatus = z.enum(leadStatuses).safeParse(status);
-  if (!parsedIds.success || !parsedStatus.success) return { ok: false, error: "invalid" };
+  const parsedUntil = until.safeParse(returnAt);
+  if (!parsedIds.success || !parsedStatus.success || !parsedUntil.success) return { ok: false, error: "invalid" };
+  if (parsedUntil.data && parsedStatus.data !== "cool_off") return { ok: false, error: "invalid" };
   const { supabase } = await requireSession();
-  const { data, error } = await supabase.rpc("bulk_update_leads", { p_ids: parsedIds.data, p_status: parsedStatus.data });
+  const { data, error } = await supabase.rpc("bulk_update_leads", {
+    p_ids: parsedIds.data,
+    p_status: parsedStatus.data,
+    p_next_action_at: parsedUntil.data ?? null,
+  });
   if (error) return failure(error.code);
   return { ok: true, data: { changed: Number(data) } };
 }

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
 function base32Decode(input: string) {
@@ -148,6 +148,41 @@ export async function appReady(page: Page) {
 // set in a React commit shows up one frame later. Waiting two frames (~33 ms) covers it.
 export async function twoFrames(page: Page) {
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+// Requests each page has in flight, counted from the first call for that page (call it right after opening the page).
+const inFlight = new WeakMap<Page, Set<Request>>();
+export function trackRequests(page: Page) {
+  let pending = inFlight.get(page);
+  if (!pending) {
+    const set = new Set<Request>();
+    page.on("request", (r) => set.add(r));
+    page.on("requestfinished", (r) => set.delete(r));
+    page.on("requestfailed", (r) => set.delete(r));
+    inFlight.set(page, set);
+    pending = set;
+  }
+  return pending;
+}
+
+// Waits until the page has no request in flight. Leaving a page while a fetch is running (a link prefetch, a server
+// action) makes WebKit log "Fetch API cannot load … due to access control checks", which the console-error checks
+// would rightly count. `waitForLoadState("networkidle")` resolves at once when the document reached that state
+// earlier, so it cannot wait for a request started later; the page's own request count can.
+export async function settled(page: Page) {
+  if (page.url() === "about:blank") return;
+  const pending = trackRequests(page);
+  await expect.poll(() => pending.size, { timeout: 15_000 }).toBe(0);
+}
+
+// WebKit reports a fetch the page itself cancelled as "Fetch API cannot load <url> due to access control checks" (as a
+// console error, or as an uncaught page error when the fetch's promise is not awaited). Next.js
+// cancels its own link prefetches (requests to this app with ?_rsc=) when a server action refreshes the page or a new
+// navigation starts; Chromium logs nothing for that. Only that exact case is ignored: same-origin RSC requests cannot
+// fail a real access-control check, and every other console error still counts.
+const cancelledPrefetch = /^(?:Fetch API cannot load )?(?:http:)?\/\/?localhost:3100\/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$/;
+export function isCancelledPrefetch(text: string) {
+  return cancelledPrefetch.test(text);
 }
 
 // Local stack only: runs SQL as the throwaway database's superuser, for fixtures the app cannot create on its own
