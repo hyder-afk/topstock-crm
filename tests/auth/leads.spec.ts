@@ -278,11 +278,12 @@ test("phone: list, then the lead full screen with a way back", async ({ browser 
   const context = await browser.newContext({ storageState: adminState, viewport: { width: 390, height: 844 }, hasTouch: true });
   const page = await context.newPage();
   await openLeads(page);
+  // Day 4b: below desktop width a tap opens the full lead page (design 7.1), with a way back to the same list.
   await rowLinks(page).first().tap();
-  await expect(preview(page).getByRole("heading", { level: 2 })).toBeVisible();
-  await expect(table(page)).toBeHidden();
-  await expect(page.getByRole("searchbox", { name: "Search leads" })).toBeHidden();
-  await preview(page).getByRole("button", { name: "Back to leads" }).tap();
+  await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}$/);
+  await expect(page.locator("main h1")).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Search leads" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Leads", exact: true }).first().tap();
   await expect(table(page)).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await context.close();
