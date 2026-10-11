@@ -10,7 +10,8 @@
 --  - the audit log no longer keeps a second copy of activity text (D8);
 --  - undoing an import keeps every lead that has a task.
 -- House rules (design section 3): every function sets search_path = ''; the guards are SECURITY INVOKER (only the
--- untouch trigger is DEFINER, like the touch trigger it mirrors); static SQL only; every CHECK that user input can reach
+-- untouch trigger, like the touch trigger it mirrors, and the lead lock before the guard are DEFINER, trigger-only and
+-- revoked); static SQL only; every CHECK that user input can reach
 -- has a pre-check with a constant message first, so "Failing row contains ..." never reaches the logs; clients get
 -- column grants only, and server-kept columns are set by BEFORE triggers (they need no column privilege).
 -- Files are unchanged here: they move to the lead, with their own guards, in 4d.
@@ -56,8 +57,26 @@ alter table public.activities
 revoke insert, update on public.activities from authenticated;
 grant insert (company_id, contact_id, type, outcome, body, request_id), update (body) on public.activities to authenticated;
 
--- The activity guard. Its name sorts before enforce_org_and_owner and set_activity_time, so it runs first. Sessions with
--- no signed-in user (fixtures, maintenance, imports by the service) are left alone, as Day 3a's triggers do.
+-- Entries on one lead take turns (D9 under concurrency). An insert locks its lead before the guard reads the lead's
+-- date, and the untouch trigger below locks it before it looks for the newest remaining entry, so each sees the entries
+-- the other committed: two deletes or undos at once on one lead, or an entry whose transaction started before the
+-- newest entry and is still open when that one is deleted, leave the lead on a date a remaining entry supports. The
+-- name sorts before activity_guard, so it runs first. DEFINER, because a SELECT ... FOR NO KEY UPDATE as the caller
+-- would quietly lock nothing on a lead the caller may log on but not change (row level security, spike S5 (b)). It
+-- reads and changes nothing; FOR NO KEY UPDATE does not block the foreign key checks (FOR KEY SHARE) on the lead.
+create function private.lock_activity_lead() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform 1 from public.companies c where c.id = new.company_id for no key update;
+  return new;
+end;
+$$;
+create trigger activity_date_lock before insert on public.activities
+  for each row execute function private.lock_activity_lead();
+
+-- The activity guard. Its name sorts before enforce_org_and_owner and set_activity_time, so it runs right after the
+-- lock. Sessions with no signed-in user (fixtures, maintenance, imports by the service) are left alone, as Day 3a's
+-- triggers do.
 create function private.activity_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -161,10 +180,12 @@ create policy activities_update on public.activities for update to authenticated
 -- neither a delete nor an undo can move a lead's date anywhere the history does not support. Deleting an older entry
 -- changes nothing; in a lead delete the lead row is already gone, so the update finds nothing. DEFINER like
 -- touch_company_activity, so deleting an entry on a lead someone else owns still corrects its date; trigger-only,
--- revoked from everyone below.
+-- revoked from everyone below. It locks the lead first and looks in a statement of its own: under READ COMMITTED that
+-- statement sees every delete and insert the lock waited for (see lock_activity_lead above).
 create function private.untouch_company_activity() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
+  perform 1 from public.companies c where c.id = old.company_id for no key update;
   update public.companies c
      set last_activity_at = greatest((select max(a.created_at) from public.activities a where a.company_id = old.company_id),
                                      old.prev_last_activity_at)
@@ -407,5 +428,5 @@ $$;
 -- ===========================================================================
 -- Function privileges: trigger functions are never callable by clients.
 -- ===========================================================================
-revoke all on function private.activity_guard(), private.task_guard(), private.untouch_company_activity()
-  from public, anon, authenticated;
+revoke all on function private.activity_guard(), private.task_guard(), private.untouch_company_activity(),
+  private.lock_activity_lead() from public, anon, authenticated;

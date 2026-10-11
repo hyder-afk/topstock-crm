@@ -144,13 +144,26 @@ begin
   if has_function_privilege('authenticated', 'private.activity_guard()', 'EXECUTE')
      or has_function_privilege('authenticated', 'private.task_guard()', 'EXECUTE')
      or has_function_privilege('authenticated', 'private.untouch_company_activity()', 'EXECUTE')
-     or has_function_privilege('anon', 'private.untouch_company_activity()', 'EXECUTE') then
+     or has_function_privilege('anon', 'private.untouch_company_activity()', 'EXECUTE')
+     or has_function_privilege('authenticated', 'private.lock_activity_lead()', 'EXECUTE')
+     or has_function_privilege('anon', 'private.lock_activity_lead()', 'EXECUTE') then
     raise exception 'FAIL: a client may call a Day 4a trigger function';
   end if;
+  -- The untouch trigger and the lead lock run as their owner (both must reach leads the caller cannot change); the
+  -- guards run as the caller.
   if (select prosecdef from pg_proc where oid = 'private.untouch_company_activity()'::regprocedure) is not true
+     or (select prosecdef from pg_proc where oid = 'private.lock_activity_lead()'::regprocedure) is not true
      or (select prosecdef from pg_proc where oid = 'private.activity_guard()'::regprocedure)
      or (select prosecdef from pg_proc where oid = 'private.task_guard()'::regprocedure) then
-    raise exception 'FAIL: only the untouch trigger runs as its owner';
+    raise exception 'FAIL: only the untouch trigger and the lead lock run as their owner';
+  end if;
+  -- The lead lock runs before the guard on every insert (triggers fire in name order).
+  if (select array_agg(tgname::text order by tgname) from pg_trigger
+       where tgrelid = 'public.activities'::regclass and not tgisinternal and tgtype & 4 = 4 and tgtype & 2 = 2)
+     is distinct from array['activity_date_lock', 'activity_guard', 'enforce_org_and_owner', 'set_activity_time'] then
+    raise exception 'FAIL: BEFORE INSERT triggers on activities, in firing order: %',
+      (select array_agg(tgname::text order by tgname) from pg_trigger
+        where tgrelid = 'public.activities'::regclass and not tgisinternal and tgtype & 4 = 4 and tgtype & 2 = 2);
   end if;
   -- History survives contact, deal, entry and profile deletes; a task goes with its lead (G5).
   if (select array_agg(conname::text || '=' || confdeltype::text order by conname) from pg_constraint

@@ -299,6 +299,13 @@ MUTATIONS_4A = [
      [("       or new.title ~ '[\\u0001-\\u001F\\u007F-\\u009F", "       or new.title ~ '[\\u0001-\\u001F\\u007F")]),
     ("Tasks: C1 controls pass the title CHECK",
      [("tasks_title_safe check (title !~ '[\\u0001-\\u001F\\u007F-\\u009F", "tasks_title_safe check (title !~ '[\\u0001-\\u001F\\u007F")]),
+    ("Last activity on delete: no lead lock (two deletes at once leave a deleted entry's date)",
+     [("  perform 1 from public.companies c where c.id = old.company_id for no key update;\n", "")]),
+    ("Lead lock on insert: locks nothing (an entry still being logged is missed when the newest is deleted)",
+     [("  perform 1 from public.companies c where c.id = new.company_id for no key update;\n", "")]),
+    ("Lead lock on insert: runs as the caller (locks nothing on a lead the caller cannot change)",
+     [("create function private.lock_activity_lead() returns trigger\nlanguage plpgsql security definer set search_path",
+       "create function private.lock_activity_lead() returns trigger\nlanguage plpgsql set search_path")]),
 ]
 
 
