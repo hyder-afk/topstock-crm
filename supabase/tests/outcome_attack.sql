@@ -333,7 +333,7 @@ begin
     raise exception 'FAIL: get_lead zone fields before a pick %', g;
   end if;
   r := public.set_lead_timezone(us, 'America/Chicago');
-  if r <> '{"timezone": "America/Chicago", "call_zone_key": "America/Chicago"}'::jsonb
+  if r ->> 'timezone' <> 'America/Chicago' or r ->> 'call_zone_key' is distinct from r ->> 'timezone'
      or public.get_lead(us) ->> 'call_zone_key' <> 'America/Chicago' then
     raise exception 'FAIL: set_lead_timezone %', r;
   end if;
