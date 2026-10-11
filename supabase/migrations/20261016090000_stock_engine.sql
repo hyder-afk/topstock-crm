@@ -1173,7 +1173,11 @@ begin
   if p_kind = 'transfer' then
     -- Arrived (design 6.4). The product row is locked first: this RPC may clear its expected date at the end, and an
     -- update after the level locks would wait on a movement holding the product's share lock while that movement
-    -- waits on our level (a deadlock). Ended holds at both places go first, in location order.
+    -- waits on our level (a deadlock). Ended holds at both places go first, in location order. Only managers and
+    -- admins mark stock as arrived (the guard says so too; the lock below would otherwise answer "not found").
+    if not private.is_manager_or_admin() then
+      raise exception 'only managers and admins mark stock as arrived' using errcode = '42501', hint = 'forbidden';
+    end if;
     perform 1 from public.products p where p.id = p_product for no key update;
     if not found then
       raise exception 'product not found' using errcode = 'P0002';
