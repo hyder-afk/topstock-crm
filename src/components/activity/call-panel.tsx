@@ -270,7 +270,7 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
 
       <div className="flex flex-col gap-3 px-5 pt-1">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="font-mono text-3xl tabular-nums" aria-label={t("timer")}>
+          <span role="timer" className="font-mono text-3xl tabular-nums" aria-label={t("timer")}>
             {clock}
           </span>
           <span className="truncate font-mono text-sm text-muted-foreground" translate="no">
