@@ -107,6 +107,7 @@ image).
 | Semgrep | not run locally: `semgrep.dev` is denied by this session's egress policy (403; known since 9 Oct, `docs/log.md`), so it runs in CI's `semgrep` job |
 | gitleaks (`origin/main..HEAD`, includes the two Day 4 design and log commits) | no leaks found (exit 0; 15 commits scanned before this line was written, 16 after). Review round 1: no leaks found on each run (exit 0; 31 commits scanned before the two evidence commits, 33 after them). On 4137fef: no leaks found (exit 0, 36 commits scanned); CI `scan` green on 4137fef |
 | `npm audit --omit=dev` | found 0 vulnerabilities, on 4137fef |
+| `/security-review` (`security-review.md`), on 4137fef | no high-confidence vulnerability found; design threat rows 1–8, 10, 29–32 re-checked for 4a; residual risks listed |
 
 ## Accepted findings
 
