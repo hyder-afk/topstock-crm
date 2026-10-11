@@ -678,6 +678,9 @@ MUTATIONS_4B = [
     ("Lead guard: a new Cool off lead keeps a past date (an imported old retry date brings it back at once)",
      [("              and (tg_op = 'INSERT' or new.next_action_at is not distinct from old.next_action_at))) then",
        "              and new.next_action_at is not distinct from old.next_action_at)) then")]),
+    # Review round 2 (verifier note 3): undo reports the date as restored only when the stored date is the one put back.
+    ("undo_activity: restored.next_action_at claimed when lead_guard gave the empty Cool off date +90 days",
+     [("        r_next := r_next and v_next_after is not distinct from u.prev_next_action_at;\n", "")]),
 ]
 
 
