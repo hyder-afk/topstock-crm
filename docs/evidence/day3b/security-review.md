@@ -78,6 +78,7 @@ list every server file (there is no `console` call anywhere in `src`; the row ab
 Checks on the final head: lint (0 errors), typecheck, unit tests (166), the database suite (`rls_attack`,
 `import_attack` with the new phone rows, `import_concurrency`, advisors with no ERROR), import e2e 14 of 14 on Chromium
 (WebKit runs in CI), the import screenshots (112, no console error, no sideways scroll), Semgrep with the CI rule sets
-(no finding), gitleaks on the branch history (no leak), `npm audit --omit=dev` (0). Development tooling only: a new
+(CI `semgrep` job green on e177c42; correction of 11 Oct: the local run could not reach semgrep.dev, which this session's
+network policy blocks, and a pipe hid that failure, so no local Semgrep result exists), gitleaks on the branch history (no leak), `npm audit --omit=dev` (0). Development tooling only: a new
 advisory for `braces` (GHSA-vfj7-8cjw-p6xm, every version, pulled in by the Next.js ESLint config) affects the lint
 step, never the app; no fixed version exists yet, and CI reports development advisories without failing.

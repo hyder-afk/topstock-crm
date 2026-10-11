@@ -1,0 +1,60 @@
+PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+--- (a) ON DELETE SET NULL from a contact delete and a deal delete, as the admin with a fresh code
+--- (a2) a direct update at top level, for comparison
+ n | tg_op  | depth |                 uid                  | claims_set |   cur_user    | sess_user |   changed    
+---+--------+-------+--------------------------------------+------------+---------------+-----------+--------------
+ 1 | UPDATE |     2 | 00000000-0000-0000-0000-00000000000a | t          | postgres      | postgres  | {contact_id}
+ 2 | UPDATE |     2 | 00000000-0000-0000-0000-00000000000a | t          | postgres      | postgres  | {deal_id}
+ 3 | UPDATE |     1 | 00000000-0000-0000-0000-00000000000a | t          | authenticated | postgres  | {body}
+(3 rows)
+
+                  id                  | contact_id | deal_id 
+--------------------------------------+------------+---------
+ 50000000-0000-0000-0000-0000000000a1 |            | 
+(1 row)
+
+--- (b) SELECT ... FOR UPDATE on a lead the caller may read but not update (rep a1 on lead b1)
+       ?column?       
+----------------------
+ plain select rows: 1
+(1 row)
+
+      ?column?      
+--------------------
+ for update rows: 0
+(1 row)
+
+          ?column?           
+-----------------------------
+ for update own lead rows: 1
+(1 row)
+
+psql:docs/evidence/day4a/spike-s5/spike.sql:81: NOTICE:  plpgsql select into ... for update on b1: found=f, v=<NULL>
+--- (c) INSERT ... ON CONFLICT (pk) DO NOTHING RETURNING under RLS
+c1: rep a1 claims own lead a1, already claimed by the admin (select policy lets a1 see the row)
+ company_id 
+------------
+(0 rows)
+
+c2: same, where the conflicting row is invisible to a1 (select own rows only)
+ company_id 
+------------
+(0 rows)
+
+c3: no conflict, insert policy passes (new lead a2, owned by rep a1)
+              company_id              
+--------------------------------------
+ 30000000-0000-0000-0000-0000000000a2
+(1 row)
+
+c4: no conflict, insert policy fails (rep a1 claims lead b1, owned by b1): error expected
+psql:docs/evidence/day4a/spike-s5/spike.sql:125: NOTICE:  c4: 42501 new row violates row-level security policy for table "spike_claims"
+c5: conflict AND insert policy would fail (rep a1 on lead a1 claimed by admin, but the new row names another user)
+psql:docs/evidence/day4a/spike-s5/spike.sql:134: NOTICE:  c5: 42501 new row violates row-level security policy for table "spike_claims"
+c6: the update policy (using false) is not consulted: c1 above returned no row and no error
+              company_id              |                org_id                |               user_id                
+--------------------------------------+--------------------------------------+--------------------------------------
+ 30000000-0000-0000-0000-0000000000a1 | c6cc33af-1e4f-4af7-8df0-d6b277f1d09b | 00000000-0000-0000-0000-00000000000a
+ 30000000-0000-0000-0000-0000000000a2 | c6cc33af-1e4f-4af7-8df0-d6b277f1d09b | 00000000-0000-0000-0000-0000000000a1
+(2 rows)
+
