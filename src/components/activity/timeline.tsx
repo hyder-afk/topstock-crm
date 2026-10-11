@@ -84,12 +84,13 @@ export const Timeline = memo(function Timeline({
   const query = useTimeline(leadId, filter, initial);
   const entries = query.data?.pages.flatMap((p) => p.entries) ?? [];
   const sentinel = useRef<HTMLDivElement>(null);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query;
 
-  // The next page loads when the end of the list comes into view; "Show older" does the same from the keyboard.
+  // The next page loads when the end of the list comes into view; "Show older" does the same from the keyboard. After an
+  // older page failed, the observer waits: the error and its Try again button show, and only a press loads again.
   useEffect(() => {
     const el = sentinel.current;
-    if (!el || !hasNextPage) return;
+    if (!el || !hasNextPage || isFetchNextPageError) return;
     const observer = new IntersectionObserver(
       (items) => {
         if (items.some((i) => i.isIntersecting) && !isFetchingNextPage) void fetchNextPage();
@@ -98,7 +99,7 @@ export const Timeline = memo(function Timeline({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
   return (
     <section aria-labelledby={`timeline-${leadId}`} className="flex flex-col gap-4">
@@ -142,7 +143,25 @@ export const Timeline = memo(function Timeline({
           )}
           <div ref={sentinel} className="flex flex-col items-start gap-2">
             {hasNextPage ? (
-              isFetchingNextPage ? (
+              isFetchNextPageError ? (
+                // Stays drawn while it tries again, so the Try again button keeps focus; skeleton rows show below.
+                <>
+                  <div role="alert" className="flex flex-col items-start gap-3 rounded-lg bg-card p-6">
+                    <p className="font-bold">{t("errorOlder")}</p>
+                    <Button
+                      variant="quiet"
+                      aria-disabled={isFetchingNextPage || undefined}
+                      className="aria-disabled:opacity-60"
+                      onClick={() => {
+                        if (!isFetchingNextPage) void fetchNextPage();
+                      }}
+                    >
+                      {t("retry")}
+                    </Button>
+                  </div>
+                  {isFetchingNextPage ? <TimelineSkeleton rows={2} /> : null}
+                </>
+              ) : isFetchingNextPage ? (
                 <TimelineSkeleton rows={2} />
               ) : (
                 <Button variant="quiet" onClick={() => void fetchNextPage()}>
@@ -208,7 +227,8 @@ function useDayLabel() {
     },
     [zone, today, t, format],
   );
-  return { now, label };
+  const day = useCallback((e: TimelineEntry) => dayOf(zone, e.created_at), [zone]);
+  return { now, label, day };
 }
 
 /** Per entry, what the reader opened (Show more and its full text), kept while a virtualised row is off screen. */
@@ -374,23 +394,30 @@ export function EntryList({
   /** Inside a card (Summary): rows divided by lines instead of cards of their own. */
   compact?: boolean;
 }) {
-  const { now, label: dayLabel } = useDayLabel();
+  const { now, label: dayLabel, day: dayOfEntry } = useDayLabel();
   // Entries seen at the first draw do not animate; later ones (just logged) rise in once.
   const [seen] = useState(() => new Set(entries.map((e) => e.id)));
 
-  const groups: { label: string; items: TimelineEntry[] }[] = [];
+  // Each group is keyed by its calendar day (one group in Summary), never by its first entry: a newly logged, undone or
+  // deleted entry at the top would change that key and remount the group, closing an open edit and its draft.
+  const groups: { key: string; day: string; label: string; items: TimelineEntry[] }[] = [];
+  const used = new Map<string, number>();
   for (const e of entries) {
-    const label = dayLabel(e);
+    const day = dayOfEntry(e);
     const last = groups[groups.length - 1];
-    if (grouped && last && last.label === label) last.items.push(e);
-    else if (!grouped && last) last.items.push(e);
-    else groups.push({ label, items: [e] });
+    if (last && (!grouped || last.day === day)) last.items.push(e);
+    else {
+      // Newest first, so a day comes once; a clock-skewed optimistic entry could bring it back, and keys stay unique.
+      const n = used.get(day) ?? 0;
+      used.set(day, n + 1);
+      groups.push({ key: grouped ? (n ? `${day}~${n}` : day) : "all", day, label: dayLabel(e), items: [e] });
+    }
   }
 
   return (
     <div className="flex flex-col gap-5">
       {groups.map((g) => (
-        <div key={g.label + g.items[0].id} className="flex flex-col gap-2">
+        <div key={g.key} className="flex flex-col gap-2">
           {grouped ? <h3 className="font-mono text-xs text-muted-foreground">{g.label}</h3> : null}
           <ol className={cn("flex flex-col", compact ? "divide-y divide-border" : "gap-2")}>
             {g.items.map((e) => (
@@ -454,6 +481,11 @@ const EntryItem = memo(function EntryItem({
   const [askedOnce, setAskedOnce] = useState(false);
   if (confirming && !askedOnce) setAskedOnce(true);
   const bodyRef = useRef<HTMLParagraphElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const editChosen = useRef(false);
+  const refocus = useRef(false);
   const [clamped, setClamped] = useState(false);
   const Icon = typeIcon[entry.type];
   const Heading = grouped ? "h4" : "h3";
@@ -480,18 +512,37 @@ const EntryItem = memo(function EntryItem({
     };
   }, [body, expanded]);
 
+  // A cut entry asks for its full text first. If that fails (an error answer or offline), the entry stays closed with
+  // Show more still there to try again, and a toast says why.
   const showMore = async () => {
     let text = full;
     if (entry.truncated && full === null) {
-      const res = await fetch(`/api/activities/${entry.id}`, { headers: { accept: "application/json" } });
-      if (res.ok) {
+      try {
+        const res = await fetch(`/api/activities/${entry.id}`, { headers: { accept: "application/json" } });
+        if (!res.ok) throw new Error(String(res.status));
         text = ((await res.json()) as { body: string | null }).body;
-        setFull(text);
+      } catch {
+        toast.show(t("showMoreError"));
+        return;
       }
+      setFull(text);
     }
     setExpanded(true);
     opened?.set(entry.id, { full: text });
   };
+
+  // Escape, Cancel or a save closes the inline edit and unmounts what had focus: focus goes back to the entry's options
+  // button (where the edit began), after commit, unless the reader has since moved focus somewhere else.
+  const endEdit = () => {
+    const active = document.activeElement;
+    refocus.current = !active || active === document.body || !!formRef.current?.contains(active);
+    setEditing(false);
+  };
+  useEffect(() => {
+    if (editing || !refocus.current) return;
+    refocus.current = false;
+    menuRef.current?.focus();
+  }, [editing]);
 
   // A virtualised row stays drawn while it is being edited or asks to delete (the draft and the dialog live here).
   const busy = editing || confirming;
@@ -509,7 +560,7 @@ const EntryItem = memo(function EntryItem({
       toast.show(tErr("hint" in res && res.hint ? `hint.${res.hint}` : res.error));
       return;
     }
-    setEditing(false);
+    endEdit();
     setFull(null);
     queryClient.setQueriesData<InfiniteData<TimelinePage>>({ queryKey: ["timeline", leadId] }, (old) =>
       old
@@ -601,10 +652,21 @@ const EntryItem = memo(function EntryItem({
             </p>
           </div>
           {!entry.pending && (entry.is_mine || canDelete) ? (
-            <EntryMenu label={t("menu")}>
+            <EntryMenu
+              label={t("menu")}
+              triggerRef={menuRef}
+              // Picking Edit text: the menu closes into the text box, not back to its button (Radix's default).
+              onCloseAutoFocus={(e) => {
+                if (!editChosen.current) return;
+                editChosen.current = false;
+                e.preventDefault();
+                textRef.current?.focus();
+              }}
+            >
               {entry.is_mine ? (
                 <DropdownMenuItem
                   onSelect={() => {
+                    editChosen.current = true;
                     setDraft(full ?? entry.body ?? "");
                     setEditing(true);
                   }}
@@ -626,6 +688,7 @@ const EntryItem = memo(function EntryItem({
 
         {editing ? (
           <form
+            ref={formRef}
             className="flex flex-col gap-2"
             onSubmit={(e) => {
               e.preventDefault();
@@ -633,6 +696,7 @@ const EntryItem = memo(function EntryItem({
             }}
           >
             <Textarea
+              ref={textRef}
               aria-label={t("editLabel")}
               value={draft}
               autoFocus
@@ -643,7 +707,7 @@ const EntryItem = memo(function EntryItem({
                   e.preventDefault();
                   void saveEdit();
                 }
-                if (e.key === "Escape") setEditing(false);
+                if (e.key === "Escape") endEdit();
               }}
               className="text-sm"
             />
@@ -651,7 +715,7 @@ const EntryItem = memo(function EntryItem({
               <Button type="submit" variant="neutral" aria-disabled={saving || textLength(draft) > BODY_MAX || (entry.type === "note" && !draft.trim()) || undefined}>
                 {saving ? t("saving") : t("saveEdit")}
               </Button>
-              <Button variant="quiet" onClick={() => setEditing(false)}>
+              <Button variant="quiet" onClick={endEdit}>
                 {t("cancel")}
               </Button>
             </div>
@@ -727,12 +791,23 @@ const menuTrigger =
  * scroll real time); a press or Enter, Space or Down turns it into the menu, opened, which keeps focus inside as usual
  * and gives it back to its button when it closes.
  */
-function EntryMenu({ label, children }: { label: string; children: React.ReactNode }) {
+function EntryMenu({
+  label,
+  triggerRef,
+  onCloseAutoFocus,
+  children,
+}: {
+  label: string;
+  triggerRef?: React.Ref<HTMLButtonElement>;
+  onCloseAutoFocus?: (e: Event) => void;
+  children: React.ReactNode;
+}) {
   const [open, setOpen] = useState<boolean | null>(null);
   const icon = <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />;
   if (open === null) {
     return (
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
         aria-haspopup="menu"
@@ -755,10 +830,10 @@ function EntryMenu({ label, children }: { label: string; children: React.ReactNo
   }
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger aria-label={label} className={menuTrigger}>
+      <DropdownMenuTrigger ref={triggerRef} aria-label={label} className={menuTrigger}>
         {icon}
       </DropdownMenuTrigger>
-      <DropdownMenuContent>{children}</DropdownMenuContent>
+      <DropdownMenuContent onCloseAutoFocus={onCloseAutoFocus}>{children}</DropdownMenuContent>
     </DropdownMenu>
   );
 }

@@ -866,6 +866,7 @@
     "empty": "Rien de noté pour l’instant. Les appels, e-mails, messages, rendez-vous et notes s’affichent ici.",
     "emptyFiltered": "Rien de ce type pour l’instant.",
     "error": "Impossible de charger l’historique.",
+    "errorOlder": "Impossible de charger les entrées plus anciennes.",
     "retry": "Réessayer",
     "loadOlder": "Afficher plus ancien",
     "end": "C’est tout l’historique.",
@@ -883,6 +884,7 @@
     "delete": "Supprimer",
     "deleted": "Entrée supprimée.",
     "showMore": "Afficher plus",
+    "showMoreError": "Impossible de charger le texte complet. Réessayez.",
     "followUp": "Relance {date}",
     "followUpDone": "Relance faite {date}",
     "deleteConfirm": {
