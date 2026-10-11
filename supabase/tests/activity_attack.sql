@@ -484,21 +484,21 @@ end $$;
 
 -- 6. Flood guards: 60 entries and 60 tasks a minute per person (threat 32) --------------------------------------------
 -- Rep e1 does nothing else, so its counts are exact. Seeds (the superuser may date them): for entries and for tasks, 30
--- from 30 seconds ago, which count, and 60 from 61 seconds ago, which do not. So 30 more pass and the 31st is refused:
--- the limit is 60, and the window is a minute (a one-second window would let the 31st through; a two-minute one would
--- refuse the first).
+-- from 59 seconds ago, which count, and 60 from 61 seconds ago, which do not. So 30 more pass and the 31st is refused:
+-- the limit is 60, and the window is a minute (any window shorter than 59 seconds would let the 31st through; a
+-- two-minute one would refuse the first). now() is fixed for the whole transaction, so the seeds' ages are exact.
 begin;
 insert into public.activities (org_id, company_id, type, user_id, created_at)
 select c.org_id, c.id, 'note', '00000000-0000-0000-0000-0000000000e1', now() - s.age
   from public.companies c,
-       (select interval '30 seconds' from generate_series(1, 30)
+       (select interval '59 seconds' from generate_series(1, 30)
         union all select interval '61 seconds' from generate_series(1, 60)) as s (age)
  where c.id = '32000000-0000-0000-0000-0000000000e1';
 insert into public.tasks (org_id, company_id, title, assignee_id, created_by, created_at)
 select c.org_id, c.id, 'Seeded task', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000e1',
        now() - s.age
   from public.companies c,
-       (select interval '30 seconds' from generate_series(1, 30)
+       (select interval '59 seconds' from generate_series(1, 30)
         union all select interval '61 seconds' from generate_series(1, 60)) as s (age)
  where c.id = '32000000-0000-0000-0000-0000000000e1';
 set local role authenticated;
@@ -1135,6 +1135,24 @@ do $$ begin
   perform pg_temp.expect_error($q$update public.tasks set assignee_id = null$q$, '42501');
   perform pg_temp.expect_ok(format('update public.tasks set title = %L, done_at = now() where id = %L',
                                    'For Dee, seen', current_setting('t.task_for_d')));
+end $$;
+-- A rep's bare update (no WHERE, a constant value) reaches only the rep's own tasks: tasks_update's USING keeps the
+-- role clause. Without it the update would target every task of the organisation and fail on the others' rows.
+do $$
+declare n int; mine int;
+begin
+  select count(*) into mine from public.tasks
+   where assignee_id = '00000000-0000-0000-0000-0000000000d1' or created_by = '00000000-0000-0000-0000-0000000000d1';
+  begin
+    update public.tasks set title = 'Bare update by Dee';
+    get diagnostics n = row_count;
+    if n is distinct from mine then
+      raise exception 'FAIL: a rep''s bare task update changed % rows, expected their own %', n, mine;
+    end if;
+    raise exception using errcode = 'P0001', message = 'rollback bare update';
+  exception when raise_exception then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
 end $$;
 -- task_delete_stale_code_denied: deleting needs a fresh code.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2'); end $$;

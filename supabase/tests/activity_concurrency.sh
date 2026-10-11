@@ -6,6 +6,8 @@
 #  2. An entry whose transaction started before the newest entry, still open when the newest entry is deleted: the lead
 #     goes back to that entry's time, not to the sheet's date while the entry exists. It is logged by rep d1 on rep b1's
 #     lead (d1 may log there but not change the lead), so the lead lock must hold for people who cannot change the lead.
+#  3. Lock order contact, then lead (design 5.2): a session that locks a contact and then its lead (as 4b's log_activity
+#     will) and a plain entry naming that contact, at once: both finish, neither is cancelled as a deadlock.
 # Usage: activity_concurrency.sh "<libpq connection string>" (run after activity_attack.sql, which adds rep d1). Used by
 # scripts/db-test.sh and the CI "rls" job.
 set -euo pipefail
@@ -98,5 +100,23 @@ early=$(as_owner "select count(*) from public.activities where company_id = '$le
 ok=$(as_owner "select count(*) from public.companies c where c.id = '$lead' and c.last_activity_at =
                  (select a.created_at from public.activities a where a.company_id = c.id and a.body = 'started early');")
 [ "$ok" = "1" ] || fail "deleting the newest entry left the lead on $(as_owner "select last_activity_at from public.companies where id = '$lead';") while an entry from $(as_owner "select created_at from public.activities where company_id = '$lead';") is still there"
+
+# 3. Lock order: contact, then lead -------------------------------------------------------------------------------------
+# Session 1 locks the contact, waits, then locks the lead (log_activity's order). Rep b1 meanwhile logs an entry naming
+# that contact. With the lead locked first, b1 would hold the lead while waiting for the contact and session 1 would
+# wait for the lead: PostgreSQL would cancel one of them (40P01).
+lead=$(new_lead 'Lock order')
+contact=$(as_owner "insert into public.contacts (org_id, company_id, first_name)
+                    select org_id, id, 'Lock order contact' from public.companies where id = '$lead' returning id;")
+as_owner "begin;
+select 1 from public.contacts where id = '$contact' for update \g /dev/null
+select pg_sleep(2) \g /dev/null
+select 1 from public.companies where id = '$lead' for update \g /dev/null
+commit;" & p1=$!
+sleep 1
+as_user "$B1" "insert into public.activities (company_id, contact_id, type, outcome) values ('$lead', '$contact', 'call', 'no_answer');" \
+  || fail "an entry naming a contact failed while the contact and its lead were being locked in order (deadlock?)"
+wait $p1 || fail "the contact-then-lead session failed (deadlock?)"
+[ "$(as_owner "select count(*) from public.activities where company_id = '$lead';")" = "1" ] || fail "the lock-order entry is missing"
 
 echo 'activity_concurrency: all checks passed'

@@ -382,7 +382,7 @@ MUTATIONS_4A = [
        "  using (org_id = (select private.current_org_id()))\n  with check (org_id = (select private.current_org_id()));")]),
     ("Tasks update policy: USING without the role clause (behind tasks_select and WITH CHECK)",
      [("  using (org_id = (select private.current_org_id())\n         and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())))\n  with check",
-       "  using (org_id = (select private.current_org_id()))\n  with check")], SURVIVES),
+       "  using (org_id = (select private.current_org_id()))\n  with check")]),
     ("Tasks update policy: no role clause in USING nor in who sees tasks (both layers)",
      [("  using (org_id = (select private.current_org_id())\n         and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())))\n  with check",
        "  using (org_id = (select private.current_org_id()))\n  with check"),
@@ -395,6 +395,12 @@ MUTATIONS_4A = [
      [("  with check (org_id = (select private.current_org_id())\n              and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin()))\n              and (company_id",
        "  with check (org_id = (select private.current_org_id())\n              and (company_id"),
       (MIG_3A, "        raise exception 'only managers and admins can change the owner' using errcode = '42501';\n", "        null;\n")]),
+    ("Lead lock on insert: the contact is not locked first (deadlock with log_activity's contact-then-lead order)",
+     [("  if new.contact_id is not null then\n    perform 1 from public.contacts k where k.id = new.contact_id for key share;\n  end if;\n", "")]),
+    ("Activity guard: flood window of 45 seconds",
+     [("a.user_id = caller and a.created_at > now() - interval '60 seconds'", "a.user_id = caller and a.created_at > now() - interval '45 seconds'")]),
+    ("Task guard: flood window of 45 seconds",
+     [("t.created_by = caller and t.created_at > now() - interval '60 seconds'", "t.created_by = caller and t.created_at > now() - interval '45 seconds'")]),
 ]
 
 

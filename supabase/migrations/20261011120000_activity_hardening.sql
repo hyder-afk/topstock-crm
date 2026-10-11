@@ -64,9 +64,15 @@ grant insert (company_id, contact_id, type, outcome, body, request_id), update (
 -- name sorts before activity_guard, so it runs first. DEFINER, because a SELECT ... FOR NO KEY UPDATE as the caller
 -- would quietly lock nothing on a lead the caller may log on but not change (row level security, spike S5 (b)). It
 -- reads and changes nothing; FOR NO KEY UPDATE does not block the foreign key checks (FOR KEY SHARE) on the lead.
+-- Lock order is contact, then lead, as in design 5.2 (log_activity locks the contact, then the lead): the entry's
+-- contact is taken FOR KEY SHARE first (what its foreign key check takes anyway), so an entry naming a contact never
+-- holds the lead while it waits for that contact, and the two paths cannot deadlock.
 create function private.lock_activity_lead() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
+  if new.contact_id is not null then
+    perform 1 from public.contacts k where k.id = new.contact_id for key share;
+  end if;
   perform 1 from public.companies c where c.id = new.company_id for no key update;
   return new;
 end;
