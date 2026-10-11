@@ -1,6 +1,7 @@
--- Day 4 speed at Release 1 size, part 1 (Day 4a; design docs/evidence/day4/design.md section 8.6). Runs after
--- perf_leads.sql (30,015 leads, 10,015 contacts) and before perf_import.sql on the same throwaway database, so the
--- Day 3b import and undo (P7) are re-timed with 300,000 activities and 15,000 tasks in place. Used by scripts/db-perf.sh.
+-- Day 4 speed at Release 1 size (design docs/evidence/day4/design.md section 8.6), part 1 (Day 4a) and part 2 (Day 4b,
+-- at the end: P1, P4, P4b). Runs after perf_leads.sql (30,015 leads, 10,015 contacts) and before perf_import.sql on the
+-- same throwaway database, so the Day 3b import and undo (P7) are re-timed with 300,000 activities, 15,000 tasks and the
+-- Day 4b lead facts in place. Used by scripts/db-perf.sh.
 --  Seed: 300,000 activities (250,000 spread over every lead, 50,000 on 25 leads, one lead with 10,000) inserted with
 --        triggers off (session_replication_role = replica), then the leads' last-activity dates set in one update;
 --        15,000 tasks (5,000 per person, 30% done); vacuum analyze.
@@ -200,6 +201,159 @@ begin
     raise notice '% : insert % ms, delete % ms',
       rpad(case k when 1 then 'Entry on the lead with 10,000 entries' else 'Entry on a typical lead' end, 44),
       round(ins / 5, 2), round(del / 5, 2);
+  end loop;
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+
+-- =====================================================================================================================
+-- Part 2 (Day 4b; design 8.6 P1, P4, P4b). Lead facts in the design's mix, set with triggers off in one update: 60% FR,
+-- 15% GB, 15% US (two thirds with a picked zone), 10% DE/BE/ES; 8% with no main number; 3% with the main number marked
+-- wrong; 2% Do not contact; Cool off leads with a return date; a fifth of the others with a next call within +-10 days.
+-- The busiest lead (10,008 entries) and a typical one (8) then get what P4 needs: no main number, one contact with a
+-- number, the caller's call task due yesterday, and (busiest only) 50 more open tasks.
+--  P1:  get_lead on both, as the admin (perf user a1: the first user, so admin), 10 runs to settle plans (run 6 logged
+--       for the busiest lead: generic-plan check), then the average of 5.
+--  P4:  log_activity "wrong number" on the contact: it locks contact and lead, marks the contact, completes the due call
+--       task and makes "find the right number"; with a request id, as the app sends. P4b: undo_activity on it. Each run
+--       rolled back; 10 runs, then 5 timed; runs 6 to 10 log any statement inside them slower than 1 ms (auto_explain).
+-- =====================================================================================================================
+\echo '=== Part 2 (Day 4b): lead facts ==='
+set session_replication_role = replica;
+update public.companies c
+   set country = case when x.b < 60 then 'FR' when x.b < 75 then 'GB' when x.b < 90 then 'US' when x.b < 94 then 'DE'
+                      when x.b < 97 then 'BE' else 'ES' end,
+       timezone = case when x.b between 75 and 84
+                       then (array['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles'])[x.n % 4 + 1] end,
+       phone = case when x.b2 < 8 then null else c.phone end,
+       phone_wrong_at = case when x.b2 between 8 and 10 then now() - interval '3 days' end,
+       lead_status = case when x.b2 between 11 and 12 then 'do_not_contact' else c.lead_status end,
+       next_action_at = case when c.lead_status = 'cool_off' then now() + (x.n % 90) * interval '1 day'
+                             when x.n % 5 = 0 then now() + ((x.n % 21) - 10) * interval '1 day' end
+  from (select id, n, n % 100 as b, (n / 100) % 100 as b2 from perf_leads) x
+ where x.id = c.id;
+update public.companies set phone = null, phone_wrong_at = null, lead_status = 'cold', next_action_at = null,
+                            owner_id = '00000000-0000-0000-0000-0000000000a1', country = 'FR', timezone = null
+ where id in (current_setting('perf.heavy')::uuid, current_setting('perf.typical')::uuid);
+update public.contacts set phone = null   -- a contact from the Day 3a seed may sit on one of them: its number goes
+ where company_id in (current_setting('perf.heavy')::uuid, current_setting('perf.typical')::uuid);
+insert into public.contacts (org_id, company_id, first_name, phone)
+select org_id, id, 'Probe', '+33 6 39 98 30 01' from public.companies
+ where id in (current_setting('perf.heavy')::uuid, current_setting('perf.typical')::uuid);
+-- (Made an hour ago, and part 1's tasks "made today" moved back too, so the timed runs stay under the 60-a-minute guard.)
+update public.tasks set created_at = created_at - interval '1 hour', updated_at = updated_at - interval '1 hour'
+ where created_at > now() - interval '1 minute';
+insert into public.tasks (org_id, company_id, title, kind, due_date, assignee_id, created_by, created_at, updated_at)
+select org_id, id, 'Due call', 'call', current_date - 1, '00000000-0000-0000-0000-0000000000a1',
+       '00000000-0000-0000-0000-0000000000a1', now() - interval '1 hour', now() - interval '1 hour'
+  from public.companies where id in (current_setting('perf.heavy')::uuid, current_setting('perf.typical')::uuid);
+insert into public.tasks (org_id, company_id, title, kind, due_date, assignee_id, created_by, created_at, updated_at)
+select org_id, id, 'Open task ' || g, 'todo', current_date + g, '00000000-0000-0000-0000-0000000000a1',
+       '00000000-0000-0000-0000-0000000000a1', now() - interval '1 hour', now() - interval '1 hour'
+  from public.companies, generate_series(1, 50) g where id = current_setting('perf.heavy')::uuid;
+set session_replication_role = origin;
+vacuum analyze public.companies;
+vacuum analyze public.contacts;
+vacuum analyze public.tasks;
+select set_config('perf.heavy_contact', (select id::text from public.contacts
+                                          where company_id = current_setting('perf.heavy')::uuid and first_name = 'Probe'), false),
+       set_config('perf.typical_contact', (select id::text from public.contacts
+                                            where company_id = current_setting('perf.typical')::uuid and first_name = 'Probe'), false) \g /dev/null
+select 'lead facts: ' || count(*) filter (where country = 'FR') || ' FR, ' || count(*) filter (where country = 'US') || ' US ('
+       || count(*) filter (where timezone is not null) || ' with a zone), ' || count(*) filter (where phone is null)
+       || ' with no main number, ' || count(*) filter (where phone_wrong_at is not null) || ' marked wrong, '
+       || count(*) filter (where lead_status = 'do_not_contact') || ' do not contact, '
+       || count(*) filter (where next_action_at is not null) || ' with a next call'
+  from public.companies;
+
+
+-- One outcome and its undo on a lead, rolled back; the times in milliseconds come back in perf.p4 and perf.p4b (set
+-- after the rollback, which would undo them).
+create function pg_temp.outcome_round(lead uuid, contact uuid) returns void
+language plpgsql as $$
+declare
+  t0 timestamptz;
+  r jsonb;
+  u jsonb;
+  ms4 numeric;
+  ms4b numeric;
+begin
+  begin
+    t0 := clock_timestamp();
+    r := public.log_activity(lead, 'call', 'wrong_number', 'Timing probe', contact, 'contact', null, null,
+                             'Find the right number', gen_random_uuid());
+    ms4 := extract(epoch from clock_timestamp() - t0) * 1000;
+    if jsonb_array_length(r -> 'completed_task_ids') <> 1 or r ->> 'task_id' is null
+       or not (r ->> 'wrong_number_marked')::boolean or not (r ->> 'editable')::boolean then
+      raise exception 'FAIL: P4 did not do all its work: %', r;
+    end if;
+    t0 := clock_timestamp();
+    u := public.undo_activity((r ->> 'activity_id')::uuid);
+    ms4b := extract(epoch from clock_timestamp() - t0) * 1000;
+    if not (u ->> 'task_deleted')::boolean or (u ->> 'tasks_reopened')::integer <> 1
+       or not (u -> 'restored' ->> 'contact_phone_wrong')::boolean then
+      raise exception 'FAIL: P4b did not undo everything: %', u;
+    end if;
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
+  perform set_config('perf.p4', ms4::text, false);
+  perform set_config('perf.p4b', ms4b::text, false);
+end;
+$$;
+
+\echo '=== P1, P4, P4b plan check: 5 runs to settle, then run 6 with every inner statement logged (auto_explain) ==='
+set auto_explain.log_min_duration = -1;
+set role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+do $$
+begin
+  for r in 1..5 loop
+    perform public.get_lead(current_setting('perf.heavy')::uuid);
+    perform pg_temp.outcome_round(current_setting('perf.heavy')::uuid, current_setting('perf.heavy_contact')::uuid);
+  end loop;
+end $$;
+reset role;
+set auto_explain.log_min_duration = 0;
+set role authenticated;
+\echo '--- P1 run 6: get_lead, the lead with 10,008 entries'
+select public.get_lead(current_setting('perf.heavy')::uuid) is not null as found;
+\echo '--- P4 and P4b run 6: log_activity (wrong number on the contact) and undo_activity, the lead with 10,008 entries'
+select pg_temp.outcome_round(current_setting('perf.heavy')::uuid, current_setting('perf.heavy_contact')::uuid);
+reset role;
+set auto_explain.log_min_duration = -1;
+set role authenticated;
+
+\echo '=== P1, P4, P4b timings: average of 5 warm runs after 10, milliseconds ==='
+do $$
+declare
+  t0 timestamptz;
+  g numeric;
+  p4 numeric;
+  p4b numeric;
+  k integer;
+  lead uuid;
+  contact uuid;
+begin
+  for k in 1..2 loop
+    lead := case k when 1 then current_setting('perf.heavy')::uuid else current_setting('perf.typical')::uuid end;
+    contact := case k when 1 then current_setting('perf.heavy_contact')::uuid else current_setting('perf.typical_contact')::uuid end;
+    g := 0;
+    p4 := 0;
+    p4b := 0;
+    for r in 1..15 loop
+      t0 := clock_timestamp();
+      perform public.get_lead(lead);
+      if r > 10 then g := g + extract(epoch from clock_timestamp() - t0) * 1000; end if;
+      perform pg_temp.outcome_round(lead, contact);
+      if r > 10 then
+        p4 := p4 + current_setting('perf.p4')::numeric;
+        p4b := p4b + current_setting('perf.p4b')::numeric;
+      end if;
+    end loop;
+    raise notice '% : P1 get_lead % ms, P4 log_activity % ms, P4b undo_activity % ms',
+      rpad(case k when 1 then 'The lead with 10,008 entries' else 'A typical lead' end, 30),
+      round(g / 5, 2), round(p4 / 5, 2), round(p4b / 5, 2);
   end loop;
 end $$;
 reset role;
