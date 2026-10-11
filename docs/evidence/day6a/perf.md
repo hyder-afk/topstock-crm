@@ -22,8 +22,8 @@ vary by about ±30% between runs (see I18). Sizes after the seed: `stock_movemen
 indexes (design estimate: about 15 MB a year at 50,000 rows), `products` 2.5 MB, `stock_levels` 2.0 MB,
 `stock_reservations` 2.3 MB.
 
-Two sets of three runs were made on the final engine code (the commits after 1887db3 change only tests and
-documents; the migration is unchanged since 2b5b847). **Set B** (below, the reference) alternated each 6a run with a
+Two sets of three runs (A and B) were made on the first build's engine code (migration as of 2b5b847); set C (below
+the I5 table) re-times I5, I7, I16 and I17 on the final code after the verifier's fixes and the Arrived trim. **Set B** (below, the reference) alternated each 6a run with a
 run of `origin/main` (1004fa5, Day 4a) so I18 compares like with like. Set A, three 6a runs one after the other a few
 minutes earlier, is listed for the spread.
 
@@ -54,6 +54,53 @@ print their plans, runs 11 to 15 are timed. Average (slowest), milliseconds:
   `movements_pair_once_idx` and `stock_movements_pkey` (transfer pairing), `reservations_fifo_idx` (holds moved by
   Arrived), `stock_reservations_pkey`, `companies_pkey`, `profiles_pkey` (role helpers). **No sequential scan** of any
   table in any of the plans. So the stock RPCs need no `force_custom_plan`.
+
+### Re-timed after the verifier's findings, and Arrived trimmed (set C, code head 47b68f9)
+
+The verifier asked for three more runs. A profile first (scratch harness: shim, migrations, `perf_leads.sql`,
+`perf_stock.sql`, then 50 more Arrived calls under `pg_stat_statements` with `track = all`) showed where an Arrived
+spends its time: the two ledger inserts (guard, apply step, audit row) about 3.8 ms of 6.4 ms, then two separate expiry
+calls (0.6 ms), the result's level read (0.33 ms), re-reading the transit level (0.15 ms) and the arrival row
+(0.18 ms), and two place lookups (0.27 ms). Every statement uses an index (the plans above), so no index or plan
+change helps. The trim (47b68f9) has fewer statements, the same rows and the same locks:
+
+- one expiry call for both places (`expire_holds_for` already goes in level order);
+- the two places read in one statement;
+- what is left in transit and the held pieces moved taken from the two rows' `RETURNING` snapshots, which the apply
+  step writes under the lock;
+- no rate count on the paired `transfer_in`.
+
+**Paired runs, scratch harness** (the same seed without the Day 4 data and the import; before and after the trim run
+in turn), I5 transfer average (slowest), ms:
+
+| Run | Before the trim | After the trim |
+|---|---|---|
+| 1 | 7.98 (8.09) | 4.07 (4.21) |
+| 2 | 4.62 (4.78) | 3.89 (4.37) |
+| 3 | 5.55 (8.97) | 3.79 (4.34) |
+
+In the same runs, adjust averaged 4.73 / 2.60 / 4.09 ms before and 2.65 / 2.56 / 3.38 ms after (it is not changed by
+the trim; this shows the machine's noise). Arrived per adjust went from 1.36 to 1.78 times down to 1.12 to 1.54 times.
+
+**Set C: `bash scripts/db-perf.sh` three times on the final code** (the full chain, as sets A and B; the machine's
+load average rose from 0.9 to 3.3 during the set, as another session was working), average (slowest), ms:
+
+| Case | Set C run 1 | Set C run 2 | Set C run 3 | Budget |
+|---|---|---|---|---|
+| I5 adjust_out | 11.29 (37.15: one stall) | 2.74 (3.16) | 3.43 (3.70) | 5 |
+| I5 reserve | 3.79 (4.40) | 3.49 (7.01) | 3.72 (4.33) | 5 |
+| I5 transfer (Arrived) | 4.11 (4.52) | 4.23 (4.75) | **5.78** (5.97) | 5 |
+| I7 Arrived carrying 5 holds | 4.45 (6.33) | 4.09 (4.37) | 5.95 (6.34) | 25 |
+| I17 check_stock_integrity | 222.3 (280.3) | 204.6 (269.5) | 215.1 (253.3) | 1,500 |
+
+- **Arrived is within 5 ms in 2 of 3 full runs and in all 3 paired runs, and over in run 3 (5.78 ms)**, the busiest
+  run (load 3.3), where adjust also took 3.43 ms. Arrived posts two ledger rows, so it costs about 1.5 to 1.7
+  adjusts (runs 2 and 3), and the budget leaves no room for that on a loaded machine. **It stays an open risk** (README). Next:
+  re-time in CI or on dev, then Haider decides whether to accept it or trim it in 6b. The next trim would build the
+  answer's levels from the two rows' snapshots (about 0.3 ms).
+- adjust run 1: one call of the five took 37 ms, a machine stall; the other four averaged 4.8 ms.
+- I16 in set C: 20 sessions 394 / 569 / 564 ms (budget 3,000); 3 × 300 operations p95 7.34 / 11.39 / 10.29 ms
+  (budget 25), 0 deadlocks, integrity 0 rows each run.
 
 ## I16: concurrency (budget 3 s wall clock; p95 25 ms, 0 deadlocks, integrity 0 rows)
 
@@ -102,4 +149,6 @@ the 100 worked-on leads).
 ## Not measured in 6a
 
 I1 to I4 (inventory reads, 6b), I6 and I8 (sales, 6d), I9 to I11 (client link, 6e), I12 to I14 (stock import, 6c),
-I15 (the nightly job at size: arrives with 6c's batch clean-up; its parts are I17 and the expiry RPC path).
+I15 (the nightly job at size: arrives with 6c's batch clean-up; its parts are I17 and the expiry RPC path; README
+deviation 16). I18 was not re-run in set C: the fixes and the trim do not touch the import, the undo or the lead
+lists.
