@@ -21,7 +21,7 @@
 alter table public.activities
   add column request_id uuid,                    -- idempotency key from the browser, unique per author (used from 4b)
   add column edited_at timestamptz,              -- set by the guard when the text changes
-  add column prev_last_activity_at timestamptz,  -- the lead's last-activity date before this entry; guard-set, no grant
+  add column prev_last_activity_at timestamptz,  -- the lead's date before the entries still standing; guard-set, no grant
   drop constraint activities_outcome_check,      -- was char_length(outcome) <= 60
   -- Each kind of entry takes only its own outcomes. A call must have one ("outcome is not null": an IN list with a
   -- null outcome is null, and a CHECK lets null through).
@@ -62,6 +62,8 @@ language plpgsql set search_path = '' as $$
 declare
   caller constant uuid := (select auth.uid());
   changed text[];
+  base timestamptz;
+  inherited timestamptz;
 begin
   if caller is null then
     return new;
@@ -70,7 +72,21 @@ begin
   if tg_op = 'INSERT' then
     new.user_id := caller;  -- G1: always the person signed in
     new.edited_at := null;
-    new.prev_last_activity_at := (select c.last_activity_at from public.companies c where c.id = new.company_id);
+    -- D9: the lead's date before any entry still standing. It is the lead's current date, unless an entry set that
+    -- date: then it is that entry's own previous date, carried forward (for example the date from the import). So
+    -- deleting entries in any order puts the lead back on a date a remaining entry, or the sheet, supports.
+    base := (select c.last_activity_at from public.companies c where c.id = new.company_id);
+    if base is not null then
+      select a.prev_last_activity_at into inherited
+        from public.activities a
+       where a.company_id = new.company_id and a.created_at = base
+       order by a.id
+       limit 1;
+      if found then
+        base := inherited;
+      end if;
+    end if;
+    new.prev_last_activity_at := base;
     new.body := replace(new.body, E'\r\n', E'\n');
     if not coalesce(
            (new.type = 'call' and new.outcome in ('no_answer', 'voicemail', 'wrong_number', 'not_interested',
@@ -140,10 +156,11 @@ create policy activities_update on public.activities for update to authenticated
 
 -- Last activity on delete (D9, reverses Day 3a's "deleting leaves the date as it was"). When the deleted entry is the
 -- one that set the lead's date, the date moves back to the newest remaining entry, or to the date the lead had before
--- this entry, whichever is later. prev_last_activity_at is guard-set and never granted, so neither a delete nor an undo
--- can move a lead's date anywhere the history does not support. Deleting an older entry changes nothing; in a lead
--- delete the lead row is already gone, so the update finds nothing. DEFINER like touch_company_activity, so deleting an
--- entry on a lead someone else owns still corrects its date; trigger-only, revoked from everyone below.
+-- the entries (prev_last_activity_at), whichever is later. prev_last_activity_at is guard-set and never granted, so
+-- neither a delete nor an undo can move a lead's date anywhere the history does not support. Deleting an older entry
+-- changes nothing; in a lead delete the lead row is already gone, so the update finds nothing. DEFINER like
+-- touch_company_activity, so deleting an entry on a lead someone else owns still corrects its date; trigger-only,
+-- revoked from everyone below.
 create function private.untouch_company_activity() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin

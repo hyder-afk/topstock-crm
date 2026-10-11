@@ -20,4 +20,5 @@ for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$f"; done
 $PSQL -f "$ROOT/supabase/tests/rls_attack.sql"
 $PSQL -f "$ROOT/supabase/tests/import_attack.sql"
 bash "$ROOT/supabase/tests/import_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/activity_attack.sql"
 bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p 54329 -U postgres -d postgres
