@@ -490,8 +490,9 @@ MUTATIONS_6A = [
      [("  if v_archived is not null and new.kind not in ('release', 'expire') then", "  if false then")], SURVIVES),
     ("No archived-product check under the lock (archive racing a receipt)",
      [("  if not v_active and new.kind not in ('release', 'expire') then", "  if false then")]),
-    ("A place of another organisation is accepted",
-     [("from public.locations l where l.id = new.location_id and l.org_id = v_org;", "from public.locations l where l.id = new.location_id;")]),
+    ("No same-organisation check on the place in the guard (the places policy hides other organisations' places)",
+     [("from public.locations l where l.id = new.location_id and l.org_id = v_org;", "from public.locations l where l.id = new.location_id;")],
+     SURVIVES),
     ("A transfer_out may leave from the warehouse",
      [("  if not found or (new.kind = 'transfer_out' and v_place <> 'transit')\n", "  if not found or (false and v_place <> 'transit')\n")]),
     ("Anyone may release a hold",
@@ -564,6 +565,13 @@ MUTATIONS_6A = [
     ("No two-factor policy on the levels, ledger, holds, hold uses and request ids",
      [("                           'private.stock_hold_uses', 'private.movement_requests'] loop\n    execute format('alter table %s enable row level security', t);\n    execute format('create policy require_mfa on %s as restrictive to authenticated using ((select private.has_aal2())) with check ((select private.has_aal2()))', t);\n",
        "                           'private.stock_hold_uses', 'private.movement_requests'] loop\n    execute format('alter table %s enable row level security', t);\n")]),
+    ("A place of another organisation is accepted (no same-organisation check and places readable by everyone, both layers)",
+     [("from public.locations l where l.id = new.location_id and l.org_id = v_org;", "from public.locations l where l.id = new.location_id;"),
+      ("create policy locations_select on public.locations for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy locations_select on public.locations for select to authenticated\n  using (true);")]),
+    ("Places readable across organisations (policy)",
+     [("create policy locations_select on public.locations for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy locations_select on public.locations for select to authenticated\n  using (true);")]),
 ]
 
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day6a": (MIG_6A, MUTATIONS_6A)}
