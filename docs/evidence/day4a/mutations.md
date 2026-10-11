@@ -3,9 +3,12 @@
 `python3 scripts/db-mutations.py --set day4a` changes the migrations in place for one mutation, runs the whole database
 suite (`scripts/db-test.sh`: migrations, the RLS attack test, the import attack test, the two-session import test, the
 activity attack test, the two-session activity test, advisors) and restores the migrations; "caught" means the suite
-failed. Run on commit a0f86ff (the final migration and tests after review round 1; later commits change only
-documents), in three separate copies of the code at the same time (`git worktree`: rows 1 to 34, 35 to 68 and 69 to
-101), so nothing else read a mutated file. The first round's run (64 rows, on ffa9dc4) is in git history. A run of this
+failed. Rows 1 to 97 and 99 to 101 ran on commit a0f86ff (the migration and tests after review round 1), in three
+separate copies of the code at the same time (`git worktree`: rows 1 to 34, 35 to 68 and 69 to 101), so nothing else
+read a mutated file. Review round 2 (e111726) changed the migration (`lock_activity_lead` locks the contact first),
+`activity_attack.sql` and `activity_concurrency.sh`: rows 98 and 102 to 104 ran on e111726. Every one of the 104
+patterns was confirmed to apply exactly once on the final head 4137fef, and the advisor re-ran rows 69, 70, 71 and 102
+(the lock protections) on 4137fef: all caught, row 102 ending in "deadlock detected". The first round's run (64 rows, on ffa9dc4) is in git history. A run of this
 list on 5244c58 found row 101 not caught: the give-away test named its row, so `tasks_select`, checked on the new row,
 hid both layers; a0f86ff adds two bare updates (no WHERE) to that test.
 

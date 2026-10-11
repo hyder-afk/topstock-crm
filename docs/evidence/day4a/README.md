@@ -80,22 +80,33 @@ leads, contacts and saved views), so the new grants and guards need no app chang
 
 ## Check results
 
+Final head of this PR: **4137fef** (review round 2); later commits change only documents. The rows below say which
+commit each result is from.
+
+**Docs used (Context7, PostgreSQL 17 manual `/websites/postgresql_17`):** trigger firing order (several triggers on one
+event fire in alphabetical order by name; a BEFORE trigger's returned row feeds the next), the row-level lock modes and
+their conflict table (FOR NO KEY UPDATE does not block FOR KEY SHARE; FOR KEY SHARE conflicts only with FOR UPDATE),
+the row security chapter (locking clauses in policies need UPDATE privilege, which is why the lead lock is a DEFINER
+trigger), and `pg_trigger_depth()`. The builder did not name Context7 lookups during the build; spike S5 is the
+empirical check of the same behaviours on PostgreSQL 16.15 (and CI runs every test on the Supabase PostgreSQL 17
+image).
+
 | Check | Result |
 |---|---|
 | Spike S5 (PG 16.15) | (a), (b), (c) all hold; decisions in `docs/log.md` |
-| `bash scripts/db-test.sh` (after review round 1) | `rls_attack: all checks passed`, `import_attack: all checks passed`, `import_concurrency: all checks passed`, `activity_attack: all checks passed`, `activity_concurrency: all checks passed`, `advisors: no ERROR-level findings` (exit 0) |
+| `bash scripts/db-test.sh` (on 4137fef) | `rls_attack: all checks passed`, `import_attack: all checks passed`, `import_concurrency: all checks passed`, `activity_attack: all checks passed`, `activity_concurrency: all checks passed`, `advisors: no ERROR-level findings` (exit 0) |
 | Advisors (splinter, local) | WARN `authenticated_security_definer_function_executable` on `set_user_role` (accepted Day 1); INFO `unindexed_foreign_keys: 1` (`activities_org_id_fkey`, accepted below); INFO `unused_index: 2` |
 | `plpgsql_check` 2.7.2 (local stand-in for CI's `supabase db lint`) | no finding on any new or changed function (only the existing dynamic-SQL notes on `list_leads`); re-run after review round 1 with extra, other and performance warnings on `activity_guard`, `lock_activity_lead`, `untouch_company_activity`, `task_guard` and `audit_row`: no finding |
 | Mutations, Day 4a (`docs/evidence/day4a/mutations.md`, review rounds 1 and 2, on a0f86ff and e111726) | **102 of 102 caught; the 2 documented two-layer rows not caught, as listed** (104 rows; every count line ends `0 not as listed`). First round: 64 of 64 |
 | Mutations, Day 3b after 4a (re-run on 5244c58) | 36 of 37 caught; row 4 not caught, the same documented two-layer row as on 10 Oct (`day3b: 37 rows run: 36 caught, 1 documented two-layer rows not caught, 0 not as listed`) |
 | Perf (`docs/evidence/day4a/perf.md`, 3 runs) | P2 0.08–0.19 ms (budgets 5 / 8 / 10 ms), generic plans keep the keyset index; P7 import chunks avg 174–183 ms, undo chunks avg 139–158 ms (Day 3b 169–207 / 140–206 ms); P8 every Day 3a case within 20% (all faster). Review round 1, part 1 re-run for the lead lock (3 runs, each next to a run of the code before the fix): P2 0.11–0.24 ms; logging one entry 1.77–3.86 ms and deleting it 1.29–2.26 ms, within the before-the-fix spread (1.59–4.95 / 1.17–3.00 ms) |
-| `npm run lint` | 0 errors (2 existing warnings: TanStack Virtual and the React compiler; re-run after review round 1) |
-| `npm run typecheck` | passed (re-run after review round 1) |
-| `npm run test:unit` | 166 passed (re-run after review round 1) |
+| `npm run lint` | 0 errors (2 existing warnings: TanStack Virtual and the React compiler), on 4137fef |
+| `npm run typecheck` | passed, on 4137fef |
+| `npm run test:unit` | 166 passed, on 4137fef |
 | Playwright e2e, Chromium, restarted local auth stack (migrations re-applied; every auth suite except `screens.spec.ts`), on ffa9dc4; not re-run after review round 1, which changes no app code and no table the e2e fixtures write | **44 passed**, 1 skipped (`import-perf`, runs only with `PERF=1`); `journey.spec.ts` cannot run on this VM: its first test stops at `Error: MAILPIT_URL is not set` (the local stack has no mail inbox: it auto-confirms and sends no email), so its other 4 did not run. It does not touch activities or tasks and runs in CI's `auth-journey` job, which has the inbox |
 | Semgrep | not run locally: `semgrep.dev` is denied by this session's egress policy (403; known since 9 Oct, `docs/log.md`), so it runs in CI's `semgrep` job |
-| gitleaks (`origin/main..HEAD`, includes the two Day 4 design and log commits) | no leaks found (exit 0; 15 commits scanned before this line was written, 16 after). Review round 1: no leaks found on each run (exit 0; 31 commits scanned before the two evidence commits, 33 after them) |
-| `npm audit --omit=dev` | found 0 vulnerabilities (re-run after review round 1) |
+| gitleaks (`origin/main..HEAD`, includes the two Day 4 design and log commits) | no leaks found (exit 0; 15 commits scanned before this line was written, 16 after). Review round 1: no leaks found on each run (exit 0; 31 commits scanned before the two evidence commits, 33 after them). On 4137fef: no leaks found (exit 0, 36 commits scanned); CI `scan` green on 4137fef |
+| `npm audit --omit=dev` | found 0 vulnerabilities, on 4137fef |
 
 ## Accepted findings
 
