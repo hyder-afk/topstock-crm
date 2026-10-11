@@ -76,7 +76,7 @@ leads, contacts and saved views), so the new grants and guards need no app chang
 | `npm run test:unit` | 166 passed |
 | Playwright e2e, Chromium, restarted local auth stack (migrations re-applied; every auth suite except `screens.spec.ts`) | **44 passed**, 1 skipped (`import-perf`, runs only with `PERF=1`); `journey.spec.ts` cannot run on this VM: its first test stops at `Error: MAILPIT_URL is not set` (the local stack has no mail inbox: it auto-confirms and sends no email), so its other 4 did not run. It does not touch activities or tasks and runs in CI's `auth-journey` job, which has the inbox |
 | Semgrep | not run locally: `semgrep.dev` is denied by this session's egress policy (403; known since 9 Oct, `docs/log.md`), so it runs in CI's `semgrep` job |
-| gitleaks (`origin/main..HEAD`) | GITLEAKS_RESULT |
+| gitleaks (`origin/main..HEAD`, includes the two Day 4 design and log commits) | no leaks found (exit 0; 15 commits scanned before this line was written, 16 after) |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
 
 ## Accepted findings
