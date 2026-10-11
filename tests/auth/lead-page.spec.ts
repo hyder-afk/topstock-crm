@@ -203,6 +203,21 @@ test("call_panel_each_outcome: status, next call, tasks and marks, checked in th
     const kinds = sql(`select coalesce(string_agg(kind, ','), '') from public.tasks where company_id = '${c.lead}' and done_at is null and cancelled_at is null`);
     expect(kinds, c.outcome).toBe(c.task ?? "");
   }
+  // Wrong number on a contact's number (called from the contacts card): only that number is marked, and no "find the
+  // right number" task is made while the main line still works.
+  const withContact = makeLead("Atelier Contact");
+  addContact(withContact, "Yasmine", "06 55 44 33 22", "yasmine@example.com");
+  await gotoLead(page, withContact);
+  await page.getByRole("link", { name: "Call Yasmine Test" }).first().click();
+  await expect(panel(page)).toContainText("Atelier Contact · Yasmine Test");
+  await panel(page).getByRole("button", { name: "End call" }).click();
+  await page.keyboard.press("Digit3");
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(() => latest(withContact)).toBe("call:wrong_number");
+  expect(sql(`select phone_wrong_at is not null from public.contacts where company_id = '${withContact}'`)).toBe("t");
+  expect(sql(`select phone_wrong_at is null from public.companies where id = '${withContact}'`)).toBe("t");
+  expect(sql(`select count(*) from public.tasks where company_id = '${withContact}'`)).toBe("0");
+  await expect(page.locator("aside").getByText("Marked wrong")).toBeVisible();
   // Wrong number marked the dialled main line; Interested made the caller the owner of the unassigned lead.
   expect(sql(`select phone_wrong_at is not null from public.companies where id = '${cases[2].lead}'`)).toBe("t");
   expect(sql(`select owner_id from public.companies where id = '${unassigned}'`)).toBe(userId(adminEmail));
@@ -457,6 +472,20 @@ test("phone_390_full_flow: tap a row, the lead page, a note from the sheet, no s
   await expect(page).toHaveURL(/\/leads\?sort=name$/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("a missing lead, someone else's org id and a malformed id get the same not-found page", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  for (const path of ["/leads/00000000-0000-4000-8000-000000000000", "/leads/not-a-uuid"]) {
+    // The page streams behind its loading skeleton, so the answer is the not-found screen (not a bare 404 status).
+    await page.goto(path);
+    await expect(page.locator("main h1")).toHaveText("This page isn’t here");
+    await expect(page.getByRole("link", { name: "Back to leads" })).toHaveAttribute("href", "/leads");
+  }
+  expect((await context.request.get("/api/leads/00000000-0000-4000-8000-000000000000/activities")).status()).toBe(200);
+  expect(await (await context.request.get("/api/leads/00000000-0000-4000-8000-000000000000/activities")).json()).toEqual({ entries: [], next: null });
+  expect(errors.filter((e) => !e.includes("404"))).toEqual([]);
   await context.close();
 });
 

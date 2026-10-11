@@ -164,6 +164,89 @@ test("leads: list with a lead open, add a lead, filters", async ({ browser }) =>
   });
 });
 
+// The lead page (Day 4b): every width in both themes and both languages for the main view; the timeline, the call panel
+// with the outcome pad, Details, "Until when?" and a Do not contact lead on the usual matrix. A made-up lead with
+// contacts (one number marked wrong), one entry of each kind, an open follow-up task and a next call date.
+const fullMatrix = [
+  { locale: "en", scheme: "light", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "en", scheme: "dark", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "fr", scheme: "light", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "fr", scheme: "dark", widths: [390, 768, 1024, 1280, 1440, 1728] },
+] as const;
+
+test("lead page: summary, timeline, call panel, details, until when, do not contact", async ({ browser }) => {
+  test.setTimeout(1_500_000);
+  const me = sql(`select id from auth.users where email = '${withFactor}'`);
+  const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country)
+                    select org_id, 'Maison Verdane', id, 'warm', '04 78 12 34 56', 'achats@verdane.example.com', 'Lyon', 'FR'
+                    from public.profiles where id = '${me}' returning id`);
+  sql(`insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
+       select org_id, id, 'Amélie', 'Laurent', 'Head buyer', 'amelie@verdane.example.com', '06 12 34 56 78' from public.companies where id = '${lead}';
+       insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
+       select org_id, id, 'Karim', 'Benali', 'Owner', null, '06 98 76 54 32' from public.companies where id = '${lead}';
+       update public.contacts set phone_wrong_at = now() - interval '2 days' where first_name = 'Karim' and company_id = '${lead}';
+       insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${me}', v.type, v.outcome, v.body, now() - v.ago
+       from public.companies c, (values
+         ('call', 'no_answer', null, interval '3 days 2 hours'),
+         ('email', 'sent', 'Subject: Spring price list' || chr(10) || chr(10) || 'Bonjour Amélie, voici les prix du lot denim grade A.', interval '2 days 5 hours'),
+         ('whatsapp', 'sent', 'Photos of the denim lot sent.', interval '1 day 6 hours'),
+         ('call', 'interested', 'Wants 300 pieces of denim jackets, grade A. Call back with the container date.', interval '1 day 2 hours'),
+         ('meeting', 'held', 'Visited the showroom in Lyon. Next: samples.', interval '5 hours'),
+         ('note', null, 'Prefers WhatsApp in the morning. Pays by transfer, 30 days.', interval '20 minutes')
+       ) as v (type, outcome, body, ago) where c.id = '${lead}';
+       insert into public.tasks (org_id, company_id, title, kind, due_date, assignee_id)
+       select org_id, id, 'Follow up with Maison Verdane', 'call', (now() at time zone 'Europe/Paris')::date + 1, '${me}'
+       from public.companies where id = '${lead}';
+       update public.companies set next_action_at = now() + interval '1 day 2 hours' where id = '${lead}';`);
+  const dnc = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country)
+                   select org_id, 'Comptoir Silence', id, 'do_not_contact', '01 23 45 67 89', 'contact@silence.example.com', 'Paris', 'FR'
+                   from public.profiles where id = '${me}' returning id`);
+  // Timeline rows use content-visibility: auto (design D13), which skips painting rows far outside the viewport; a
+  // full-page shot captures them, so they are painted for the shot only.
+  const ready = async (page: Page) => {
+    await appReady(page);
+    await page.addStyleTag({ content: "li[style*='content-visibility'] { content-visibility: visible !important; }" });
+    await page.waitForTimeout(300);
+  };
+  await shoot(browser, "full", `/leads/${lead}`, "lead", async (page) => {
+    await ready(page);
+    await expect(page.getByRole("tabpanel").getByRole("article").first()).toBeVisible();
+  }, fullMatrix);
+  await shoot(browser, "full", `/leads/${lead}?tab=timeline`, "lead-timeline", async (page) => {
+    await ready(page);
+    await expect(page.getByRole("tabpanel").getByRole("article")).toHaveCount(6);
+  });
+  await shoot(browser, "full", `/leads/${lead}`, "lead-call", async (page) => {
+    await ready(page);
+    // Start the call from the Call action without leaving the page (tel: has no handler in a test browser).
+    await page.evaluate(() => {
+      const a = document.querySelector<HTMLAnchorElement>("main a[href^='tel:']");
+      a?.addEventListener("click", (e) => e.preventDefault(), { once: true });
+      a?.click();
+    });
+    const panel = page.getByRole("region", { name: /^(Calling|Appel de)/ });
+    await panel.getByRole("button", { name: /^(End call|Raccrocher)$/ }).click();
+    await page.keyboard.press("Digit5");
+    await expect(panel.locator('[data-outcome="interested"]')).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(500);
+  });
+  await shoot(browser, "full", `/leads/${lead}?tab=details`, "lead-details", async (page) => {
+    await ready(page);
+  });
+  await shoot(browser, "full", `/leads/${lead}`, "lead-until", async (page) => {
+    await ready(page);
+    await page.getByRole("button", { name: /^(Status|Statut)/ }).click();
+    await page.getByRole("menuitemradio", { name: /^(Cool off|En pause)$/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(400);
+  });
+  await shoot(browser, "full", `/leads/${dnc}`, "lead-dnc", async (page) => {
+    await ready(page);
+    await expect(page.getByRole("note")).toBeVisible();
+  }, lightMatrix);
+});
+
 test("command menu and shortcuts list", async ({ browser }) => {
   await shoot(browser, "full", "/", "palette", async (page) => {
     await appReady(page);
