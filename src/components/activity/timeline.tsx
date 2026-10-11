@@ -507,14 +507,20 @@ const EntryItem = memo(function EntryItem({
     };
   }, [body, expanded]);
 
+  // A cut entry asks for its full text first. If that fails (an error answer or offline), the entry stays closed with
+  // Show more still there to try again, and a toast says why.
   const showMore = async () => {
     let text = full;
     if (entry.truncated && full === null) {
-      const res = await fetch(`/api/activities/${entry.id}`, { headers: { accept: "application/json" } });
-      if (res.ok) {
+      try {
+        const res = await fetch(`/api/activities/${entry.id}`, { headers: { accept: "application/json" } });
+        if (!res.ok) throw new Error(String(res.status));
         text = ((await res.json()) as { body: string | null }).body;
-        setFull(text);
+      } catch {
+        toast.show(t("showMoreError"));
+        return;
       }
+      setFull(text);
     }
     setExpanded(true);
     opened?.set(entry.id, { full: text });

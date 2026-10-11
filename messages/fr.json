@@ -883,6 +883,7 @@
     "delete": "Supprimer",
     "deleted": "Entrée supprimée.",
     "showMore": "Afficher plus",
+    "showMoreError": "Impossible de charger le texte complet. Réessayez.",
     "followUp": "Relance {date}",
     "followUpDone": "Relance faite {date}",
     "deleteConfirm": {

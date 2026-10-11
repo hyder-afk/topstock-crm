@@ -514,6 +514,38 @@ test("timeline_edit_survives_new_entry: an open edit keeps its draft while a not
   await context.close();
 });
 
+test("timeline_show_more_failure_says_so: offline or an error answer keeps the entry closed with a toast, then it opens", async ({ browser }) => {
+  const lead = makeLead("Comptoir Texte Long");
+  sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${userId(adminEmail)}', 'note', null, 'Long start ' || repeat('x', 2500) || ' LONG-END', now() - interval '1 hour'
+       from public.companies c where c.id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead, "timeline");
+  const entry = page.getByRole("tabpanel").getByRole("article").first();
+  const more = entry.getByRole("button", { name: "Show more" });
+  const full = (url: URL) => url.pathname.startsWith("/api/activities/");
+  const failure = page.getByRole("status").filter({ hasText: "Couldn’t load the full text. Try again." });
+  // Offline: the fetch throws; nothing is left uncaught.
+  await page.route(full, (route) => route.abort("internetdisconnected"));
+  await more.click();
+  await expect(failure).toBeVisible();
+  await expect(more).toBeVisible();
+  await expect(entry).not.toContainText("LONG-END");
+  await page.unroute(full);
+  // An error answer: the same toast, and Show more stays to try again.
+  await page.route(full, (route) => route.fulfill({ status: 502, contentType: "application/json", body: "{}" }));
+  await more.click();
+  await expect(more).toBeVisible();
+  await expect(entry).not.toContainText("LONG-END");
+  await page.unroute(full);
+  await more.click();
+  await expect(entry).toContainText("LONG-END");
+  await expect(more).toHaveCount(0);
+  // Only the browser's own notes about the failed requests are expected in the console.
+  expect(errors.filter((e) => !/status of 502|ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(e))).toEqual([]);
+  await context.close();
+});
+
 test("timeline_virtualised_past_120 (150 entries): a feed with positions, the end reached, the menu and Show more work", async ({ browser }) => {
   const lead = makeLead("Comptoir Cent Cinquante");
   sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
