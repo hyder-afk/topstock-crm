@@ -51,10 +51,10 @@ export const TIMELINE_PAGE_SIZE = 30;
 export const BODY_SHOWN = 2_000;
 
 /**
- * Characters the database refuses in entry text (activities_body_safe): C0 controls except tab and line feed, DEL, and
- * the bidi overrides and isolates (a note cannot reorder the text around it).
+ * Characters the database refuses in entry text (activities_body_safe): C0 controls except tab and line feed, DEL, C1
+ * controls (Day 4a review), and the bidi overrides and isolates (a note cannot reorder the text around it).
  */
-export const UNSAFE_TEXT = /[\u0001-\u0008\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]/;
+export const UNSAFE_TEXT = /[\u0001-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/;
 
 /** Line breaks as the database stores them (CRLF and lone CR become LF). */
 export function normaliseBody(text: string): string {
