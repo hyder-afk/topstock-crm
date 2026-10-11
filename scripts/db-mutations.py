@@ -726,8 +726,10 @@ LOG_LOCKS_4C_REVERSED = """    select c.id, c.owner_id, c.lead_status, c.phone, 
 """
 MUTATIONS_4C = [
     # The design's list (8.3, 4c).
-    ("claim_next_lead: no scope check (a rep works Team or the unassigned leads)",
-     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns")]),
+    ("claim_next_lead and queue_candidates: no scope check (a rep works Team or the unassigned leads; both layers)",
+     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns"),
+      ("  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then\n    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';\n  end if;\n  if p_segment = 0 then",
+       "  if p_segment = 0 then")]),
     ("Claims delete policy: no expiry condition (an expired claim stays until its holder lets go)",
      [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
        "  org_id = (select private.current_org_id()) and user_id = (select auth.uid()));")]),
@@ -751,6 +753,11 @@ MUTATIONS_4C = [
     ("Queue rank: Cool off without a date served",
      [("      when lead_status = 'cool_off' and next_action_at is not null then 2", "      when lead_status = 'cool_off' then 2")]),
     # Every other protection.
+    ("claim_next_lead: no scope check (queue_candidates still refuses the scope)",
+     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns")], SURVIVES),
+    ("queue_candidates: no scope check (a direct call lists the team's leads for a rep)",
+     [("  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then\n    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';\n  end if;\n  if p_segment = 0 then",
+       "  if p_segment = 0 then")]),
     ("queue_summary: no scope check",
      [(SCOPE_QUEUE + "  v_open := private.open_call_zones(now(), p_skip_lunch);", "  v_open := private.open_call_zones(now(), p_skip_lunch);")]),
     ("list_tasks: Team for anyone",

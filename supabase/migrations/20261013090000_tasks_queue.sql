@@ -408,6 +408,10 @@ declare
   v_rank constant smallint := case p_segment when 1 then 0 when 2 then 0 when 3 then 1 when 4 then 1
                                              when 5 then 2 when 6 then 3 end;
 begin
+  -- The same scope rule as claim_next_lead, for a direct call (private has no API endpoint, but a database login does).
+  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then
+    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';
+  end if;
   if p_segment = 0 then
     if p_scope = 'mine' then
       return query

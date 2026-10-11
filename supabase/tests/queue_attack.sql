@@ -738,8 +738,11 @@ declare
   r jsonb;
 begin
   perform pg_temp.act(h);
-  perform pg_temp.expect_error($q$select public.claim_next_lead('team')$q$, '42501', 'scope');
-  perform pg_temp.expect_error($q$select public.claim_next_lead('mine_unassigned')$q$, '42501', 'scope');
+  -- (Outside calling hours too: Hal's own leads would then be served, so only the scope check can refuse.)
+  perform pg_temp.expect_error($q$select public.claim_next_lead('team', null, '{}', 1, true)$q$, '42501', 'scope');
+  perform pg_temp.expect_error($q$select public.claim_next_lead('mine_unassigned', null, '{}', 1, true)$q$, '42501', 'scope');
+  perform pg_temp.expect_error($q$select private.queue_candidates(1, 'team', null, '{}', current_date, 'Europe/Paris', 10)$q$,
+                               '42501', 'scope');
   perform pg_temp.expect_error($q$select public.queue_summary('team')$q$, '42501', 'scope');
   perform pg_temp.expect_error($q$select public.queue_summary('mine_unassigned')$q$, '42501', 'scope');
   -- rep_cannot_claim_others_lead: neither through the API function nor a direct insert (no locking a teammate out).
