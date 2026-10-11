@@ -832,6 +832,8 @@ MUTATIONS_4C = [
     ("claim_next_lead: candidates include leads with a live claim (the primary key still refuses them)",
      [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n",
        "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n")], SURVIVES),
+    ("claim_next_lead: no second look after winning a claim (a lead a teammate just called is served again)",
+     [("      if v_got is not null and not exists (\n", "      if false and not exists (\n")]),
     ("claim_next_lead: the session's skips ignored",
      [("  v_skip := v_exclude || coalesce(p_keep, '{}'::uuid[]);", "  v_skip := coalesce(p_keep, '{}'::uuid[]);")]),
     ("claim_next_lead: the caller's other claims kept (the screen holds more than it shows)",

@@ -724,6 +724,21 @@ begin
       exception when insufficient_privilege then
         v_got := null;  -- the lead changed hands since it was read: not the caller's to claim any more
       end;
+      -- The candidates were read before this claim: meanwhile a teammate may have claimed the lead, called it and let
+      -- it go (its next call date moved). A second look, in a statement of its own, sees what they committed.
+      if v_got is not null and not exists (
+           select 1 from public.companies c
+            where c.id = v_got and c.queue_rank is not null
+              and (v_open is null or c.call_zone = any (v_open))
+              and (p_scope = 'team' or c.owner_id = caller or (p_scope = 'mine_unassigned' and c.owner_id is null))
+              and (c.next_action_at is null or c.next_action_at <= now()
+                   or exists (select 1 from public.tasks t
+                               where t.company_id = c.id and t.assignee_id = caller and t.kind = 'call'
+                                 and t.done_at is null and t.cancelled_at is null
+                                 and (t.due_date <= v_today or t.due_at <= now() + interval '5 minutes')))) then
+        delete from private.queue_claims q where q.company_id = v_got and q.user_id = caller;
+        v_got := null;
+      end if;
       if v_got is not null then
         v_cards := v_cards || jsonb_build_array(
                      private.queue_card(v_got, case when v_seg = 0 then 'follow_up' end, p_skip_lunch));

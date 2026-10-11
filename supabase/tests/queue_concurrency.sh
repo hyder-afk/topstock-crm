@@ -19,6 +19,8 @@
 #     deadlock_timeout 200 ms; both finish, C1's new number has no mark, and the lead's flag matches its contacts.
 #  8. claim_cap_two_tabs: one person's two tabs claim at the same time; together they never hold more than 3 claims
 #     (the claim guard's per-person lock makes the second tab wait and then see the first tab's claims).
+#  9. second_look: a lead a teammate claims, calls and lets go while this session's claim waits (its candidates read
+#     before) is let go again instead of served (claim_next_lead looks at the lead again after winning the claim).
 # Usage: queue_concurrency.sh "<libpq connection string>" (after queue_attack.sql). Used by scripts/db-test.sh and the
 # CI "rls" job. Fixtures are made by the superuser connection; the probes run as the admins through the API role.
 set -euo pipefail
@@ -224,6 +226,34 @@ grep -q 'busy' "$TMPDIR_QC/tab.err" || fail "claim_cap_two_tabs: the second tab 
 wait $pa || fail "claim_cap_two_tabs: the first tab failed"
 got=$(as_owner "select count(*) from private.queue_claims where user_id = '$W2' and expires_at > now();")
 [ "$got" = "3" ] || fail "claim_cap_two_tabs: $got live claims (expected 3)"
+
+# 9. A lead a teammate called while this claim waited is not served -------------------------------------------------
+# Yul's queue holds X then L. Xan holds an open claim on X, so Yul's claim_next_lead (two cards) reads both candidates
+# and waits on X; meanwhile Wyn claims L, calls it (no answer: back the next working day) and lets it go. When Xan rolls
+# back, Yul gets X, then claims L: the second look sees Wyn's call, and L is let go instead of served.
+as_owner "delete from private.queue_claims where user_id in ('$W1', '$W2', '$W3');" > /dev/null
+l9x=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_status, phone, country, next_action_at)
+                select id, 'Race second look X', '$W3', 'negotiation', '+33 1 99 00 50 91', 'FR', now() - interval '3000 days'
+                  from public.orgs where name = 'TopStock Wholesale' returning id;")
+l9l=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_status, phone, country, next_action_at)
+                select id, 'Race second look L', '$W3', 'negotiation', '+33 1 99 00 50 92', 'FR', now() - interval '2999 days'
+                  from public.orgs where name = 'TopStock Wholesale' returning id;")
+as_user "$W2" "begin;
+select public.claim_lead('$l9x') \g /dev/null
+select pg_sleep(3) \g /dev/null
+rollback;" & pc=$!
+sleep 0.5
+as_user "$W3" "select string_agg(c ->> 'id', ',') from jsonb_array_elements(
+                 public.claim_next_lead('mine', '{}'::uuid[], '{}', 2, true) -> 'cards') c;" > "$TMPDIR_QC/second.out" & pb=$!
+sleep 0.5
+as_user "$W1" "select public.claim_lead('$l9l') \g /dev/null" > /dev/null
+as_user "$W1" "select public.log_activity('$l9l', 'call', 'no_answer', p_from_queue => true) \g /dev/null" > /dev/null
+wait $pc || fail "second_look: the holding session failed"
+wait $pb || fail "second_look: the queue session failed"
+got=$(cat "$TMPDIR_QC/second.out")
+[ "$got" = "$l9x" ] || fail "second_look: the queue served '$got' (expected only X; L was just called by a teammate)"
+got=$(as_owner "select count(*) from private.queue_claims where company_id = '$l9l';")
+[ "$got" = "0" ] || fail "second_look: L kept a claim"
 
 as_owner "delete from private.queue_claims;" > /dev/null
 echo "queue_concurrency: all checks passed"
