@@ -133,10 +133,12 @@ function CallPanel({ call, onChange, onClose }: { call: CallState; onChange: (c:
     onChange({ ...call, phase: "outcome" });
   }, [call, onChange]);
 
+  // Closing before Save never loses a call silently: first "Call not logged · Log it" (a chosen outcome and the note are
+  // kept for Log it), then a second close (or Don't log) ends the panel.
   const dismiss = useCallback(() => {
-    if (phase === "notLogged" || outcome) onClose();
+    if (phase === "notLogged") onClose();
     else onChange({ ...call, phase: "notLogged" });
-  }, [phase, outcome, onClose, onChange, call]);
+  }, [phase, onClose, onChange, call]);
 
   const save = useCallback(async () => {
     if (!outcome || !ready) return;
