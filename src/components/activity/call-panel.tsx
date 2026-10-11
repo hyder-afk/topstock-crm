@@ -372,7 +372,8 @@ function CallPanel({
       </motion.div>
 
       <div className="flex flex-col gap-3 px-5 pt-1">
-        <p role="status" className="text-sm font-bold text-pretty empty:hidden">
+        {/* Stays in the accessibility tree while empty (sr-only, not display:none) so the queued-call message is announced. */}
+        <p role="status" className={cn("text-sm font-bold text-pretty", !queuedWho && "sr-only")}>
           {queuedWho ? t("queued", { who: queuedWho }) : null}
         </p>
         <div className="flex items-baseline justify-between gap-3">
