@@ -135,9 +135,11 @@ contact5=$(as_owner "insert into public.contacts (org_id, company_id, first_name
                      select org_id, id, 'Held' from public.companies where id = '$lead5' returning id;")
 other5=$(as_owner "insert into public.companies (org_id, name, lead_status)
                    values ('00000000-0000-0000-0000-0000000000cc', 'Other org lead', 'cold') returning id;")
-quick_refusal() {  # $1 label, $2 sub, $3 aal, $4 "table id" held for 3 s (NO KEY UPDATE), $5 the refused insert
+quick_refusal() {  # $1 label, $2 sub, $3 aal, $4 "table id" held for 3 s, $5 the refused insert
+  # FOR UPDATE: it conflicts with both locks the insert lock takes (FOR KEY SHARE on a contact, FOR NO KEY UPDATE on a
+  # lead), so a lock taken by mistake makes the insert wait.
   local ph t0 t1 out
-  psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 -c "begin; select 1 from public.${4% *} where id = '${4#* }' for no key update;
+  psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 -c "begin; select 1 from public.${4% *} where id = '${4#* }' for update;
     select pg_sleep(3); commit;" > /dev/null & ph=$!
   sleep 0.4
   t0=$(date +%s%N)
