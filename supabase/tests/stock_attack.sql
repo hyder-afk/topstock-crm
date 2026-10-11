@@ -820,6 +820,26 @@ begin
   end;
   set constraints private.stock_movements_transfer_paired deferred;
 end $$;
+-- transfer_moves_held_pieces_first: transit has 10 pieces, 4 of them held; Arrived of 5 carries the 4 held pieces and 1
+-- free one (moving free pieces first would leave the hold at transit). Undone afterwards.
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2', 3000); end $$;
+do $$
+declare
+  p constant uuid := '7a000000-0000-0000-0000-000000000002';
+  r jsonb;
+begin
+  begin
+    perform pg_temp.mv(p, 'reserve', 4, 'transit', company => '33000000-0000-0000-0000-0000000000d1');
+    r := pg_temp.mv(p, 'transfer', 5);
+    if (r ->> 'held_moved')::int is distinct from 4 or pg_temp.oh(p, 'transit') <> 5 or pg_temp.rv(p, 'transit') <> 0
+       or pg_temp.rv(p, 'warehouse') <> 804 then
+      raise exception 'FAIL: transfer_moves_held_pieces_first: %', r;
+    end if;
+    perform pg_temp.integrity_clean('held pieces first');
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
+end $$;
 
 -- 5. Permissions and step-up (S5, S6, D20, D21) ------------------------------------------------------------------------
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 660); end $$;

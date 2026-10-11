@@ -327,15 +327,17 @@ waited=$(( (t1 - t0) / 1000000 ))
 
 # 7. Lock order --------------------------------------------------------------------------------------------------------------
 # a) A transfer posted directly to the ledger locks both levels in its first apply step, in location order. Session X
-#    locks the lower-id level, waits, then the higher one (the order every multi-level path uses). In location order
-#    the transfer waits behind X; in any other order the two would deadlock.
+#    takes the product's share lock and locks the lower-id level (no change, so the transfer's level insert does not
+#    wait on it), waits, then locks the higher one: the order of every path that touches two levels (the expiry sweep,
+#    Arrived's expiry). In location order the transfer waits behind X; in any other order the two deadlock.
 opening "$(p 10)" 50 50
-lo=$(as_owner "select kind from public.locations where org_id = (select id from public.orgs order by created_at limit 1) order by id limit 1;")
-hi=$(as_owner "select kind from public.locations where org_id = (select id from public.orgs order by created_at limit 1) order by id desc limit 1;")
-as_user "$CA" "begin;
-select public.post_stock_movement(p_product => '$(p 10)', p_kind => 'adjust_in', p_qty => 1, p_location => '$lo', p_reason => 'found') \g /dev/null
+lo=$(as_owner "select id from public.locations where org_id = (select id from public.orgs order by created_at limit 1) order by id limit 1;")
+hi=$(as_owner "select id from public.locations where org_id = (select id from public.orgs order by created_at limit 1) order by id desc limit 1;")
+as_owner "begin;
+select 1 from public.products where id = '$(p 10)' for share \g /dev/null
+select 1 from public.stock_levels where product_id = '$(p 10)' and location_id = '$lo' for update \g /dev/null
 select pg_sleep(2) \g /dev/null
-select public.post_stock_movement(p_product => '$(p 10)', p_kind => 'adjust_in', p_qty => 1, p_location => '$hi', p_reason => 'found') \g /dev/null
+select 1 from public.stock_levels where product_id = '$(p 10)' and location_id = '$hi' for update \g /dev/null
 commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
 sleep 0.5
 as_user "$CM" "begin;
@@ -347,7 +349,7 @@ select 'c0ffee00-0000-0000-0000-0000000000c7', '$(p 10)', l.id, 'transfer_in', 1
   from public.locations l where l.kind = 'warehouse';
 commit;" >"$WORKDIR/y.out" 2>&1 || fail "lock order (a): the direct transfer failed: $(head -3 "$WORKDIR/y.out")"
 wait $p1 || fail "lock order (a): the ordered session failed: $(head -3 "$WORKDIR/x.out")"
-[ "$(level "$(p 10)" warehouse)" = "61/0" ] && [ "$(level "$(p 10)" transit)" = "41/0" ] \
+[ "$(level "$(p 10)" warehouse)" = "60/0" ] && [ "$(level "$(p 10)" transit)" = "40/0" ] \
   || fail "lock order (a): warehouse $(level "$(p 10)" warehouse), transit $(level "$(p 10)" transit)"
 # b) Session X holds the product's share lock (as a movement's apply step does), waits, then needs the transit level.
 #    Arrived empties transit and clears the expected date: it takes the product lock first, so it waits behind X instead
