@@ -9,12 +9,13 @@ documents), in three separate copies of the code at the same time (`git worktree
 list on 5244c58 found row 101 not caught: the give-away test named its row, so `tasks_select`, checked on the new row,
 hid both layers; a0f86ff adds two bare updates (no WHERE) to that test.
 
-Result: **98 of 98 caught, and the 3 documented two-layer rows not caught, as listed** (101 rows). Count lines
+Result: **102 of 102 caught, and the 2 documented two-layer rows not caught, as listed** (104 rows; review round 2 on e111726 turned row 98 into a caught row and added rows 102 to 104). Count lines
 printed by the script, one per copy (each exited 0):
 
 - rows 1 to 34: `day4a: 34 rows run: 34 caught, 0 documented two-layer rows not caught, 0 not as listed`
 - rows 35 to 68: `day4a: 34 rows run: 34 caught, 0 documented two-layer rows not caught, 0 not as listed`
-- rows 69 to 101: `day4a: 33 rows run: 30 caught, 3 documented two-layer rows not caught, 0 not as listed`
+- rows 69 to 101: `day4a: 33 rows run: 30 caught, 3 documented two-layer rows not caught, 0 not as listed` (on a0f86ff)
+- review round 2, rows 98 and 102 to 104 (on e111726): `day4a: 4 rows run: 4 caught, 0 documented two-layer rows not caught, 0 not as listed`
 
 **What the list covers.** Rows 1 to 13 are the design's list (section 8.3, 4a), in its order. Rows 14 to 64 are the
 first round's: column grants, guard rules and pre-checks, CHECKs behind pre-checks, policy clauses, foreign key actions,
@@ -32,9 +33,9 @@ CAUGHT (documented: two layers)**, like Day 3b's row 4 below, and the row removi
 - Row 96, the author rule in `activities_update`'s WITH CHECK. USING already requires the caller to be the author, and
   the author cannot change (no update grant on `user_id`, and the guard refuses it), so the new row always passes.
   Both layers: row 97, caught.
-- Row 98, the role clause in `tasks_update`'s USING. An update that names a row also gets `tasks_select`, which has the
-  same clause; a bare update (no WHERE) meets the same clause in WITH CHECK and fails with nothing written. Both layers
-  (USING and `tasks_select`): row 99, caught.
+- Row 98 (now caught, review round 2): the role clause in `tasks_update`'s USING. A rep's bare update with a constant
+  value (no WHERE, so `tasks_select` does not apply) reaches only the rep's own tasks; without the clause it targets
+  every task of the organisation and fails on the others' rows ("new row violates row-level security policy").
 - Row 100, the role clause in `tasks_update`'s WITH CHECK. The assignee is the only column it reads that a rep could
   change, and `enforce_org_and_owner` refuses that for reps ("only managers and admins can change the owner"); an
   update that names a column also checks the new row against `tasks_select`. Both layers (WITH CHECK and the owner
@@ -157,10 +158,13 @@ lead lock), 72 and 74 (the previous date for sessions with no signed-in user) fr
 | 95 | Activities update policy: USING without the author rule | caught | new row violates row-level security policy for table "activities" |
 | 96 | Activities update policy: WITH CHECK without the author rule (behind USING, the grant and the guard) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
 | 97 | Activities update policy: no author rule in USING nor in WITH CHECK (both layers) | caught | FAIL: rep A changed rep B activity |
-| 98 | Tasks update policy: USING without the role clause (behind tasks_select and WITH CHECK) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 98 | Tasks update policy: USING without the role clause (caught since review round 2 by a rep's bare update) | caught | new row violates row-level security policy for table "tasks" |
 | 99 | Tasks update policy: no role clause in USING nor in who sees tasks (both layers) | caught | FAIL: rep A can read rep B or other-org rows in tasks |
 | 100 | Tasks update policy: WITH CHECK without the role clause (behind the owner rule and tasks_select) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
 | 101 | Tasks update policy: no role clause in WITH CHECK, and reps may change an owner (both layers) | caught | FAIL: "update public.tasks set assignee_id = '00000000-0000-0000-0000-0000000000b1'" succeeded, expected 42501 |
+| 102 | Lead lock on insert: the contact is not locked first (deadlock with log_activity's contact-then-lead order) | caught | deadlock detected |
+| 103 | Activity guard: flood window of 45 seconds | caught | FAIL: "insert into public.activities (company_id, type) values ('32000000-0000-0000-0000-0000000000e1', 'note')" succeeded, expected 22023 |
+| 104 | Task guard: flood window of 45 seconds | caught | FAIL: "insert into public.tasks (title) values ('One too many')" succeeded, expected 22023 |
 
 ## Day 3b protections after Day 4a
 

@@ -86,7 +86,7 @@ leads, contacts and saved views), so the new grants and guards need no app chang
 | `bash scripts/db-test.sh` (after review round 1) | `rls_attack: all checks passed`, `import_attack: all checks passed`, `import_concurrency: all checks passed`, `activity_attack: all checks passed`, `activity_concurrency: all checks passed`, `advisors: no ERROR-level findings` (exit 0) |
 | Advisors (splinter, local) | WARN `authenticated_security_definer_function_executable` on `set_user_role` (accepted Day 1); INFO `unindexed_foreign_keys: 1` (`activities_org_id_fkey`, accepted below); INFO `unused_index: 2` |
 | `plpgsql_check` 2.7.2 (local stand-in for CI's `supabase db lint`) | no finding on any new or changed function (only the existing dynamic-SQL notes on `list_leads`); re-run after review round 1 with extra, other and performance warnings on `activity_guard`, `lock_activity_lead`, `untouch_company_activity`, `task_guard` and `audit_row`: no finding |
-| Mutations, Day 4a (`docs/evidence/day4a/mutations.md`, review round 1, on a0f86ff) | **98 of 98 caught; the 3 documented two-layer rows not caught, as listed** (101 rows; every count line ends `0 not as listed`). First round: 64 of 64 |
+| Mutations, Day 4a (`docs/evidence/day4a/mutations.md`, review rounds 1 and 2, on a0f86ff and e111726) | **102 of 102 caught; the 2 documented two-layer rows not caught, as listed** (104 rows; every count line ends `0 not as listed`). First round: 64 of 64 |
 | Mutations, Day 3b after 4a (re-run on 5244c58) | 36 of 37 caught; row 4 not caught, the same documented two-layer row as on 10 Oct (`day3b: 37 rows run: 36 caught, 1 documented two-layer rows not caught, 0 not as listed`) |
 | Perf (`docs/evidence/day4a/perf.md`, 3 runs) | P2 0.08–0.19 ms (budgets 5 / 8 / 10 ms), generic plans keep the keyset index; P7 import chunks avg 174–183 ms, undo chunks avg 139–158 ms (Day 3b 169–207 / 140–206 ms); P8 every Day 3a case within 20% (all faster). Review round 1, part 1 re-run for the lead lock (3 runs, each next to a run of the code before the fix): P2 0.11–0.24 ms; logging one entry 1.77–3.86 ms and deleting it 1.29–2.26 ms, within the before-the-fix spread (1.59–4.95 / 1.17–3.00 ms) |
 | `npm run lint` | 0 errors (2 existing warnings: TanStack Virtual and the React compiler; re-run after review round 1) |
@@ -161,9 +161,10 @@ From review round 1 (docs/log.md, 11 Oct):
   limitation for 4c: the contacts trigger design 3.3 already plans (`sync_contact_phone`, which fires on UPDATE OF
   `company_id`) is to also refuse the move, or empty those links in the same transaction. Until then 4b code must not
   assume an entry's contact is on the entry's lead (for example before marking a wrong number).
-- **Lock order.** An entry insert now locks its lead before the foreign key check on its contact, and a delete locks
-  the entry before the lead. Two bulk deletes over several leads in opposite orders, or (from 4c) an entry naming a
-  contact while that contact is deleted and the contacts trigger updates the lead, can deadlock; PostgreSQL then
-  cancels one of them (40P01) and the app retries. The app writes one entry at a time.
+- **Lock order.** An entry insert locks its contact (FOR KEY SHARE), then its lead: the same order as 4b's planned
+  `log_activity` (design 5.2), proved by `activity_concurrency.sh` case 3 (without the contact lock it ends in 40P01,
+  mutation row 102). A delete locks the entry before the lead. Two bulk deletes over several leads in opposite orders
+  can still deadlock; PostgreSQL then cancels one of them (40P01) and the app retries. The app writes one entry at a
+  time.
 - **The dev database** still has the Day 3b schema: `deploy-dev-db` applies this migration after the merge, then the
   dev advisors are re-checked (build order 4a item 11).
