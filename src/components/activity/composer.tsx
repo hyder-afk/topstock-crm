@@ -126,7 +126,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   }
   useEffect(() => {
     if (!mode) return;
-    requestAnimationFrame(() => (mode.type === "meeting" ? formRef.current?.querySelector<HTMLElement>("[aria-pressed]") : bodyRef.current)?.focus());
+    requestAnimationFrame(() => (mode.type === "meeting" ? formRef.current?.querySelector<HTMLElement>('[data-meeting-kind] [aria-pressed="true"]') : bodyRef.current)?.focus());
   }, [mode]);
 
   useEffect(() => {
@@ -318,7 +318,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
       ) : null}
 
       {type === "meeting" ? (
-        <div role="group" aria-label={t("meetingKind")} className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label={t("meetingKind")} data-meeting-kind className="flex flex-wrap gap-1.5">
           {(["book", "held", "no_show"] as const).map((m) => (
             <button
               key={m}
