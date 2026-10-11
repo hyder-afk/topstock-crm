@@ -1,0 +1,192 @@
+# Day 4b: the lead page (timeline, composer, call panel, outcomes, Undo), 11 Oct 2026
+
+Design: `docs/evidence/day4/design.md` (sections 1, 2, 3.2, 3.5, 4.1, 5.1 to 5.3, 5.5, 6, 7.1 to 7.3, 7.7 to 7.10, 8,
+10 "4b Lead page"). Local branch `day4b-local`, cut from PR #13's head (17d0354); PR #13 has since merged into `main`
+(1004fa5), so the branch is rebased before it is pushed. Two parts: the database (build order items 1 to 3) and the
+app (items 4 to 8).
+
+## What changed
+
+**Database** (part 1; details in `docs/log.md`, `mutations.md`, `perf.md`)
+
+- Zone map: `scripts/make-zone-map.mjs` with reviewed `scripts/zone-map.overrides.json` writes
+  `src/lib/zone-map.generated.ts` and the zone-map block of the migration (parity: `tests/unit/zone-map.spec.ts`).
+- Migration `supabase/migrations/20261012090000_lead_page.sql`: zone functions; `companies.timezone`,
+  `next_action_at`, `phone_wrong_at` and `contacts.phone_wrong_at` with `lead_guard` and `contact_guard`; audit
+  exclusions; `private.activity_undo`; the undo branches of the activity and task delete policies; `bulk_update_leads`
+  with "Until when?"; `next_working_day`, `call_attempts`; the RPCs `get_lead` (extended), `list_lead_activities`,
+  `get_activity`, `log_activity`, `undo_activity`, `edit_activity`, `delete_activity`, `set_lead_timezone`,
+  `set_lead_next_action`, `create_task`, `set_task_done`, `set_task_cancelled`, `list_lead_tasks` (all SECURITY INVOKER,
+  static SQL, revoked from anon).
+- Tests: `supabase/tests/outcome_attack.sql` and `outcome_concurrency.sh` (in `db-test.sh` and `db.yml`); mutations
+  (86 of 86); perf part 2 (P1, P4, P4b).
+
+**App** (part 2)
+
+- **Libraries with unit specs.** `src/lib/phone.ts` (`dialString`, `callHref`, `whatsappHref`: about 80 markets, trunk
+  0 dropped or kept per country, "(0)", 00 and 011 prefixes, NANP); `mailtoHref` in `src/lib/leads.ts` (encoded parts,
+  no line break in the subject, CRLF body cut at 1,500 characters); `src/lib/timezones.ts` (calling zone, span ends,
+  calling hours with the lunch switch, next opening, next working day, wall-clock helpers that read clock-change gaps
+  and overlaps as PostgreSQL does); `src/lib/activities.ts` (kinds, outcomes in pad order, follow-up rules, outcome keys
+  by `event.code`, Zod strictObject requests); `src/lib/tasks.ts` (kinds, task requests, date chips in the viewer's
+  zone, overdue); `src/lib/db-errors.ts` (SQLSTATE and hint to app codes, including 4a's `task_kind`, `task_due`,
+  `not_editable`, `rate_limited`, `body_*`); `src/lib/drafts.ts`.
+- **Server actions and routes.** `src/app/(app)/leads/[id]/actions.ts`: `logActivity`, `undoActivity`, `editActivity`,
+  `deleteActivity`, `setLeadTimezone`, `setNextAction`, `createTask`, `setTaskDone`, `setTaskCancelled` (Zod
+  strictObject, `requireSession()`, one RPC with named arguments, codes only). `setLeadsStatus` takes the Cool off
+  return date. `GET /api/leads/[id]/activities` (keyset pages of 30, both cursor parts or 400, `no-store`),
+  `GET /api/leads/[id]/tasks`, `GET /api/activities/[id]` (Show more).
+- **The lead page** `/leads/[id]` (page, `loading.tsx` skeleton block for block, a not-found with Back to leads):
+  - header: name, status menu (Cool off asks "Until when?"), owner menu for managers and admins, city · country ·
+    the lead's local time ("good time to call" or "outside calling hours · opens 09:00 (in 50 min)"; a span shows its
+    range, "time zone not set" and Set time zone; both clocks when the viewer's zone differs), next call, last call,
+    tries in a row;
+  - quick actions: Call (red, opens the call panel), WhatsApp (`wa.me` from `dialString`, or the "add the country
+    code" hint), Email (mail app, or a menu of the addresses), Meeting, Note; a one-tap "Log email" / "Log WhatsApp
+    message" chip; hints for missing channels; a Do not contact lead shows a banner instead;
+  - WAI-ARIA tabs (`src/components/ui/tabs.tsx`, Motion `layoutId` pill): Summary (Next step with the open tasks and
+    the next call attempt, contacts on phones, the latest three entries, the deals placeholder), Timeline, Deals and
+    Stock ("nothing yet"), Details (the lead form, the time zone from the closed list, the next call date, the import
+    for admins, contacts on phones); Files hidden until 4d (D16); `?tab=` and `?filter=` in the URL;
+  - timeline: 30 a page with an observer and a Show older button, day groups in the viewer's zone, text only
+    (`dir="auto"`, never HTML, never auto-linked), 6-line clamp with Show more, filters, edit by the author ("Edited"),
+    Undo for 2 minutes, delete after a confirmation and a fresh code (`useStepUp`), managers and admins may delete others'
+    entries, `content-visibility: auto` per row;
+  - composer (`src/components/ui/textarea.tsx`; the rail from 1024, a sheet below): note, call (the shared outcome
+    pad), email (opens the mail app with the encoded link, then logs `email · sent` with the subject), WhatsApp, meeting
+    (book with a date and a time, held, no-show), follow-up chips with both clocks, Cmd/Ctrl+Enter, the reason Save
+    cannot run, a draft per lead (cleared on save and on the sign-in page), offline keeps the text;
+  - the call panel (`CallPanelProvider` in `src/app/(app)/layout.tsx`): survives navigation; timer; End call; outcome
+    keys 1 to 7 and 0 by key position; the follow-up picker; Esc gives "Call not logged · Log it"; drag down to close;
+    "How did it go? · Away about 3 min" after the phone app; Undo in a 10-second toast; U or Cmd/Ctrl+Z within 2 minutes.
+- **Leads list.** The preview gains Open lead (and O), its Call opens the call panel, its status menu asks "Until
+  when?"; rows prefetch the lead, its first timeline page and the route after a 120 ms hover; below desktop width a tap
+  opens the lead page; Back restores the list URL and scroll; J and K walk the list from the lead page ("3 of 60").
+- **Messages** EN and FR for LeadPage, QuickActions, CallPanel, Composer, Outcomes, Timeline, Errors, Leads.until,
+  Shortcuts (an "On a lead" section) and StepUp.bodyDelete; French typography checked by `messages.spec.ts`.
+- **Tests.** Unit: `phone`, `call-window` (61 cases, written to be shared with 4c's SQL), `next-working-day` (the SQL
+  test's own cases), `activities`, `outcome-keys`, `tasks`, `db-errors`, `day4-parity`, `messages` (new namespaces).
+  E2E: `tests/auth/lead-page.spec.ts` (Chromium and WebKit), `tests/auth/day4-security.spec.ts` (4b scope), lead page
+  shots in `tests/auth/screens.spec.ts`, `tests/auth/day4-perf.spec.ts` (PERF=1 only); the Day 3b import spec's `openImport()`
+  waits for the page's requests in flight before navigating again (WebKit flake, deviation 15).
+
+## Check results
+
+Run on commit **509e6ab** (the last code commit; the evidence commit after it changes only `docs/`), local
+auth stack serving this worktree, 11 Oct 2026.
+
+| Check | Result |
+|---|---|
+| `bash scripts/db-test.sh` | rls, import, import_concurrency, activity, outcome_attack and outcome_concurrency all pass; advisors: no ERROR-level findings (WARN `set_user_role`, accepted; INFO `unindexed_foreign_keys` 2, `unused_index` 2); exit 0 |
+| Mutations, Day 4b (part 1) | 86 of 86 caught; Day 4a 64 of 64; Day 3b 36 of 37 (the documented two-layer row) |
+| Perf, database (part 1, 4 runs) | P1 2.4–3.6 ms (8 / 12), P4 7.6–11.7 ms (15), P4b 5.4–7.6 ms (15), P2 0.4–0.7 ms (5 / 8 / 10) |
+| `npm run lint` | exit 0: 0 errors, 2 warnings (the existing React Compiler notes on TanStack Virtual) |
+| `npm run typecheck` | exit 0 |
+| `npm run test:unit` | 320 passed, exit 0 |
+| Playwright, signed out (`playwright.config.ts`) | 20 passed, exit 0 |
+| Playwright, local auth stack, Chromium, every auth suite except `journey.spec.ts` and `screens.spec.ts` (`--grep-invert "screens\|journey"`) | 63 passed, 2 skipped (`day4-perf` and `import-perf` need PERF=1), exit 0 (8.5 min); includes `lead-page`, `day4-security`, `import` with the flake fix, `leads`, `shell`, `import-security` |
+| Screenshots | 84 lead page shots (436 in the screens run, taken before 11e9eda, which changes only what a close before Save does; no shot shows that state) without console error or sideways scroll; set in `screens/` |
+| Lead page speed (`day4-perf.spec.ts`, PERF=1, Chromium, 4x CPU, one run) | cold deep link LCP **1,328 ms** (budget 2 s) and CLS **0.049** (0.05): met. Tab switch to Timeline **969 ms** (100 ms), route change from the list after hover prefetch **745–823 ms** over 3 (200 ms), 1,000-entry timeline scroll frame p50 **80.5 ms** / p95 **115.3 ms** (60 fps = 16.7 ms; long tasks mostly 50–130 ms, five of 1.4–3.1 s): **missed**, see Open risks |
+| Route chunk | the lead page adds 19 KB gzip to what the leads list already loaded; 79 KB over the bare app shell (design budget 60 KB extra) |
+| gitleaks (`origin/main..HEAD`, 22 commits) | no leaks found, exit 0 |
+| `npm audit --omit=dev` | found 0 vulnerabilities, exit 0 |
+| Apple design audit / Web Interface Guidelines | `apple-design-audit.md`, `web-design-guidelines.md` (unresolved: none) |
+| Security review | `security-review.md`: threat rows 1 to 12, 15 (undo records), 16, 18, 19, 26 to 30, 32, 33 re-checked with their tests; residual risks |
+| Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
+| WebKit e2e | not installed here; CI's auth-journey (webkit) runs `lead-page.spec.ts` |
+
+## Docs used
+
+Context7 pages consulted before coding (the builder's lookups, design 8.7):
+- **Next.js 16**: dynamic `params` promises in pages and route handlers, `loading.tsx`, `notFound`,
+  `useRouter().prefetch`.
+- **TanStack Query v5**: infinite queries with `initialData`, `prefetchInfiniteQuery`, optimistic
+  `setQueryData` and rollback.
+- **Motion**: `layoutId` with `LayoutGroup`, `AnimatePresence`, drag and `onDragEnd` velocity,
+  reduced motion.
+- **next-intl 4.14**: `useFormatter` `dateTime` with a per-call `timeZone`, `relativeTime` with
+  `now`, `useNow`.
+- **Playwright** (`/websites/playwright_dev`, class Page): `page.waitForLoadState`: "If the state has been already
+  reached while loading current document, the method resolves immediately", and `networkidle` is discouraged; so the
+  import flake fix counts the page's own requests (`request` / `requestfinished` / `requestfailed`) instead.
+
+## Deviations from the design
+
+Database part (each tested and covered by a mutation; `docs/log.md`, 11 Oct): zone offsets from the system tzdata, not
+Node's ICU; single-zone countries need no override; the Indonesia span written east first; Chile offers Punta_Arenas;
+no calling zone for Antarctica and the US minor islands (Europe/Paris); two extra generated helpers; the Cool off
+default also when the date is in the past; follow-up dates bounded by "today anywhere on earth" to a year ahead;
+non-call entries take an optional follow-up; Wrong number needs `p_dialled` and the task title up front; Do not contact
+completes the caller's due call tasks first; undo restores marks and tasks only while they carry the entry's own time,
+consumes its record with DELETE … RETURNING, and records can be written only for one's own entry; `contact_guard` is
+BEFORE UPDATE only; `get_lead` works out the caller's zone once; the outcome concurrency cases are a 4b script;
+`activity_attack.sql` section 11 ages its entries first; `p_from_queue` acts from 4c.
+
+App part:
+1. **Next step lists every open task** (then the next call attempt). The design had a Next step card in Summary and a
+   "next task" card in the rail, which showed the same task twice on every lead with one task; the rail keeps the
+   composer and the contacts.
+2. **"14:05 local time"** instead of "14:05 in Lyon": the city and country start the same line. A span reads
+   "02:00–05:00 local time · time zone not set · Set time zone".
+3. **24-hour times in both languages**, as in the design's examples (English Intl defaults to "2:05 PM").
+4. **The actions sit beside the header from 1280** and under it below (at 1024 they squeezed the header).
+5. **The lead's name travels with `logActivity`** only to word the follow-up task's title, which the server writes from
+   the messages in the caller's language ("Follow up with {lead}"). A task title is text anyone may type, so it carries
+   no authority, and it saves a second database call per outcome.
+6. **Two more routes**: `GET /api/activities/[id]` for Show more and `GET /api/leads/[id]/tasks` for the tasks.
+7. **The timeline filter is in the URL** (`?filter=`) like the tab (Web Interface Guidelines).
+8. **Below desktop width a tap opens the lead page** (design 7.1). Day 3a's phone e2e test ("the lead full screen
+   with a way back") now checks that page and its Back link; no other existing test changed.
+9. **Drafts are cleared on the sign-in page**, so unsent note text does not stay in a shared browser.
+10. **Details draws the lead form and zone names after hydration**: Node's and Chromium's Intl data word some country
+    and zone names differently, which made React report hydration error 418.
+11. **`z.config({ jitless: true })` in the browser**: Zod 4 probes `Function("")` once; our CSP has no
+    `unsafe-eval`, so the browser reported a `script-src` violation (found by `day4-security`'s CSP check).
+12. **No call-planning chips on a Do not contact lead.** French "Save" is "Enregistrer" (the long form wrapped in the
+    button).
+13. **A missing lead returns the not-found screen with HTTP 200**: the page streams behind its loading skeleton, so
+    Next.js has sent the status before `notFound()` runs (the screen and its words are the same for missing, not
+    visible and malformed ids).
+
+14. **Closing the call panel before Save always asks first**, also when an outcome is already picked: the first close
+    (✕, Esc or a drag down) shows "Call not logged · Log it" with the outcome and note kept; a second close or Don't log
+    ends it (design 7.3 only names the case without an outcome; closing with one picked used to drop the call silently).
+15. **Day 3b import e2e flake (WebKit)**: `openImport()` in `tests/auth/import.spec.ts` now waits until the page has no
+    request in flight before it navigates again, so a Past-imports refresh (server action POST) is not cut off (WebKit
+    logs "Fetch API cannot load … due to access control checks" for a cut-off fetch). The suggested
+    `waitForLoadState("networkidle")` was not used: it resolves at once once the document has reached that state
+    (Playwright docs), so it cannot wait for a later request. The console-error check is unchanged.
+
+## Not done here
+
+- 4c: "Henri is on this lead", the queue, the Tasks page, the profile zone (`caller_zone()` reads the profile already);
+  4d: Files (hidden, D16).
+- WebKit e2e (not installed here), Semgrep (blocked), `journey.spec.ts` (needs Mailpit): CI.
+- The design's browser speed budgets for the queue (4c). The lead page's are measured once (speed row above), not in
+  CI; three of them are missed (Open risks).
+- `/security-review` (the slash command) and the advisor loop: run on the PR before merge; `security-review.md` here is
+  the builder's threat-table re-check.
+- Route chunk budget: the lead page is 79 KB gzip over the bare shell (design 60 KB extra); 19 KB over the leads list it
+  is usually opened from.
+
+## Open risks
+
+- **Lead page speed budgets missed** (one run, 4x CPU slow-down on this cloud VM, timed from the test runner, which adds
+  its own round trips): tab switch 969 ms (100 ms), route change after hover prefetch 745–823 ms (200 ms), and a
+  timeline with 1,000 loaded entries scrolls at about 12 fps (frame p50 80.5 ms). Design D13 says to fall back to
+  TanStack Virtual for the timeline when it misses 60 fps; that was **not** done here. The cold deep link (LCP 1.3 s,
+  CLS 0.049) is within budget, CLS only just. Recommendation: virtualise the timeline and profile the tab switch and
+  route change (what renders on the click) before merge, or accept with a measured baseline on CI hardware; this is
+  Haider's call (a gate).
+- **tzdata differences** between PostgreSQL, Node (server render) and browsers: western Canada from November 2026 is a
+  live case; parity tests use fixed instants. Times that depend on the viewer render after mount.
+- **CI's Postgres 17 image** may lack a zone of the map (`zone_map_zones_exist` fails visibly); the 4a role behaviours
+  (SET ROLE in temp functions, trigger disabling as owner) are proved only in CI.
+- **Drafts** live in this browser's storage until saved, cleared on the sign-in page, or pushed out by the 50 most
+  recent; a device left signed in keeps them.
+- **The call timer and "away about N min"** are shown only, never stored (design section 12).
+- **Server actions run one at a time per client** (Next.js): a slow save holds the next one; the queue's single
+  combined action is 4c's answer (D3).
+- **Accepted:** splinter INFO for the unindexed `activity_undo_org_id_fkey`; flood guards count per transaction snapshot.
+- **Rebase:** `main` moved (PR #13 merged as 1004fa5 after this branch was cut at 17d0354); expect conflicts in
+  `docs/log.md`, and possibly `supabase/tests/activity_attack.sql` section 11 and `scripts/db-mutations.py`.
