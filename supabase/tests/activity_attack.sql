@@ -721,6 +721,54 @@ begin
   end if;
   perform set_config('t.twin', w::text, false);
 end $$;
+-- Entries from a session with no signed-in user (maintenance, imports by the service) get the previous date too, so the
+-- chain holds after them. Lead R has the sheet's date (15 Jan 2026); a maintenance session adds a history entry dated
+-- 1 Mar 2026 (the lead moves to it); rep b1 logs a call; the history entry is removed, then the call is undone: the
+-- lead is back on the sheet's date, not empty.
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.companies (id, org_id, name, owner_id, last_activity_at)
+select '32000000-0000-0000-0000-0000000000a8', id, 'Day4 R', '00000000-0000-0000-0000-0000000000b1',
+       timestamptz '2026-01-15 10:00:00+00'
+  from public.orgs where name = 'TopStock Wholesale';
+insert into public.activities (id, org_id, company_id, type, body, user_id, created_at)
+select '52000000-0000-0000-0000-0000000000a8', org_id, id, 'note', 'history from the old sheet',
+       '00000000-0000-0000-0000-0000000000b1', timestamptz '2026-03-01 09:00:00+00'
+  from public.companies where id = '32000000-0000-0000-0000-0000000000a8';
+do $$ begin
+  if (select prev_last_activity_at from public.activities where id = '52000000-0000-0000-0000-0000000000a8')
+       is distinct from timestamptz '2026-01-15 10:00:00+00'
+     or (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a8')
+       is distinct from timestamptz '2026-03-01 09:00:00+00' then
+    raise exception 'FAIL: a maintenance entry should keep the sheet''s date as its previous date and move the lead to its own';
+  end if;
+end $$;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30); end $$;
+do $$
+declare v uuid;
+begin
+  insert into public.activities (company_id, type, outcome) values ('32000000-0000-0000-0000-0000000000a8', 'call', 'no_answer')
+  returning id into v;
+  perform set_config('t.r_call', v::text, false);
+  if (select prev_last_activity_at from public.activities where id = v) is distinct from timestamptz '2026-01-15 10:00:00+00' then
+    raise exception 'FAIL: a call after a maintenance entry lost the sheet''s date: %',
+      (select prev_last_activity_at from public.activities where id = v);
+  end if;
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+delete from public.activities where id = '52000000-0000-0000-0000-0000000000a8';
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30); end $$;
+do $$ begin
+  delete from public.activities where id = current_setting('t.r_call')::uuid;
+  if (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a8')
+       is distinct from timestamptz '2026-01-15 10:00:00+00' then
+    raise exception 'FAIL: with the history entry and the call removed, the lead is on % (expected the sheet''s date)',
+      (select last_activity_at from public.companies where id = '32000000-0000-0000-0000-0000000000a8');
+  end if;
+end $$;
 
 -- 10. Tasks: the server keeps who and when; done and dismissed are switches (threats 3, 7, G3) -----------------------
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2'); end $$;

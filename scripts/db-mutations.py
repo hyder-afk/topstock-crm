@@ -306,6 +306,8 @@ MUTATIONS_4A = [
     ("Lead lock on insert: runs as the caller (locks nothing on a lead the caller cannot change)",
      [("create function private.lock_activity_lead() returns trigger\nlanguage plpgsql security definer set search_path",
        "create function private.lock_activity_lead() returns trigger\nlanguage plpgsql set search_path")]),
+    ("Activity guard: no previous date for sessions with no signed-in user (the chain breaks after them)",
+     [("      new.prev_last_activity_at := coalesce(new.prev_last_activity_at, base);\n", "")]),
 ]
 
 

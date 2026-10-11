@@ -76,7 +76,7 @@ create trigger activity_date_lock before insert on public.activities
 
 -- The activity guard. Its name sorts before enforce_org_and_owner and set_activity_time, so it runs right after the
 -- lock. Sessions with no signed-in user (fixtures, maintenance, imports by the service) are left alone, as Day 3a's
--- triggers do.
+-- triggers do, except that their entries get the D9 previous date too, so the chain below holds after them.
 create function private.activity_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -85,16 +85,10 @@ declare
   base timestamptz;
   inherited timestamptz;
 begin
-  if caller is null then
-    return new;
-  end if;
-
   if tg_op = 'INSERT' then
-    new.user_id := caller;  -- G1: always the person signed in
-    new.edited_at := null;
-    -- D9: the lead's date before any entry still standing. It is the lead's current date, unless an entry set that
-    -- date: then it is that entry's own previous date, carried forward (for example the date from the import). So
-    -- deleting entries in any order puts the lead back on a date a remaining entry, or the sheet, supports.
+    -- D9, for every session: the lead's date before any entry still standing. It is the lead's current date, unless an
+    -- entry set that date: then it is that entry's own previous date, carried forward (for example the date from the
+    -- import). So deleting entries in any order puts the lead back on a date a remaining entry, or the sheet, supports.
     base := (select c.last_activity_at from public.companies c where c.id = new.company_id);
     if base is not null then
       select a.prev_last_activity_at into inherited
@@ -106,7 +100,14 @@ begin
         base := inherited;
       end if;
     end if;
+    if caller is null then
+      -- A maintenance session keeps a previous date it gives (history it imports); otherwise it gets the chain's.
+      new.prev_last_activity_at := coalesce(new.prev_last_activity_at, base);
+      return new;
+    end if;
     new.prev_last_activity_at := base;
+    new.user_id := caller;  -- G1: always the person signed in
+    new.edited_at := null;
     new.body := replace(new.body, E'\r\n', E'\n');
     if not coalesce(
            (new.type = 'call' and new.outcome in ('no_answer', 'voicemail', 'wrong_number', 'not_interested',
@@ -122,6 +123,8 @@ begin
                                limit 60) recent) >= 60 then
       raise exception 'too many entries in a minute' using errcode = '22023', hint = 'rate_limited';
     end if;
+  elsif caller is null then
+    return new;
   else
     -- The columns this statement changes (updated_at is kept by its own trigger).
     select coalesce(array_agg(n.key order by n.key), '{}') into changed
