@@ -1072,6 +1072,10 @@ begin
   if r ->> 'status' <> 'imported' then raise exception 'FAIL: import %', r; end if;
   insert into public.tasks (company_id, title)
   select id, 'Call the buyer' from public.companies where import_batch_id = batch and name = 'Day4a Import One';
+  -- An admin's task with no assignee is the admin's (reps get theirs from the org/owner trigger).
+  if (select assignee_id from public.tasks where title = 'Call the buyer') is distinct from '00000000-0000-0000-0000-00000000000a' then
+    raise exception 'FAIL: a task with no assignee should be its creator''s';
+  end if;
   r := public.preview_lead_import_rollback(batch);
   if r <> '{"tagged": 2, "removable": 1, "kept": 1}'::jsonb then raise exception 'FAIL: undo preview with a task %', r; end if;
   r := public.rollback_lead_import(batch);
