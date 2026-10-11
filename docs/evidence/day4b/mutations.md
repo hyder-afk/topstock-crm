@@ -1,5 +1,26 @@
 # Day 4b: every protection removed one at a time, 11 Oct 2026
 
+## Review round: undo into a due Cool off lead (finding 1, 11 Oct)
+
+Undo of an outcome on a Cool off lead whose return date had come put the lead back in Cool off for 90 more days:
+`lead_guard` rule 5 treated the restored past date like an old retry date. Rule 5 now replaces, on an update, only an
+empty date or a past date the statement leaves unchanged; a past date the statement writes (undo) is kept, and
+`bulk_update_leads` refuses a return date that is not in the future (hint `bounds`). Tests: `outcome_attack.sql` 6b
+(Interested, Book meeting and Do not contact on a due Cool off lead, then undo: same status and date), section 12 (bulk
+with a past date and with now(); a new Cool off lead with a past date still gets 90 days).
+
+The day4b set now has 93 rows. Rows 8 and 45 edit the new condition; 91 to 93 are new. Run in a throwaway worktree on
+**fd6be15** (rows 8, 45, 46, 91, 92, 93 only): **6 of 6 caught**, 0 not as listed.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 8 | Lead guard: no Cool off default | caught | FAIL: Cool off with a past retry date would come back at once |
+| 45 | Lead guard: Cool off default only without a date (a past retry date brings the lead back at once: the design's literal rule) | caught | FAIL: Cool off with a past retry date would come back at once |
+| 46 | Lead guard: Cool off default on every update of a Cool off lead (its date cannot be cleared) | caught | FAIL: undo of interested on a due Cool off lead |
+| 91 | Lead guard: a past date the statement writes is replaced on entering Cool off (undo of a due Cool off lead: +90 days) | caught | FAIL: undo of interested on a due Cool off lead |
+| 92 | bulk_update_leads: a return date that is not in the future accepted | caught | FAIL: "select public.bulk_update_leads(..., 'cool_off', false, null, <yesterday>)" succeeded, expected 22023 |
+| 93 | Lead guard: a new Cool off lead keeps a past date (an imported old retry date brings it back at once) | caught | FAIL: a new Cool off lead with a past date would come back at once |
+
 ## Re-run after merging `main` (PR #13) and the lock changes (11 Oct, evening)
 
 After `origin/main` (Day 4a as merged, 1004fa5) was merged into this branch (2585163), and `log_activity` and the insert
