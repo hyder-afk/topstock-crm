@@ -706,9 +706,13 @@ begin
     new.deal_id := h.deal_id;
   end if;
 
-  -- Rate guard for people: at most 120 rows a minute each (one short range read on movements_user_created_idx).
+  -- Rate guard for people: at most 120 rows a minute each (one short range read on movements_user_created_idx). The
+  -- system's release rows for a deal lost or deleted carry the person who changed the deal but are not theirs to
+  -- count: losing a deal with many holds must not lock its owner out for a minute. A person never writes those
+  -- reasons (an untrusted release is always 'manual', above).
   if not trusted and (select count(*) from (select 1 from private.stock_movements m
                                              where m.user_id = caller and m.created_at > now() - interval '60 seconds'
+                                               and (m.kind <> 'release' or m.reason = 'manual')
                                              limit 120) recent) >= 120 then
     raise exception 'too many stock changes in a minute' using errcode = '22023', hint = 'rate_limited';
   end if;
@@ -741,7 +745,8 @@ declare
   v_left integer;
 begin
   -- 0. A hold for a deal locks the deal first, so a deal lost or deleted at the same moment either sees this hold (and
-  --    releases it) or makes this hold fail.
+  --    releases it) or makes this hold fail. post_stock_movement has already taken this lock before its expiry rows
+  --    (expire_due_holds with the deal); here it is taken again (already held) and the deal re-checked under it.
   if new.kind = 'reserve' and new.deal_id is not null then
     select dl.company_id, dl.status, dl.fulfilment into d from public.deals dl where dl.id = new.deal_id for share;
     if not found or d.company_id is null or d.company_id <> new.company_id then
@@ -953,13 +958,21 @@ end;
 $$;
 -- Called by the invoker RPCs before they take room at a level (design 4.2 step 5). Only the caller's organisation; with
 -- a place, only that level, so the RPC never locks a level outside the lock order. At most 500 at a time.
-create function private.expire_due_holds(p_product uuid default null, p_location uuid default null) returns integer
+-- With a deal (a hold for a deal), that deal is locked FOR SHARE first: an expiry row locks the level, and a deal lost
+-- or deleted at the same moment locks the deal and then needs that level (release_deal_holds). Taking the deal first
+-- keeps the one lock order (deal, product, levels, holds); without it the two deadlocked (concurrency case 9c). The
+-- lock is taken here, as postgres, because an invoker FOR SHARE would need UPDATE on deals and pass its update policy.
+create function private.expire_due_holds(p_product uuid default null, p_location uuid default null,
+                                         p_deal uuid default null) returns integer
 language plpgsql security definer set search_path = '' as $$
 declare
   v_org constant uuid := private.current_org_id();
 begin
   if v_org is null then
     return 0;
+  end if;
+  if p_deal is not null then
+    perform 1 from public.deals d where d.id = p_deal and d.org_id = v_org for share;
   end if;
   return private.expire_holds_for(v_org, p_product, p_location, 500);
 end;
@@ -1000,7 +1013,9 @@ begin
   return case when tg_op = 'DELETE' then old else new end;
 end;
 $$;
-create trigger release_deal_holds_lost after update of status on public.deals
+-- On any update that leaves the deal lost, not only one naming status in its SET list: an UPDATE OF status trigger
+-- would miss a status set by a BEFORE trigger (for example a stage change that Day 5 turns into "lost").
+create trigger release_deal_holds_lost after update on public.deals
   for each row when (new.status = 'lost' and old.status is distinct from 'lost')
   execute function private.release_deal_holds();
 create trigger release_deal_holds_deleted before delete on public.deals
@@ -1047,8 +1062,8 @@ revoke all on function private.movement_request_guard(), private.stock_movement_
   private.stock_movement_b_apply(), private.stock_movement_immutable(), private.stock_transfer_paired(),
   private.release_deal_holds(), private.expire_holds_for(uuid, uuid, uuid, integer)
   from public, anon, authenticated;
-revoke all on function private.expire_due_holds(uuid, uuid), private.sweep_expired_holds() from public, anon;
-grant execute on function private.expire_due_holds(uuid, uuid), private.sweep_expired_holds() to authenticated;
+revoke all on function private.expire_due_holds(uuid, uuid, uuid), private.sweep_expired_holds() from public, anon;
+grant execute on function private.expire_due_holds(uuid, uuid, uuid), private.sweep_expired_holds() to authenticated;
 
 -- ===========================================================================
 -- Part 3. RPCs (design 4.2 and 5.1), integrity, the nightly job, audit and import undo
@@ -1202,7 +1217,8 @@ begin
       v_ids := v_ids || v_id;
     end if;
   elsif p_kind = 'reserve' then
-    perform private.expire_due_holds(p_product, v_loc);
+    -- A hold for a deal: the deal is locked before any expiry row locks the level (lock order deal, product, levels).
+    perform private.expire_due_holds(p_product, v_loc, p_deal);
     insert into private.stock_movements (group_id, product_id, location_id, kind, qty, note, company_id, deal_id,
                                          hold_until)
     values (v_group, p_product, v_loc, 'reserve', p_qty, v_note, p_company, p_deal, v_hold_until)
@@ -1464,20 +1480,24 @@ $$;
 create function private.stock_integrity_rows(p_org uuid)
 returns table (check_name text, product_id uuid, location_id uuid, expected bigint, actual bigint)
 language sql stable set search_path = '' as $$
-  with led as (
+  with o as (
+    -- The organisation: the argument only for postgres (the nightly job, tests); anyone else gets their own, whatever
+    -- they pass (row level security would hide another org's rows anyway).
+    select case when current_user = 'postgres' then p_org else (select private.current_org_id()) end as id),
+  led as (
     select m.product_id, m.location_id, sum(m.d_on_hand)::bigint as s_on, sum(m.d_reserved)::bigint as s_res,
            count(*)::bigint as n, max(m.level_version) as top
       from private.stock_movements m
-     where m.org_id = p_org
+     where m.org_id = (select o.id from o)
      group by m.product_id, m.location_id),
   lv as (
     select l.product_id, l.location_id, l.on_hand::bigint as on_hand, l.reserved::bigint as reserved, l.version
       from public.stock_levels l
-     where l.org_id = p_org),
+     where l.org_id = (select o.id from o)),
   holds as (
     select r.product_id, r.location_id, sum(r.remaining)::bigint as s
       from private.stock_reservations r
-     where r.org_id = p_org and r.status = 'active'
+     where r.org_id = (select o.id from o) and r.status = 'active'
      group by r.product_id, r.location_id),
   j as (
     select coalesce(lv.product_id, led.product_id) as product_id, coalesce(lv.location_id, led.location_id) as location_id,
@@ -1515,7 +1535,7 @@ begin
   if not private.is_admin() then
     raise exception 'only admins run the stock check' using errcode = '42501', hint = 'forbidden';
   end if;
-  return query select * from private.stock_integrity_rows(private.current_org_id());
+  return query select * from private.stock_integrity_rows(null);   -- its own organisation (see above)
 end;
 $$;
 
