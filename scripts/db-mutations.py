@@ -581,6 +581,9 @@ MUTATIONS_6A = [
      [("                                               and (m.kind <> 'release' or m.reason = 'manual')\n", "")]),
     ("stock_integrity_rows honours any caller's organisation argument",
      [("    select case when current_user = 'postgres' then p_org else (select private.current_org_id()) end as id),", "    select p_org as id),")]),
+    # Verifier finding on round 1 (11 Oct).
+    ("The deal-lost release reads the holds before locking their products (Arrived moving them meanwhile: the lost deal keeps them)",
+     [("  perform 1 from public.products p\n   where p.id in (select r.product_id from private.stock_reservations r where r.deal_id = v_deal and r.status = 'active')\n   order by p.id\n     for share;\n", "")]),
 ]
 
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day6a": (MIG_6A, MUTATIONS_6A)}
