@@ -37,8 +37,9 @@ migration; 4b's is `20261012090000`)
     `version`, `crm_moved`, `last_onhand_batch_id` and the row's snapshot written under the lock (D5).
   - `stock_movement_immutable` (update, delete, truncate, every role); `stock_movements_transfer_paired` (deferred:
     a departure from transit needs its arrival in the same transaction).
-  - Expiry (D8): `expire_due_holds(product, place)` before an RPC takes room, `sweep_expired_holds()` at most once a
-    minute per org, both over `expire_holds_for`; holds of a deal lost or deleted are released by `release_deal_holds`.
+  - Expiry (D8): `expire_due_holds(product, place, deal)` before an RPC takes room (a hold for a deal locks the deal
+    there first), `sweep_expired_holds()` at most once a minute per org, both over `expire_holds_for`; holds of a deal
+    lost or deleted are released by `release_deal_holds` (on any update that leaves the deal lost, and before delete).
 - **Part 3: RPCs, integrity, nightly job, audit, import undo.**
   - `post_stock_movement` (design 4.2), `create_product` (opening stock is a receipt with a fresh code; idempotent),
     `update_product`, `set_product_cost`, `archive_product`, `restore_product`, `release_expired_reservations`,
@@ -57,17 +58,35 @@ migration; 4b's is `20261012090000`)
   6a in 9 sections (catalog, name key, access, validation, rules, transfers, permissions, holds and deals, other rules,
   1,000 random operations, ledger sums in every organisation), plus "products has no unit column".
 - `supabase/tests/stock_concurrency.sh` (new; same hooks): 11 cases of design 11.2 for 6a (sales stand in as
-  corrections until 6d), and a `perf` mode for I16.
+  corrections until 6d), and a `perf` mode for I16. Case 9 has four parts: a hold and a deal lost in both orders, (c)
+  with an expired hold at the level (the deadlock the verifier found) and (d) a hold inserted straight into the ledger.
 - `supabase/tests/import_attack.sql`: `import_fk_coverage` expects `private.stock_reservations`.
-- `scripts/db-mutations.py`: `--set day6a`, 61 rows (design mutations 1 to 16 tagged `[design N]`, plus every
-  protection the build added; two-layer protections split each way).
+- `scripts/db-mutations.py`: `--set day6a`, 67 rows (design mutations 1 to 16 tagged `[design N]`, plus every
+  protection the build added; two-layer protections split each way; rows 64 to 67 for the verifier's findings).
 - `supabase/tests/perf_stock.sql` (new, part 1) and its `scripts/db-perf.sh` hook; `stock_concurrency.sh perf` at the
   end of `db-perf.sh`.
 - `docs/evidence/day6a/spikes/`: spikes S2, S3, S6 and the throwaway S1 (results in `docs/log.md`).
 
 ## Check results
 
-Final code head: **6f37e23** (migration unchanged since 2b5b847; tests last changed in 6f37e23). Later commits change
+**After the verifier's findings (11 Oct): code head 47b68f9, branch head 61bb7e7** (later commits change only
+documents). The first build's rows follow; each row says which commit it ran on.
+
+| Check (round 2) | Result |
+|---|---|
+| `bash scripts/db-test.sh` (on 61bb7e7) | exit 0: `rls_attack`, `import_attack`, `import_concurrency`, `activity_attack`, `activity_concurrency`: all checks passed; `stock_attack: all checks passed` (`integrity_after_random_ops: 760 applied, 240 refused`); `stock_concurrency: all checks passed` (`twenty_reservers_one_product: 10 of 20 succeeded, wall clock 405 ms`, `random_ops_three_sessions: 275 applied, 25 refused, no deadlock`); `advisors: no ERROR-level findings` (WARN `set_user_role` as before, INFO 1 unindexed FK, 11 unused indexes) |
+| Mutations round 3 (on 61bb7e7, throwaway worktree, removed after) | rows 12 to 15, 19, 22 to 27, 34, 49, 50, 56 and new 64 to 67: `day6a: 19 rows run: 18 caught, 1 documented two-layer rows not caught, 0 not as listed` (exit 0). **Final: 61 of 61 caught, 6 documented two-layer rows (67 rows)** |
+| Perf set C (`perf.md`; 3 × `db-perf.sh` on 61bb7e7, plus 3 paired before/after runs of the trim) | **I5 Arrived 4.11 / 4.23 / 5.78 ms: over 5 ms in 1 of 3 full runs** (the busiest, load 3.3); the paired runs gave 3.79–4.07 ms after the trim against 4.62–7.98 ms before it; adjust 2.74–3.43 ms (one 37 ms stall in run 1), reserve 3.49–3.79 ms; I7 4.09–5.95 ms (25); I16 394–569 ms (3,000), p95 7.3–11.4 ms (25), 0 deadlocks; I17 205–222 ms (1,500) |
+| `npm run lint` (on 61bb7e7) | exit 0, 0 errors (the 2 existing warnings) |
+| `npm run typecheck` (on 61bb7e7) | exit 0 |
+| `npm run test:unit` (on 61bb7e7) | 166 passed (exit 0) |
+| `npm audit --omit=dev` (on 61bb7e7) | found 0 vulnerabilities |
+| gitleaks (`origin/main..HEAD`) | run on the final head after the evidence commits (reported with this step) |
+| Not run | Playwright (no UI change), Semgrep (CI only), I18 (the fixes do not touch the import or the lists) |
+
+### First build (before the verifier)
+
+Code head then: **6f37e23** (migration unchanged since 2b5b847; tests last changed in 6f37e23). Later commits change
 only documents. Each row says which commit it ran on.
 
 | Check | Result |
@@ -95,8 +114,9 @@ only documents. Each row says which commit it ran on.
 2. **Ledger rows with no person**: `expire`, and `release` with reason `deal_lost` or `deal_deleted` (a deal lost or
    deleted by a maintenance session). Design 3.1 allowed only `expire`; a deal changed with no signed-in user would
    otherwise fail.
-3. **Expiry per place.** `expire_due_holds(p_product, p_location)` ends due holds of one level only (the RPC never
-   locks a level outside the lock order); Arrived ends both places' holds in location order first. Both run over a
+3. **Expiry per place.** `expire_due_holds(p_product, p_location, p_deal)` ends due holds of one level only (the RPC
+   never locks a level outside the lock order); Arrived passes no place and ends both places' holds of the product in
+   location order first; a hold for a deal passes the deal, which is locked before any expiry row (deviation 6). Both run over a
    new definer helper `private.expire_holds_for(org, product, place, limit)` (owner postgres, revoked from everyone).
    The design listed four definer helpers; 6a adds this one, `seed_org_inventory` (and its trigger), the deferred
    `stock_transfer_paired` and the audit trigger, all with no client grant.
@@ -107,9 +127,18 @@ only documents. Each row says which commit it ran on.
    product's expected date after moving the stock; without it, Arrived and a movement holding the product's share lock
    deadlocked (`stock_concurrency.sh` case 7, mutation row 26). Arrived clears `transit_eta` when transit is empty.
    The RPC also checks manager or admin before the lock (a rep gets `forbidden`, not "not found").
-6. **A hold for a deal locks the deal (`FOR SHARE`) first** in the apply step and re-checks it there, so a deal lost at
-   the same moment either sees the hold and releases it, or makes the hold fail (case 9, mutation row 27). The global
-   lock order is therefore deal, product, levels, holds.
+6. **A hold for a deal locks the deal (`FOR SHARE`) first**, so a deal lost at the same moment either sees the hold and
+   releases it, or makes the hold fail. The global lock order is therefore deal, product, levels, holds. The lock is
+   taken twice:
+   - in `post_stock_movement`, **before any expiry row**, through `expire_due_holds(product, place, deal)` (as
+     postgres: an invoker `FOR SHARE` would need UPDATE on `deals` and pass its update policy). An expiry row locks
+     the level, and a deal being lost locks the deal and then needs that level (`release_deal_holds`). The first build
+     locked the deal only in the apply step, after the expiry rows, and the verifier reproduced a deadlock (40P01) with
+     an expired hold at the level. Now case 9c covers it, with mutation row 64;
+   - in the apply step, where the deal is re-checked under the lock. This also covers a hold inserted straight into the
+     ledger (case 9d, mutation row 27).
+   Design 4.6's "a waiting cycle cannot form" holds only with the deal first; the note under design 4.6 says so for 6d
+   (a sale with a deal must lock it before its expiry rows too).
 7. **`stock_hold_uses.org_id`** added, so its select policy can be org-scoped like every other table.
 8. **Audit through a new `private.audit_inventory_row`** for the ledger, costs and settings instead of new branches in
    the shared `private.audit_row` (design 3.6). The shared function stays as Day 4a left it (and as 4b redefines it),
@@ -126,13 +155,36 @@ only documents. Each row says which commit it ran on.
     `hold_uses_reservation_idx`, `hold_uses_org_idx`, `product_costs_org_idx`, `movement_requests_created_idx`.
 15. **perf_stock.sql runs before perf_import.sql** in `db-perf.sh`, so the Day 3b undo (I18) is re-timed with 5,000
     holds in place; its seed is written with triggers off, consistent with every integrity check.
+16. **I15 (the nightly job at size) is not measured in 6a**, although `nightly_stock_jobs` ships in 6a. Its parts are
+    timed: the integrity checks (I17, about a fifth of their budget) and the expiry path (each RPC's expiry call, inside
+    I5). The job as a whole is timed with 6c, which adds its batch clean-up.
+17. **The deal-lost release fires on any update that leaves a deal lost** (`after update ... when (new.status = 'lost'
+    and old.status is distinct from 'lost')`, no `of status`). An `UPDATE OF status` trigger fires only when status is
+    named in the SET list, so a status set by a BEFORE trigger (for example a stage change that Day 5 turns into lost)
+    released nothing (verifier finding; test `deal_lost_by_before_trigger_releases_holds` with a stand-in BEFORE trigger,
+    catalog check for no column list, mutation row 65).
+18. **The rate guard does not count the system's release rows** (`release` with `deal_lost` / `deal_deleted`). They
+    carry the person who changed the deal, so losing a deal with many holds would have rate-limited its owner for a
+    minute (test `rate_guard_skips_deal_lost_releases`, mutation row 66). A person cannot write those reasons: a
+    person's release is always `manual`. The paired `transfer_in` of an Arrived is not checked either: its
+    `transfer_out`, by the same person in the same transaction, was.
+19. **`private.stock_integrity_rows(uuid)` is granted to `authenticated`**, which the design's grant list does not
+    include, because the invoker `check_stock_integrity` calls it. It takes its organisation argument only from
+    postgres (the nightly job, tests); any other caller gets its own organisation whatever it passes, and
+    `check_stock_integrity` passes none (test `integrity_rows_ignore_client_org`, mutation row 67). `private` has no
+    REST endpoint.
+20. **Arrived trimmed** after the first timings: one expiry call for both places (expire_holds_for goes in level
+    order), the two places read in one statement, what is left in transit and the held pieces moved taken from the
+    rows' `RETURNING` snapshots (written under the lock) instead of reading the level and the ledger again.
 
 ## Open risks
 
-1. **Arrived (I5 transfer) over its 5 ms budget** on this shared machine (4.7–7.3 ms; adjust and reserve within).
-   Two full ledger rows per Arrived; no bad plan. Re-time on a quiet machine; if still over, either accept (a manager
-   action a few times a day; I7 has a wide margin) or trim in 6b (for example one role lookup per call instead of per
-   row). Haider decides only if it stays over after the re-time.
+1. **Arrived (I5 transfer) still over its 5 ms budget in 1 of 3 full runs after the trim** (set C: 4.11, 4.23 and
+   5.78 ms; the first build took 4.7–7.3 ms, over in 5 of 6). Arrived writes two full ledger rows, and no plan is bad.
+   The trim (47b68f9) was faster in each of the 3 paired before/after runs. **Haider decides:** accept it as it is (a manager
+   action a few times a day per delivery, and I7 has a wide margin), or trim it further in 6b (build the answer's
+   levels from the rows' snapshots, about 0.3 ms). Recommendation: re-time in CI or on dev first, and accept if it
+   stays under about 6 ms.
 2. **I18 not provable at +10% here**: the machine's run-to-run noise (±30% on cases 6a does not touch) is larger than
    the budget. The rule change itself shows no cost (undo preview −4%). Re-time P7 and the undo on a quiet machine or
    in CI before Gate 1.
@@ -143,7 +195,8 @@ only documents. Each row says which commit it ran on.
 4. **pg_cron**: the nightly job is scheduled only where the extension already exists; dev and production need it
    enabled (Supabase dashboard) for the 03:10 run, otherwise expiry still happens on every RPC and page-load sweep.
 5. **Semgrep** is CI-only; **Playwright** not run (no UI change).
-6. **Day 5 contract**: the release-on-lost trigger keys on `deals.status = 'lost'`; Day 5 must set it (design 12.1).
+6. **Day 5 contract**: the release-on-lost trigger keys on `deals.status = 'lost'`; Day 5 must leave it set when a deal
+   is Closed/lost (design 12.1). Any update does, directly or through a BEFORE trigger; it need not name `status`.
 7. **Shared-function rebase** (list below): `lead_import_untouched` and the FK-coverage test must be re-copied after
    4c, 4d and Day 5 merge, or an import undo could delete a lead that 4c/4d data points at (the FK coverage test would
    fail first).
@@ -161,8 +214,9 @@ only documents. Each row says which commit it ran on.
    re-run `stock_attack.sql` section 7 and `movement_audit_minimal` on the rebased branch.
 5. **`public.tasks` and `private.task_guard`** (4c): `nightly_stock_jobs` inserts a system task (`kind 'todo'`,
    `due_date`, no `created_by`); re-run its test after 4c's task changes.
-6. **Day 5 contract** (design 12.1): Day 5 must set `deals.status = 'lost'` on Closed/lost, which the release trigger
-   keys on; re-run `deal_lost_releases_holds` and concurrency case 9 on the rebased branch.
+6. **Day 5 contract** (design 12.1): Day 5 must leave `deals.status = 'lost'` on Closed/lost (directly or through a
+   BEFORE trigger), which the release trigger keys on; re-run `deal_lost_releases_holds`,
+   `deal_lost_by_before_trigger_releases_holds` and concurrency case 9 on the rebased branch.
 7. **Merge conflicts expected** in `scripts/db-test.sh`, `.github/workflows/db.yml`, `scripts/db-mutations.py` (`SETS`),
    `scripts/db-perf.sh` and `docs/log.md`: keep every day's lines.
 8. Re-run `db-test.sh`, the Day 3b, 4a and 6a mutation sets and `db-perf.sh` after the rebase.
@@ -185,3 +239,16 @@ only documents. Each row says which commit it ran on.
 
 These lookups were made while finishing 6a (evidence and perf); the engine itself was built against the design and
 checked empirically by spikes S2, S3 and S6 on PostgreSQL 16.15. CI runs every test on the Supabase Postgres image.
+That late lookup is a deviation from CLAUDE.md ("Context7 before writing code"), logged in `docs/log.md`.
+
+Looked up **before** writing the verifier fixes (same library):
+
+- **CREATE TRIGGER, notes** (`sql-createtrigger.html`): an `UPDATE OF column` trigger fires only when the column is a
+  target in the SET list, and changes made by BEFORE UPDATE triggers are not considered; a row trigger's `WHEN` can
+  read OLD and NEW. Hence `release_deal_holds_lost` has no column list and keeps its `WHEN`.
+- **SELECT, locking clause** (`sql-select.html`) and **Row security policies** (`ddl-rowsecurity.html`): `FOR SHARE`
+  needs UPDATE privilege as well, and a sub-select that must lock is best put in a security definer function. Hence the
+  deal is locked inside `expire_due_holds` (definer), not by the invoker RPC.
+- **Trigger functions in PL/pgSQL** (`plpgsql-trigger.html`): a BEFORE row trigger's modified NEW is the row stored and
+  the one `INSERT ... RETURNING` returns. Hence the trimmed Arrived reads `on_hand_after` and `d_reserved` from
+  `RETURNING`.
