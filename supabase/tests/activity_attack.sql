@@ -1114,7 +1114,8 @@ begin
   perform pg_temp.expect_ok(format('update public.tasks set contact_id = null where id = %L', current_setting('t.task1')));
 end $$;
 -- A rep cannot give a task away, not even one an admin gave them (only managers and admins change the assignee), but
--- may work on it.
+-- may work on it. The bare updates (no WHERE) matter: an update that names a column also checks the new row against
+-- tasks_select, which would hide a missing WITH CHECK rule; a bare one meets only WITH CHECK and the owner rule.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2'); end $$;
 do $$
 declare v uuid;
@@ -1130,6 +1131,8 @@ do $$ begin
                                       '00000000-0000-0000-0000-0000000000b1', current_setting('t.task_for_d')), '42501');
   perform pg_temp.expect_error(format('update public.tasks set assignee_id = null where id = %L',
                                       current_setting('t.task_for_d')), '42501');
+  perform pg_temp.expect_error($q$update public.tasks set assignee_id = '00000000-0000-0000-0000-0000000000b1'$q$, '42501');
+  perform pg_temp.expect_error($q$update public.tasks set assignee_id = null$q$, '42501');
   perform pg_temp.expect_ok(format('update public.tasks set title = %L, done_at = now() where id = %L',
                                    'For Dee, seen', current_setting('t.task_for_d')));
 end $$;

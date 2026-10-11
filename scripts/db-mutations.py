@@ -388,7 +388,7 @@ MUTATIONS_4A = [
        "  using (org_id = (select private.current_org_id()))\n  with check"),
       ("for select to authenticated using (\n  org_id = (select private.current_org_id())\n  and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())));",
        "for select to authenticated using (\n  org_id = (select private.current_org_id()));")]),
-    ("Tasks update policy: WITH CHECK without the role clause (behind the owner rule of enforce_org_and_owner)",
+    ("Tasks update policy: WITH CHECK without the role clause (behind the owner rule and tasks_select)",
      [("  with check (org_id = (select private.current_org_id())\n              and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin()))\n              and (company_id",
        "  with check (org_id = (select private.current_org_id())\n              and (company_id")], SURVIVES),
     ("Tasks update policy: no role clause in WITH CHECK, and reps may change an owner (both layers)",
