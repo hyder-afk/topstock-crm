@@ -533,6 +533,76 @@ test("phone_390_full_flow: tap a row, the lead page, a note from the sheet, no s
   await context.close();
 });
 
+test("dnc_lead_logs_at_every_width: no Email or WhatsApp in the composer, a note from 768 and 390", async ({ browser }) => {
+  const lead = makeLead("Atelier Silence", { status: "do_not_contact" });
+  // 1440: the rail composer offers Note, Call and Meeting only, and nothing in it can open the mail app or wa.me.
+  {
+    const { context, page, errors } = await open(browser, adminState);
+    await gotoLead(page, lead);
+    const composer = page.getByRole("form", { name: "Log activity" });
+    await expect(composer.getByRole("group", { name: "Kind of entry" }).getByRole("button")).toHaveText(["Note", "Call", "Meeting"]);
+    await expect(composer.locator("a")).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await context.close();
+  }
+  // 768 (no rail composer there) and 390: "Add a note" (44 px) opens the sheet, with the same three kinds; the note is logged.
+  for (const width of [768, 390]) {
+    const { context, page, errors } = await open(browser, adminState, { width });
+    await gotoLead(page, lead);
+    const add = page.getByRole("button", { name: "Add a note" });
+    await expect(add).toBeVisible();
+    expect((await add.boundingBox())?.height ?? 0, `${width}`).toBeGreaterThanOrEqual(44);
+    await add.click();
+    const sheet = page.getByRole("dialog", { name: "Log activity" });
+    await expect(sheet.getByRole("group", { name: "Kind of entry" }).getByRole("button")).toHaveText(["Note", "Call", "Meeting"]);
+    await expect(sheet.locator("a")).toHaveCount(0);
+    await sheet.getByRole("textbox", { name: "Note" }).fill(`Asked again not to be called (${width})`);
+    await sheet.getByRole("button", { name: /^Save to timeline/ }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect
+      .poll(() => sql(`select body from public.activities where company_id = '${lead}' order by created_at desc, id desc limit 1`))
+      .toBe(`Asked again not to be called (${width})`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+    await context.close();
+  }
+  expect(sql(`select lead_status from public.companies where id = '${lead}'`)).toBe("do_not_contact");
+});
+
+test("meeting_quick_action: focus on Book a meeting (1440); on a phone it wins over a note draft and starts at 10:00", async ({ browser }) => {
+  const lead = makeLead("Atelier Rendez-vous");
+  {
+    const { context, page, errors } = await open(browser, adminState);
+    await gotoLead(page, lead);
+    await page.getByRole("button", { name: "Meeting", exact: true }).first().click();
+    const book = page.getByRole("form", { name: "Log activity" }).getByRole("button", { name: "Book a meeting" });
+    await expect(book).toHaveAttribute("aria-pressed", "true");
+    await expect(book).toBeFocused();
+    expect(errors).toEqual([]);
+    await context.close();
+  }
+  const { context, page, errors } = await open(browser, adminState, { width: 390 });
+  await gotoLead(page, lead);
+  // A note typed in the sheet, then the sheet closed: the draft is kept.
+  await page.getByRole("button", { name: "Note", exact: true }).tap();
+  const sheet = page.getByRole("dialog", { name: "Log activity" });
+  await sheet.getByRole("textbox", { name: "Note" }).fill("Showroom visit for the spring range");
+  await page.waitForTimeout(500);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  // Meeting opens on Book a meeting (not the draft's Note), keeps the text, and the time starts at 10:00.
+  await page.getByRole("button", { name: "Meeting", exact: true }).first().tap();
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("group", { name: "Kind of entry" }).getByRole("button", { name: "Meeting" })).toHaveAttribute("aria-pressed", "true");
+  const book = sheet.getByRole("button", { name: "Book a meeting" });
+  await expect(book).toHaveAttribute("aria-pressed", "true");
+  await expect(book).toBeFocused();
+  await expect(sheet.getByRole("textbox", { name: "Note" })).toHaveValue("Showroom visit for the spring range");
+  await expect(sheet.locator("input[name=follow_up_time]")).toHaveValue("10:00");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("a missing lead, someone else's org id and a malformed id get the same not-found page", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   for (const path of ["/leads/00000000-0000-4000-8000-000000000000", "/leads/not-a-uuid"]) {
