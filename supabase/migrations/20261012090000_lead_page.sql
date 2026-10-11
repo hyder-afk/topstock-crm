@@ -804,8 +804,8 @@ declare
   v_due_at timestamptz;
   v_tz text;
   v_today date;
-  v_completed uuid[] := '{}';
-  v_cancelled uuid[] := '{}';
+  v_completed uuid[] := '{}'::uuid[];
+  v_cancelled uuid[] := '{}'::uuid[];
   v_id uuid;
   v_constraint text;
 begin
@@ -814,6 +814,9 @@ begin
   end if;
 
   -- 1. Validate (constant messages: no value reaches a log).
+  if p_from_queue is null then
+    raise exception 'say whether the call came from the queue' using errcode = '22023', hint = 'bounds';
+  end if;
   if p_type is null or not coalesce(
        (p_type = 'call' and p_outcome in ('no_answer', 'voicemail', 'wrong_number', 'not_interested', 'interested',
                                           'meeting_booked', 'do_not_contact', 'connected'))
