@@ -17,6 +17,8 @@
 #  7. outcome_vs_contact_edit_no_deadlock: a wrong number on contact C1 (contact, then lead) while a teammate removes
 #     contact C2's number and then changes C1 (contact C2, then the lead through the trigger, then C1);
 #     deadlock_timeout 200 ms; both finish, C1's new number has no mark, and the lead's flag matches its contacts.
+#  8. claim_cap_two_tabs: one person's two tabs claim at the same time; together they never hold more than 3 claims
+#     (the claim guard's per-person lock makes the second tab wait and then see the first tab's claims).
 # Usage: queue_concurrency.sh "<libpq connection string>" (after queue_attack.sql). Used by scripts/db-test.sh and the
 # CI "rls" job. Fixtures are made by the superuser connection; the probes run as the admins through the API role.
 set -euo pipefail
@@ -201,6 +203,27 @@ bad=$(as_owner "select count(*) from public.companies c
                  where c.has_contact_phone is distinct from exists (select 1 from public.contacts k
                         where k.company_id = c.id and k.phone ~ '[0-9]' and k.phone_wrong_at is null);")
 [ "$bad" = "0" ] || fail "has_contact_phone_consistent after the races: $bad leads"
+
+# 8. One person in two tabs cannot pass 3 live claims ------------------------------------------------------------------
+as_owner "delete from private.queue_claims where user_id = '$W2';" > /dev/null
+l81=$(new_lead 'Race tab 1' warm null "'+33 1 99 00 50 81'")
+l82=$(new_lead 'Race tab 2' warm null "'+33 1 99 00 50 82'")
+l83=$(new_lead 'Race tab 3' warm null "'+33 1 99 00 50 83'")
+l84=$(new_lead 'Race tab 4' warm null "'+33 1 99 00 50 84'")
+as_user "$W2" "begin;
+select public.claim_lead('$l81') \g /dev/null
+select public.claim_lead('$l82') \g /dev/null
+select pg_sleep(2) \g /dev/null
+commit;" & pa=$!
+sleep 0.5
+if as_user "$W2" "select public.claim_lead('$l83') \g /dev/null
+select public.claim_lead('$l84') \g /dev/null" 2> "$TMPDIR_QC/tab.err"; then
+  fail "claim_cap_two_tabs: the second tab took a fourth claim"
+fi
+grep -q 'busy' "$TMPDIR_QC/tab.err" || fail "claim_cap_two_tabs: the second tab failed for another reason: $(cat "$TMPDIR_QC/tab.err")"
+wait $pa || fail "claim_cap_two_tabs: the first tab failed"
+got=$(as_owner "select count(*) from private.queue_claims where user_id = '$W2' and expires_at > now();")
+[ "$got" = "3" ] || fail "claim_cap_two_tabs: $got live claims (expected 3)"
 
 as_owner "delete from private.queue_claims;" > /dev/null
 echo "queue_concurrency: all checks passed"

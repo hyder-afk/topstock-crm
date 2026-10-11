@@ -609,10 +609,10 @@ declare
   reasons text[] := '{}';
   r jsonb;
 begin
-  -- 1. A due follow-up: Hal's call task due yesterday, on a cold lead whose next call date is days away (the task is
-  --    the reason).
+  -- 1. A due follow-up: Hal's call task due today (his zone), on a cold lead whose next call date is days away (the
+  --    task is the reason).
   l := pg_temp.new_lead(h, 'cold', now() + interval '3 days', lead_name => 'Q1 follow-up due');
-  perform pg_temp.new_task(l, h, 'call', (now() at time zone 'Europe/Paris')::date - 1);
+  perform pg_temp.new_task(l, h, 'call', (now() at time zone 'Europe/Paris')::date);
   want := want || l;
   -- 2 and 3. Negotiation: due, then undated.
   want := want || pg_temp.new_lead(h, 'negotiation', now() - interval '1 day', lead_name => 'Q2 negotiation due');
@@ -893,8 +893,24 @@ begin
   if (select array_agg(user_id) from private.queue_claims where company_id = k1) <> array[henri] then
     raise exception 'FAIL: one claim per lead, the taker''s';
   end if;
+  -- The queue itself takes over an expired claim (removed first, then claimed by the caller).
+  delete from private.queue_claims where user_id = k;
+  update private.queue_claims set expires_at = now() - interval '1 second' where company_id = k1;
+  update public.companies set next_action_at = now() - interval '1 hour' where id = k1;   -- first in Kit's queue
+  perform pg_temp.act(k);
+  r := public.claim_next_lead('mine', '{}'::uuid[], '{}', 1, true);
+  perform pg_temp.su();
+  if (r -> 'cards' -> 0 ->> 'id')::uuid <> k1
+     or (select array_agg(user_id) from private.queue_claims where company_id = k1) <> array[k] then
+    raise exception 'FAIL: claim_next_lead must take over an expired claim: %', r;
+  end if;
+  -- A claim is not work: it goes with its lead.
+  delete from public.companies where id = k1;
+  if exists (select 1 from private.queue_claims where company_id = k1) then
+    raise exception 'FAIL: a deleted lead kept its claim';
+  end if;
   delete from private.queue_claims where user_id in (k, henri);
-  delete from public.companies where id in (k1, k2, k3, k4);
+  delete from public.companies where id in (k2, k3, k4);
 end $$;
 
 -- 10. Start, reload and keep (design 5.4 buffer): p_keep null brings back the caller's eligible claims (renewed),
@@ -993,6 +1009,15 @@ begin
   end if;
   perform pg_temp.act('00000000-0000-0000-0000-00000000000b');
   if public.get_lead(kd) -> 'worked_by' <> 'null'::jsonb then raise exception 'FAIL: worked_by for oneself'; end if;
+  -- A call on that lead from Kit's queue releases only Kit's own claim, never Henri's.
+  perform pg_temp.act(k);
+  perform public.log_activity(kd, 'call', 'connected', p_from_queue => true);
+  perform pg_temp.su();
+  if (select array_agg(user_id) from private.queue_claims where company_id = kd)
+     <> array['00000000-0000-0000-0000-00000000000b'::uuid] then
+    raise exception 'FAIL: a call from the queue released a teammate''s claim';
+  end if;
+  perform pg_temp.act('00000000-0000-0000-0000-00000000000b');
   perform pg_temp.su();
   update private.queue_claims set expires_at = now() - interval '1 second' where company_id = kd;
   perform pg_temp.act(k);
