@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
+import { defaultRangeExtractor, useWindowVirtualizer, type Range } from "@tanstack/react-virtual";
 import { CalendarDays, Mail, MessageCircle, MoreHorizontal, NotebookPen, Phone } from "lucide-react";
 import { deleteActivity, editActivity } from "@/app/(app)/leads/[id]/actions";
 import { Button } from "@/components/ui/button";
@@ -33,9 +34,14 @@ import { cn } from "@/lib/utils";
 
 // The lead's timeline (Day 4 design 7.2): newest first, 30 a page (keyset), grouped under Today / Yesterday / a date in
 // the viewer's zone. An ordered list of articles; text is shown as text only (never HTML, never auto-linked), with
-// dir="auto" so Arabic or Hebrew reads right, cut at 6 lines with Show more. Long histories rely on
-// content-visibility (design D13). The author can edit the text, undo within 2 minutes and delete with a fresh code;
-// managers and admins may delete others' entries.
+// dir="auto" so Arabic or Hebrew reads right, cut at 6 lines with Show more. Up to 120 loaded entries the whole list is
+// in the page with content-visibility (design D13: the find bar and screen-reader order work as on any page). Past 120,
+// D13's fallback applies, because the 1,000-entry scroll test missed 60 fps: TanStack Virtual draws only the entries near
+// the window (a feed of articles with their position in the list; the find bar then sees only those). The author can
+// edit the text, undo within 2 minutes and delete with a fresh code; managers and admins may delete others' entries.
+/** From this many loaded entries the timeline is virtualised (design D13's fallback). */
+export const VIRTUAL_FROM = 120;
+
 export type StepUp = { ensureFresh: (minSeconds?: number) => Promise<boolean>; requireFresh: () => Promise<boolean> };
 
 export const typeIcon: Record<ActivityType, typeof Phone> = {
@@ -51,7 +57,8 @@ function useViewerZone() {
   return useSyncExternalStore(noop, () => browserZone() ?? "Europe/Paris", () => "Europe/Paris");
 }
 
-export function Timeline({
+// Memoised: it sits in a hidden Activity boundary while another tab shows, and the page draws again on each tab switch.
+export const Timeline = memo(function Timeline({
   leadId,
   initial,
   initialFilter = "all",
@@ -128,7 +135,11 @@ export function Timeline({
         <p className="rounded-lg bg-card p-6 text-muted-foreground">{filter === "all" ? t("empty") : t("emptyFiltered")}</p>
       ) : (
         <>
-          <EntryList key={filter} entries={entries} leadId={leadId} me={me} stepUp={stepUp} />
+          {entries.length > VIRTUAL_FROM ? (
+            <VirtualEntryList key={filter} entries={entries} leadId={leadId} me={me} stepUp={stepUp} complete={!hasNextPage} loading={isFetchingNextPage} />
+          ) : (
+            <EntryList key={filter} entries={entries} leadId={leadId} me={me} stepUp={stepUp} />
+          )}
           <div ref={sentinel} className="flex flex-col items-start gap-2">
             {hasNextPage ? (
               isFetchingNextPage ? (
@@ -145,6 +156,201 @@ export function Timeline({
         </>
       )}
     </section>
+  );
+});
+
+// Layout reads queued for just after the next paint, run together (no read is forced between writes).
+let paintQueue: (() => void)[] | null = null;
+function afterPaint(read: () => void) {
+  if (paintQueue) {
+    paintQueue.push(read);
+    return;
+  }
+  paintQueue = [read];
+  requestAnimationFrame(() =>
+    setTimeout(() => {
+      const reads = paintQueue ?? [];
+      paintQueue = null;
+      reads.forEach((r) => r());
+    }, 0),
+  );
+}
+
+// The calendar day of an entry in a zone, remembered (a long list asks for each entry's day on every update).
+const days = new Map<string, string>();
+function dayOf(zone: string, createdAt: string) {
+  const key = `${zone}|${createdAt}`;
+  let day = days.get(key);
+  if (day === undefined) {
+    if (days.size > 5000) days.clear();
+    day = localDate(zone, new Date(createdAt));
+    days.set(key, day);
+  }
+  return day;
+}
+
+/** The day heading of an entry in the viewer's zone: Today, Yesterday or a date. */
+function useDayLabel() {
+  const t = useTranslations("Timeline");
+  const format = useFormatter();
+  const zone = useViewerZone();
+  const now = useClientNow(15_000);
+  const today = now ? localDate(zone, now) : null;
+  // Stable while the day and the zone stay the same, so a long list works its headings out once, not on every render.
+  const label = useCallback(
+    (e: TimelineEntry) => {
+      const day = dayOf(zone, e.created_at);
+      return today && day === today
+        ? t("today")
+        : today && day === addDays(today, -1)
+          ? t("yesterday")
+          : format.dateTime(new Date(e.created_at), { weekday: "short", day: "numeric", month: "short", timeZone: zone });
+    },
+    [zone, today, t, format],
+  );
+  return { now, label };
+}
+
+/** Per entry, what the reader opened (Show more and its full text), kept while a virtualised row is off screen. */
+type Opened = Map<string, { full: string | null }>;
+
+/**
+ * A long timeline, virtualised against the window. Each row is a day heading when the day changes, then the entry's
+ * article (aria-posinset / aria-setsize in a feed). Rows keep their place by measured height; a row being edited or
+ * asking to delete stays drawn when scrolled away, and what Show more opened is remembered.
+ */
+function VirtualEntryList({
+  entries,
+  leadId,
+  me,
+  stepUp,
+  complete,
+  loading,
+}: {
+  entries: TimelineEntry[];
+  leadId: string;
+  me: { id: string; role: string };
+  stepUp: StepUp;
+  complete: boolean;
+  loading: boolean;
+}) {
+  const t = useTranslations("Timeline");
+  const { now, label } = useDayLabel();
+  const listRef = useRef<HTMLDivElement>(null);
+  const [margin, setMargin] = useState(0);
+  const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
+  const [opened] = useState<Opened>(() => new Map());
+  // Entries newer than the newest at the first draw were just logged: they rise in once.
+  const [since] = useState(() => entries.find((e) => !e.pending)?.created_at ?? "");
+  const [risen] = useState(() => new Set<string>());
+
+  // A heading where the day changes. The day of each entry is worked out once (localDate reads the clock parts) and
+  // only the first entry of a day is given its label.
+  const zone = useViewerZone();
+  const labels = useMemo(() => {
+    const out: (string | null)[] = [];
+    let previous: string | null = null;
+    for (const e of entries) {
+      const day = dayOf(zone, e.created_at);
+      out.push(day === previous ? null : label(e));
+      previous = day;
+    }
+    return out;
+  }, [entries, label, zone]);
+  const indexOf = useMemo(() => new Map(entries.map((e, i) => [e.id, i])), [entries]);
+
+  // Where the list starts in the page (the virtualiser counts from the top of the window's scroll).
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setMargin((m) => (Math.abs(m - top) > 0.5 ? top : m));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    return () => observer.disconnect();
+  }, []);
+
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const base = defaultRangeExtractor(range);
+      if (pinned.size === 0) return base;
+      const extra = [...pinned].map((id) => indexOf.get(id)).filter((i): i is number => i !== undefined && !base.includes(i));
+      return extra.length ? [...base, ...extra].sort((a, b) => a - b) : base;
+    },
+    [pinned, indexOf],
+  );
+  const virtualizer = useWindowVirtualizer({
+    count: entries.length,
+    // Close to the drawn height (a heading, the two header lines, then about 80 characters a line up to 6 lines), so
+    // fewer rows move when they are measured.
+    estimateSize: (i) => (labels[i] ? 28 : 0) + 84 + 20 * Math.min(6, Math.ceil((entries[i].body?.length ?? 0) / 80)),
+    overscan: 3,
+    scrollMargin: margin,
+    getItemKey: (i) => entries[i].id,
+    rangeExtractor,
+    // Scrolling moves the rows and sizes the list directly in the page; React draws only when the visible range changes.
+    directDomUpdates: true,
+    // top, not translate3d: one compositor layer per row made each frame's layer work grow with the rows drawn.
+    directDomUpdatesMode: "position",
+  });
+  const pin = useCallback((id: string, on: boolean) => {
+    setPinned((old) => {
+      if (old.has(id) === on) return old;
+      const next = new Set(old);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const items = virtualizer.getVirtualItems();
+  useEffect(() => {
+    for (const item of items) if (entries[item.index]?.created_at > since) risen.add(entries[item.index].id);
+  });
+
+  return (
+    <div
+      ref={(el) => {
+        listRef.current = el;
+        virtualizer.containerRef(el);
+      }}
+      role="feed"
+      aria-label={t("title")}
+      aria-busy={loading || undefined}
+      className="relative w-full"
+    >
+      {items.map((item) => {
+        const e = entries[item.index];
+        return (
+          <div
+            key={item.key}
+            data-index={item.index}
+            ref={virtualizer.measureElement}
+            className="absolute top-0 left-0 flex w-full flex-col gap-2 pb-2"
+            // Placed by the virtualiser (top); each row lays out on its own.
+            style={{ contain: "layout style" }}
+          >
+            {labels[item.index] ? <h3 className={cn("font-mono text-xs text-muted-foreground", item.index > 0 && "pt-3")}>{labels[item.index]}</h3> : null}
+            <EntryItem
+              entry={e}
+              leadId={leadId}
+              me={me}
+              stepUp={stepUp}
+              now={now}
+              fresh={e.created_at > since && !risen.has(e.id)}
+              compact={false}
+              grouped
+              posInSet={item.index + 1}
+              setSize={complete ? entries.length : -1}
+              opened={opened}
+              onPin={pin}
+            />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -165,23 +371,13 @@ export function EntryList({
   /** Inside a card (Summary): rows divided by lines instead of cards of their own. */
   compact?: boolean;
 }) {
-  const t = useTranslations("Timeline");
-  const format = useFormatter();
-  const zone = useViewerZone();
-  const now = useClientNow(15_000);
+  const { now, label: dayLabel } = useDayLabel();
   // Entries seen at the first draw do not animate; later ones (just logged) rise in once.
   const [seen] = useState(() => new Set(entries.map((e) => e.id)));
 
-  const today = now ? localDate(zone, now) : null;
   const groups: { label: string; items: TimelineEntry[] }[] = [];
   for (const e of entries) {
-    const day = localDate(zone, new Date(e.created_at));
-    const label =
-      today && day === today
-        ? t("today")
-        : today && day === addDays(today, -1)
-          ? t("yesterday")
-          : format.dateTime(new Date(e.created_at), { weekday: "short", day: "numeric", month: "short", timeZone: zone });
+    const label = dayLabel(e);
     const last = groups[groups.length - 1];
     if (grouped && last && last.label === label) last.items.push(e);
     else if (!grouped && last) last.items.push(e);
@@ -206,7 +402,8 @@ export function EntryList({
   );
 }
 
-function EntryItem({
+// Memoised: a virtualised list draws again on every scroll frame, and only rows whose entry changed need to.
+const EntryItem = memo(function EntryItem({
   entry,
   leadId,
   me,
@@ -215,6 +412,10 @@ function EntryItem({
   fresh,
   compact,
   grouped,
+  posInSet,
+  setSize,
+  opened,
+  onPin,
 }: {
   entry: TimelineEntry;
   leadId: string;
@@ -224,6 +425,13 @@ function EntryItem({
   fresh: boolean;
   compact: boolean;
   grouped: boolean;
+  /** In a virtualised feed: the entry's place, and the list's length (-1 while older entries are still to load). */
+  posInSet?: number;
+  setSize?: number;
+  /** In a virtualised feed: what Show more opened, kept while the row is off screen. */
+  opened?: Opened;
+  /** In a virtualised feed: keep this row drawn while it is being edited or asks to delete. */
+  onPin?: (id: string, on: boolean) => void;
 }) {
   const t = useTranslations("Timeline");
   const tTypes = useTranslations("Composer.types");
@@ -234,12 +442,14 @@ function EntryItem({
   const queryClient = useQueryClient();
   const toast = useToast();
   const undo = useUndoActivity();
-  const [expanded, setExpanded] = useState(false);
-  const [full, setFull] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(() => opened?.has(entry.id) ?? false);
+  const [full, setFull] = useState<string | null>(() => opened?.get(entry.id)?.full ?? null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [askedOnce, setAskedOnce] = useState(false);
+  if (confirming && !askedOnce) setAskedOnce(true);
   const bodyRef = useRef<HTMLParagraphElement>(null);
   const [clamped, setClamped] = useState(false);
   const Icon = typeIcon[entry.type];
@@ -251,19 +461,42 @@ function EntryItem({
   const undoSeconds = now ? undoLeft(entry, now.getTime()) : 0;
   const body = full ?? entry.body;
 
-  // Whether the text is cut at 6 lines (then Show more appears).
+  // Whether the text is cut at 6 lines (then Show more appears). Read just after a frame is painted, all entries in one
+  // batch, when the page's layout is up to date: reading scrollHeight in an effect forced a layout per entry (about 14 ms
+  // each at 4x CPU). A ResizeObserver asks again when the width changes.
   useEffect(() => {
     const el = bodyRef.current;
-    if (el) setClamped(el.scrollHeight > el.clientHeight + 1);
+    if (!el) return;
+    let live = true;
+    const read = () => live && setClamped(el.scrollHeight > el.clientHeight + 1);
+    const observer = new ResizeObserver(() => afterPaint(read));
+    observer.observe(el);
+    return () => {
+      live = false;
+      observer.disconnect();
+    };
   }, [body, expanded]);
 
   const showMore = async () => {
+    let text = full;
     if (entry.truncated && full === null) {
       const res = await fetch(`/api/activities/${entry.id}`, { headers: { accept: "application/json" } });
-      if (res.ok) setFull(((await res.json()) as { body: string | null }).body);
+      if (res.ok) {
+        text = ((await res.json()) as { body: string | null }).body;
+        setFull(text);
+      }
     }
     setExpanded(true);
+    opened?.set(entry.id, { full: text });
   };
+
+  // A virtualised row stays drawn while it is being edited or asks to delete (the draft and the dialog live here).
+  const busy = editing || confirming;
+  useEffect(() => {
+    if (!onPin) return;
+    onPin(entry.id, busy);
+    return () => onPin(entry.id, false);
+  }, [onPin, entry.id, busy]);
 
   const saveEdit = async () => {
     setSaving(true);
@@ -319,14 +552,15 @@ function EntryItem({
           })
       : null;
 
-  return (
-    <motion.article
-      initial={fresh && !reduce ? { opacity: 0, y: 8 } : false}
-      animate={{ opacity: entry.pending ? 0.6 : 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      aria-busy={entry.pending || undefined}
-      className={cn("flex gap-3", compact ? "py-3" : "rounded-lg bg-card p-4")}
-    >
+  // Only a just-logged entry rises in (Motion); the others are plain articles, which mount far faster while scrolling.
+  const shell = {
+    "aria-busy": entry.pending || undefined,
+    "aria-posinset": posInSet,
+    "aria-setsize": setSize,
+    className: cn("flex gap-3 transition-opacity duration-200", compact ? "py-3" : "rounded-lg bg-card p-4", entry.pending && !fresh && "opacity-60"),
+  };
+  const inner = (
+    <>
       <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
         <Icon aria-hidden="true" strokeWidth={1.75} className="size-[18px]" />
       </span>
@@ -364,34 +598,26 @@ function EntryItem({
             </p>
           </div>
           {!entry.pending && (entry.is_mine || canDelete) ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label={t("menu")}
-                className="-mt-1 -mr-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
-              >
-                <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {entry.is_mine ? (
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setDraft(full ?? entry.body ?? "");
-                      setEditing(true);
-                    }}
-                  >
-                    {t("edit")}
-                  </DropdownMenuItem>
-                ) : null}
-                {undoSeconds > 0 ? (
-                  <DropdownMenuItem onSelect={() => void undo(entry.id, leadId)}>{t("undo", { seconds: undoSeconds })}</DropdownMenuItem>
-                ) : null}
-                {canDelete ? (
-                  <DropdownMenuItem onSelect={() => window.setTimeout(() => setConfirming(true), 0)} className="text-status-red">
-                    {t("delete")}
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <EntryMenu label={t("menu")}>
+              {entry.is_mine ? (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setDraft(full ?? entry.body ?? "");
+                    setEditing(true);
+                  }}
+                >
+                  {t("edit")}
+                </DropdownMenuItem>
+              ) : null}
+              {undoSeconds > 0 ? (
+                <DropdownMenuItem onSelect={() => void undo(entry.id, leadId)}>{t("undo", { seconds: undoSeconds })}</DropdownMenuItem>
+              ) : null}
+              {canDelete ? (
+                <DropdownMenuItem onSelect={() => window.setTimeout(() => setConfirming(true), 0)} className="text-status-red">
+                  {t("delete")}
+                </DropdownMenuItem>
+              ) : null}
+            </EntryMenu>
           ) : null}
         </div>
 
@@ -450,25 +676,87 @@ function EntryItem({
         ) : null}
       </div>
 
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        <DialogContent className={cn(phoneSheet, "sm:w-[min(440px,calc(100%-32px))]")}>
-          <div className="flex flex-col gap-5 p-6">
-            <div className="flex flex-col gap-2">
-              <DialogTitle className="text-xl font-bold text-balance">{t("deleteConfirm.title")}</DialogTitle>
-              <DialogDescription className="text-muted-foreground">{t("deleteConfirm.body")}</DialogDescription>
+      {/* Mounted from the first time it opens (then kept, so it can animate closed): a closed dialog per entry is not free. */}
+      {askedOnce ? (
+        <Dialog open={confirming} onOpenChange={setConfirming}>
+          <DialogContent className={cn(phoneSheet, "sm:w-[min(440px,calc(100%-32px))]")}>
+            <div className="flex flex-col gap-5 p-6">
+              <div className="flex flex-col gap-2">
+                <DialogTitle className="text-xl font-bold text-balance">{t("deleteConfirm.title")}</DialogTitle>
+                <DialogDescription className="text-muted-foreground">{t("deleteConfirm.body")}</DialogDescription>
+              </div>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button variant="quiet" onClick={() => setConfirming(false)} autoFocus>
+                  {t("deleteConfirm.cancel")}
+                </Button>
+                <Button variant="neutral" onClick={() => void remove()}>
+                  {t("deleteConfirm.confirm")}
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <Button variant="quiet" onClick={() => setConfirming(false)} autoFocus>
-                {t("deleteConfirm.cancel")}
-              </Button>
-              <Button variant="neutral" onClick={() => void remove()}>
-                {t("deleteConfirm.confirm")}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </motion.article>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
+  );
+
+  return (
+    fresh && !reduce ? (
+      <motion.article
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: entry.pending ? 0.6 : 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        {...shell}
+      >
+        {inner}
+      </motion.article>
+    ) : (
+      <article {...shell}>{inner}</article>
+    )
+  );
+});
+
+const menuTrigger =
+  "-mt-1 -mr-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9";
+
+/**
+ * An entry's menu. Until it is first used it is a plain button (a menu per entry, 30 a page, cost the tab switch and the
+ * scroll real time); a press or Enter, Space or Down turns it into the menu, opened, which keeps focus inside as usual
+ * and gives it back to its button when it closes.
+ */
+function EntryMenu({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const icon = <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />;
+  if (open === null) {
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={false}
+        className={menuTrigger}
+        onPointerDown={(e) => {
+          if (e.button !== 0 || e.ctrlKey) return;
+          e.preventDefault();
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " " && e.key !== "ArrowDown") return;
+          e.preventDefault();
+          setOpen(true);
+        }}
+      >
+        {icon}
+      </button>
+    );
+  }
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger aria-label={label} className={menuTrigger}>
+        {icon}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>{children}</DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

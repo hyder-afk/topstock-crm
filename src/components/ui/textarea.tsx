@@ -17,6 +17,8 @@ export function Textarea({
   useLayoutEffect(() => {
     const el = inner.current;
     if (!el) return;
+    // Empty: the CSS minimum height is right, and measuring would force a layout of the whole page on mount.
+    if (value === "" && !el.style.height) return;
     el.style.height = "auto";
     const line = parseFloat(getComputedStyle(el).lineHeight) || 24;
     const max = line * maxRows + 16;
