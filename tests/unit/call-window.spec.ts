@@ -53,7 +53,8 @@ const cases: [key: string, at: string, skipLunch: boolean, open: boolean][] = [
   ["Asia/Kathmandu", "2026-10-12T03:14:00Z", false, false],
   ["Asia/Dubai", "2026-10-16T06:00:00Z", false, true], // Friday 10:00 (Monday to Friday everywhere)
   ["Asia/Dubai", "2026-10-17T06:00:00Z", false, false], // Saturday
-  ["Africa/Casablanca", "2026-10-12T08:00:00Z", false, true], // 09:00 (+01)
+  // Morocco's offset differs between time zone data versions (+01 or +00): 09:30 UTC is open under either.
+  ["Africa/Casablanca", "2026-10-12T09:30:00Z", false, true],
   ["US", "2026-10-12T15:59:00Z", false, false], // New York 11:59, Los Angeles 08:59
   ["US", "2026-10-12T16:00:00Z", false, true], // New York 12:00, Los Angeles 09:00
   ["US", "2026-10-12T21:59:00Z", false, true], // New York 17:59
