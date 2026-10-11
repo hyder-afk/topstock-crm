@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
+import { ageStepUp, appReady, createUser, fullSession, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // The lead page (Day 4b, design 8.5): open from the list and back, J/K, local time, the call panel and every outcome,
 // email and WhatsApp with one-tap logging, notes (edit, undo, delete with a fresh code, draft), read-only and Do not
@@ -60,13 +60,16 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
     );
   });
   const page = await context.newPage();
+  trackRequests(page);
   const errors: string[] = [];
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   page.on("pageerror", (e) => errors.push(e.message));
   return { context, page, errors };
 }
 
+// Each move to another page first lets the current page's requests (dock link prefetches, server actions) finish.
 async function gotoLead(page: Page, id: string, tab?: string) {
+  await settled(page);
   await page.goto(`/leads/${id}${tab ? `?tab=${tab}` : ""}`);
   await expect(page.locator("main h1")).toBeVisible();
   await appReady(page);
@@ -342,6 +345,7 @@ test("note_edit_marks_edited, xss_note_is_text, draft_survives_reload", async ({
   // Draft kept per lead across a reload.
   await composer.getByRole("textbox", { name: "Note" }).fill("Draft about the denim lot");
   await page.waitForTimeout(500);
+  await settled(page);
   await page.reload();
   await appReady(page);
   await expect(composer.getByRole("textbox", { name: "Note" })).toHaveValue("Draft about the denim lot");
@@ -366,6 +370,7 @@ test("note_edit_marks_edited, xss_note_is_text, draft_survives_reload", async ({
   await expect(entry).toContainText("Edited");
   expect(sql(`select edited_at is not null from public.activities where company_id = '${lead}'`)).toBe("t");
   // The draft was cleared on save.
+  await settled(page);
   await page.reload();
   await appReady(page);
   await expect(composer.getByRole("textbox", { name: "Note" })).toHaveValue("");
@@ -537,6 +542,7 @@ test("a missing lead, someone else's org id and a malformed id get the same not-
   const { context, page, errors } = await open(browser, adminState);
   for (const path of ["/leads/00000000-0000-4000-8000-000000000000", "/leads/not-a-uuid"]) {
     // The page streams behind its loading skeleton, so the answer is the not-found screen (not a bare 404 status).
+    await settled(page);
     await page.goto(path);
     await expect(page.locator("main h1")).toHaveText("This page isn’t here");
     await expect(page.getByRole("link", { name: "Back to leads" })).toHaveAttribute("href", "/leads");
