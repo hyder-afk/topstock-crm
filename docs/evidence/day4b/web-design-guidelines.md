@@ -7,7 +7,8 @@ and table changes, `src/components/shell/shortcuts-dialog.tsx`, `messages/{en,fr
 CallPanel, Composer, Outcomes, Timeline, Errors, Leads.until, Shortcuts). Plan overrides (docs/preflight.md): no
 spinners (skeletons, "Saving…" text and press states instead); sentence case, not Title Case.
 Reviewed by the builder on the code and on the screenshots in `screens/`; every fix below was checked again on new
-screenshots and by the e2e suites.
+screenshots and by the e2e suites. (Correction, 11 Oct: the call panel fix (11e9eda) had neither when this was first
+written; `call_panel_each_outcome` now covers it and the lead page shots were taken again after it, on 08ba920.)
 
 ## Found and fixed
 

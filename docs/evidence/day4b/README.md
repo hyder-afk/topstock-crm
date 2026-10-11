@@ -1,9 +1,9 @@
 # Day 4b: the lead page (timeline, composer, call panel, outcomes, Undo), 11 Oct 2026
 
 Design: `docs/evidence/day4/design.md` (sections 1, 2, 3.2, 3.5, 4.1, 5.1 to 5.3, 5.5, 6, 7.1 to 7.3, 7.7 to 7.10, 8,
-10 "4b Lead page"). Local branch `day4b-local`, cut from PR #13's head (17d0354); PR #13 has since merged into `main`
-(1004fa5), so the branch is rebased before it is pushed. Two parts: the database (build order items 1 to 3) and the
-app (items 4 to 8).
+10 "4b Lead page"). Local branch `day4b-local`, cut from PR #13's head (17d0354); `origin/main` with PR #13 as merged
+(1004fa5) is merged in (2585163). Two parts: the database (build order items 1 to 3) and the app (items 4 to 8), then a
+round on the verifier's 11 findings (speed, tests, evidence; see "Verifier round" below).
 
 ## What changed
 
@@ -19,7 +19,13 @@ app (items 4 to 8).
   `set_lead_next_action`, `create_task`, `set_task_done`, `set_task_cancelled`, `list_lead_tasks` (all SECURITY INVOKER,
   static SQL, revoked from anon).
 - Tests: `supabase/tests/outcome_attack.sql` and `outcome_concurrency.sh` (in `db-test.sh` and `db.yml`); mutations
-  (86 of 86); perf part 2 (P1, P4, P4b).
+  (90 of 90 after the merge); perf part 2 (P1, P4, P4b).
+- After the merge of `main` (Day 4a's review changed the insert lock to take the entry's contact FOR KEY SHARE, then
+  the lead): `log_activity` now takes a contact it names but does not mark FOR KEY SHARE **before** the lead, so it
+  keeps the contact-then-lead order (without it a wrong number on that contact and the call deadlocked:
+  `outcome_concurrency.sh` case 4 reproduced it); and `private.lock_activity_lead` is redefined (the Day 4a advisor's
+  carry-over): a signed-in session without two-factor, or naming a lead or a contact outside its organisation, locks
+  nothing, since its insert is refused anyway (case 5). Mutation rows 87 to 90.
 
 **App** (part 2)
 
@@ -44,14 +50,16 @@ app (items 4 to 8).
   - quick actions: Call (red, opens the call panel), WhatsApp (`wa.me` from `dialString`, or the "add the country
     code" hint), Email (mail app, or a menu of the addresses), Meeting, Note; a one-tap "Log email" / "Log WhatsApp
     message" chip; hints for missing channels; a Do not contact lead shows a banner instead;
-  - WAI-ARIA tabs (`src/components/ui/tabs.tsx`, Motion `layoutId` pill): Summary (Next step with the open tasks and
+  - WAI-ARIA tabs (`src/components/ui/tabs.tsx`, Motion `layoutId` pill; each panel in a React Activity boundary,
+    deviation 17): Summary (Next step with the open tasks and
     the next call attempt, contacts on phones, the latest three entries, the deals placeholder), Timeline, Deals and
     Stock ("nothing yet"), Details (the lead form, the time zone from the closed list, the next call date, the import
     for admins, contacts on phones); Files hidden until 4d (D16); `?tab=` and `?filter=` in the URL;
   - timeline: 30 a page with an observer and a Show older button, day groups in the viewer's zone, text only
     (`dir="auto"`, never HTML, never auto-linked), 6-line clamp with Show more, filters, edit by the author ("Edited"),
     Undo for 2 minutes, delete after a confirmation and a fresh code (`useStepUp`), managers and admins may delete others'
-    entries, `content-visibility: auto` per row;
+    entries; up to 120 loaded entries `content-visibility: auto` per row, past 120 a feed virtualised with TanStack
+    Virtual (design D13's fallback, deviation 16);
   - composer (`src/components/ui/textarea.tsx`; the rail from 1024, a sheet below): note, call (the shared outcome
     pad), email (opens the mail app with the encoded link, then logs `email · sent` with the subject), WhatsApp, meeting
     (book with a date and a time, held, no-show), follow-up chips with both clocks, Cmd/Ctrl+Enter, the reason Save
@@ -64,36 +72,59 @@ app (items 4 to 8).
   opens the lead page; Back restores the list URL and scroll; J and K walk the list from the lead page ("3 of 60").
 - **Messages** EN and FR for LeadPage, QuickActions, CallPanel, Composer, Outcomes, Timeline, Errors, Leads.until,
   Shortcuts (an "On a lead" section) and StepUp.bodyDelete; French typography checked by `messages.spec.ts`.
-- **Tests.** Unit: `phone`, `call-window` (61 cases, written to be shared with 4c's SQL), `next-working-day` (the SQL
+- **Tests.** Unit: `phone`, `call-window` (61 cases, written to be shared with 4c's SQL, plus the jump walk checked
+  against the 15-minute walk around every 2026 clock change), `next-working-day` (the SQL
   test's own cases), `activities`, `outcome-keys`, `tasks`, `db-errors`, `day4-parity`, `messages` (new namespaces).
   E2E: `tests/auth/lead-page.spec.ts` (Chromium and WebKit), `tests/auth/day4-security.spec.ts` (4b scope), lead page
-  shots in `tests/auth/screens.spec.ts`, `tests/auth/day4-perf.spec.ts` (PERF=1 only); the Day 3b import spec's `openImport()`
-  waits for the page's requests in flight before navigating again (WebKit flake, deviation 15).
+  shots in `tests/auth/screens.spec.ts`, `tests/auth/day4-perf.spec.ts` and `tests/auth/day4-chunks.spec.ts` (PERF=1
+  only); the Day 3b import spec's `openImport()` waits for the page's requests in flight before navigating again (WebKit
+  flake, deviation 15, unproven until CI).
 
 ## Check results
 
-Run on commit **509e6ab** (the last code commit; the evidence commit after it changes only `docs/`), local
-auth stack serving this worktree, 11 Oct 2026.
+Code checks on commit **434522c** (the last code commit before the chunk spec 08ba920, which only adds a PERF-only
+test; the commits after that change only `docs/`), local auth stack restarted for this worktree with the merged
+migrations, 11 Oct 2026, evening.
 
 | Check | Result |
 |---|---|
-| `bash scripts/db-test.sh` | rls, import, import_concurrency, activity, outcome_attack and outcome_concurrency all pass; advisors: no ERROR-level findings (WARN `set_user_role`, accepted; INFO `unindexed_foreign_keys` 2, `unused_index` 2); exit 0 |
-| Mutations, Day 4b (part 1) | 86 of 86 caught; Day 4a 64 of 64; Day 3b 36 of 37 (the documented two-layer row) |
-| Perf, database (part 1, 4 runs) | P1 2.4–3.6 ms (8 / 12), P4 7.6–11.7 ms (15), P4b 5.4–7.6 ms (15), P2 0.4–0.7 ms (5 / 8 / 10) |
-| `npm run lint` | exit 0: 0 errors, 2 warnings (the existing React Compiler notes on TanStack Virtual) |
+| `bash scripts/db-test.sh` | rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency (new from `main`), outcome_attack and outcome_concurrency (new cases 4 and 5) all pass; advisors: no ERROR-level findings (WARN `set_user_role`, accepted; INFO `unindexed_foreign_keys` 2, `unused_index` 2); exit 0 |
+| Mutations (`mutations.md`, throwaway worktree) | Day 4b **90 of 90** caught (c4fb0b9; row 90 on 8d4ff18); Day 4a as merged: 102 caught, 2 documented two-layer rows (96, 100), 0 not as listed; Day 3b: 36 caught, 1 documented two-layer row (4) |
+| Perf, database (`perf.md`, one run on 08ba920) | P1 2.44–2.72 ms (8 / 12), P4 8.26–8.41 ms (15), P4b 5.74–5.84 ms (15), P2 0.44–0.49 ms (5 / 8 / 10) |
+| `npm run lint` | exit 0: 0 errors, 2 warnings (the existing React Compiler notes on TanStack Virtual in the import check step and the leads table) |
 | `npm run typecheck` | exit 0 |
-| `npm run test:unit` | 320 passed, exit 0 |
+| `npm run test:unit` | 321 passed, exit 0 |
 | Playwright, signed out (`playwright.config.ts`) | 20 passed, exit 0 |
-| Playwright, local auth stack, Chromium, every auth suite except `journey.spec.ts` and `screens.spec.ts` (`--grep-invert "screens\|journey"`) | 63 passed, 2 skipped (`day4-perf` and `import-perf` need PERF=1), exit 0 (8.5 min); includes `lead-page`, `day4-security`, `import` with the flake fix, `leads`, `shell`, `import-security` |
-| Screenshots | 84 lead page shots (436 in the screens run, taken before 11e9eda, which changes only what a close before Save does; no shot shows that state) without console error or sideways scroll; set in `screens/` |
-| Lead page speed (`day4-perf.spec.ts`, PERF=1, Chromium, 4x CPU, one run) | cold deep link LCP **1,328 ms** (budget 2 s) and CLS **0.049** (0.05): met. Tab switch to Timeline **969 ms** (100 ms), route change from the list after hover prefetch **745–823 ms** over 3 (200 ms), 1,000-entry timeline scroll frame p50 **80.5 ms** / p95 **115.3 ms** (60 fps = 16.7 ms; long tasks mostly 50–130 ms, five of 1.4–3.1 s): **missed**, see Open risks |
-| Route chunk | the lead page adds 19 KB gzip to what the leads list already loaded; 79 KB over the bare app shell (design budget 60 KB extra) |
-| gitleaks (`origin/main..HEAD`, 22 commits) | no leaks found, exit 0 |
+| Playwright, local auth stack, Chromium, every auth suite except `journey.spec.ts` and `screens.spec.ts` (`--grep-invert "screens\|journey"`) | 64 passed, 2 skipped (`day4-perf` and `import-perf` need PERF=1), exit 0 (8.2 min), on 434522c; includes the new `timeline_virtualised_past_120`, the close-with-outcome case in `call_panel_each_outcome`, `cross_site_action_refused` with its positive replay, and `import` with the flake fix |
+| Screenshots | taken again on the code of 08ba920: the 84 lead page shots (plus the leads and shortcuts tests), no console error or sideways scroll; the kept set in `screens/` replaced |
+| Lead page speed (`day4-perf.spec.ts`, PERF=1, Chromium, 4x CPU, timed inside the page, 3 runs per invocation, two invocations on 434522c) | see the table below: LCP and CLS met (LCP missed once, on the first page after the server started); tab switch, route change and the 1,000-entry scroll **missed** (Open risks) |
+| Route chunk (`day4-chunks.spec.ts`, PERF=1) | **28.5 KB gzip** over the app shell (2 files; shell 339.8 KB, lead page 366.8 KB): within the 60 KB budget. Method: the JavaScript a deep link to a lead loads minus what `/more` loads, gzip -9 from `.next`. Same method on the previous head 13fea94: 19.4 KB; on `main` (1004fa5) the shell is 334.1 KB, so the lead page is 32.7 KB over `main`'s shell. The earlier "79 KB" had no recorded method and could not be reproduced |
+| gitleaks (`origin/main..08ba920`) | 35 commits scanned (git counts 36 with the merge commit), no leaks found, exit 0. The previous figures were 22 commits at 509e6ab and 24 at 13fea94 |
 | `npm audit --omit=dev` | found 0 vulnerabilities, exit 0 |
-| Apple design audit / Web Interface Guidelines | `apple-design-audit.md`, `web-design-guidelines.md` (unresolved: none) |
+| Apple design audit / Web Interface Guidelines | `apple-design-audit.md`, `web-design-guidelines.md` (unresolved: none; one claim corrected) |
 | Security review | `security-review.md`: threat rows 1 to 12, 15 (undo records), 16, 18, 19, 26 to 30, 32, 33 re-checked with their tests; residual risks |
 | Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
-| WebKit e2e | not installed here; CI's auth-journey (webkit) runs `lead-page.spec.ts` |
+| WebKit e2e | not installed here; CI's auth-journey (webkit) runs `lead-page.spec.ts` and `import.spec.ts` |
+
+**Lead page speed** (design 8.6; 4x CPU slow-down on this 4-vCPU cloud VM; each value one run; invocation A then B):
+
+| Measure | A (3 runs) | B (3 runs) | Budget | |
+|---|---|---|---|---|
+| Cold deep link LCP | 2,288 / 1,220 / 1,008 ms | 556 / 1,264 / 676 ms | 2,000 ms | met, except A's first run (the first page served after `next start`) |
+| CLS | 0.004 / 0.049 / 0.049 | 0.049 / 0.049 / 0.049 | 0.05 | met, only just |
+| Tab switch, Summary to Timeline | 105 / 155 / 133 ms | 136 / 152 / 118 ms | 100 ms | **missed** (was 691–938 ms by the same in-page method before this round) |
+| Route change from the list after hover prefetch | 334 / 262 / 231 ms | 274 / 226 / 209 ms | 200 ms | **missed** (was 463–578 ms) |
+| 1,000-entry timeline scroll, frame p50 | 31.4 / 28.3 / 27.6 ms | 30.2 / 25.9 / 24.5 ms | 16.7 ms | **missed** (was 80.5 ms; 60 fps not reached) |
+| same, frame p95 | 52.2 / 43.9 / 45.5 ms | 46.8 / 43.7 / 40.4 ms | 20 ms | **missed** (was 115.3 ms) |
+| Longest task while scrolling | 69 / 68 / 56 ms | 128 / 114 / 91 ms | (recorded) | |
+
+How the misses were worked on (profiles with source maps, Chrome traces): the 6-line clamp read `scrollHeight` per entry
+(a forced layout each: 428 ms of the old tab switch); every reveal drew all entries again because each part kept its own
+clock; Radix menus and Motion on every entry; the Summary-to-Timeline switch drew the whole page again; Motion measured
+the tab pill in the click's frame; Playwright's trace ran inside the old timings; the route change ran the page's code,
+parsed its ICU messages and walked calling hours 15 minutes at a time on the click. What is left is mostly the browser's
+own style, layout and paint at 4x CPU (roughly half of the remaining tab switch in the Chrome trace, and most of each
+scroll frame).
 
 ## Docs used
 
@@ -110,6 +141,22 @@ Context7 pages consulted before coding (the builder's lookups, design 8.7):
   reached while loading current document, the method resolves immediately", and `networkidle` is discouraged; so the
   import flake fix counts the page's own requests (`request` / `requestfinished` / `requestfailed`) instead.
 
+Verifier round (looked up by this builder in Context7):
+- **TanStack Virtual** (`/tanstack/virtual`): `docs/api/virtualizer.md` (`measureElement` with `data-index`,
+  `scrollMargin` for a window virtualiser with content above the list, `rangeExtractor`, `getItemKey`),
+  `docs/introduction.md` (the basic React example), `docs/chat.md` (dynamic heights with transforms), the React
+  Compiler e2e note on `directDomUpdates` (issue #736); the installed 3.14.13 typings for `useWindowVirtualizer`,
+  `directDomUpdates` and `directDomUpdatesMode`.
+- **Next.js 16.2** (`/vercel/next.js/v16.2.9`): `docs/01-app/03-api-reference/02-components/link.mdx` (`prefetch`:
+  `null`/auto prefetches a dynamic route down to `loading.js`, `true` prefetches it in full),
+  `docs/01-app/02-guides/prefetching.mdx` (hover-triggered prefetching), `use-router.mdx` (`router.prefetch` options),
+  `staleTimes.mdx` (a full prefetch is kept 5 minutes); the installed 16.4.0 `prefetch.js` (`router.prefetch` defaults
+  to the partial kind, so Open lead uses `<Link prefetch>`).
+- **React** (`/reactjs/react.dev`): `reference/react/Activity.md` (hidden boundaries pre-render at a lower priority
+  without their Effects, `display: none`, state kept; tabs as the example).
+- **next-intl 4.14** (`/amannn/next-intl/v4.14.7`): `docs/usage/plugin.mdx` and RFC 002 (experimental
+  `messages.precompile`; `t.raw` not supported).
+
 ## Deviations from the design
 
 Database part (each tested and covered by a mutation; `docs/log.md`, 11 Oct): zone offsets from the system tzdata, not
@@ -123,9 +170,9 @@ BEFORE UPDATE only; `get_lead` works out the caller's zone once; the outcome con
 `activity_attack.sql` section 11 ages its entries first; `p_from_queue` acts from 4c.
 
 App part:
-1. **Next step lists every open task** (then the next call attempt). The design had a Next step card in Summary and a
-   "next task" card in the rail, which showed the same task twice on every lead with one task; the rail keeps the
-   composer and the contacts.
+1. **Next step lists the open tasks, up to 20** (then the next call attempt); with more it says "Showing the first 20
+   open tasks." (the list asks for 21). The design had a Next step card in Summary and a "next task" card in the rail,
+   which showed the same task twice on every lead with one task; the rail keeps the composer and the contacts.
 2. **"14:05 local time"** instead of "14:05 in Lyon": the city and country start the same line. A span reads
    "02:00–05:00 local time · time zone not set · Set time zone".
 3. **24-hour times in both languages**, as in the design's examples (English Intl defaults to "2:05 PM").
@@ -155,29 +202,59 @@ App part:
     request in flight before it navigates again, so a Past-imports refresh (server action POST) is not cut off (WebKit
     logs "Fetch API cannot load … due to access control checks" for a cut-off fetch). The suggested
     `waitForLoadState("networkidle")` was not used: it resolves at once once the document has reached that state
-    (Playwright docs), so it cannot wait for a later request. The console-error check is unchanged.
+    (Playwright docs), so it cannot wait for a later request. The console-error check is unchanged. **Unproven:** the
+    flake is WebKit-only and WebKit is not installed here, so the fix has only run in Chromium; it counts as fixed once
+    CI's auth-journey (webkit) passes `import.spec.ts`. The request tracking starts at the first `openImport()`, which
+    holds because every test calls it on a fresh page.
+16. **The timeline is virtualised past 120 loaded entries** (D13's fallback, since the 1,000-entry scroll missed 60
+    fps): a `role="feed"` of articles with `aria-posinset` / `aria-setsize` (-1 while older pages remain), a day heading
+    row where the day changes, rows measured and positioned by TanStack Virtual against the window. Up to 120 the whole
+    list stays in the page (content-visibility), so the find bar and reading order are as before for ordinary leads.
+    Past 120 the find bar sees only the rows near the window, and Tab moves through the drawn rows then on to "Show
+    older"/the end text; screen readers get each article's position in the whole list. Rows being edited or asking to
+    delete stay drawn when scrolled away; what Show more opened is remembered.
+17. **Tab panels are React Activity boundaries**: every panel is in the page, the hidden ones drawn in the background
+    (no Effects, `display: none`), so a tab switch reveals a ready panel and a panel keeps its state when the reader
+    comes back. The design only said tabs draw from cached data.
+18. **next-intl message precompilation** (`experimental.messages.precompile`, next-intl 4.14): messages are compiled at
+    build time instead of parsed in the browser on first use. Experimental in the library; `t.raw` is not used anywhere.
+19. **The entry menu is a plain button until pressed** (it becomes the Radix menu, opened, on a press or Enter, Space or
+    Down), and the delete dialog mounts the first time it is asked for: a Radix menu and dialog per entry cost the tab
+    switch and the scroll. Motion animates only a just-logged entry.
+20. **The tab pill moves one frame after the panel shows** (Motion measured it in the click's frame, which doubled the
+    layout work).
+21. **The speed spec times inside the page** (performance.now() before a DOM click, a MutationObserver, then the painted
+    frame), runs each measure 3 times, asserts every design 8.6 budget with `expect.soft`, and turns Playwright's trace
+    off for that spec (its DOM snapshots ran inside the old timings).
+22. **The client's text rule refuses C1 controls** (U+0080 to U+009F), as Day 4a's CHECK does since its review
+    (`day4-parity` failed after the merge until it did).
 
 ## Not done here
 
 - 4c: "Henri is on this lead", the queue, the Tasks page, the profile zone (`caller_zone()` reads the profile already);
   4d: Files (hidden, D16).
 - WebKit e2e (not installed here), Semgrep (blocked), `journey.spec.ts` (needs Mailpit): CI.
-- The design's browser speed budgets for the queue (4c). The lead page's are measured once (speed row above), not in
-  CI; three of them are missed (Open risks).
+- The design's browser speed budgets for the queue (4c). The lead page's are measured locally (PERF=1, speed table
+  above), not in CI; three of them are missed (Open risks).
 - `/security-review` (the slash command) and the advisor loop: run on the PR before merge; `security-review.md` here is
   the builder's threat-table re-check.
-- Route chunk budget: the lead page is 79 KB gzip over the bare shell (design 60 KB extra); 19 KB over the leads list it
-  is usually opened from.
 
 ## Open risks
 
-- **Lead page speed budgets missed** (one run, 4x CPU slow-down on this cloud VM, timed from the test runner, which adds
-  its own round trips): tab switch 969 ms (100 ms), route change after hover prefetch 745–823 ms (200 ms), and a
-  timeline with 1,000 loaded entries scrolls at about 12 fps (frame p50 80.5 ms). Design D13 says to fall back to
-  TanStack Virtual for the timeline when it misses 60 fps; that was **not** done here. The cold deep link (LCP 1.3 s,
-  CLS 0.049) is within budget, CLS only just. Recommendation: virtualise the timeline and profile the tab switch and
-  route change (what renders on the click) before merge, or accept with a measured baseline on CI hardware; this is
-  Haider's call (a gate).
+- **Lead page speed budgets missed: Haider's decision before merge.** On this 4-vCPU cloud VM at 4x CPU slow-down, timed
+  inside the page, 6 runs over two invocations on 434522c: tab switch **105–155 ms** (budget 100 ms), route change after
+  the hover prefetch **209–334 ms** (200 ms), 1,000-entry timeline frame p50 **24.5–31.4 ms** and p95 **40.4–52.2 ms**
+  (60 fps: 16.7 ms; the spec reads 60 fps as p50 ≤ 16.7 ms and p95 ≤ 20 ms). Each is 2 to 6 times faster than before
+  this round, and D13's fallback (TanStack Virtual) is in. What is left is mostly the browser's style, layout and paint
+  at 4x CPU. Options: (a) accept these numbers as the baseline and re-measure on CI hardware or Haider's Mac; (b) keep
+  working (smaller first timeline page, a lighter header and rail, tabs without the sliding pill); (c) relax the budgets
+  for 4x CPU. Builder's recommendation: (a), with the PERF spec kept as the regression guard.
+- **LCP and CLS pass narrowly**: CLS 0.049 on most runs (a shift when the header's local time and the relative times
+  appear after hydration); one LCP of 2,288 ms on the first page served after `next start`.
+- **next-intl precompilation is experimental** in the library; a library update could change its output. The e2e suites
+  (EN and FR) and the French screenshots pass with it.
+- **Virtualised timelines (past 120 entries)**: the browser's find bar only sees rows near the window (deviation 16).
+- **WebKit import flake fix unproven** until CI's WebKit run passes (deviation 15).
 - **tzdata differences** between PostgreSQL, Node (server render) and browsers: western Canada from November 2026 is a
   live case; parity tests use fixed instants. Times that depend on the viewer render after mount.
 - **CI's Postgres 17 image** may lack a zone of the map (`zone_map_zones_exist` fails visibly); the 4a role behaviours
@@ -188,5 +265,5 @@ App part:
 - **Server actions run one at a time per client** (Next.js): a slow save holds the next one; the queue's single
   combined action is 4c's answer (D3).
 - **Accepted:** splinter INFO for the unindexed `activity_undo_org_id_fkey`; flood guards count per transaction snapshot.
-- **Rebase:** `main` moved (PR #13 merged as 1004fa5 after this branch was cut at 17d0354); expect conflicts in
-  `docs/log.md`, and possibly `supabase/tests/activity_attack.sql` section 11 and `scripts/db-mutations.py`.
+- **Merged, not rebased:** `origin/main` (1004fa5) is merged into this branch (2585163) with its conflicts resolved
+  (`db.yml`, `db-test.sh`, `db-mutations.py`, `docs/log.md`); the PR will show the merge commit.

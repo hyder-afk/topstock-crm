@@ -79,3 +79,24 @@ Not 4b: threats 13 to 15 (claims), 17 (calling hours in the queue), 20 to 25 (fi
 8. **Flood guards count per transaction snapshot**: concurrent requests in the same instant can pass 60 by a few
    (accepted in 4a).
 9. **Semgrep and WebKit** did not run here (semgrep.dev blocked, WebKit not installed); both run in CI before merge.
+
+## Verifier round (11 Oct, evening; on 08ba920)
+
+- **Insert lock (DEFINER) narrowed.** `private.lock_activity_lead` is redefined in the 4b migration: for a signed-in
+  session it returns without locking when the session has no two-factor or the entry's lead is not in the caller's
+  organisation, and it locks a named contact only in the caller's organisation (sessions with no signed-in user lock
+  as before). Before, any authenticated session could make the DEFINER trigger hold another team's lead or contact
+  until its own insert was refused by row level security. Proved by `outcome_concurrency.sh` case 5 (a refused insert
+  answers at once while another session holds that row FOR UPDATE: aal1, another organisation's lead, another
+  organisation's contact) and mutation rows 88 to 90. Still trigger-only and revoked from every client role.
+- **Lock order.** `log_activity` takes a contact it names before the lead in every call, the order of the merged Day 4a
+  insert lock and of a contact edit; case 4 reproduced the deadlock before the fix (row 87).
+- **Cross-site action replay** (threat 33's test) now first replays with the page's own Origin (200, one more row),
+  then with another site's (500, no row), each with its own request id, so the refusal is the Origin check and not a
+  broken replay.
+- **Full prefetch on hover.** Open lead now prefetches the server-rendered lead page in full: the page runs
+  `requireSession()` and the same RPCs under the viewer's session on the prefetch, and the router keeps that payload in
+  the tab's memory for up to 5 minutes (Next.js `staleTimes.static`). Nothing new is exposed (the viewer could open the
+  page anyway); residual: a lead opened from that cache within 5 minutes first shows what the prefetch saw, then the
+  query cache refreshes it.
+- No new route, action, RPC or grant in this round; the client text rule now refuses C1 controls like the database.

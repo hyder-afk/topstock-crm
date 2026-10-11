@@ -27,6 +27,10 @@ Notes for reading them:
   screen is; on a phone they sit at the bottom).
 - The test browser runs in UTC, so a lead in Lyon shows both clocks ("15:31 there · 13:31 for you"); a viewer in the
   lead's zone sees "15:31 local time". The screenshots were taken on a Sunday, so the lead is outside calling hours.
-- Timeline rows use `content-visibility: auto` (design D13); the shot paints them all (a style added for the shot only).
+- Timeline rows use `content-visibility: auto` up to 120 loaded entries (design D13); the shot paints them all (a style
+  added for the shot only). Past 120 the timeline is virtualised; no shot has that many entries (the e2e test
+  `timeline_virtualised_past_120` covers it).
+- Taken again on 08ba920 (after the virtualised timeline, the tabs in Activity boundaries and the call panel close fix):
+  the same 84 lead page shots, no console error, no sideways scroll; the kept set below replaced in place.
 - The follow-up task title is in English in the French shots: it is the fixture's own text (titles made by the app are
   written in the caller's language).

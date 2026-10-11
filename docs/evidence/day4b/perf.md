@@ -21,6 +21,22 @@ Everything runs as a signed-in admin with two-factor (the first perf user), row 
 averaged. Every P4/P4b run is rolled back, so each starts from the same lead and the flood guards never fill. Machine:
 this cloud session, 4 vCPU, nothing else running (the mutation runs had finished).
 
+## Re-run after merging `main` and the lock changes (one run, 11 Oct evening, on 08ba920)
+
+`bash scripts/db-perf.sh`, exit 0, nothing else running. The merged Day 4a insert lock (contact FOR KEY SHARE, then the
+lead) and 4b's changes (`log_activity` takes a named contact before the lead; the insert lock first checks two-factor and
+the organisation) are on every insert:
+
+| Case | Busiest lead (10,008 entries) | Typical lead | Budget | First run (4 runs) |
+|---|---|---|---|---|
+| P1 `get_lead` | 2.72 ms | 2.44 ms | 12 / 8 ms | 2.4–3.6 ms |
+| P4 `log_activity` (wrong number on the contact, task completed and made, undo record) | 8.41 ms | 8.26 ms | 15 ms | 7.6–11.7 ms |
+| P4b `undo_activity` | 5.74 ms | 5.84 ms | 15 ms | 5.4–7.6 ms |
+| P2 on the real RPC: first page / row 5,000 / calls only | 0.49 / 0.44 / 0.44 ms | | 5 / 8 / 10 ms | 0.4–0.7 ms |
+| Import, 28 calls of 1,000 (average) / undo, 14 calls of 2,000 | 293.9 ms / 226.0 ms | | context | 257–361 / 232–260 ms |
+
+All within budget and within the first run's spread. The sections below are the first run.
+
 ## P1, P4, P4b (budgets: P1 ≤ 8 ms typical / ≤ 12 ms busiest; P4 ≤ 15 ms; P4b ≤ 15 ms)
 
 P4 is `log_activity(…, 'call', 'wrong_number', …, p_contact, 'contact', …, 'Find the right number', p_request_id)` on
