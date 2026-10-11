@@ -1,0 +1,11 @@
+# Spike S1, throwaway script (not merged; design 2.4): local PostgreSQL 16.15, a non-superuser role with CREATEROLE
+# standing in for hosted Supabase's postgres role. Repeated on the CI image and dev in 6e's first commit.
+# pg_dump of the schema printed 2 "ALTER FUNCTION ... OWNER TO share_reader" lines: a restore needs the role first.
+ S1 create role as non-superuser with CREATEROLE: ok
+ S1 grant share_reader to owner with set true: ok
+ S1 grants on the functions set before ALTER OWNER (afterwards only the new owner may change them)
+psql:s1.sql:37: NOTICE:  S1 ALTER OWNER without CREATE on the schema for share_reader: refused (permission denied for schema s1)
+ S1 with a temporary CREATE grant: ALTER OWNER ok; CREATE revoked again; owner now share_reader
+ S1 anon -> definer owned by share_reader, org aa: [[1, "A", 10]]
+ S1 org bb: [[2, "B", 20]]
+psql:s1.sql:54: NOTICE:  S1 a definer body reading a column share_reader has no grant on: refused (permission denied for table items)
