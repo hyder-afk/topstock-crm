@@ -9,6 +9,15 @@
 #  3. outcome_replay_idempotent: the same request sent twice at once gives one entry, (a) for a call on a lead the
 #     caller may change (the second waits for the lead's lock, then finds the first), and (b) for a note, which takes no
 #     lock (the unique request index makes the second wait, then it answers the first).
+#  4. outcome_contact_lock_order_no_deadlock: a wrong number on a contact and another call naming that contact, on one
+#     lead, both queued behind a third session holding the contact. The wrong number is first in line for the contact,
+#     the other call second. Unless every call naming a contact takes it before the lead (the insert lock takes the
+#     contact FOR KEY SHARE, which a wrong number's FOR UPDATE blocks), the other call holds the lead while it waits for
+#     the contact, the wrong number holds the contact while it waits for the lead, and one of them dies in a deadlock.
+#  5. insert_lock_skips_refused_callers: the insert lock (DEFINER, so it passes row level security) locks nothing for a
+#     session without two-factor, or a caller naming a lead or a contact of another organisation, whose insert is
+#     refused anyway: while a third session holds that lead or contact, the refused insert answers at once instead of
+#     waiting for it.
 # Usage: outcome_concurrency.sh "<libpq connection string>" (after outcome_attack.sql). Used by scripts/db-test.sh and
 # the CI "rls" job. Fixtures are made by the superuser connection; the probes run as the admin through the API role.
 set -euo pipefail
@@ -24,8 +33,18 @@ select set_config('request.jwt.claims', '{"sub":"$ADMIN","role":"authenticated",
 $1
 SQL
 }
+# Runs SQL as any user: $1 sub, $2 aal, $3 SQL.
+as_user() {
+  psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 <<SQL
+set role authenticated;
+select set_config('request.jwt.claims', '{"sub":"$1","role":"authenticated","aal":"$2"}', false) \g /dev/null
+$3
+SQL
+}
 as_owner() { psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 -c "$1"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
+TMPDIR_OC=$(mktemp -d)
+trap 'rm -rf "$TMPDIR_OC"' EXIT
 
 # A lead owned by rep d1 (the admin may change it), made by the superuser.
 new_lead() {
@@ -88,5 +107,52 @@ commit;" & pa=$!
 }
 replay call "public.log_activity(':lead', 'call', 'connected', null, null, null, null, null, null, ':req')"
 replay note "public.log_activity(':lead', 'note', null, 'twice', null, null, null, null, null, ':req')"
+
+# 4. Every call naming a contact takes it before the lead -----------------------------------------------------------
+lead4=$(new_lead 'Concurrency lock order' "'+33 1 99 00 20 05'")
+contact4=$(as_owner "insert into public.contacts (org_id, company_id, first_name, phone)
+                     select org_id, id, 'Queued', '+33 6 39 98 20 05' from public.companies where id = '$lead4' returning id;")
+psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 -c "begin; select 1 from public.contacts where id = '$contact4' for update;
+  select pg_sleep(2); commit;" > /dev/null & ph=$!
+sleep 0.4
+as_admin "select public.log_activity('$lead4', 'call', 'wrong_number', null, '$contact4', 'contact', null, null,
+          'Find the right number') \g /dev/null" > /dev/null 2>"$TMPDIR_OC/wrong.err" & pa=$!
+sleep 0.4
+as_admin "select public.log_activity('$lead4', 'call', 'no_answer', null, '$contact4') \g /dev/null" \
+  > /dev/null 2>"$TMPDIR_OC/other.err" & pb=$!
+wait $ph || fail "outcome_contact_lock_order_no_deadlock: the holding session failed"
+ra=0; wait $pa || ra=$?
+rb=0; wait $pb || rb=$?
+[ $ra = 0 ] && [ $rb = 0 ] || fail "outcome_contact_lock_order_no_deadlock: wrong number exit $ra, other call exit $rb: \
+$(cat "$TMPDIR_OC/wrong.err" "$TMPDIR_OC/other.err")"
+got=$(as_owner "select count(*) || ' ' || (select (phone_wrong_at is not null)::text from public.contacts where id = '$contact4')
+                  from public.activities where company_id = '$lead4';")
+[ "$got" = "2 true" ] || fail "outcome_contact_lock_order_no_deadlock: entries and mark '$got' (expected '2 true')"
+
+# 5. The insert lock skips callers whose insert is refused ------------------------------------------------------------
+lead5=$(new_lead 'Concurrency refused lock' "null")
+contact5=$(as_owner "insert into public.contacts (org_id, company_id, first_name)
+                     select org_id, id, 'Held' from public.companies where id = '$lead5' returning id;")
+other5=$(as_owner "insert into public.companies (org_id, name, lead_status)
+                   values ('00000000-0000-0000-0000-0000000000cc', 'Other org lead', 'cold') returning id;")
+quick_refusal() {  # $1 label, $2 sub, $3 aal, $4 "table id" held for 3 s (NO KEY UPDATE), $5 the refused insert
+  local ph t0 t1 out
+  psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 -c "begin; select 1 from public.${4% *} where id = '${4#* }' for no key update;
+    select pg_sleep(3); commit;" > /dev/null & ph=$!
+  sleep 0.4
+  t0=$(date +%s%N)
+  out=$(as_user "$2" "$3" "$5" 2>&1) && fail "insert_lock_skips_refused_callers ($1): the insert was accepted"
+  t1=$(date +%s%N)
+  wait $ph || fail "insert_lock_skips_refused_callers ($1): the holding session failed"
+  case "$out" in *"row-level security"*) ;; *) fail "insert_lock_skips_refused_callers ($1): unexpected error: $out";; esac
+  [ $(( (t1 - t0) / 1000000 )) -lt 1500 ] \
+    || fail "insert_lock_skips_refused_callers ($1): the refusal took $(( (t1 - t0) / 1000000 )) ms (it waited for a lock)"
+}
+quick_refusal 'no two-factor' "$ADMIN" aal1 "companies $lead5" \
+  "insert into public.activities (company_id, type, body) values ('$lead5', 'note', 'locked?');"
+quick_refusal 'a lead of another organisation' 00000000-0000-0000-0000-0000000000c1 aal2 "companies $lead5" \
+  "insert into public.activities (company_id, type, body) values ('$lead5', 'note', 'locked?');"
+quick_refusal "a contact of another organisation" 00000000-0000-0000-0000-0000000000c1 aal2 "contacts $contact5" \
+  "insert into public.activities (company_id, contact_id, type, body) values ('$other5', '$contact5', 'note', 'locked?');"
 
 echo 'outcome_concurrency: all checks passed'

@@ -537,6 +537,33 @@ create policy tasks_delete on public.tasks for delete to authenticated using (
                        and a.created_at > now() - interval '120 seconds')
         and not exists (select 1 from private.activity_undo u where u.activity_id = tasks.source_activity_id))));
 
+-- The insert lock (Day 4a, D9 under concurrency), redefined: it is DEFINER so that it locks a lead the caller may log on
+-- but not change, which also let it lock rows for a session whose insert row level security then refuses. Now a signed-in
+-- session without two-factor, or whose lead (or contact) is not in its organisation, locks nothing: its insert is
+-- refused anyway, and it can no longer hold another team's lead or contact while it waits to be refused (Day 4a advisor
+-- note). Sessions with no signed-in user (fixtures, maintenance) lock as before. The order stays contact, then lead.
+create or replace function private.lock_activity_lead() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  caller constant uuid := (select auth.uid());
+  v_org uuid;
+begin
+  if caller is not null then
+    v_org := (select private.current_org_id());
+    if not (select private.has_aal2()) or v_org is null
+       or not exists (select 1 from public.companies c where c.id = new.company_id and c.org_id = v_org) then
+      return new;
+    end if;
+  end if;
+  if new.contact_id is not null then
+    perform 1 from public.contacts k where k.id = new.contact_id and (caller is null or k.org_id = v_org) for key share;
+  end if;
+  perform 1 from public.companies c where c.id = new.company_id for no key update;
+  return new;
+end;
+$$;
+revoke all on function private.lock_activity_lead() from public, anon, authenticated;
+
 -- ===========================================================================
 -- Part 4. Helpers
 -- ===========================================================================
@@ -902,13 +929,18 @@ begin
     raise exception 'the dialled number is empty' using errcode = '22023', hint = 'dialled';
   end if;
 
-  -- 3. Locks, contact then lead (the order of a contact edit whose trigger updates the lead). FOR UPDATE returns a row
-  -- only to people who may change it (row level security), which is how a call learns whether it may change the lead.
+  -- 3. Locks, contact then lead (the order of a contact edit whose trigger updates the lead, and of the insert lock,
+  -- private.lock_activity_lead). FOR UPDATE returns a row only to people who may change it (row level security), which
+  -- is how a call learns whether it may change the lead. A call naming a contact it does not mark still takes the
+  -- contact first, FOR KEY SHARE (what the insert lock takes later): otherwise it would hold the lead while waiting for
+  -- a contact a wrong number holds FOR UPDATE, while that wrong number waits for the lead (a deadlock).
   if p_type = 'call' then
     if p_outcome = 'wrong_number' and p_dialled = 'contact' then
       select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
         from public.contacts k where k.id = p_contact for update;
       v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
     end if;
     select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
       into v_lead from public.companies c where c.id = p_company for update;
