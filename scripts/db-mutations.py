@@ -308,10 +308,10 @@ MUTATIONS_4A = [
     ("Last activity on delete: no lead lock (two deletes at once leave a deleted entry's date)",
      [("  perform 1 from public.companies c where c.id = old.company_id for no key update;\n", "")]),
     ("Lead lock on insert: locks nothing (an entry still being logged is missed when the newest is deleted)",
-     [("  perform 1 from public.companies c where c.id = new.company_id for no key update;\n", "")]),
+     [(MIG_4B, "  perform 1 from public.companies c where c.id = new.company_id for no key update;\n", "")]),
     ("Lead lock on insert: runs as the caller (locks nothing on a lead the caller cannot change)",
-     [("create function private.lock_activity_lead() returns trigger\nlanguage plpgsql security definer set search_path",
-       "create function private.lock_activity_lead() returns trigger\nlanguage plpgsql set search_path")]),
+     [(MIG_4B, "create or replace function private.lock_activity_lead() returns trigger\nlanguage plpgsql security definer set search_path",
+       "create or replace function private.lock_activity_lead() returns trigger\nlanguage plpgsql set search_path")]),
     ("Activity guard: no previous date for sessions with no signed-in user (the chain breaks after them)",
      [("      new.prev_last_activity_at := coalesce(new.prev_last_activity_at, base);\n", "")]),
     ("Last activity on delete: any deleted entry moves the date (not only the one that set it)",
@@ -339,11 +339,11 @@ MUTATIONS_4A = [
     ("Task guard: flood window of two minutes",
      [("t.created_by = caller and t.created_at > now() - interval '60 seconds'", "t.created_by = caller and t.created_at > now() - interval '2 minutes'")]),
     ("Audit: a deleted entry without its length (D8)",
-     [("    diff := jsonb_build_object('old', (rec - 'body') || jsonb_build_object('body_len', char_length(rec ->> 'body')));\n",
+     [(MIG_4B, "    diff := jsonb_build_object('old', (rec - 'body') || jsonb_build_object('body_len', char_length(rec ->> 'body')));\n",
        "    diff := jsonb_build_object('old', rec - 'body');\n")]),
-    ("Tasks delete: no role clause (a fresh code deletes any task of the org)",
-     [("  org_id = (select private.current_org_id()) and (select private.has_recent_aal2(600))\n  and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())));",
-       "  org_id = (select private.current_org_id()) and (select private.has_recent_aal2(600)));")]),
+    ("Tasks delete: no role clause (a fresh code deletes any task of the org; the policy as Day 4b redefines it)",
+     [(MIG_4B, "       ((select private.has_recent_aal2(600))\n        and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())))",
+       "       ((select private.has_recent_aal2(600)))")]),
     ("Activity time (Day 3a trigger): a session with no signed-in user may change it after the fact",
      [(MIG_3A, "  if tg_op = 'UPDATE' then\n    new.created_at := old.created_at;\n  elsif (select auth.uid()) is not null then",
        "  if tg_op = 'UPDATE' then\n    null;\n  elsif (select auth.uid()) is not null then")]),
@@ -399,7 +399,7 @@ MUTATIONS_4A = [
        "  with check (org_id = (select private.current_org_id())\n              and (company_id"),
       (MIG_3A, "        raise exception 'only managers and admins can change the owner' using errcode = '42501';\n", "        null;\n")]),
     ("Lead lock on insert: the contact is not locked first (deadlock with log_activity's contact-then-lead order)",
-     [("  if new.contact_id is not null then\n    perform 1 from public.contacts k where k.id = new.contact_id for key share;\n  end if;\n", "")]),
+     [(MIG_4B, "  if new.contact_id is not null then\n    perform 1 from public.contacts k where k.id = new.contact_id and (caller is null or k.org_id = v_org) for key share;\n  end if;\n", "")]),
     ("Activity guard: flood window of 45 seconds",
      [("a.user_id = caller and a.created_at > now() - interval '60 seconds'", "a.user_id = caller and a.created_at > now() - interval '45 seconds'")]),
     ("Task guard: flood window of 45 seconds",
@@ -415,6 +415,8 @@ LOG_LOCKS = """    if p_outcome = 'wrong_number' and p_dialled = 'contact' then
       select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
         from public.contacts k where k.id = p_contact for update;
       v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
     end if;
     select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
       into v_lead from public.companies c where c.id = p_company for update;
@@ -427,6 +429,8 @@ LOG_LOCKS_REVERSED = """    select c.id, c.owner_id, c.lead_status, c.phone, c.p
       select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
         from public.contacts k where k.id = p_contact for update;
       v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
     end if;
 """
 MUTATIONS_4B = [
@@ -652,6 +656,15 @@ MUTATIONS_4B = [
      [("    when 'FR' then 'Europe/Paris'\n", "    when 'FR' then 'Europe/London'\n")]),
     ("Zone map: a US zone allowed for Canada",
      [("    when 'CA' then array['America/St_Johns',", "    when 'CA' then array['America/Chicago', 'America/St_Johns',")]),
+    ("log_activity: a call naming a contact it does not mark takes the lead first (deadlock test)",
+     [("    elsif p_contact is not null then\n      perform 1 from public.contacts k where k.id = p_contact for key share;\n", "")]),
+    ("Insert lock: locks for a signed-in session without two-factor (holds a lead while being refused)",
+     [("    if not (select private.has_aal2()) or v_org is null\n", "    if v_org is null\n")]),
+    ("Insert lock: locks a lead of another organisation (holds it while being refused)",
+     [("    if not (select private.has_aal2()) or v_org is null\n       or not exists (select 1 from public.companies c where c.id = new.company_id and c.org_id = v_org) then",
+       "    if not (select private.has_aal2()) or v_org is null then")]),
+    ("Insert lock: locks a contact of another organisation (holds it while being refused)",
+     [("new.contact_id and (caller is null or k.org_id = v_org) for key share;", "new.contact_id for key share;")]),
 ]
 
 
