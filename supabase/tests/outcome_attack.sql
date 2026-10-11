@@ -564,8 +564,9 @@ begin
         raise exception 'FAIL: % on %: the undo record %', c.outcome, c.start_status, row_to_json(undo);
       end if;
 
-      -- Undo puts everything back.
-      perform pg_temp.act(admin);
+      -- Undo puts everything back, with no fresh code (the usual case: the entry and the task it made go through the
+      -- no-code delete branches, which open once the undo record is consumed).
+      perform pg_temp.act(admin, 'aal2', null);
       u := public.undo_activity(act.id);
       perform pg_temp.su();
       select * into lead from public.companies where id = l;
@@ -1457,6 +1458,12 @@ begin
   if n <> 0 then raise exception 'FAIL: a person deleted someone else''s undo record'; end if;
   perform pg_temp.expect_error(format('insert into private.activity_undo (activity_id, org_id, user_id) values (%L, %L, %L)',
                                       old_a, current_setting('t.main_org'), admin), '42501');
+  -- Not even as oneself: a record only for one's own entry (it could otherwise sit on a colleague's entry).
+  delete from private.activity_undo where activity_id = old_b;
+  perform pg_temp.expect_error(format('insert into private.activity_undo (activity_id, org_id, user_id) values (%L, %L, %L)',
+                                      old_a, current_setting('t.main_org'), b1), '42501');
+  insert into private.activity_undo (activity_id, org_id, user_id, created_at)
+  values (old_b, current_setting('t.main_org')::uuid, b1, now() - interval '11 minutes');
   perform pg_temp.expect_error(format('update private.activity_undo set new_status = %L', 'warm'), '42501');
   perform pg_temp.act(admin);
   r := public.log_activity(l, 'note', null, 'clears my old records');

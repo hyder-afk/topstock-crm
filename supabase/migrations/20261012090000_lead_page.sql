@@ -503,10 +503,12 @@ alter table private.activity_undo enable row level security;
 create policy require_mfa on private.activity_undo as restrictive to authenticated
   using ((select private.has_aal2())) with check ((select private.has_aal2()));
 -- Own rows only, with no time bound (the clean-up in log_activity must see the old ones; undo_activity checks the
--- 2-minute window itself).
+-- 2-minute window itself). A record can only be written for one's own entry.
 create policy undo_own on private.activity_undo for all to authenticated
   using (user_id = (select auth.uid()) and org_id = (select private.current_org_id()))
-  with check (user_id = (select auth.uid()) and org_id = (select private.current_org_id()));
+  with check (user_id = (select auth.uid()) and org_id = (select private.current_org_id())
+              and exists (select 1 from public.activities a
+                           where a.id = activity_undo.activity_id and a.user_id = (select auth.uid())));
 revoke all on private.activity_undo from public, anon, authenticated;
 grant select, insert, delete on private.activity_undo to authenticated;  -- no update: a record is used once
 
