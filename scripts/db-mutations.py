@@ -335,6 +335,9 @@ MUTATIONS_4A = [
     ("Audit: a deleted entry without its length (D8)",
      [("    diff := jsonb_build_object('old', (rec - 'body') || jsonb_build_object('body_len', char_length(rec ->> 'body')));\n",
        "    diff := jsonb_build_object('old', rec - 'body');\n")]),
+    ("Tasks delete: no role clause (a fresh code deletes any task of the org)",
+     [("  org_id = (select private.current_org_id()) and (select private.has_recent_aal2(600))\n  and (assignee_id = (select auth.uid()) or created_by = (select auth.uid()) or (select private.is_manager_or_admin())));",
+       "  org_id = (select private.current_org_id()) and (select private.has_recent_aal2(600)));")]),
 ]
 
 

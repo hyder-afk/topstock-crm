@@ -1118,6 +1118,38 @@ begin
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL: a task deleted with a code older than 10 minutes'; end if;
 end $$;
+-- tasks_delete's own rule. A delete that names a column (where id = ...) also gets tasks_select, which has the same
+-- rule and would hide a missing one; a bare DELETE gets only tasks_delete. Rep d1, with a fresh code, deletes every
+-- task it may: only d1's own (assignee or creator) go. Undone.
+begin;
+reset role;
+do $$ begin
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('t.d1_tasks', (select count(*) from public.tasks
+    where '00000000-0000-0000-0000-0000000000d1' in (assignee_id, created_by))::text, true);
+  perform set_config('t.all_tasks', (select count(*) from public.tasks)::text, true);
+end $$;
+set local role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
+do $$
+declare n int;
+begin
+  delete from public.tasks;
+  get diagnostics n = row_count;
+  perform set_config('t.bare_deleted', n::text, true);
+end $$;
+reset role;
+do $$ begin
+  if current_setting('t.d1_tasks')::integer < 1
+     or current_setting('t.bare_deleted')::integer is distinct from current_setting('t.d1_tasks')::integer
+     or (select count(*) from public.tasks)
+          is distinct from current_setting('t.all_tasks')::integer - current_setting('t.d1_tasks')::integer
+     or not exists (select 1 from public.tasks where id = '60000000-0000-0000-0000-0000000000b1') then
+    raise exception 'FAIL: a bare delete by rep d1 removed % tasks (d1''s own: %, all: %)',
+      current_setting('t.bare_deleted'), current_setting('t.d1_tasks'), current_setting('t.all_tasks');
+  end if;
+end $$;
+rollback;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
 do $$
 declare n int;
