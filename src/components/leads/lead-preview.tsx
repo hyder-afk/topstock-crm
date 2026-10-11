@@ -107,6 +107,16 @@ function LeadDetailView({
   const tPage = useTranslations("LeadPage");
   const [editing, setEditing] = useState(false);
   const [contactEdit, setContactEdit] = useState<string | "new" | null>(null);
+  // Hover or focus on Open lead warms the page in full: the lead and its first timeline page into the query cache, and
+  // the server-rendered page itself (Link prefetch={true}, kept by the router for 5 minutes), so the click draws from
+  // memory without a server round trip. Before that, the default prefetch (down to the page's loading skeleton).
+  const [warm, setWarm] = useState(false);
+  const warmUp = () => {
+    prefetchLead(queryClient, lead.id);
+    setWarm(true);
+    // The page's code is loaded and run now, not on the click (the router's prefetch downloads it but runs it later).
+    void import("@/components/lead/lead-page");
+  };
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: leadKey(lead.id) });
@@ -182,9 +192,11 @@ function LeadDetailView({
         {/* Day 4b: the full lead page (timeline, composer, tasks), warmed on hover. */}
         <Link
           href={`/leads/${lead.id}`}
+          data-open-lead=""
+          prefetch={warm ? true : null}
           onClick={onOpenPage}
-          onPointerEnter={() => prefetchLead(queryClient, lead.id)}
-          onFocus={() => prefetchLead(queryClient, lead.id)}
+          onPointerEnter={warmUp}
+          onFocus={warmUp}
           className={cn(buttonVariants({ variant: "neutral" }), compact)}
         >
           {tPage("openLead")}
