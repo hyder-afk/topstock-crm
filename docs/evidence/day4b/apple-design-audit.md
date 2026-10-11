@@ -101,3 +101,8 @@ and page agree on where the actions sit at 1024 and 1280).
   panel at that moment.
 - Phone tab strip: in French the fifth tab ("Détails") is cut at the screen edge at 390 (the strip scrolls sideways,
   no edge fade). Not a review-round change; noted for the Day 7 polish pass.
+
+**Follow-up (11 Oct, night):** the nits this re-run found are fixed in bad93a9 and b3d0f47 (skeleton's fourth header
+line; focus after a successful Try again and after a keyboard toast Undo, with e2e checks; "Call not logged" read with
+Log it through `aria-describedby`; a no-break space before the queued line's dot) or kept for Day 7 (phone call sheet
+focus and scroll padding; `<main>` outline; the French "Détails" tab cut at 390 without a fade). See README "Review round".

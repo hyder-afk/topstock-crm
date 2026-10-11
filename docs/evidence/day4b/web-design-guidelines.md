@@ -110,3 +110,8 @@ src/components/activity/call-panel.tsx:339-343 - nit ("overlays must not cover t
 - Do not contact composer (finding 12): three kinds, no `mailto:` or `wa.me` link can render; buttons, not links, for the kinds; `aria-pressed` follows the effective kind (a stale Email/WhatsApp choice reads as Note).
 - Skeleton (finding 18): `aria-busy="true"` with a visually hidden "Loading…"; no spinner; the action row matches the page at 1024 and 1280 (`lead-skeleton-*`). The 19 px header-line residual is recorded in apple-design-audit.md.
 - Animation: nothing new animates except existing transitions; the pad keys list their transition properties (no `transition: all`); reduced motion unchanged.
+
+**Follow-up (11 Oct, night):** the nits this re-run found are fixed in bad93a9 and b3d0f47 (skeleton's fourth header
+line; focus after a successful Try again and after a keyboard toast Undo, with e2e checks; "Call not logged" read with
+Log it through `aria-describedby`; a no-break space before the queued line's dot) or kept for Day 7 (phone call sheet
+focus and scroll padding; `<main>` outline; the French "Détails" tab cut at 390 without a fade). See README "Review round".
