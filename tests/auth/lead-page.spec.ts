@@ -272,13 +272,20 @@ test("call_panel_survives_navigation, then undo_within_window puts the lead back
   await expect.poll(() => latest(lead)).toBe("call:no_answer");
   expect(sql(`select next_action_at from public.companies where id = '${lead}'`)).not.toBe(before);
   // Undo from the keyboard: the toast goes with its focused button, so the focus returns to where it was before.
-  // After Save the focus is back on the Call button (finding 15).
-  const focusedBefore = await page.evaluate(() => document.activeElement?.closest("button,a")?.textContent ?? null);
-  expect(focusedBefore).toBeTruthy();
+  // After Save the focus went back to the Call button, or to the page's main area when that button is on another page
+  // (finding 15); mark that element.
+  expect(
+    await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body) return false;
+      el.setAttribute("data-focus-before-toast", "");
+      return true;
+    }),
+  ).toBe(true);
   await toast(page).getByRole("button", { name: "Undo" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status").filter({ hasText: "Undone." })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => document.activeElement?.closest("button,a")?.textContent ?? null)).toBe(focusedBefore);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.hasAttribute("data-focus-before-toast") ?? false)).toBe(true);
   expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("0");
   expect(sql(`select next_action_at from public.companies where id = '${lead}'`)).toBe(before);
   expect(errors).toEqual([]);
