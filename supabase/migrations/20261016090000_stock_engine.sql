@@ -710,7 +710,8 @@ begin
   -- system's release rows for a deal lost or deleted carry the person who changed the deal but are not theirs to
   -- count: losing a deal with many holds must not lock its owner out for a minute. A person never writes those
   -- reasons (an untrusted release is always 'manual', above).
-  if not trusted and (select count(*) from (select 1 from private.stock_movements m
+  -- A transfer_in is not checked: it pairs with a transfer_out posted by the same person in this transaction, which was.
+  if not trusted and new.kind <> 'transfer_in' and (select count(*) from (select 1 from private.stock_movements m
                                              where m.user_id = caller and m.created_at > now() - interval '60 seconds'
                                                and (m.kind <> 'release' or m.reason = 'manual')
                                              limit 120) recent) >= 120 then
@@ -766,8 +767,8 @@ begin
   end if;
   -- 2. The level(s), created at zero the first time, locked in location order.
   if new.kind in ('transfer_out', 'transfer_in') then
-    select array_agg(l.id order by l.id) into v_locs from public.locations l where l.org_id = new.org_id;
-    select l.id into v_wh from public.locations l where l.org_id = new.org_id and l.kind = 'warehouse';
+    select array_agg(l.id order by l.id), (array_agg(l.id) filter (where l.kind = 'warehouse'))[1] into v_locs, v_wh
+      from public.locations l where l.org_id = new.org_id;
   else
     v_locs := array[new.location_id];
   end if;
@@ -1104,6 +1105,8 @@ declare
   v_prev_kind text;
   v_result jsonb;
   v_extra jsonb := '{}'::jsonb;
+  v_left integer;
+  v_held integer;
 begin
   if (select auth.uid()) is null or v_org is null or not private.has_aal2() then
     raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
@@ -1174,8 +1177,9 @@ begin
   end if;
 
   -- Places by kind (step 4); then the ledger rows (step 6).
-  select l.id into v_wh from public.locations l where l.org_id = v_org and l.kind = 'warehouse';
-  select l.id into v_transit from public.locations l where l.org_id = v_org and l.kind = 'transit';
+  select w.id, t.id into v_wh, v_transit
+    from public.locations w join public.locations t on t.org_id = w.org_id and t.kind = 'transit'
+   where w.org_id = v_org and w.kind = 'warehouse';
   if v_wh is null or v_transit is null then
     raise exception 'places not found' using errcode = 'P0002';
   end if;
@@ -1193,19 +1197,21 @@ begin
     if not found then
       raise exception 'product not found' using errcode = 'P0002';
     end if;
-    perform private.expire_due_holds(p_product, l.id) from public.locations l where l.org_id = v_org order by l.id;
+    -- One call for both places: expire_holds_for goes in (product, location, created_at, id) order, the level order.
+    perform private.expire_due_holds(p_product);
+    -- The rows' snapshots (written under the lock by the apply step) give what is left in transit and how many held
+    -- pieces moved, without reading the level and the ledger again.
     insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note)
     values (v_group, p_product, v_transit, 'transfer_out', p_qty, v_reason, v_note)
-    returning id into v_id;
+    returning id, on_hand_after into v_id, v_left;
     v_ids := v_ids || v_id;
     insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note, pair_id)
     values (v_group, p_product, v_wh, 'transfer_in', p_qty, v_reason, v_note, v_id)
-    returning id into v_id;
+    returning id, d_reserved into v_id, v_held;
     v_ids := v_ids || v_id;
     -- Pieces moved, and how many of them were held (they arrive still held for the same leads).
-    v_extra := jsonb_build_object('moved', p_qty,
-                                  'held_moved', (select m.d_reserved from private.stock_movements m where m.id = v_id));
-    if (select s.on_hand from public.stock_levels s where s.product_id = p_product and s.location_id = v_transit) = 0 then
+    v_extra := jsonb_build_object('moved', p_qty, 'held_moved', v_held);
+    if v_left = 0 then
       update public.products p set transit_eta = null where p.id = p_product and p.transit_eta is not null;
     end if;
   elsif p_kind = 'count' then
