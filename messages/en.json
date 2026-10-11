@@ -707,7 +707,8 @@
       "done": "Done: {title}.",
       "undo": "Undo",
       "error": "Couldn’t load the tasks.",
-      "retry": "Try again"
+      "retry": "Try again",
+      "more": "Showing the first {count} open tasks."
     },
     "details": {
       "lead": "Lead",

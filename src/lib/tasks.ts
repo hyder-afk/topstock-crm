@@ -37,6 +37,9 @@ export const createTaskInput = z
 /** Done and dismissed are switches (set_task_done, set_task_cancelled): the server sets the times. */
 export const taskSwitchInput = z.strictObject({ id: uuid, on: z.boolean() });
 
+/** How many of a lead's open tasks Next step lists (one more is asked for, to know there are more). */
+export const LEAD_TASKS_SHOWN = 20;
+
 /** One task of a lead (list_lead_tasks). */
 export type LeadTask = {
   id: string;

@@ -707,7 +707,8 @@
       "done": "Terminée : {title}.",
       "undo": "Annuler",
       "error": "Impossible de charger les tâches.",
-      "retry": "Réessayer"
+      "retry": "Réessayer",
+      "more": "Les {count} premières tâches ouvertes sont affichées."
     },
     "details": {
       "lead": "Prospect",

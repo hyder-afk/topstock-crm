@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { TIMELINE_PAGE_SIZE, type ActivityType, type TimelineEntry, type TimelinePage } from "@/lib/activities";
-import type { LeadTask } from "@/lib/tasks";
+import { LEAD_TASKS_SHOWN, type LeadTask } from "@/lib/tasks";
 import {
   filterParams,
   pageSize,
@@ -90,8 +90,9 @@ export async function fetchTimelinePage(
   return { entries, next: hasMore && last ? { before_at: last.created_at, before_id: last.id } : null };
 }
 
-// A lead's open tasks the caller can see (list_lead_tasks: due first, undated last).
+// A lead's open tasks the caller can see (list_lead_tasks: due first, undated last): one more than Next step lists, so
+// it can say there are more.
 export async function fetchLeadTasks(supabase: SupabaseClient, leadId: string): Promise<LeadTask[] | null> {
-  const { data, error } = await supabase.rpc("list_lead_tasks", { p_company: leadId, p_include_done: false, p_limit: 20 });
+  const { data, error } = await supabase.rpc("list_lead_tasks", { p_company: leadId, p_include_done: false, p_limit: LEAD_TASKS_SHOWN + 1 });
   return error ? null : ((data ?? []) as LeadTask[]);
 }

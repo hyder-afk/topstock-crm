@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { memo, useState, useSyncExternalStore } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Mail, MessageCircle, Pencil, Phone, Plus } from "lucide-react";
@@ -15,7 +15,7 @@ import { callTarget } from "@/components/lead/lead-data";
 import { useClientNow } from "@/components/lead/local-time";
 import { mailHref, personName, type LeadDetail } from "@/lib/leads";
 import { callHref, whatsappHref } from "@/lib/phone";
-import { DATE_CHIPS, chipDate, isOverdue, type LeadTask } from "@/lib/tasks";
+import { DATE_CHIPS, LEAD_TASKS_SHOWN, chipDate, isOverdue, type LeadTask } from "@/lib/tasks";
 import { addDays, browserZone, localDate, primaryZone } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
@@ -117,7 +117,8 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
  * The next step (Summary): the lead's open tasks with their round checks, the next one first; the next call attempt on
  * the lead's side ("Thu 10:00 their time · Change"); or "No next step" with date chips that add a call task.
  */
-export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadDetail; initialTasks: LeadTask[] | null; onChangeNext: () => void }) {
+// Memoised: the lead page draws again on every tab switch (design 8.6: 100 ms).
+export const NextStepCard = memo(function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadDetail; initialTasks: LeadTask[] | null; onChangeNext: () => void }) {
   const t = useTranslations("LeadPage");
   const tTitle = useTranslations("Outcomes.taskTitle");
   const tComposer = useTranslations("Composer");
@@ -194,10 +195,13 @@ export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadD
     content = (
       <div className="flex flex-col gap-3">
         <ul className="flex flex-col gap-1">
-          {tasks.data.map((task) => (
+          {tasks.data.slice(0, LEAD_TASKS_SHOWN).map((task) => (
             <TaskRow key={task.id} task={task} leadId={lead.id} now={now} />
           ))}
         </ul>
+        {tasks.data.length > LEAD_TASKS_SHOWN ? (
+          <p className="text-sm text-muted-foreground">{t("tasks.more", { count: LEAD_TASKS_SHOWN })}</p>
+        ) : null}
         {nextAttempt}
       </div>
     );
@@ -227,10 +231,11 @@ export function NextStepCard({ lead, initialTasks, onChangeNext }: { lead: LeadD
     );
   }
   return <Card title={t("nextStep")}>{content}</Card>;
-}
+});
 
 /** Contacts with Call, Email and WhatsApp each; a wrong number is struck through ("Marked wrong · Fix"). */
-export function ContactsCard({ lead, readOnlyContact }: { lead: LeadDetail; readOnlyContact: boolean }) {
+// Memoised: the lead page draws again on every tab switch (design 8.6: 100 ms).
+export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }: { lead: LeadDetail; readOnlyContact: boolean }) {
   const t = useTranslations("Leads.preview");
   const tLead = useTranslations("LeadPage");
   const tContact = useTranslations("Leads.contactForm");
@@ -382,4 +387,4 @@ export function ContactsCard({ lead, readOnlyContact }: { lead: LeadDetail; read
       )}
     </Card>
   );
-}
+});
