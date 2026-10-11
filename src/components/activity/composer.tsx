@@ -68,7 +68,11 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  const [type, setType] = useState<ActivityType>(mode?.type ?? "note");
+  // A Do not contact lead (design 7.1: Call, WhatsApp and Email hidden) gets no Email or WhatsApp kind: nothing here
+  // may open the mail app or wa.me on it. A draft or a choice made before the lead became Do not contact reads as a note.
+  const dnc = lead.lead_status === "do_not_contact";
+  const [picked, setType] = useState<ActivityType>(mode?.type ?? "note");
+  const type: ActivityType = dnc && (picked === "email" || picked === "whatsapp") ? "note" : picked;
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
@@ -112,8 +116,10 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   }, [restored, lead.id, type, body, subject]);
 
   // A quick action (Note, Meeting) switches the composer (during render, when the request changes) and puts the
-  // cursor in it (after the commit).
-  const [seenMode, setSeenMode] = useState(mode);
+  // cursor in it (after the commit). Starts from null so a composer mounted with a request (the phone sheet) applies it
+  // too, after the draft restore above: the quick action's kind wins over the draft's, the draft's text stays, and
+  // Book a meeting gets its 10:00 default.
+  const [seenMode, setSeenMode] = useState<ComposerMode | null>(null);
   if (mode !== seenMode) {
     setSeenMode(mode);
     if (mode) {
@@ -124,7 +130,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   }
   useEffect(() => {
     if (!mode) return;
-    requestAnimationFrame(() => (mode.type === "meeting" ? formRef.current?.querySelector<HTMLElement>("[aria-pressed]") : bodyRef.current)?.focus());
+    requestAnimationFrame(() => (mode.type === "meeting" ? formRef.current?.querySelector<HTMLElement>('[data-meeting-kind] [aria-pressed="true"]') : bodyRef.current)?.focus());
   }, [mode]);
 
   useEffect(() => {
@@ -199,7 +205,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
     }
   };
 
-  const kinds: ActivityType[] = ["note", "call", "email", "whatsapp", "meeting"];
+  const kinds: ActivityType[] = dnc ? ["note", "call", "meeting"] : ["note", "call", "email", "whatsapp", "meeting"];
   const reasonId = `${id}-reason`;
   const saveHint = (
     <span className="ml-1 hidden gap-1 sm:inline-flex" aria-hidden="true">
@@ -235,8 +241,9 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
         }
       }}
     >
-      {/* Five equal segments with an icon and a short label (like the dock), so French fits the rail too. */}
-      <div role="group" aria-label={t("kindLabel")} className="grid grid-cols-5 gap-0.5 rounded-md bg-muted p-1">
+      {/* Five equal segments (three on a Do not contact lead) with an icon and a short label (like the dock), so French
+          fits the rail too. */}
+      <div role="group" aria-label={t("kindLabel")} className={cn("grid gap-0.5 rounded-md bg-muted p-1", dnc ? "grid-cols-3" : "grid-cols-5")}>
         {kinds.map((k) => {
           const Icon = typeIcon[k];
           return (
@@ -316,7 +323,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
       ) : null}
 
       {type === "meeting" ? (
-        <div role="group" aria-label={t("meetingKind")} className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label={t("meetingKind")} data-meeting-kind className="flex flex-wrap gap-1.5">
           {(["book", "held", "no_show"] as const).map((m) => (
             <button
               key={m}

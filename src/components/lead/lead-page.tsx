@@ -93,6 +93,13 @@ export function LeadPage({
   const [tab, setTabState] = useState<LeadTab>(initialTab);
   const [mode, setMode] = useState<ComposerMode | null>(null);
   const [sheet, setSheet] = useState(false);
+  // A quick action is used once: it is cleared when the sheet closes and when the window crosses 1024 px (an iPad
+  // turning, Split View), so the composer that mounts next does not apply an old request over the draft's kind.
+  const [modeWide, setModeWide] = useState(isWide);
+  if (modeWide !== isWide) {
+    setModeWide(isWide);
+    setMode(null);
+  }
   const [nav, setNav] = useState<ReturnType<typeof listNeighbours>>(null);
   const [backUrl, setBackUrl] = useState("/leads");
   const canAssign = me.role === "admin" || me.role === "manager";
@@ -142,7 +149,11 @@ export function LeadPage({
   );
 
   const showNext = useCallback(() => showDetails("next"), [showDetails]);
-  const closeSheet = useCallback(() => setSheet(false), []);
+  const toggleSheet = useCallback((open: boolean) => {
+    setSheet(open);
+    if (!open) setMode(null);
+  }, []);
+  const closeSheet = useCallback(() => toggleSheet(false), [toggleSheet]);
   const onStatus = useCallback(
     (status: LeadStatus, returnAt: string | null) => void (lead && changeStatus([beforeOf(lead)], status, returnAt)),
     [changeStatus, lead],
@@ -268,8 +279,10 @@ export function LeadPage({
           </div>
         )}
       </div>
+      {/* Do not contact: the quick actions (with Note) give way to the banner, so below desktop width, where there is no
+          rail composer, this opens the sheet's composer (notes, calls and meetings stay loggable at every width). */}
       {dnc ? (
-        <div className="flex gap-2 sm:hidden">
+        <div className="flex gap-2 lg:hidden">
           <Button variant="quiet" onClick={() => openComposer("note")}>
             {t("addNote")}
           </Button>
@@ -296,7 +309,7 @@ export function LeadPage({
                 title={t("recent")}
                 action={
                   entries.length > 0 ? (
-                    <Button variant="link" className="min-h-9 text-sm" onClick={() => setTab("timeline")}>
+                    <Button variant="link" className="min-h-11 text-sm sm:min-h-9" onClick={() => setTab("timeline")}>
                       {t("seeTimeline")}
                     </Button>
                   ) : null
@@ -351,7 +364,7 @@ export function LeadPage({
       </div>
 
       {/* Phones and tablets: the composer as a sheet (Note, Meeting). */}
-      <Dialog open={sheet && !isWide} onOpenChange={setSheet}>
+      <Dialog open={sheet && !isWide} onOpenChange={toggleSheet}>
         <DialogContent className={`${phoneSheet} max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain sm:w-[min(520px,calc(100%-32px))]`}>
           <div className="flex flex-col gap-4 p-5 sm:p-6">
             <DialogTitle className="text-xl font-bold">{t("composerTitle")}</DialogTitle>

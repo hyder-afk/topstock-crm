@@ -252,7 +252,7 @@ export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }
       title={`${t("contactsTitle")} · ${lead.contacts.length}`}
       action={
         lead.can_edit && !readOnlyContact && editing !== "new" ? (
-          <Button variant="link" onClick={() => setEditing("new")} className="min-h-9 gap-1 text-sm">
+          <Button variant="link" onClick={() => setEditing("new")} className="min-h-11 gap-1 text-sm sm:min-h-9">
             <Plus aria-hidden="true" strokeWidth={1.75} className="size-4" />
             {t("addContact")}
           </Button>
