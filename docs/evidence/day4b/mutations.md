@@ -1,5 +1,127 @@
 # Day 4b: every protection removed one at a time, 11 Oct 2026
 
+## Full re-run on f2c900b (after review round) (11 Oct 2026)
+
+After the review round (22 confirmed findings fixed in five groups, merged as groups a to e; log at **f2c900b**), the
+whole day4b set ran once on the final migration: **94 of 94 caught**, 0 documented two-layer rows not caught, **0 not
+as listed** (script exit code 0).
+
+How it was run:
+- A throwaway worktree at f2c900b (`git worktree add <scratchpad>/mut4b f2c900b`), never the real checkout, because
+  the script edits migrations in place. Removed afterwards (`git worktree remove --force`, `git worktree prune`).
+- In that worktree only, `scripts/db-test.sh` was switched from port 54329 to 54347 (`sed`), so it could not meet
+  another test cluster; the real checkout's script is unchanged. The local auth stack (54321/54330) and Next (3100)
+  were not touched. Fake data only; no remote database.
+- A baseline `bash scripts/db-test.sh` on the unchanged worktree passed first (exit 0; advisors: no ERROR-level
+  findings), so every "caught" below is the mutation's own failure, not a broken baseline.
+- `python3 scripts/db-mutations.py --set day4b` (all 94 rows, about 48 s each). After the run `git status` in the
+  worktree showed only the port change: every migration was restored.
+
+Day 4a and Day 3b: every anchor of both sets still matches the migrations at f2c900b exactly once (a dry check that
+applies each row's edits without running the tests: day4a 104 rows, day3b 37 rows, 0 anchor problems; day4b 94 rows,
+0). No row reported "not as listed" or a missing anchor, so the Day 4a set was not re-run; its last full result stays
+the one below (c4fb0b9: 102 caught, 2 documented two-layer rows not caught, 0 not as listed). No row of
+`scripts/db-mutations.py` was changed.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 1 | Undo: no compare before restoring the status (a colleague's change overwritten) | caught | FAIL: undo overwrote a colleague's status {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status": "cold", "next_action_ |
+| 2 | Entry delete without a code: no 'no undo record' condition (an outcome deleted around undo) | caught | FAIL: a fresh outcome was deleted without a code (around undo) |
+| 3 | Undo: no 2-minute window in undo_activity | caught | FAIL: "select public.undo_activity('a1ed14c0-7215-48cc-9a65-10821589fac4')" succeeded, expected 22023 |
+| 4 | Outcome decisions applied for people who may not change the lead | caught | FAIL: a rep took or changed an unassigned lead {"task_id": "a0b96193-6833-4522-8460-969cce0c72a1", "editable": true, "replayed": false, "cre |
+| 5 | Lock order reversed in log_activity: lead, then contact (deadlock test) | caught | deadlock detected |
+| 6 | Lead guard: a country change keeps the picked zone | caught | new row for relation "companies" violates check constraint "companies_timezone_fits" |
+| 7 | Lead guard: next call bound checked even when unchanged (overdue or far leads stuck) | caught | the next call date is too far ahead |
+| 8 | Lead guard: no Cool off default | caught | FAIL: undo into Cool off with no date: (cool_off, <NULL>), answer {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status |
+| 9 | Activities: request id index not unique (Day 4a migration) | caught | FAIL: the request indexes must be unique per author |
+| 10 | Timeline keyset: <= instead of < (an entry repeated across pages) | caught | FAIL: the timeline repeated an entry across pages |
+| 11 | Wrong number: the dialled contact marked without the editor's lock (code claims a mark) | caught | FAIL: a rep marked a colleague's contact, or got no task {"task_id": null, "editable": false, "replayed": false, "created_at": "2026-10-11T2 |
+| 12 | log_activity runs as its owner (marks and decisions for anyone, as a definer trigger would) | caught | FAIL: RPC rules broken by {"log_activity(uuid,text,text,text,uuid,text,date,timestamp with time zone,text,uuid,boolean)"} |
+| 13 | Undo: no compare before restoring the next call | caught | FAIL: undo overwrote a colleague's next call {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status": "cold", "next_acti |
+| 14 | Undo: no compare before restoring the owner | caught | FAIL: undo overwrote a colleague's owner {"lead": {"owner_id": null, "lead_status": "cold", "next_action_at": null, "last_activity_at": null |
+| 15 | Undo: clears the lead's mark whatever its time | caught | FAIL: undo cleared a mark made at another time {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status": "cold", "next_ac |
+| 16 | Undo: clears the contact's mark whatever its time | caught | FAIL: undo cleared a mark twice |
+| 17 | Undo: deletes the follow-up even when touched or done (a fresh code passes the policy) | caught | FAIL: undo deleted a completed task |
+| 18 | Undo: reopens completed tasks whatever their time | caught | FAIL: undo reopened a task completed at another time {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status": "cold", "n |
+| 19 | Undo: reopens dismissed tasks whatever their time | caught | FAIL: undo reopened a task dismissed at another time {"lead": {"owner_id": "00000000-0000-0000-0000-0000000000d1", "lead_status": "warm", "n |
+| 20 | Undo: the record is not consumed (a second undo runs again) | caught | this can no longer be undone |
+| 21 | Entry delete without a code: no 2-minute bound in the policy | caught | FAIL: an entry deleted with no code |
+| 22 | Entry delete without a code: anyone's entry | caught | FAIL: a colleague deleted a fresh entry without a code |
+| 23 | Task delete without a code: touched tasks too | caught | FAIL: a touched task was deleted without a code |
+| 24 | Task delete without a code: anyone's task (both layers: the creator, and the source entry's author, who is the creator by the task guard) | caught | FAIL: an admin removed a colleague's fresh task without a code |
+| 25 | Task delete without a code: while the undo record still exists | caught | FAIL: the task of a fresh outcome was deleted without a code |
+| 26 | Task delete without a code: from an entry of any age | caught | FAIL: a task from an entry older than 2 minutes was deleted without a code |
+| 27 | Undo records: no two-factor policy | caught | FAIL: private.activity_undo protections |
+| 28 | Undo records: everyone in the org sees and deletes them | caught | FAIL: a person sees someone else's undo records |
+| 29 | Undo records: a record may name a colleague's entry | caught | FAIL: "insert into private.activity_undo (activity_id, org_id, user_id) values ('65a34207-054f-476c-993a-c353404cc750', 'a1b7662f-5792-4674- |
+| 30 | Undo records: update granted | caught | FAIL: private.activity_undo protections |
+| 31 | log_activity: no second replay check after the lock, and no unique-violation answer (both layers) | caught | duplicate key value violates unique constraint "activities_author_request_idx" |
+| 32 | log_activity: no unique-violation answer (a concurrent duplicate fails) | caught | duplicate key value violates unique constraint "activities_author_request_idx" |
+| 33 | Lead guard: no zone pre-check (the CHECK answers with the row) | caught | FAIL: "update public.companies set timezone = 'America/Toronto' where id = 'be029507-6b34-4135-9842-d9e33d87422b'" gave 23514 (hint "", new  |
+| 34 | Leads: no time zone CHECK (backstop) | caught | FAIL: "update public.companies set timezone = 'Europe/Paris' where id = 'f112210c-331e-485e-91e8-f51e9c4da6e6'" succeeded, expected 23514 |
+| 35 | set_lead_timezone and the lead guard: no zone check at all (both layers) | caught | FAIL: "select public.set_lead_timezone('e6dc8f18-669e-47f7-bea3-5a93c16e3c45', 'Europe/Paris')" succeeded, expected 22023 |
+| 36 | Lead guard: a country change always clears the zone (a zone picked with the new country lost) | caught | FAIL: "update public.companies set country = 'CA', timezone = 'America/Chicago' where id = '9c85f5d7-762f-4c94-9138-14923c1041c5'" succeeded |
+| 37 | Lead guard: no next call bound | caught | FAIL: "select public.set_lead_next_action('c59590d7-d861-43dc-b8a0-574ff8a5eb55', '2028-10-12 21:04:25.659309+00')" succeeded, expected 2202 |
+| 38 | Lead guard: next call bound for maintenance sessions too | caught | the next call date is too far ahead |
+| 39 | Lead guard: a new phone keeps the wrong-number mark | caught | FAIL: a new main number kept the mark |
+| 40 | Lead guard: a mark keeps the client's time | caught | FAIL: a client chose the time of a wrong-number mark |
+| 41 | Lead guard: a mark's time can be changed | caught | FAIL: a mark's time changed |
+| 42 | Contact guard: a new phone keeps the mark | caught | FAIL: a new contact number kept the wrong-number mark |
+| 43 | Contact guard: a mark keeps the client's time | caught | FAIL: a client chose the time of a wrong-number mark |
+| 44 | Contact guard trigger dropped | caught | FAIL: lead_guard, contact_guard (BEFORE) and the time zone CHECK must exist |
+| 45 | Lead guard: Cool off default only without a date (a past retry date brings the lead back at once: the design's literal rule) | caught | FAIL: Cool off with a past retry date would come back at once |
+| 46 | Lead guard: Cool off default on every update of a Cool off lead (its date cannot be cleared) | caught | FAIL: undo of interested on a due Cool off lead: (cool_off, 2027-01-09 21:08:34.172116+00), answer {"lead": {"owner_id": "00000000-0000-0000 |
+| 47 | Audit: next call and marks diffed | caught | FAIL: audit of an outcome |
+| 48 | Lead columns: insert granted on the next call | caught | FAIL: grants on the new lead and contact columns |
+| 49 | Outcomes: the 6th try counts from 7 (>= 6) | caught | FAIL: after {no_answer,voicemail,no_answer,no_answer,voicemail} then no_answer: (cold, 2026-10-12 07:00:00+00), expected (cool_off, 2026-11- |
+| 50 | Outcomes: the 6th try sends any status to Cool off | caught | FAIL: after {no_answer,no_answer,no_answer,no_answer,no_answer} then no_answer: (cool_off, 2026-11-10 21:10:24.936873+00), expected (negotia |
+| 51 | Outcomes: voicemail waits one working day like no answer | caught | FAIL: voicemail on cold: lead (cold, 2026-10-12 07:00:00+00), answer {"task_id": null, "editable": true, "replayed": false, "created_at": "2 |
+| 52 | Outcomes: Not interested moves Negotiation to Cool off | caught | FAIL: not_interested on negotiation: lead (cool_off, 2027-01-09 21:11:18.722663+00), answer {"task_id": null, "editable": true, "replayed":  |
+| 53 | Outcomes: Interested moves a lead down (Negotiation to Warm) | caught | FAIL: interested on negotiation: lead (warm, 2026-10-14 07:00:00+00), answer {"task_id": "3cfcb1c7-38c1-4eec-b95f-dc48c635ff43", "editable": |
+| 54 | Outcomes: Book meeting moves Negotiation to Warm | caught | FAIL: meeting_booked on negotiation: lead (warm, 2026-10-15 23:12:00+00), answer {"task_id": "49ad258d-08ad-4be6-a9bb-465820423f14", "editab |
+| 55 | Outcomes: Do not contact keeps the next call | caught | FAIL: do_not_contact on cold: lead (do_not_contact, 2026-10-14 21:12:39+00), answer {"task_id": null, "editable": true, "replayed": false, " |
+| 56 | Outcomes: Spoke without a follow-up keeps the next call (no 30 days) | caught | FAIL: connected on cold: lead (cold, 2026-10-14 21:13:07+00), answer {"task_id": null, "editable": true, "replayed": false, "created_at": "2 |
+| 57 | Outcomes: back on the follow-up day itself, not the day after | caught | FAIL: meeting_booked on cold: lead (warm, 2026-10-14 23:13:00+00), answer {"task_id": "cfe762bd-a68d-40b6-83a1-d4570460e9a7", "editable": tr |
+| 58 | Outcomes: a follow-up date read in Paris for every lead (not its zone) | caught | FAIL: interested on a US lead (zone <NULL>): {"task_id": "0c54048f-9f3d-424b-88c3-e66b88f057cd", "editable": true, "replayed": false, "creat |
+| 59 | Outcomes: an owned lead taken over too | caught | FAIL: interested on cold: lead (warm, 2026-10-14 07:00:00+00), answer {"task_id": "4b871291-33c1-4c29-8001-505681898f50", "editable": true,  |
+| 60 | Outcomes: Spoke takes over an unassigned lead too | caught | FAIL: connected on a lead owned by <NULL>: owner 00000000-0000-0000-0000-00000000000a, answer {"task_id": null, "editable": true, "replayed" |
+| 61 | Tasks: a call completes every open call task, due or not | caught | FAIL: no_answer on cold: the future call task (done 2026-10-11 21:15:25.338856+00, dismissed <NULL>) |
+| 62 | Tasks: a call completes to-dos too | caught | FAIL: a call completed ["b5c75a16-b324-4eee-995a-12554f5b1270", "e2f29347-167b-48e5-80af-7d3c51f791e8", "e92f83df-f8f9-4725-925a-879891516e1 |
+| 63 | Tasks: a call completes a colleague's call tasks | caught | FAIL: a call completed ["1d6d06f5-8afd-4de0-9a48-c94226abc975", "39558cd8-362b-4309-959e-8095b25c00b4", "be6d7cf6-fc58-4d05-b8f3-ea83e12cb2c |
+| 64 | Tasks: Do not contact dismisses nothing | caught | FAIL: do_not_contact on cold: the future call task (done <NULL>, dismissed <NULL>) |
+| 65 | Tasks: 'find the right number' although another number works | caught | FAIL: wrong main line with a working contact {"task_id": "ace70b82-5d8c-453b-9248-adc27ae81039", "editable": true, "replayed": false, "creat |
+| 66 | Tasks: 'find the right number' always for the caller (not the owner) | caught | FAIL: wrong_number on cold: the task made {"id":"3f808c39-d2ad-408a-b97b-967deffdd00a","org_id":"1f34c41c-d5c6-4490-9a3f-dc018165dfe2","cont |
+| 67 | Input: Interested without a follow-up | caught | FAIL: "select public.log_activity('25da4968-0629-4a50-9217-e979904e1475', 'call', 'interested', NULL, NULL, null, NULL, NULL, 'Follow up')"  |
+| 68 | Input: follow-up dates and times not bounded | caught | FAIL: "select public.log_activity('272197db-c72b-4de8-acce-07a5cf707c4c', 'call', 'interested', NULL, NULL, null, '2026-10-10', NULL, 'F')"  |
+| 69 | Input: a follow-up on an outcome that takes none | caught | FAIL: "select public.log_activity('2ecb3304-fde1-42d2-bfd5-e6d66675561d', 'call', 'no_answer', NULL, NULL, null, '2026-10-13', NULL, 'F')" s |
+| 70 | Input: Wrong number without a title up front | caught | FAIL: "select public.log_activity('6bece9df-0a08-441c-b7be-28a042d41a6d', 'call', 'wrong_number', null, null, 'lead')" succeeded, expected 2 |
+| 71 | Input: a note without text | caught | FAIL: "select public.log_activity('9d576ce8-dcbb-4d57-8064-3e1bbe9ef283', 'note', NULL, ' |
+| 72 | Input: no check of the dialled number | caught | FAIL: "select public.log_activity('8c32e75a-03d7-4a27-9c22-c1ec2cd91be4', 'call', 'wrong_number', null, null, null, null, null, 'Find')" gav |
+| 73 | Input: an empty dialled number accepted | caught | FAIL: "select public.log_activity('c49bda5d-0315-41d7-8d62-e4c5fd8613fb', 'call', 'wrong_number', null, null, 'lead', null, null, 'Find')" s |
+| 74 | Input: a contact of another lead (the policy answers 42501 instead of P0002) | caught | FAIL: "select public.log_activity('31895fcb-da1c-4211-9f6b-6c7fc3f1940c', 'note', NULL, 'x', '7e2b544e-7693-4274-b151-e07cd95e1cce', null, N |
+| 75 | Timeline: unknown kinds accepted | caught | FAIL: "select * from public.list_lead_activities('5e40b761-4419-43d8-8854-e3b7a183a50a', '{call,fax}')" succeeded, expected 22023 |
+| 76 | Timeline: half a cursor accepted | caught | FAIL: "select * from public.list_lead_activities('5d2eee16-af99-4fef-8cc7-4d2973192bcb', null, now(), null)" succeeded, expected 22023 |
+| 77 | Timeline: any page size | caught | FAIL: "select * from public.list_lead_activities('fa44423e-43f0-4ebe-8844-693bdbf5c2f5', null, null, null, 0)" succeeded, expected 22023 |
+| 78 | delete_activity: no fresh-code pre-check (no step_up hint) | caught | FAIL: "select public.delete_activity('8a444b93-a652-4c4c-abb6-0d64bbf2e99d')" gave 42501 (hint "", only the author, a manager or an admin ca |
+| 79 | get_lead: anyone may set the zone | caught | FAIL: a non-editor may set the zone |
+| 80 | bulk_update_leads: a return date with any status | caught | FAIL: "select public.bulk_update_leads(array['a39e413d-d0fe-4900-86f2-eacdb1c04776']::uuid[], 'warm', false, null, '2026-11-25 00:00:00+00') |
+| 81 | next_working_day: weekends count | caught | FAIL: next_working_day(2026-10-09 15:30:00+00, 1, Europe/Paris) = 2026-10-10 07:00:00+00, expected 2026-10-12 07:00:00+00 |
+| 82 | next_working_day: a span on its western end | caught | FAIL: next_working_day(2026-10-28 15:00:00+00, 1, US) = 2026-10-29 16:00:00+00, expected 2026-10-29 13:00:00+00 |
+| 83 | call_attempts: a Spoke does not break the run | caught | FAIL: call_attempts after {no_answer,no_answer,connected,no_answer,no_answer} is 4, expected 2 |
+| 84 | call_attempts: the 7 latest calls | caught | FAIL: call_attempts after {voicemail,no_answer,no_answer,no_answer,no_answer,no_answer,voicemail} is 7, expected 6 |
+| 85 | Zone map: France on London time | caught | FAIL: country_call_zone |
+| 86 | Zone map: a US zone allowed for Canada | caught | FAIL: "update public.companies set country = 'CA', timezone = 'America/Chicago' where id = '73e9a74a-6bbc-4cd6-80d1-6e9667590853'" succeeded |
+| 87 | log_activity: a call naming a contact it does not mark takes the lead first (deadlock test) | caught | deadlock detected |
+| 88 | Insert lock: locks for a signed-in session without two-factor (holds a lead while being refused) | caught | FAIL: insert_lock_skips_refused_callers (no two-factor): the refusal took 2659 ms (it waited for a lock) |
+| 89 | Insert lock: locks a lead of another organisation (holds it while being refused) | caught | FAIL: insert_lock_skips_refused_callers (a lead of another organisation): the refusal took 2647 ms (it waited for a lock) |
+| 90 | Insert lock: locks a contact of another organisation (holds it while being refused) | caught | FAIL: insert_lock_skips_refused_callers (a contact of another organisation): the refusal took 2647 ms (it waited for a lock) |
+| 91 | Lead guard: a past date the statement writes is replaced on entering Cool off (undo of a due Cool off lead: +90 days) | caught | FAIL: undo of interested on a due Cool off lead: (cool_off, 2027-01-09 21:30:21.795868+00), answer {"lead": {"owner_id": "00000000-0000-0000 |
+| 92 | bulk_update_leads: a return date that is not in the future accepted | caught | FAIL: "select public.bulk_update_leads(array['f88b3931-4abf-45dd-ad84-e44173e29ca3']::uuid[], 'cool_off', false, null, '2026-10-10 21:30:49. |
+| 93 | Lead guard: a new Cool off lead keeps a past date (an imported old retry date brings it back at once) | caught | FAIL: a new Cool off lead with a past date would come back at once |
+| 94 | undo_activity: restored.next_action_at claimed when lead_guard gave the empty Cool off date +90 days | caught | FAIL: undo into Cool off with no date: (cool_off, 2027-01-09 21:31:46.112003+00), answer {"lead": {"owner_id": "00000000-0000-0000-0000-0000 |
+
+Script summary: `day4b: 94 rows run: 94 caught, 0 documented two-layer rows not caught, 0 not as listed`
+
 ## Review round: undo into a due Cool off lead (finding 1, 11 Oct)
 
 Undo of an outcome on a Cool off lead whose return date had come put the lead back in Cool off for 90 more days:

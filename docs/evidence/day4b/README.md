@@ -82,6 +82,30 @@ round on the verifier's 11 findings (speed, tests, evidence; see "Verifier round
 
 ## Check results
 
+### Final checks on the PR head (after the review round)
+
+Code checks on **f2c900b** (all 22 review fixes merged), then the audit fixes on **bad93a9** (focus after Try again
+and toast Undo, the skeleton's fourth header line, "Call not logged" read with Log it, a no-break space before the
+queued line's dot); local auth stack restarted for this checkout with the final migrations, 11 Oct 2026, night.
+
+| Check | Result |
+|---|---|
+| `bash scripts/db-test.sh` (f2c900b) | all 7 suites pass: rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency, outcome_attack (new blocks 6b and 6c), outcome_concurrency; advisors: no ERROR-level findings (WARN `set_user_role`, accepted; INFO `unindexed_foreign_keys` 2, `unused_index` 2); exit 0 |
+| Mutations (`mutations.md`) | Day 4b: **94 of 94 caught, 0 not as listed** on f2c900b (the whole set, run once on the final migration in a throwaway worktree after a passing baseline; ~75 min). Day 4a and Day 3b: every row's anchor found exactly once on f2c900b (104 and 37 rows), so their last full results stand (Day 4a on c4fb0b9: 102 caught, 2 documented two-layer rows; Day 3b: 36 caught, 1 documented two-layer row) |
+| `npm run lint` | exit 0: 0 errors, the 2 existing React Compiler warnings |
+| `npm run typecheck` | exit 0 |
+| `npm run test:unit` | 321 passed |
+| Playwright, local auth stack, Chromium, the whole auth suite (f2c900b) | **85 passed, 3 skipped** (PERF-only and engine-only), 21.7 min. One failure: `journey.spec.ts` "invite, password, two-factor setup" stops at `MAILPIT_URL is not set` (the local stack has no Mailpit; CI has it and passes it), and its 4 dependent tests did not run |
+| Playwright, `lead-page.spec.ts` after the audit fixes (bad93a9) | **26 passed** on 8108844 (the app code of bad93a9; b3d0f47 and 8108844 change only tests): includes the two new focus checks (Try again, keyboard toast Undo); the owner menu test now picks the checked owner, since this reused local stack holds several people with the same made-up name |
+| `/security-review` (f2c900b) | **no findings** (`security-review.md`, section "`/security-review` on f2c900b") |
+| gitleaks (`origin/main..f2c900b`) | 81 commits scanned (git counts 88 with merge commits), no leaks found, exit 0 |
+| `npm audit --omit=dev` | found 0 vulnerabilities. Full `npm audit`: the 5 known high advisories in dev-only lint tooling (`braces`/`micromatch` via `eslint-config-next`, GHSA-vfj7-8cjw-p6xm), logged on 9 Oct, not shipped |
+| CI on f2c900b (run 38173336731 and its siblings) | all 7 green: quality, semgrep, gitleaks `scan`, `rls` (with the outcome suites), auth-journey **chromium** (incl. `journey.spec.ts` with Mailpit) and **webkit**, Vercel preview |
+| Screenshots (`screens/README.md`) | taken again on f2c900b: 173 shots (103 lead page), no console error or sideways scroll; 49 kept (30 replaced, 19 new review-round states); the skeleton shots re-taken on bad93a9 after its fourth header line |
+| Apple design audit / Web Interface Guidelines | re-run on the review-round changes (dated sections in both files); the false "every phone control is 44 px" claim corrected; their new nits fixed in bad93a9 or kept for Day 7 (below) |
+
+### Earlier checks (before the review round)
+
 Code checks on commit **434522c** (the last code commit before the chunk spec 08ba920, which only adds a PERF-only
 test; the commits after that change only `docs/`), local auth stack restarted for this worktree with the merged
 migrations, 11 Oct 2026, evening.
@@ -125,6 +149,51 @@ the tab pill in the click's frame; Playwright's trace ran inside the old timings
 parsed its ICU messages and walked calling hours 15 minutes at a time on the click. What is left is mostly the browser's
 own style, layout and paint at 4x CPU (roughly half of the remaining tab switch in the Chrome trace, and most of each
 scroll frame).
+
+## Review round and PR #14 CI fixes (11 Oct 2026, night)
+
+**Review workflow** (four lenses: security, database, app, design; a skeptic per finding): 23 findings. Security: none.
+22 confirmed, 1 refuted (a wrong-number mark lands on the number stored at save time, not the one dialled: the skeptic
+judged it a limit of the approved design, not a defect; kept). The 22 were fixed in five worktrees split by file, each
+checked by an independent verifier (two rounds where it asked), then merged:
+
+| Group | Findings | Commits |
+|---|---|---|
+| a, database | 1 (undo into Cool off kept the date it should restore) | eb2b2f2, fd6be15, 8d53300, f81e535, 59ded10, 44d90e6, 5d6bac1 |
+| b, call panel | 3 (second Call dropped an unsaved call), 14 (FR heading), 15 (focus on close), 23 (timer label), plus the verifier's queued-status announcement | 5b308f7, ba0e7ef, ff36402, 89e99eb, 019b49f, e1e068a, 77817a7 |
+| c, timeline | 4 (older page error, no retry loop), 6 (day group keys), 10 (Show more failure), 17 (edit focus) | b91486b, 0b3bb5e, c720cc3, 569e094 |
+| d, composer and page | 7, 9 (phone quick actions, Meeting focus and 10:00), 12, 13 (Do not contact), 18 (skeleton at 1024/1280), 19 (44 px phone targets) | 851555b, 6cf80d8, 5a04098, ae43dc0, bd48cdb, e0007be, 795cb88, 91cc2d6, 6682a8e, 69d29ea |
+| e, cards, header, pad, i18n | 5 (Details next call), 8 (task Undo answer), 11 (same owner), 16 (task check focus), 20 (56 px pad keys), 21 (locale counters), 22 (French calling hours) | 754bacc, a25d5c7, 4aa77ed, 6ebd4d4, ff653a4, 433648a, 5974aa8 |
+
+New e2e tests in `tests/auth/lead-page.spec.ts` (from b91486b, 0b3bb5e, c720cc3, 569e094, 89e99eb, e1e068a, 795cb88,
+69d29ea, 5974aa8): the older-page error waits for Try again; an open edit survives a new entry; Show more failure;
+edit focus; a second Call waits and keys during the exit do not log twice; Do not contact logs at 1440, 768 and 390
+without Email or WhatsApp; Meeting focus and the phone draft; 44 px phone targets; task check focus, refused task Undo,
+same owner, next call after an outcome, opening on another day, 56 px pad keys. `outcome_attack.sql` blocks 6b and 6c
+and the section 12 bounds cases; mutation rows 91 to 94.
+
+**Audit fixes after the review round** (bad93a9; from the re-run Apple and web-guidelines audits): a successful Try
+again (timeline, older page, Recent card, Next step card) moves the focus into the timeline or to the card title instead
+of the top of the page (`src/lib/focus.ts`); a toast action pressed from the keyboard returns the focus to where it was
+(`toast.tsx`); the skeleton has the page's fourth header line (no 19 px drop); "Call not logged" is read with Log it
+(`aria-describedby`); a no-break space keeps the queued line's dot off the start of a row. Two e2e checks added (focus
+after Try again; focus after a keyboard Undo).
+
+**PR #14 CI fixes** (before the review round; docs/log.md): (1) the Casablanca calling-hours unit case moved to an
+instant open under either Morocco offset (CI's ICU time zone data differs); (2) the timeline virtualizer measures rows
+on the next frame (`useAnimationFrameWithResizeObserver`), after WebKit reported "ResizeObserver loop completed with
+undelivered notifications"; (3) `settled()` in `tests/auth/helpers.ts` lets in-flight requests finish before a test
+leaves a page (shared with the import tests); (4) **an accepted relaxation of the clean-console rule, test-only:**
+`isCancelledPrefetch()` in `tests/auth/helpers.ts`, used only by `lead-page.spec.ts`, ignores exactly
+`^(?:Fetch API cannot load )?(?:http:)?//?localhost:3100/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$`:
+WebKit's wording for a fetch the page itself cancelled, here Next.js cancelling its own same-origin RSC link prefetches
+when a server action refreshes the page (Chromium logs nothing). Every other console error still fails. CI WebKit
+passed with it on 390e267 and f2c900b.
+
+**Kept for Day 7 polish** (logged): a Call pressed while the open call is still "Calling" replaces it; the focus
+fallback sets `tabindex=-1` and no outline on `<main>`, the skip link's target; the phone call sheet does not trap focus
+and can cover a control reached with Tab (a `scroll-padding-bottom` rule); at 390 in French the fifth tab ("Détails") is
+cut at the edge of the scrolling tab strip with no fade.
 
 ## Docs used
 
@@ -202,9 +271,9 @@ App part:
     request in flight before it navigates again, so a Past-imports refresh (server action POST) is not cut off (WebKit
     logs "Fetch API cannot load … due to access control checks" for a cut-off fetch). The suggested
     `waitForLoadState("networkidle")` was not used: it resolves at once once the document has reached that state
-    (Playwright docs), so it cannot wait for a later request. The console-error check is unchanged. **Unproven:** the
-    flake is WebKit-only and WebKit is not installed here, so the fix has only run in Chromium; it counts as fixed once
-    CI's auth-journey (webkit) passes `import.spec.ts`. The request tracking starts at the first `openImport()`, which
+    (Playwright docs), so it cannot wait for a later request. The console-error check is unchanged. **Proven in CI:**
+    auth-journey (webkit) passed `import.spec.ts` on 390e267 (run 38169762862) and on f2c900b; the helper is now
+    `settled()` in `tests/auth/helpers.ts`, shared with the lead page tests. The request tracking starts at the first `openImport()`, which
     holds because every test calls it on a fresh page.
 16. **The timeline is virtualised past 120 loaded entries** (D13's fallback, since the 1,000-entry scroll missed 60
     fps): a `role="feed"` of articles with `aria-posinset` / `aria-setsize` (-1 while older pages remain), a day heading
@@ -236,25 +305,24 @@ App part:
 - WebKit e2e (not installed here), Semgrep (blocked), `journey.spec.ts` (needs Mailpit): CI.
 - The design's browser speed budgets for the queue (4c). The lead page's are measured locally (PERF=1, speed table
   above), not in CI; three of them are missed (Open risks).
-- `/security-review` (the slash command) and the advisor loop: run on the PR before merge; `security-review.md` here is
-  the builder's threat-table re-check.
+- (Done since: `/security-review` ran on f2c900b, no findings; the advisor loop runs on the PR.)
 
 ## Open risks
 
-- **Lead page speed budgets missed: Haider's decision before merge.** On this 4-vCPU cloud VM at 4x CPU slow-down, timed
+- **Lead page speed budgets missed: Haider accepted them as the baseline on 11 Oct 2026** ("Accept baseline, merge",
+  docs/log.md); the PERF spec guards against regressions and the budgets are revisited in Day 7 (CI hardware or
+  Haider's Mac). The numbers: On this 4-vCPU cloud VM at 4x CPU slow-down, timed
   inside the page, 6 runs over two invocations on 434522c: tab switch **105–155 ms** (budget 100 ms), route change after
   the hover prefetch **209–334 ms** (200 ms), 1,000-entry timeline frame p50 **24.5–31.4 ms** and p95 **40.4–52.2 ms**
   (60 fps: 16.7 ms; the spec reads 60 fps as p50 ≤ 16.7 ms and p95 ≤ 20 ms). Each is 2 to 6 times faster than before
   this round, and D13's fallback (TanStack Virtual) is in. What is left is mostly the browser's style, layout and paint
-  at 4x CPU. Options: (a) accept these numbers as the baseline and re-measure on CI hardware or Haider's Mac; (b) keep
-  working (smaller first timeline page, a lighter header and rail, tabs without the sliding pill); (c) relax the budgets
-  for 4x CPU. Builder's recommendation: (a), with the PERF spec kept as the regression guard.
+  at 4x CPU. Haider chose option (a) of three (accept as the baseline; keep working; relax the budgets for 4x CPU).
 - **LCP and CLS pass narrowly**: CLS 0.049 on most runs (a shift when the header's local time and the relative times
   appear after hydration); one LCP of 2,288 ms on the first page served after `next start`.
 - **next-intl precompilation is experimental** in the library; a library update could change its output. The e2e suites
   (EN and FR) and the French screenshots pass with it.
 - **Virtualised timelines (past 120 entries)**: the browser's find bar only sees rows near the window (deviation 16).
-- **WebKit import flake fix unproven** until CI's WebKit run passes (deviation 15).
+- (Closed: the WebKit import flake fix passed CI's WebKit run on 390e267 and f2c900b; deviation 15.)
 - **tzdata differences** between PostgreSQL, Node (server render) and browsers: western Canada from November 2026 is a
   live case; parity tests use fixed instants. Times that depend on the viewer render after mount.
 - **CI's Postgres 17 image** may lack a zone of the map (`zone_map_zones_exist` fails visibly); the 4a role behaviours
