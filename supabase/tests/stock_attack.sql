@@ -301,17 +301,25 @@ begin
       raise exception 'FAIL: % is callable', f;
     end if;
   end loop;
-  foreach f in array array['private.expire_due_holds(uuid, uuid)', 'private.sweep_expired_holds()',
+  foreach f in array array['private.expire_due_holds(uuid, uuid, uuid)', 'private.sweep_expired_holds()',
     'private.stock_integrity_rows(uuid)', 'private.product_name_key(text)'] loop
     if has_function_privilege('anon', f, 'EXECUTE') or not has_function_privilege('authenticated', f, 'EXECUTE') then
       raise exception 'FAIL: execute rights on %', f;
     end if;
   end loop;
-  -- The apply step is the only definer in the engine: owned by postgres, SECURITY DEFINER; the guard is invoker.
+  -- The apply step (the only code that writes levels and holds) is a postgres-owned SECURITY DEFINER; the guard is
+  -- invoker. The other definers (expiry helpers, the deal-lost release, transfer pairing, the nightly job, seeding and
+  -- audit) are owned by postgres too and listed above as not callable, or granted only where needed.
   if (select not prosecdef or proowner::regrole::text <> 'postgres' from pg_proc
        where oid = 'private.stock_movement_b_apply()'::regprocedure)
      or (select prosecdef from pg_proc where oid = 'private.stock_movement_a_guard()'::regprocedure) then
     raise exception 'FAIL: apply must be a postgres-owned definer and the guard an invoker';
+  end if;
+  -- The deal-lost release fires on any update of a deal, not only one naming status (no column list: a status set by a
+  -- BEFORE trigger must release holds too).
+  if (select tgattr::text from pg_trigger where tgrelid = 'public.deals'::regclass and tgname = 'release_deal_holds_lost')
+     is distinct from '' then
+    raise exception 'FAIL: release_deal_holds_lost must have no column list';
   end if;
   -- The guard runs before the apply step (BEFORE INSERT triggers fire in name order).
   if (select array_agg(tgname::text order by tgname) from pg_trigger
@@ -1173,6 +1181,44 @@ begin
     raise exception 'FAIL: a maintenance deal delete should release its holds as the system';
   end if;
 end $$;
+-- deal_lost_by_before_trigger_releases_holds: Day 5 may move a deal to Closed/lost through a BEFORE trigger (here a
+-- stand-in that sets status when a lost reason is given). The update never names status, and the holds still go.
+create function public.day6a_stand_in_lost() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.lost_reason is not null and old.lost_reason is null then
+    new.status := 'lost';
+  end if;
+  return new;
+end;
+$$;
+create trigger a_day6a_stand_in_lost before update on public.deals
+  for each row execute function public.day6a_stand_in_lost();
+do $$
+declare
+  main_org uuid := current_setting('t.org')::uuid;
+  v_hold uuid;
+begin
+  perform set_config('request.jwt.claims', '', false);
+  insert into public.deals (id, org_id, company_id, stage_id, owner_id)
+  values ('43000000-0000-0000-0000-0000000000b5', main_org, '33000000-0000-0000-0000-0000000000b1',
+          (select s.id from public.pipeline_stages s where s.org_id = main_org and s.position = 1),
+          '00000000-0000-0000-0000-0000000000b1');
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  set local role authenticated;
+  v_hold := (pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'reserve', 3, company => '33000000-0000-0000-0000-0000000000b1',
+                        deal => '43000000-0000-0000-0000-0000000000b5') ->> 'reservation_id')::uuid;
+  update public.deals set lost_reason = 'price' where id = '43000000-0000-0000-0000-0000000000b5';
+  reset role;
+  if (select status from public.deals where id = '43000000-0000-0000-0000-0000000000b5') is distinct from 'lost'
+     or not exists (select 1 from private.stock_reservations where id = v_hold and status = 'released'
+                      and close_reason = 'deal_lost' and remaining = 0) then
+    raise exception 'FAIL: deal_lost_by_before_trigger_releases_holds (a status set by a BEFORE trigger kept the hold)';
+  end if;
+  perform set_config('request.jwt.claims', '', false);
+end $$;
+drop trigger a_day6a_stand_in_lost on public.deals;
+drop function public.day6a_stand_in_lost();
 -- expired_hold_released_before_write and expire_rows_have_no_user: P6 has 300 on hand, all held; one hold ended
 -- yesterday. A correction that needs that room succeeds because the RPC ends the hold first.
 set role authenticated;
@@ -1285,6 +1331,46 @@ begin
   end loop;
   perform pg_temp.expect_error($q$select pg_temp.mv('7a000000-0000-0000-0000-000000000007', 'reserve', 1,
     company => '33000000-0000-0000-0000-0000000000e1')$q$, '22023', 'rate_limited');
+end $$;
+-- rate_guard_skips_deal_lost_releases: manager g (a new person) posts 119 rows in a minute (a receipt and 118 holds for
+-- one deal), then loses the deal: the system writes 118 release rows in g's name. They do not count, so g's 120th row
+-- passes and only the 121st is refused.
+reset role;
+do $$
+declare
+  main_org uuid := current_setting('t.org')::uuid;
+begin
+  perform set_config('request.jwt.claims', '', false);
+  insert into auth.users (id, email) values ('00000000-0000-0000-0000-000000000521', 'stock-g@test.invalid');
+  update public.profiles set role = 'manager' where id = '00000000-0000-0000-0000-000000000521';
+  insert into public.products (id, org_id, name, pieces_per_carton)
+  values ('7a000000-0000-0000-0000-0000000000a6', main_org, 'Stock test a6', 48);
+  insert into public.deals (id, org_id, company_id, stage_id, owner_id)
+  values ('43000000-0000-0000-0000-0000000000e2', main_org, '33000000-0000-0000-0000-0000000000e1',
+          (select s.id from public.pipeline_stages s where s.org_id = main_org and s.position = 1),
+          '00000000-0000-0000-0000-000000000521');
+end $$;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-000000000521', 'aal2', 30); end $$;
+do $$
+declare
+  p constant uuid := '7a000000-0000-0000-0000-0000000000a6';
+begin
+  perform pg_temp.mv(p, 'receive', 500, reason => 'received');
+  for i in 1..118 loop
+    perform pg_temp.mv(p, 'reserve', 1, company => '33000000-0000-0000-0000-0000000000e1',
+                       deal => '43000000-0000-0000-0000-0000000000e2');
+  end loop;
+  update public.deals set status = 'lost', lost_reason = 'price' where id = '43000000-0000-0000-0000-0000000000e2';
+  if (select count(*) from private.stock_movements where kind = 'release' and reason = 'deal_lost'
+        and user_id = '00000000-0000-0000-0000-000000000521') <> 118 or pg_temp.rv(p, 'warehouse') <> 0 then
+    raise exception 'FAIL: rate_guard_skips_deal_lost_releases: the deal''s holds were not released in g''s name';
+  end if;
+  perform pg_temp.mv(p, 'reserve', 1, company => '33000000-0000-0000-0000-0000000000e1');   -- g's 120th row
+  perform pg_temp.expect_error($q$select pg_temp.mv('7a000000-0000-0000-0000-0000000000a6', 'reserve', 1,
+    company => '33000000-0000-0000-0000-0000000000e1')$q$, '22023', 'rate_limited');
+exception when sqlstate '22023' then
+  raise exception 'FAIL: rate_guard_skips_deal_lost_releases: a row of g''s was refused: %', sqlerrm;
 end $$;
 -- other_org_product_not_found: the other organisation finds none of this (P0002 on every RPC), sees none of it, and its
 -- places cannot be used for this org's products.
@@ -1474,6 +1560,17 @@ begin
    where product_id = '7a000000-0000-0000-0000-000000000005' and location_id = current_setting('t.wh')::uuid;
   r := private.nightly_stock_jobs();
   if (r ->> 'integrity_rows')::int < 1 or (r ->> 'tasks')::int <> 1 then raise exception 'FAIL: nightly with a difference: %', r; end if;
+  -- integrity_rows_ignore_client_org: a signed-in admin who passes another organisation's id still gets their own
+  -- organisation's rows (the difference just made), never the other one's; only postgres chooses the organisation.
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  set local role authenticated;
+  if (select count(*) from private.stock_integrity_rows('00000000-0000-0000-0000-0000000000cc')) < 1
+     or exists (select 1 from private.stock_integrity_rows('00000000-0000-0000-0000-0000000000cc') x
+                 where x.product_id is distinct from '7a000000-0000-0000-0000-000000000005') then
+    raise exception 'FAIL: integrity_rows_ignore_client_org';
+  end if;
+  reset role;
+  perform set_config('request.jwt.claims', '', false);
   r := private.nightly_stock_jobs();
   if (r ->> 'tasks')::int <> 0 then raise exception 'FAIL: a second task the same day: %', r; end if;
   if (select count(*) from public.tasks where title = 'Stock check found a difference' and created_by is null

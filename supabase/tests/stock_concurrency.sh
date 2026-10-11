@@ -14,7 +14,8 @@
 #     in location order; and the Arrived RPC racing a session holding the product's share lock that then needs a level.
 #     Neither may end in a deadlock (40P01).
 #  8. count_vs_receive: a count waits for a receipt and sets the exact number (the change is worked out under the lock).
-#  9. reserve_vs_deal_lost, in both orders: a lost deal keeps no active hold.
+#  9. reserve_vs_deal_lost, in both orders, (c) with an expired hold at the level and (d) with the hold inserted straight
+#     into the ledger: a lost deal keeps no active hold, and no deadlock (40P01).
 # 10. twenty_reservers_one_product: 240 pieces, 20 sessions each hold 24: exactly 10 succeed (wall clock printed).
 # 11. random_ops_three_sessions: 3 sessions x 100 mixed operations on 5 products, one transaction each: no deadlock,
 #     no unexpected error, integrity clean.
@@ -407,6 +408,45 @@ wait $p1 || fail "reserve_vs_deal_lost (b): losing the deal failed"
 expect_refused "$out" 22023 deal_closed
 [ "$(as_owner "select count(*) from private.stock_reservations where deal_id = '$DEAL' and status = 'active';")" = "0" ] \
   || fail "reserve_vs_deal_lost (b): a lost deal has an active hold"
+# c) as (b), with an expired hold (no deal) at the same level: the hold's RPC would end it first, which locks the level.
+#    The deal is locked first (by an unrelated change), then lost, which needs that level to release the deal's hold.
+#    The hold's RPC locks the deal before any expiry row, so it waits and is refused: never a deadlock (40P01).
+opening "$(p 15)" 100 0
+as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+mv "$CR1" "$(p 15)" reserve 10 "p_company => '$LB', p_deal => '$DEAL'" || fail "reserve_vs_deal_lost (c): the deal's hold failed"
+mv "$CR1" "$(p 15)" reserve 5 "p_company => '$LB'" || fail "reserve_vs_deal_lost (c): the hold to expire failed"
+as_owner "update private.stock_reservations set hold_until = current_date - 1
+           where product_id = '$(p 15)' and deal_id is null and status = 'active';" >/dev/null
+as_user "$CR1" "begin;
+update public.deals set value = value + 1 where id = '$DEAL';
+select pg_sleep(2) \g /dev/null
+update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';
+commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
+sleep 0.5
+out=$(as_user "$CR1" "select public.post_stock_movement(p_product => '$(p 15)', p_kind => 'reserve', p_qty => 30, p_company => '$LB', p_deal => '$DEAL') \g /dev/null" 2>&1) \
+  && fail "reserve_vs_deal_lost (c): a hold went through for a deal being lost"
+wait $p1 || fail "reserve_vs_deal_lost (c): losing the deal failed: $(head -3 "$WORKDIR/x.out")"
+expect_refused "$out" 22023 deal_closed
+[ "$(as_owner "select count(*) from private.stock_reservations where product_id = '$(p 15)' and status = 'active';")" = "1" ] \
+  && [ "$(level "$(p 15)" warehouse)" = "100/5" ] \
+  || fail "reserve_vs_deal_lost (c): final state $(level "$(p 15)" warehouse)"
+# d) as (a), with the hold inserted straight into the ledger (a client may insert ledger rows; no RPC, so no lock before
+#    the apply step): the apply step's own deal lock makes the deal lost wait and release the hold.
+opening "$(p 16)" 100 0
+as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+as_user "$CR1" "begin;
+insert into private.stock_movements (group_id, product_id, location_id, kind, qty, company_id, deal_id, hold_until)
+select gen_random_uuid(), '$(p 16)', l.id, 'reserve', 30, '$LB', '$DEAL', current_date + 7
+  from public.locations l where l.kind = 'warehouse';
+select pg_sleep(2) \g /dev/null
+commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
+sleep 0.5
+as_user "$CR1" "update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';" >/dev/null \
+  || fail "reserve_vs_deal_lost (d): losing the deal failed"
+wait $p1 || fail "reserve_vs_deal_lost (d): the direct hold failed: $(head -3 "$WORKDIR/x.out")"
+[ "$(as_owner "select count(*) from private.stock_reservations where deal_id = '$DEAL' and status = 'active';")" = "0" ] \
+  && [ "$(level "$(p 16)" warehouse)" = "100/0" ] || fail "reserve_vs_deal_lost (d): a lost deal kept an active hold"
+integrity "reserve_vs_deal_lost"
 
 # 10. twenty_reservers_one_product ---------------------------------------------------------------------------------------------
 ms=$(twenty_reservers "$(p 14)")
