@@ -298,7 +298,7 @@ export function LeadPage({
                 title={t("recent")}
                 action={
                   entries.length > 0 ? (
-                    <Button variant="link" className="min-h-9 text-sm" onClick={() => setTab("timeline")}>
+                    <Button variant="link" className="min-h-11 text-sm sm:min-h-9" onClick={() => setTab("timeline")}>
                       {t("seeTimeline")}
                     </Button>
                   ) : null
