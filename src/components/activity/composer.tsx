@@ -112,8 +112,10 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   }, [restored, lead.id, type, body, subject]);
 
   // A quick action (Note, Meeting) switches the composer (during render, when the request changes) and puts the
-  // cursor in it (after the commit).
-  const [seenMode, setSeenMode] = useState(mode);
+  // cursor in it (after the commit). Starts from null so a composer mounted with a request (the phone sheet) applies it
+  // too, after the draft restore above: the quick action's kind wins over the draft's, the draft's text stays, and
+  // Book a meeting gets its 10:00 default.
+  const [seenMode, setSeenMode] = useState<ComposerMode | null>(null);
   if (mode !== seenMode) {
     setSeenMode(mode);
     if (mode) {
