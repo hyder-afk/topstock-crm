@@ -30,12 +30,12 @@ against CLAUDE.md SECURITY, Master Plan section 8 (A to F) and the Day 6 design'
 | Roles (S5, S6) | Corrections (receive, adjust, count) need manager or admin plus a code under 10 minutes; Arrived needs manager or admin (RPC and guard); a hold needs the lead's editor; a release needs the hold's creator or the lead's editor; products are created and changed by managers and admins; archive needs a fresh code and no stock; restore is admin with a fresh code; costs are managers and admins only; settings and place names are admin only; the stock check is admin only |
 | Other organisation | Every policy has `org_id = current_org_id()`; the guard checks the place and the lead belong to the product's organisation; the deal is read under the deals policy and again under a lock in the apply step. Org C1's admin gets P0002 on every RPC (`other_org_product_not_found`); mutation rows 42, 62, 63 (33 documented: the guard's place check stands behind the places policy) |
 | Restrictive two-factor | `require_mfa` on all 9 new tables; every RPC refuses aal1 itself as well (`aal1_every_stock_rpc_denied`) |
-| Concurrency (S2, S3, S8) | Rules checked on the locked level; one lock order (deal, product, levels by location id, holds); a deferred check pairs every departure from transit with its arrival. `stock_concurrency.sh` covers the last pieces, two holds, archive versus receipt, lock timeout, both lock-order races and a deal lost during a hold |
+| Concurrency (S2, S3, S8) | Rules checked on the locked level; one lock order (deal, product, levels by location id, holds), with a hold's deal locked by the RPC **before its expiry rows** (in `expire_due_holds`) and again in the apply step. The first build locked the deal only in the apply step, after an expiry row had locked the level, and the verifier reproduced a deadlock with a deal lost at the same moment; case 9c now covers it. A deferred check pairs every departure from transit with its arrival. `stock_concurrency.sh` covers the last pieces, two holds, archive versus receipt, lock timeout, both lock-order races, and a deal lost during a hold in four variants (both orders, an expired hold at the level, a hold inserted straight into the ledger) |
 | Injection (S11) | Static SQL only; no `format()` or `EXECUTE` with user values (the two `format()` loops run over constant names at migration time); `search_path = ''` on every function, all names schema-qualified |
 | Errors and logs (A2) | A constant-message pre-check runs before every CHECK a client can reach (names, categories, notes, quantities, prices, dates, place names, request kinds); unique violations on the product name become `name_taken`. No value of the caller's text is put in a message |
 | Audit (A1) | One minimal audit row per ledger row (kind, product, place, changes, reason, references, note length; never the note). Costs and settings audited with diffs; `audit_log` stays admin-only, and admins may read costs anyway |
 | Idempotency (S9) | `movement_requests` per author (`user_id` set by its guard; own-rows policy). A person can only write or overwrite their own rows, which can only change what their own retries return |
-| Definer functions | All `search_path = ''`, owner postgres, execute revoked from `public`, `anon`, `authenticated` (triggers, `seed_org_inventory`, `expire_holds_for`, `nightly_stock_jobs`), except the two expiry helpers above. `nightly_stock_jobs` refuses any session with a signed-in user. pg_cron is scheduled only if the extension already exists, with a constant command |
+| Definer functions | All `search_path = ''`, owner postgres, execute revoked from `public`, `anon`, `authenticated` (triggers, `seed_org_inventory`, `expire_holds_for`, `nightly_stock_jobs`), except the two expiry helpers above. `expire_due_holds`'s deal argument share-locks only a deal of the caller's organisation, until the caller's transaction ends (as a hold for that deal does anyway). The invoker `private.stock_integrity_rows(uuid)` is granted to `authenticated` for `check_stock_integrity`; it takes the organisation argument only from postgres, so a client always gets its own organisation, and RLS would hide any other anyway. `nightly_stock_jobs` refuses any session with a signed-in user. pg_cron is scheduled only if the extension already exists, with a constant command |
 | CI and scripts | `db.yml` gains two steps on the existing `pull_request` job (no new permissions, no new action). The scripts are local tooling with no outside input; `db-mutations.py` edits only files in its own checkout |
 
 ## Design threat table re-checked for 6a
@@ -48,10 +48,10 @@ Rows from design section 9 that 6a delivers. Sales (ship, return, record_sale), 
 |---|---|---|---|---|
 | S1 | Direct stock writes | zero write grants on levels; ledger and holds in `private`; immutable ledger | sections 0, 1 (`stock_levels_direct_write_denied`, `stock_movements_immutable` also as postgres) | 5, 6 |
 | S2 | Over-holding the last pieces | rules under `FOR UPDATE` on the level; CHECK backstop | concurrency 1, 2, 3, 10; section 3 | 1, 2, 3, 52 (4 documented) |
-| S3 | Deadlocks | one lock order; Arrived locks the product first; a deal hold locks the deal first | concurrency 7, 9, 11 | 12, 26, 27 |
+| S3 | Deadlocks | one lock order; Arrived locks the product first; a deal hold locks the deal first, before the RPC's expiry rows and again in the apply step (fixed after the verifier reproduced a deadlock) | concurrency 7, 9 (a to d), 11 | 12, 26, 27, 64 |
 | S4 | Wrong order of events | `version`, `crm_moved`, `last_onhand_batch_id` written under the lock; count worked out under the lock | section 3 (`versions_match_snapshots`), concurrency 8 | 17, 18 |
 | S5 | Stolen session adjusts stock | aal2 everywhere; fresh code for corrections, opening stock, archive and restore | sections 1, 5 (`adjust_stale_code_step_up`, `receive_stale_code_step_up`, `archive_stale_code`) | 7, 29, 61 |
-| S6 | Rep overreach | role and lead-editor checks in the guard; product, cost, settings and place policies | sections 5, 6 (`rep_cost_null`, `release_rules`) | 8, 35, 43 to 45, 56, 58, 59 |
+| S6 | Rep overreach | role and lead-editor checks in the guard; product, cost, settings and place policies; the integrity rows' organisation chosen by the server | sections 5, 6 (`rep_cost_null`, `release_rules`), 7 (`integrity_rows_ignore_client_org`) | 8, 35, 43 to 45, 56, 58, 59, 67 |
 | S7 | Movement without a document | per-kind document checks; transfer pairing (guard, unique index, deferred check) | section 4 (`transfer_in_without_out_refused`, lone departure refused) | 22 to 25, 34 |
 | S8 | Archive racing a receipt | product `FOR SHARE` in the apply step against archive's row lock; re-checked under the lock | concurrency 5 | 16, 32 (31 documented) |
 | S9 | Replay or double click | `movement_requests` per author and kind | section 7 (`idempotent_request_id`) | 40, 41 |
@@ -61,6 +61,19 @@ Rows from design section 9 that 6a delivers. Sales (ship, return, record_sale), 
 | A1 | Silent edits | append-only ledger with who, why and references; minimal audit row | section 7 (`movement_audit_minimal`) | 20, 21, 55 |
 | A2 | Personal data in logs or audit | constant pre-checks; the note never copied to the audit log | section 2 (`check_constraints_never_fire`), section 7 | 21, 37 to 39 |
 | A3 | Lead delete orphans stock | holds FK `on delete restrict`; the import's untouched rule counts holds; FK coverage | section 7 (`lead_import_untouched_counts_stock`), `import_attack.sql` (`import_fk_coverage`) | 47, 48 |
+
+## Re-check after the verifier's findings (11 Oct, code head 47b68f9)
+
+- **Deadlock (S3):** fixed as above; case 9c fails with 40P01 when the RPC's deal lock is removed (mutation row 64).
+- **A deal lost through a BEFORE trigger kept its holds:** the release trigger now fires on any update that leaves the
+  deal lost (row 65). Relevant to Day 5, which may move deals to Closed/lost through a stage change.
+- **Rate guard:** the system's release rows no longer count against the person who lost the deal (row 66). A person
+  still cannot write those reasons, and the 121st own row in a minute is still refused (`stock_rate_guard_121st_refused`,
+  `rate_guard_skips_deal_lost_releases`). The paired `transfer_in` of an Arrived is not counted; its `transfer_out` is.
+- **Integrity rows:** no caller-chosen organisation (row 67).
+- **Arrived trimmed** (perf): the same rows, locks and order. Expiry for both places now comes in one call, still in
+  level order, and the RPC reads two values from `RETURNING` instead of re-reading. Transfers' tests and mutation rows
+  12, 13, 14, 22 to 26 and 34 were re-run on the trimmed code.
 
 ## Residual risks (none blocks 6a)
 
