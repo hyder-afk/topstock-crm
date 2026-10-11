@@ -96,7 +96,7 @@ Review round 1 (the insert now locks the lead first; the delete locks it before 
 
 The lock makes no difference that shows above the spread between runs: the code before the fix itself ranged 3.05 to
 4.95 ms on the busy lead in this session, against 2.42 to 3.79 ms in the first round's session (the machine was slower
-today). The three final-code runs one after the other: insert 3.24 / 5.65 / 3.32 ms and 1.68 / 3.04 / 1.84 ms, delete
+in this one). The three final-code runs one after the other: insert 3.24 / 5.65 / 3.32 ms and 1.68 / 3.04 / 1.84 ms, delete
 2.04 / 3.41 / 1.97 ms and 1.28 / 2.34 / 1.28 ms. All far below 4b's 15 ms budgets. A session waits on the lock only
 when another one writes an entry on the same lead at that moment, and only until that transaction ends.
 

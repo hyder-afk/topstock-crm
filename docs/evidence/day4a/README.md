@@ -9,12 +9,14 @@ Design: `docs/evidence/day4/design.md` (sections 1, 2, 3.1, 6, 8.1 to 8.3, 8.6, 
 and contacts before it: read-only check, `docs/log.md`)
 
 - **Activities.** New columns `request_id`, `edited_at`, `prev_last_activity_at`. The outcome must fit the kind of entry
-  (`activities_outcome_fits_type`); text has tab and line feed as its only control characters and no bidi overrides
-  (`activities_body_safe`). Indexes: `activities_company_keyset_idx (company_id, created_at desc, id desc)`,
-  `activities_user_created_idx (user_id, created_at desc)`, unique `activities_author_request_idx (user_id, request_id)`;
-  the three old ones go. Contact and deal FKs are now `on delete set null`. Clients get `insert (company_id, contact_id,
-  type, outcome, body, request_id)` and `update (body)` only.
-- **`private.activity_guard()`** (INVOKER, BEFORE INSERT OR UPDATE, skips sessions with no signed-in user):
+  (`activities_outcome_fits_type`); text has tab and line feed as its only control characters (no other C0 control, no
+  DEL, no C1 control) and no bidi embeddings, overrides or isolates (`activities_body_safe`). Indexes:
+  `activities_company_keyset_idx (company_id, created_at desc, id desc)`, `activities_user_created_idx (user_id,
+  created_at desc)`, unique `activities_author_request_idx (user_id, request_id)`; the three old ones go. Contact and
+  deal FKs are now `on delete set null`. Clients get `insert (company_id, contact_id, type, outcome, body, request_id)`
+  and `update (body)` only.
+- **`private.activity_guard()`** (INVOKER, BEFORE INSERT OR UPDATE; a session with no signed-in user only gets the D9
+  previous date on insert, or keeps one it gives):
   - insert: the author is the caller (G1); `edited_at` empty; `prev_last_activity_at` set (D9); CRLF becomes LF;
     constant-message pre-checks (hints `outcome`, `body_too_long`, `body_chars`); at most 60 entries a minute
     (`rate_limited`);
@@ -23,11 +25,18 @@ and contacts before it: read-only check, `docs/log.md`)
 - **Policies.** `activities_insert` without the manager exception (author = caller, contact on the same lead);
   `activities_update` for the author only. Select (org-wide) and delete (fresh code; author, manager or admin) unchanged.
 - **D9, `private.untouch_company_activity()`** (DEFINER, AFTER DELETE, revoked): when the deleted entry set the lead's
-  date, the date goes back to the newest remaining entry or the date from before the entries, whichever is later.
+  date, the date goes back to the newest remaining entry or the date from before the entries, whichever is later. It
+  locks the lead row first and then updates in a statement of its own.
+- **Lead lock, `private.lock_activity_lead()`** (DEFINER, BEFORE INSERT as trigger `activity_date_lock`, which sorts
+  before the guard; revoked): locks the lead row `FOR NO KEY UPDATE` before the guard reads the lead's date. With the
+  untouch lock, entries on one lead take turns, so two deletes at once, or an entry still being logged when the newest
+  entry is deleted, leave the lead on a date a remaining entry supports. DEFINER because, as the caller, the lock would
+  quietly skip a lead the caller may log on but not change (spike S5 (b)).
 - **Tasks.** New columns `company_id` (cascade with the lead), `kind`, `due_date`, `created_by`, `completed_by`,
   `cancelled_at`, `source_activity_id` (set null), `request_id`; contact FK `on delete set null`; CHECKs
   `tasks_one_due`, `tasks_meeting_timed`, `tasks_not_done_and_cancelled`, `tasks_contact_needs_lead`,
-  `tasks_title_safe`; indexes on the lead, the creator (with time), the source entry and `(created_by, request_id)`.
+  `tasks_title_safe` (one line: no C0, DEL or C1 control, no bidi); indexes on the lead, the creator (with time), the
+  source entry and `(created_by, request_id)`.
   Clients get `insert (company_id, contact_id, title, kind, due_date, due_at, assignee_id, source_activity_id,
   request_id)` and `update (title, due_date, due_at, assignee_id, contact_id, done_at, cancelled_at)` only.
 - **`private.task_guard()`** (INVOKER, runs after `enforce_org_and_owner`): insert forces the creator, empties done,
@@ -47,12 +56,21 @@ and contacts before it: read-only check, `docs/log.md`)
 **Tests and scripts**
 
 - `supabase/tests/activity_attack.sql` (new; in `scripts/db-test.sh` and `.github/workflows/db.yml`): the design's 8.1
-  cases for 4a, each protection with at least one check that fails when it is removed (proved by mutations).
+  cases for 4a. Each protection listed in `mutations.md` has a check that fails when that protection alone is removed,
+  except three policy layers that stand behind another layer (listed there as documented NOT CAUGHT rows; removing
+  both layers is caught). Checks compare with IS DISTINCT FROM, so a missing value fails them.
+- `supabase/tests/activity_concurrency.sh` (new, review round 1; in `scripts/db-test.sh` and `.github/workflows/db.yml`):
+  two sessions on one lead: two deletes at once, in both orders; an entry from a transaction that started before the
+  newest entry, logged by a rep who cannot change the lead, while the newest entry is deleted.
 - `supabase/tests/rls_attack.sql`, `import_attack.sql`: fixture tasks name their lead; the rep's call has an outcome and
   no deal; a client-sent activity time is now refused (42501; the trigger layer is proved in `activity_attack.sql`);
   section 3b updates a task's title; `import_fk_coverage` expects `{activities, contacts, deals, tasks}`; the admin's
-  call in the undo test names no author. Every earlier protection is still tested.
-- `scripts/db-mutations.py`: per-mutation target files, `--set day3b|day4a|all`, the Day 4a list.
+  call in the undo test names no author. Day 3a's activity-time rule (`set_activity_time`) now stands behind the grant
+  and the guard for signed-in users, so `activity_attack.sql` probes it for a session with no signed-in user (mutation
+  row 85); Day 3b's mutation list after 4a gives the same result as on 10 Oct (below).
+- `scripts/db-mutations.py`: per-mutation target files, `--set day3b|day4a|all`, the Day 4a list; rows marked
+  `SURVIVES` (a documented layer behind another one), a count line per set, exit 1 only when a row does not behave as
+  listed.
 - `supabase/tests/perf_day4.sql` (new, part 1) and its `scripts/db-perf.sh` hook.
 - `docs/evidence/day4a/spike-s5/`: spike S5 script and output.
 
@@ -65,19 +83,19 @@ leads, contacts and saved views), so the new grants and guards need no app chang
 | Check | Result |
 |---|---|
 | Spike S5 (PG 16.15) | (a), (b), (c) all hold; decisions in `docs/log.md` |
-| `bash scripts/db-test.sh` | `rls_attack: all checks passed`, `import_attack: all checks passed`, `import_concurrency: all checks passed`, `activity_attack: all checks passed`, `advisors: no ERROR-level findings` |
+| `bash scripts/db-test.sh` (after review round 1) | `rls_attack: all checks passed`, `import_attack: all checks passed`, `import_concurrency: all checks passed`, `activity_attack: all checks passed`, `activity_concurrency: all checks passed`, `advisors: no ERROR-level findings` (exit 0) |
 | Advisors (splinter, local) | WARN `authenticated_security_definer_function_executable` on `set_user_role` (accepted Day 1); INFO `unindexed_foreign_keys: 1` (`activities_org_id_fkey`, accepted below); INFO `unused_index: 2` |
-| `plpgsql_check` 2.7.2 (local stand-in for CI's `supabase db lint`) | no finding on any new or changed function (only the existing dynamic-SQL notes on `list_leads`) |
-| Mutations, Day 4a (`docs/evidence/day4a/mutations.md`) | **64 of 64 caught** |
-| Mutations, Day 3b after 4a | 36 of 37 caught, the same documented two-layer row as on 10 Oct |
-| Perf (`docs/evidence/day4a/perf.md`, 3 runs) | P2 0.08–0.19 ms (budgets 5 / 8 / 10 ms), generic plans keep the keyset index; P7 import chunks avg 174–183 ms, undo chunks avg 139–158 ms (Day 3b 169–207 / 140–206 ms); P8 every Day 3a case within 20% (all faster) |
-| `npm run lint` | 0 errors (2 existing warnings: TanStack Virtual and the React compiler) |
-| `npm run typecheck` | passed |
-| `npm run test:unit` | 166 passed |
-| Playwright e2e, Chromium, restarted local auth stack (migrations re-applied; every auth suite except `screens.spec.ts`) | **44 passed**, 1 skipped (`import-perf`, runs only with `PERF=1`); `journey.spec.ts` cannot run on this VM: its first test stops at `Error: MAILPIT_URL is not set` (the local stack has no mail inbox: it auto-confirms and sends no email), so its other 4 did not run. It does not touch activities or tasks and runs in CI's `auth-journey` job, which has the inbox |
+| `plpgsql_check` 2.7.2 (local stand-in for CI's `supabase db lint`) | no finding on any new or changed function (only the existing dynamic-SQL notes on `list_leads`); re-run after review round 1 with extra, other and performance warnings on `activity_guard`, `lock_activity_lead`, `untouch_company_activity`, `task_guard` and `audit_row`: no finding |
+| Mutations, Day 4a (`docs/evidence/day4a/mutations.md`, review round 1, on a0f86ff) | **98 of 98 caught; the 3 documented two-layer rows not caught, as listed** (101 rows; every count line ends `0 not as listed`). First round: 64 of 64 |
+| Mutations, Day 3b after 4a (re-run on 5244c58) | 36 of 37 caught; row 4 not caught, the same documented two-layer row as on 10 Oct (`day3b: 37 rows run: 36 caught, 1 documented two-layer rows not caught, 0 not as listed`) |
+| Perf (`docs/evidence/day4a/perf.md`, 3 runs) | P2 0.08–0.19 ms (budgets 5 / 8 / 10 ms), generic plans keep the keyset index; P7 import chunks avg 174–183 ms, undo chunks avg 139–158 ms (Day 3b 169–207 / 140–206 ms); P8 every Day 3a case within 20% (all faster). Review round 1, part 1 re-run for the lead lock (3 runs, each next to a run of the code before the fix): P2 0.11–0.24 ms; logging one entry 1.77–3.86 ms and deleting it 1.29–2.26 ms, within the before-the-fix spread (1.59–4.95 / 1.17–3.00 ms) |
+| `npm run lint` | 0 errors (2 existing warnings: TanStack Virtual and the React compiler; re-run after review round 1) |
+| `npm run typecheck` | passed (re-run after review round 1) |
+| `npm run test:unit` | 166 passed (re-run after review round 1) |
+| Playwright e2e, Chromium, restarted local auth stack (migrations re-applied; every auth suite except `screens.spec.ts`), on ffa9dc4; not re-run after review round 1, which changes no app code and no table the e2e fixtures write | **44 passed**, 1 skipped (`import-perf`, runs only with `PERF=1`); `journey.spec.ts` cannot run on this VM: its first test stops at `Error: MAILPIT_URL is not set` (the local stack has no mail inbox: it auto-confirms and sends no email), so its other 4 did not run. It does not touch activities or tasks and runs in CI's `auth-journey` job, which has the inbox |
 | Semgrep | not run locally: `semgrep.dev` is denied by this session's egress policy (403; known since 9 Oct, `docs/log.md`), so it runs in CI's `semgrep` job |
-| gitleaks (`origin/main..HEAD`, includes the two Day 4 design and log commits) | no leaks found (exit 0; 15 commits scanned before this line was written, 16 after) |
-| `npm audit --omit=dev` | found 0 vulnerabilities |
+| gitleaks (`origin/main..HEAD`, includes the two Day 4 design and log commits) | no leaks found (exit 0; 15 commits scanned before this line was written, 16 after). Review round 1: no leaks found (exit 0, 31 commits scanned, before this documents commit) |
+| `npm audit --omit=dev` | found 0 vulnerabilities (re-run after review round 1) |
 
 ## Accepted findings
 
@@ -109,6 +127,19 @@ leads, contacts and saved views), so the new grants and guards need no app chang
    `list_lead_activities` is a 4b RPC; and `perf_day4.sql` runs before `perf_import.sql`, so P7 includes the 300,000
    activities and 15,000 tasks.
 
+From review round 1 (docs/log.md, 11 Oct):
+
+10. **C1 controls refused** in notes and task titles (`\u007F-\u009F` in both CHECKs and both guard pre-checks, as
+    Day 3b's file names); the design's rule named only C0 controls. Tab and line feed stay allowed in notes, joiners
+    such as U+200D everywhere. Mutation rows 65 to 68.
+11. **D9 under concurrency: the lead is locked** on every entry insert (the DEFINER trigger `activity_date_lock`) and
+    in the untouch trigger, which then updates in a separate statement; the design had no lock, and two deletes at once,
+    or an entry still being logged when the newest entry is deleted, could leave a date nothing supports.
+    `activity_concurrency.sh`; mutation rows 69 to 71.
+12. **Entries from sessions with no signed-in user get the D9 previous date** (the design's guard skips those sessions
+    entirely), keeping one the session gives; otherwise every later entry on that lead lost the sheet's date. Mutation
+    rows 72 and 74.
+
 ## Not done here, and open risks
 
 - **CI differences.** CI runs the Supabase Postgres 17 image; the spike and local runs are PostgreSQL 16.15. The
@@ -121,7 +152,18 @@ leads, contacts and saved views), so the new grants and guards need no app chang
 - **The flood guards are per transaction snapshot,** so two parallel sessions of the same person can together pass 60 in
   a minute. They limit flooding; they are not a hard quota (Gate 1 rate-limit table, design section 12).
 - **Undo preview** for a 27,000-lead import now takes 80–90 ms (was 39–45 ms); chunks are unchanged (perf.md).
-- **Entries inserted by maintenance sessions** (no signed-in user) keep `prev_last_activity_at` empty; deleting such an
-  entry when it set the lead's date falls back to the newest remaining entry.
+- **Entries inserted by maintenance sessions** (no signed-in user) now get the chain's previous date, or keep one the
+  session gives. Such a session is trusted with that value: an undo can bring the lead back to it.
+- **A contact moved to another lead** keeps its entries and tasks on the first lead, still naming it. The rule "the
+  contact belongs to this lead" (`activities_insert`, `tasks_insert`, `tasks_update`) is checked only when an entry or
+  task is written, and `contacts.company_id` stays client-updatable (Day 3a grant). Nobody gains access (both leads are
+  visible to the whole team and editable by whoever moved the contact), so it is an integrity gap, logged as a known
+  limitation for 4c: the contacts trigger design 3.3 already plans (`sync_contact_phone`, which fires on UPDATE OF
+  `company_id`) is to also refuse the move, or empty those links in the same transaction. Until then 4b code must not
+  assume an entry's contact is on the entry's lead (for example before marking a wrong number).
+- **Lock order.** An entry insert now locks its lead before the foreign key check on its contact, and a delete locks
+  the entry before the lead. Two bulk deletes over several leads in opposite orders, or (from 4c) an entry naming a
+  contact while that contact is deleted and the contacts trigger updates the lead, can deadlock; PostgreSQL then
+  cancels one of them (40P01) and the app retries. The app writes one entry at a time.
 - **The dev database** still has the Day 3b schema: `deploy-dev-db` applies this migration after the merge, then the
   dev advisors are re-checked (build order 4a item 11).
