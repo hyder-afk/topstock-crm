@@ -1053,3 +1053,627 @@ revoke all on function private.movement_request_guard(), private.stock_movement_
   from public, anon, authenticated;
 revoke all on function private.expire_due_holds(uuid, uuid), private.sweep_expired_holds() from public, anon;
 grant execute on function private.expire_due_holds(uuid, uuid), private.sweep_expired_holds() to authenticated;
+
+-- ===========================================================================
+-- Part 3. RPCs (design 4.2 and 5.1), integrity, the nightly job, audit and import undo
+-- ===========================================================================
+
+-- post_stock_movement: the one public way to change stock (CLAUDE.md). Invoker: it only inserts ledger rows; the guard
+-- checks the caller and the apply step changes the levels under the lock. lock_timeout 3 s gives 55P03 ("busy").
+create function public.post_stock_movement(
+  p_product uuid,
+  p_kind text,                       -- receive | adjust_in | adjust_out | count | transfer | reserve | release
+  p_qty integer default null,        -- pieces; release: null = everything still held; count: unused
+  p_location text default null,      -- 'warehouse' (default) | 'transit'; clients never send place ids
+  p_reason text default null,
+  p_note text default null,
+  p_company uuid default null,       -- reserve: the lead
+  p_deal uuid default null,          -- reserve: an open, from-stock deal of that lead
+  p_reservation uuid default null,   -- release
+  p_hold_until date default null,    -- reserve: default today + hold_days; today to today + 90
+  p_target integer default null,     -- count: the counted quantity (0 to 50,000,000)
+  p_request_id uuid default null     -- idempotency: a retry returns the first result
+) returns jsonb
+language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
+declare
+  v_org constant uuid := private.current_org_id();
+  v_today constant date := (now() at time zone 'Europe/Paris')::date;
+  v_group constant uuid := gen_random_uuid();
+  v_reason text := p_reason;
+  v_note text := nullif(btrim(p_note), '');
+  v_hold_until date := p_hold_until;
+  v_place text := coalesce(p_location, 'warehouse');
+  v_wh uuid;
+  v_transit uuid;
+  v_loc uuid;
+  v_id bigint;
+  v_ids bigint[] := '{}'::bigint[];
+  v_res uuid;
+  v_new boolean;
+  v_prev_kind text;
+  v_result jsonb;
+  v_extra jsonb := '{}'::jsonb;
+begin
+  if (select auth.uid()) is null or v_org is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  -- Constant pre-checks (design 4.2 step 2).
+  if p_kind is null or p_kind not in ('receive', 'adjust_in', 'adjust_out', 'count', 'transfer', 'reserve', 'release') then
+    raise exception 'unknown kind of movement' using errcode = '22023', hint = 'kind';
+  end if;
+  if p_product is null then
+    raise exception 'which product?' using errcode = '22023', hint = 'document';
+  end if;
+  if (p_kind = 'count' and (p_qty is not null or p_target is null or p_target not between 0 and 50000000))
+     or (p_kind <> 'count' and p_target is not null)
+     or (p_kind = 'release' and p_qty not between 1 and 50000000)
+     or (p_kind not in ('count', 'release') and (p_qty is null or p_qty not between 1 and 50000000)) then
+    raise exception 'the quantity must be 1 to 50,000,000 pieces' using errcode = '22023', hint = 'quantity';
+  end if;
+  v_reason := case p_kind when 'count' then coalesce(p_reason, 'count')
+                          when 'transfer' then coalesce(p_reason, 'arrived')
+                          when 'release' then coalesce(p_reason, 'manual')
+                          else p_reason end;
+  if (p_kind = 'receive' and (v_reason is null or v_reason not in ('received', 'found', 'correction', 'other')))
+     or (p_kind in ('adjust_in', 'adjust_out')
+         and (v_reason is null or v_reason not in ('count', 'damaged', 'lost', 'found', 'sample', 'correction', 'other')))
+     or (p_kind = 'count' and v_reason <> 'count')
+     or (p_kind = 'transfer' and v_reason <> 'arrived')
+     or (p_kind = 'release' and v_reason <> 'manual')
+     or (p_kind = 'reserve' and v_reason is not null) then
+    raise exception 'this reason does not fit this movement' using errcode = '22023', hint = 'reason';
+  end if;
+  if v_reason = 'other' and v_note is null then
+    raise exception 'say why in a note' using errcode = '22023', hint = 'note_required';
+  end if;
+  if char_length(v_note) > (case when p_kind = 'reserve' then 300 else 500 end)
+     or v_note ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+    raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
+  end if;
+  if v_place not in ('warehouse', 'transit') then
+    raise exception 'unknown place' using errcode = '22023', hint = 'location';
+  end if;
+  if p_kind = 'reserve' then
+    if p_company is null then
+      raise exception 'which lead?' using errcode = '22023', hint = 'document';
+    end if;
+    v_hold_until := coalesce(p_hold_until,
+                             v_today + coalesce((select s.hold_days from private.inventory_settings s where s.org_id = v_org), 14));
+    if v_hold_until not between v_today and v_today + 90 then
+      raise exception 'a hold ends today or within 90 days' using errcode = '22023', hint = 'hold_until';
+    end if;
+  end if;
+  if p_kind = 'release' and p_reservation is null then
+    raise exception 'which hold?' using errcode = '22023', hint = 'reservation';
+  end if;
+
+  -- Idempotency (step 3): a replay returns the stored result and changes nothing.
+  if p_request_id is not null then
+    insert into private.movement_requests (request_id, kind) values (p_request_id, p_kind)
+    on conflict do nothing
+    returning true into v_new;
+    if v_new is null then
+      select r.kind, r.result into v_prev_kind, v_result from private.movement_requests r
+       where r.user_id = (select auth.uid()) and r.request_id = p_request_id;
+      if v_prev_kind is distinct from p_kind or v_result is null then
+        raise exception 'this request id was used for something else' using errcode = '22023', hint = 'request';
+      end if;
+      return v_result;
+    end if;
+  end if;
+
+  -- Places by kind (step 4); then the ledger rows (step 6).
+  select l.id into v_wh from public.locations l where l.org_id = v_org and l.kind = 'warehouse';
+  select l.id into v_transit from public.locations l where l.org_id = v_org and l.kind = 'transit';
+  if v_wh is null or v_transit is null then
+    raise exception 'places not found' using errcode = 'P0002';
+  end if;
+  v_loc := case when v_place = 'transit' then v_transit else v_wh end;
+
+  if p_kind = 'transfer' then
+    -- Arrived (design 6.4). The product row is locked first: this RPC may clear its expected date at the end, and an
+    -- update after the level locks would wait on a movement holding the product's share lock while that movement
+    -- waits on our level (a deadlock). Ended holds at both places go first, in location order.
+    perform 1 from public.products p where p.id = p_product for no key update;
+    if not found then
+      raise exception 'product not found' using errcode = 'P0002';
+    end if;
+    perform private.expire_due_holds(p_product, l.id) from public.locations l where l.org_id = v_org order by l.id;
+    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note)
+    values (v_group, p_product, v_transit, 'transfer_out', p_qty, v_reason, v_note)
+    returning id into v_id;
+    v_ids := v_ids || v_id;
+    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note, pair_id)
+    values (v_group, p_product, v_wh, 'transfer_in', p_qty, v_reason, v_note, v_id)
+    returning id into v_id;
+    v_ids := v_ids || v_id;
+    -- Pieces moved, and how many of them were held (they arrive still held for the same leads).
+    v_extra := jsonb_build_object('moved', p_qty,
+                                  'held_moved', (select m.d_reserved from private.stock_movements m where m.id = v_id));
+    if (select s.on_hand from public.stock_levels s where s.product_id = p_product and s.location_id = v_transit) = 0 then
+      update public.products p set transit_eta = null where p.id = p_product and p.transit_eta is not null;
+    end if;
+  elsif p_kind = 'count' then
+    perform private.expire_due_holds(p_product, v_loc);
+    insert into private.stock_movements (group_id, product_id, location_id, kind, target_on_hand, reason, note)
+    values (v_group, p_product, v_loc, 'count', p_target, v_reason, v_note)
+    returning id into v_id;
+    if v_id is not null then
+      v_ids := v_ids || v_id;
+    end if;
+  elsif p_kind = 'reserve' then
+    perform private.expire_due_holds(p_product, v_loc);
+    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, note, company_id, deal_id,
+                                         hold_until)
+    values (v_group, p_product, v_loc, 'reserve', p_qty, v_note, p_company, p_deal, v_hold_until)
+    returning id, reservation_id into v_id, v_res;
+    v_ids := v_ids || v_id;
+  elsif p_kind = 'release' then
+    select r.location_id into v_loc from private.stock_reservations r where r.id = p_reservation;
+    if not found then
+      raise exception 'hold not found' using errcode = 'P0002';
+    end if;
+    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note, reservation_id)
+    values (v_group, p_product, v_loc, 'release', p_qty, v_reason, v_note, p_reservation)
+    returning id into v_id;
+    v_ids := v_ids || v_id;
+    v_res := p_reservation;
+  else
+    if p_kind = 'adjust_out' then
+      perform private.expire_due_holds(p_product, v_loc);
+    end if;
+    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note)
+    values (v_group, p_product, v_loc, p_kind, p_qty, v_reason, v_note)
+    returning id into v_id;
+    v_ids := v_ids || v_id;
+  end if;
+
+  -- The levels after the change (step 7), warehouse first.
+  v_result := jsonb_build_object(
+    'group_id', v_group, 'movement_ids', to_jsonb(v_ids), 'reservation_id', v_res, 'unchanged', cardinality(v_ids) = 0,
+    'levels', (select coalesce(jsonb_agg(jsonb_build_object('location', l.kind, 'on_hand', coalesce(s.on_hand, 0),
+                                                            'reserved', coalesce(s.reserved, 0),
+                                                            'available', coalesce(s.available, 0))
+                                         order by l.kind desc), '[]'::jsonb)
+                 from public.locations l
+                 left join public.stock_levels s on s.location_id = l.id and s.product_id = p_product
+                where l.org_id = v_org)) || v_extra;
+  if p_request_id is not null then
+    update private.movement_requests r set result = v_result
+     where r.user_id = (select auth.uid()) and r.request_id = p_request_id;
+  end if;
+  return v_result;
+end;
+$$;
+
+-- Create a product (managers and admins). A cost goes to the cost table; an opening quantity is a receipt (fresh code,
+-- reason "received"). Returns the new id; a retry with the same request id returns the same id.
+create function public.create_product(
+  p_name text,
+  p_pieces_per_carton integer,
+  p_price_min numeric default null,
+  p_price_max numeric default null,
+  p_category text default null,
+  p_unit text default 'piece',
+  p_cartons_per_pallet integer default null,
+  p_reorder_point integer default null,
+  p_transit_eta date default null,
+  p_share_visible boolean default true,
+  p_cost_per_piece numeric default null,
+  p_opening_qty integer default null,
+  p_opening_location text default null,
+  p_request_id uuid default null
+) returns uuid
+language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
+declare
+  v_org constant uuid := private.current_org_id();
+  v_id uuid;
+  v_new boolean;
+  v_prev jsonb;
+  v_prev_kind text;
+  v_loc uuid;
+begin
+  if (select auth.uid()) is null or v_org is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.is_manager_or_admin() then
+    raise exception 'only managers and admins create products' using errcode = '42501', hint = 'forbidden';
+  end if;
+  -- Numbers are checked before they are cast into the columns (a huge value would otherwise fail the cast).
+  if p_price_min not between 0 and 1000000 or p_price_max not between 0 and 1000000 then
+    raise exception 'prices must be 0 to 1,000,000' using errcode = '22023', hint = 'price';
+  end if;
+  if p_cost_per_piece not between 0 and 1000000 then
+    raise exception 'the cost per piece must be 0 to 1,000,000' using errcode = '22023', hint = 'cost';
+  end if;
+  if p_opening_qty not between 0 and 50000000 then
+    raise exception 'the quantity must be 1 to 50,000,000 pieces' using errcode = '22023', hint = 'quantity';
+  end if;
+  if coalesce(p_opening_location, 'warehouse') not in ('warehouse', 'transit') then
+    raise exception 'unknown place' using errcode = '22023', hint = 'location';
+  end if;
+  if coalesce(p_opening_qty, 0) > 0 and not private.has_recent_aal2(600) then
+    raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';
+  end if;
+  if p_request_id is not null then
+    insert into private.movement_requests (request_id, kind) values (p_request_id, 'create_product')
+    on conflict do nothing
+    returning true into v_new;
+    if v_new is null then
+      select r.kind, r.result into v_prev_kind, v_prev from private.movement_requests r
+       where r.user_id = (select auth.uid()) and r.request_id = p_request_id;
+      if v_prev_kind is distinct from 'create_product' or v_prev is null then
+        raise exception 'this request id was used for something else' using errcode = '22023', hint = 'request';
+      end if;
+      return (v_prev ->> 'id')::uuid;
+    end if;
+  end if;
+  begin
+    insert into public.products (name, category, unit, pieces_per_carton, cartons_per_pallet, reorder_point, price_min,
+                                 price_max, transit_eta, share_visible)
+    values (p_name, p_category, coalesce(p_unit, 'piece'), p_pieces_per_carton, p_cartons_per_pallet, p_reorder_point,
+            p_price_min, p_price_max, p_transit_eta, coalesce(p_share_visible, true))
+    returning id into v_id;
+  exception when unique_violation then
+    -- Two people creating the same name at once: the guard's check passed for both, the index stops the second.
+    raise exception 'a product with this name already exists' using errcode = '22023', hint = 'name_taken';
+  end;
+  if p_cost_per_piece is not null then
+    insert into private.product_costs (product_id, cost_per_piece, source) values (v_id, p_cost_per_piece, 'manual');
+  end if;
+  if coalesce(p_opening_qty, 0) > 0 then
+    select l.id into v_loc from public.locations l
+     where l.org_id = v_org and l.kind = coalesce(p_opening_location, 'warehouse');
+    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason)
+    values (gen_random_uuid(), v_id, v_loc, 'receive', p_opening_qty, 'received');
+  end if;
+  if p_request_id is not null then
+    update private.movement_requests r set result = jsonb_build_object('id', v_id)
+     where r.user_id = (select auth.uid()) and r.request_id = p_request_id;
+  end if;
+  return v_id;
+end;
+$$;
+
+-- Change a product's details (managers and admins): every editable field is replaced by the value given.
+create function public.update_product(
+  p_id uuid,
+  p_name text,
+  p_pieces_per_carton integer,
+  p_price_min numeric default null,
+  p_price_max numeric default null,
+  p_category text default null,
+  p_unit text default 'piece',
+  p_cartons_per_pallet integer default null,
+  p_reorder_point integer default null,
+  p_transit_eta date default null,
+  p_share_visible boolean default true
+) returns jsonb
+language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
+declare
+  v_row record;
+begin
+  if (select auth.uid()) is null or private.current_org_id() is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.is_manager_or_admin() then
+    raise exception 'only managers and admins change products' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if p_price_min not between 0 and 1000000 or p_price_max not between 0 and 1000000 then
+    raise exception 'prices must be 0 to 1,000,000' using errcode = '22023', hint = 'price';
+  end if;
+  begin
+    update public.products p
+       set name = p_name, pieces_per_carton = p_pieces_per_carton, price_min = p_price_min, price_max = p_price_max,
+           category = p_category, unit = coalesce(p_unit, 'piece'), cartons_per_pallet = p_cartons_per_pallet,
+           reorder_point = p_reorder_point, transit_eta = p_transit_eta, share_visible = coalesce(p_share_visible, true)
+     where p.id = p_id
+    returning p.id, p.number, p.updated_at into v_row;
+  exception when unique_violation then
+    raise exception 'a product with this name already exists' using errcode = '22023', hint = 'name_taken';
+  end;
+  if v_row.id is null then
+    raise exception 'product not found' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object('id', v_row.id, 'number', v_row.number, 'updated_at', v_row.updated_at);
+end;
+$$;
+
+-- Set the cost per piece (managers and admins; source "manual").
+create function public.set_product_cost(p_id uuid, p_cost numeric) returns void
+language plpgsql volatile security invoker set search_path = '' as $$
+begin
+  if (select auth.uid()) is null or private.current_org_id() is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.is_manager_or_admin() then
+    raise exception 'only managers and admins see and set costs' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if p_cost is null or p_cost not between 0 and 1000000 then
+    raise exception 'the cost per piece must be 0 to 1,000,000' using errcode = '22023', hint = 'cost';
+  end if;
+  if not exists (select 1 from public.products p where p.id = p_id) then
+    raise exception 'product not found' using errcode = 'P0002';
+  end if;
+  insert into private.product_costs (product_id, cost_per_piece, source) values (p_id, p_cost, 'manual')
+  on conflict (product_id) do update set cost_per_piece = excluded.cost_per_piece, source = excluded.source;
+end;
+$$;
+
+-- Archive (managers and admins, fresh code, only when nothing is left) and restore (admins, fresh code). The guard on
+-- products enforces the same rules for a direct update.
+create function public.archive_product(p_id uuid) returns void
+language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
+declare
+  v_archived timestamptz;
+begin
+  if (select auth.uid()) is null or private.current_org_id() is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.is_manager_or_admin() then
+    raise exception 'only managers and admins archive products' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.has_recent_aal2(600) then
+    raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';
+  end if;
+  select p.archived_at into v_archived from public.products p where p.id = p_id for update;
+  if not found then
+    raise exception 'product not found' using errcode = 'P0002';
+  end if;
+  if v_archived is null then
+    update public.products p set archived_at = now() where p.id = p_id;
+  end if;
+end;
+$$;
+create function public.restore_product(p_id uuid) returns void
+language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
+begin
+  if (select auth.uid()) is null or private.current_org_id() is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.is_admin() then
+    raise exception 'only an admin can restore a product' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.has_recent_aal2(600) then
+    raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';
+  end if;
+  if not exists (select 1 from public.products p where p.id = p_id) then
+    raise exception 'product not found' using errcode = 'P0002';
+  end if;
+  update public.products p set archived_at = null where p.id = p_id and p.archived_at is not null;
+end;
+$$;
+
+-- The page-load sweep of ended holds (D8): Inventory, Home and the lead's Stock tab call it.
+create function public.release_expired_reservations() returns integer
+language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
+begin
+  if (select auth.uid()) is null or private.current_org_id() is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  return private.sweep_expired_holds();
+end;
+$$;
+
+-- The integrity checks (design 4.9) for one organisation. Invoker: called by check_stock_integrity as an admin (row
+-- level security keeps it to the caller's org) and by the nightly job as postgres. One row per difference:
+--  ledger_vs_levels    on hand differs from the sum of the ledger's on-hand changes (I2)
+--  ledger_vs_reserved  held differs from the sum of the ledger's held changes (I2)
+--  holds_vs_reserved   held differs from the active holds' remaining pieces (I3)
+--  versions            a level's version is not its number of ledger rows, or its newest row's snapshot (I8)
+--  bounds              a level outside 0 <= held <= on hand (I1; the CHECKs make this a sanity line)
+-- ship_lines (I7) arrives with sales in 6d.
+create function private.stock_integrity_rows(p_org uuid)
+returns table (check_name text, product_id uuid, location_id uuid, expected bigint, actual bigint)
+language sql stable set search_path = '' as $$
+  with led as (
+    select m.product_id, m.location_id, sum(m.d_on_hand)::bigint as s_on, sum(m.d_reserved)::bigint as s_res,
+           count(*)::bigint as n, max(m.level_version) as top
+      from private.stock_movements m
+     where m.org_id = p_org
+     group by m.product_id, m.location_id),
+  lv as (
+    select l.product_id, l.location_id, l.on_hand::bigint as on_hand, l.reserved::bigint as reserved, l.version
+      from public.stock_levels l
+     where l.org_id = p_org),
+  holds as (
+    select r.product_id, r.location_id, sum(r.remaining)::bigint as s
+      from private.stock_reservations r
+     where r.org_id = p_org and r.status = 'active'
+     group by r.product_id, r.location_id),
+  j as (
+    select coalesce(lv.product_id, led.product_id) as product_id, coalesce(lv.location_id, led.location_id) as location_id,
+           coalesce(lv.on_hand, 0) as on_hand, coalesce(lv.reserved, 0) as reserved, coalesce(lv.version, 0) as version,
+           coalesce(led.s_on, 0) as s_on, coalesce(led.s_res, 0) as s_res, coalesce(led.n, 0) as n,
+           coalesce(led.top, 0) as top
+      from lv full join led on led.product_id = lv.product_id and led.location_id = lv.location_id)
+  select 'ledger_vs_levels', j.product_id, j.location_id, j.s_on, j.on_hand from j where j.s_on <> j.on_hand
+  union all
+  select 'ledger_vs_reserved', j.product_id, j.location_id, j.s_res, j.reserved from j where j.s_res <> j.reserved
+  union all
+  select 'holds_vs_reserved', coalesce(j.product_id, h.product_id), coalesce(j.location_id, h.location_id),
+         coalesce(h.s, 0), coalesce(j.reserved, 0)
+    from j full join holds h on h.product_id = j.product_id and h.location_id = j.location_id
+   where coalesce(h.s, 0) <> coalesce(j.reserved, 0)
+  union all
+  select 'versions', j.product_id, j.location_id, j.version, j.n from j where j.n <> j.version or j.top <> j.version
+  union all
+  select 'versions', lv.product_id, lv.location_id, lv.on_hand, m.on_hand_after::bigint
+    from lv join private.stock_movements m
+      on m.product_id = lv.product_id and m.location_id = lv.location_id and m.level_version = lv.version
+   where m.on_hand_after <> lv.on_hand or m.reserved_after <> lv.reserved
+  union all
+  select 'bounds', lv.product_id, lv.location_id, lv.on_hand, lv.reserved
+    from lv where lv.on_hand < 0 or lv.reserved < 0 or lv.reserved > lv.on_hand or lv.on_hand > 50000000
+$$;
+
+create function public.check_stock_integrity()
+returns table (check_name text, product_id uuid, location_id uuid, expected bigint, actual bigint)
+language plpgsql stable security invoker set search_path = '' as $$
+begin
+  if (select auth.uid()) is null or private.current_org_id() is null or not private.has_aal2() then
+    raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+  end if;
+  if not private.is_admin() then
+    raise exception 'only admins run the stock check' using errcode = '42501', hint = 'forbidden';
+  end if;
+  return query select * from private.stock_integrity_rows(private.current_org_id());
+end;
+$$;
+
+-- The nightly job (design 4.9): run as postgres with no claims (pg_cron where it is installed; tests call it).
+-- Ends due holds in every org (500 at a time), runs the integrity checks and opens one task for the alert assignee (or
+-- the oldest admin) on a day they find a difference, and prunes idempotency rows older than 7 days. 6c and 6e add the
+-- stale stock batches and the share rate counters.
+create function private.nightly_stock_jobs() returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  o record;
+  n integer;
+  v_expired integer := 0;
+  v_diffs integer := 0;
+  v_tasks integer := 0;
+  v_pruned integer;
+  v_assignee uuid;
+  v_lang text;
+  v_tz text;
+  title_en constant text := 'Stock check found a difference';
+  title_fr constant text := 'Le contrôle du stock a trouvé un écart';
+begin
+  if (select auth.uid()) is not null then
+    raise exception 'the nightly job runs as the system' using errcode = '42501', hint = 'forbidden';
+  end if;
+  for o in select g.id from public.orgs g order by g.id loop
+    loop
+      n := private.expire_holds_for(o.id, null, null, 500);
+      v_expired := v_expired + n;
+      exit when n < 500;
+    end loop;
+    select count(*)::integer into n from private.stock_integrity_rows(o.id);
+    if n > 0 then
+      v_diffs := v_diffs + n;
+      select coalesce(s.alert_assignee_id,
+                      (select p.id from public.profiles p where p.org_id = o.id and p.role = 'admin'
+                        order by p.created_at, p.id limit 1))
+        into v_assignee
+        from private.inventory_settings s where s.org_id = o.id;
+      select p.language, coalesce(nullif(p.timezone, ''), 'Europe/Paris') into v_lang, v_tz
+        from public.profiles p where p.id = v_assignee;
+      if v_assignee is not null and not exists (
+           select 1 from public.tasks t
+            where t.org_id = o.id and t.created_by is null and t.title in (title_en, title_fr)
+              and (t.created_at at time zone 'Europe/Paris')::date = (now() at time zone 'Europe/Paris')::date) then
+        -- A system row: no claims are set, so the task guards treat it as the system's (created_by stays null).
+        insert into public.tasks (org_id, assignee_id, title, kind, due_date)
+        values (o.id, v_assignee, case when v_lang = 'fr' then title_fr else title_en end, 'todo',
+                (now() at time zone v_tz)::date);
+        v_tasks := v_tasks + 1;
+      end if;
+    end if;
+  end loop;
+  delete from private.movement_requests r where r.created_at < now() - interval '7 days';
+  get diagnostics v_pruned = row_count;
+  return jsonb_build_object('expired', v_expired, 'integrity_rows', v_diffs, 'tasks', v_tasks,
+                            'requests_pruned', v_pruned);
+end;
+$$;
+
+-- Scheduled only where pg_cron is already installed (spike S6: not on the local runner; this migration never creates
+-- the extension). 01:10 UTC is 03:10 in Paris in summer and 02:10 in winter.
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    execute $cron$select cron.schedule('topstock-nightly-stock', '10 1 * * *', 'select private.nightly_stock_jobs()')$cron$;
+  end if;
+end;
+$$;
+
+-- Audit (D19, design 3.7). Products and places use the shared private.audit_row (attached in part 1). The other stock
+-- tables use this function, so the shared one stays as Day 4a left it:
+--  - each ledger row gets one minimal row: kind, product, place, the changes, the reason, the references and the
+--    note's length (never the note);
+--  - costs and settings get the usual new/old/diff rows, keyed by product or organisation; a settings change of the
+--    sweep time alone writes nothing;
+--  - levels and holds are not audited: the ledger is their record.
+create function private.audit_inventory_row() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  rec constant jsonb := case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end;
+  diff jsonb;
+begin
+  if tg_table_name = 'stock_movements' then
+    diff := jsonb_build_object(
+      'kind', rec -> 'kind', 'product_id', rec -> 'product_id', 'location_id', rec -> 'location_id',
+      'd_on_hand', rec -> 'd_on_hand', 'd_reserved', rec -> 'd_reserved', 'reason', rec -> 'reason',
+      'refs', jsonb_strip_nulls(jsonb_build_object(
+                'group_id', rec -> 'group_id', 'company_id', rec -> 'company_id', 'deal_id', rec -> 'deal_id',
+                'reservation_id', rec -> 'reservation_id', 'order_line_id', rec -> 'order_line_id',
+                'import_batch_id', rec -> 'import_batch_id', 'pair_id', rec -> 'pair_id')),
+      'note_len', coalesce(char_length(rec ->> 'note'), 0));
+  elsif tg_op = 'UPDATE' then
+    select jsonb_object_agg(n.key, jsonb_build_object('old', o.value, 'new', n.value))
+      into diff
+      from jsonb_each(to_jsonb(new)) n
+      join jsonb_each(to_jsonb(old)) o using (key)
+     where n.value is distinct from o.value and n.key not in ('updated_at', 'last_sweep_at');
+    if diff is null then
+      return new;
+    end if;
+  elsif tg_op = 'INSERT' then
+    diff := jsonb_build_object('new', rec);
+  else
+    diff := jsonb_build_object('old', rec);
+  end if;
+  insert into public.audit_log (org_id, actor_id, action, table_name, record_id, diff_json)
+  values ((rec ->> 'org_id')::uuid, (select auth.uid()), lower(tg_op), tg_table_name,
+          coalesce(rec ->> 'id', rec ->> 'product_id', rec ->> 'org_id'), diff);
+  return coalesce(new, old);
+end;
+$$;
+create trigger audit_inventory_row after insert on private.stock_movements
+  for each row execute function private.audit_inventory_row();
+create trigger audit_inventory_row after insert or update or delete on private.product_costs
+  for each row execute function private.audit_inventory_row();
+create trigger audit_inventory_row after insert or update or delete on private.inventory_settings
+  for each row execute function private.audit_inventory_row();
+
+-- Import undo (Day 3b, G7): a lead with a hold (any status) has stock history, so an undo keeps it (its foreign key
+-- would refuse the delete anyway).
+-- REBASE: copied from 20261011120000_activity_hardening.sql; re-copy from the newest definition before merge
+create or replace function private.lead_import_untouched(p_batch uuid, p_limit integer) returns setof uuid
+language sql stable set search_path = '' as $$
+  select c.id from public.companies c
+   where c.import_batch_id = p_batch and c.updated_at = c.created_at
+     and not exists (select 1 from public.activities a where a.company_id = c.id)
+     and not exists (select 1 from public.contacts k where k.company_id = c.id)
+     and not exists (select 1 from public.deals d where d.company_id = c.id)
+     and not exists (select 1 from public.tasks t where t.company_id = c.id)
+     and not exists (select 1 from private.stock_reservations r where r.company_id = c.id)
+   order by c.id
+   limit p_limit
+$$;
+
+-- Function privileges (part 3): the Day 3a revoke/grant loop for the public RPCs (authenticated only); the private
+-- integrity rows for the invoker RPC; the nightly job and the audit trigger for nobody.
+revoke all on function private.nightly_stock_jobs(), private.audit_inventory_row() from public, anon, authenticated;
+revoke all on function private.stock_integrity_rows(uuid) from public, anon;
+grant execute on function private.stock_integrity_rows(uuid) to authenticated;
+do $$
+declare
+  f text;
+begin
+  foreach f in array array[
+    'public.post_stock_movement(uuid, text, integer, text, text, text, uuid, uuid, uuid, date, integer, uuid)',
+    'public.create_product(text, integer, numeric, numeric, text, text, integer, integer, date, boolean, numeric, integer, text, uuid)',
+    'public.update_product(uuid, text, integer, numeric, numeric, text, text, integer, integer, date, boolean)',
+    'public.set_product_cost(uuid, numeric)',
+    'public.archive_product(uuid)',
+    'public.restore_product(uuid)',
+    'public.release_expired_reservations()',
+    'public.check_stock_integrity()'
+  ] loop
+    execute format('revoke all on function %s from public, anon', f);
+    execute format('grant execute on function %s to authenticated', f);
+  end loop;
+end;
+$$;
