@@ -51,3 +51,62 @@ src/lib/drafts.ts, src/components/auth/forms.tsx - unsent note text stayed in a 
 - Leaving the page with text in the composer gives no warning: the draft is kept per lead and comes back (design 7.2).
 - A missing lead is answered with the not-found screen but an HTTP 200: the page streams behind its loading skeleton (Next.js sends the status before the page knows), the same as other streamed routes.
 - Native date and time pickers follow the browser's language and clock settings.
+
+## Review round, 11 Oct 2026 (re-check on f2c900b)
+
+Rules: the same pinned `command.md` (vercel-labs/web-interface-guidelines at 434b7f9), fetched again for this pass.
+Files: the review round's changes in `src/components/activity/{call-panel,composer,timeline,outcome-pad}.tsx`,
+`src/components/lead/{lead-page,lead-cards,details-tab,lead-header,local-time}.tsx`, `src/app/(app)/leads/[id]/loading.tsx`,
+`src/components/ui/toast.tsx` (the states the fixes use) and `messages/{en,fr}.json` (`opensAtDay`, `CallPanel.calling`,
+`CallPanel.queued`, `Composer.counter`, `Composer.mailCut`, `Timeline.errorOlder`, `Timeline.showMoreError`). Checked on the
+code, on the screenshots taken again on f2c900b (`screens/`, 103 lead page shots, no console error, no sideways
+scroll) and by the lead page e2e tests named below (Chromium, 9 of 9 passed on f2c900b this round).
+
+### Focus moves (findings 8, 9, 15, 16, 17): pass
+
+src/components/activity/call-panel.tsx:137, 258 - (15) closing, saving or "Call not logged" dropped focus to `<body>` → Save, Don't log and the second close put focus back on the Call button that opened the panel (or the button that started the waiting call; `<main>` if it is gone), "Call not logged" focuses Log it; only when focus was in the panel or lost (ff36402, 019b49f). Re-check: e2e `call_panel_focus_returns (WCAG 2.4.3) and second_call_waits_for_the_open_one` passed; `lead-call-*` shows the ring on the first pad key after End call, `lead-call-queued-*` on Save
+src/components/lead/lead-cards.tsx:84 - (16) a checked task took its focused check away → focus moves first to the next task's check, else the previous, else the Next step heading (`tabIndex=-1`) (6ebd4d4). Re-check: e2e `task_check_keeps_focus` passed
+src/components/lead/lead-cards.tsx:103-106 - (8) task Undo ignored a refused answer → the error toast says so (6ebd4d4). Re-check: same e2e, "a refused task Undo says so"
+src/components/activity/composer.tsx:133 - (9) Meeting focused the first `[aria-pressed]` (the Note kind) → `[data-meeting-kind] [aria-pressed="true"]` (6cf80d8). Re-check: e2e `meeting_quick_action` passed
+src/components/activity/timeline.tsx:536-544, 663 - (17) Escape, Cancel or a save ended the inline edit and dropped focus → Edit text focuses the text box (Radix's return to the trigger is prevented), closing focuses the entry's options button, unless the reader moved on (569e094). Re-check: e2e `timeline_edit_focus` passed
+
+### Locale numbers (finding 21): pass
+
+messages/en.json:805-806, messages/fr.json:805-806 - raw numbers in the counter and mail-cut lines → `{count, number}` / `{max, number}` (ff653a4). Re-check with next-intl on the real files: "9,500 of 10,000 characters", "9 500 caractères sur 10 000" (U+202F narrow no-break spaces, the Intl French group separator), "1,500" / "1 500" in the mail-cut line
+
+### "ouvre lun. à 09:00" (finding 22): pass
+
+src/components/lead/local-time.tsx:123, messages/fr.json:677 - "ouvre à lun. 09:00" → `opensAtDay` "… ouvre {day} à {time} ({relative})" with the weekday from `Intl.DateTimeFormat` (`weekday: "short"`), the time with `hourCycle: "h23"` (433648a). EN `opensAtDay` "opens {day} {time}". Re-check: `lead-hours-fr-light-390/1440`, `lead-hours-fr-dark-390/1440` (clock fixed to Sat 10 Oct 2026 12:00 UTC): "ouvre lun. à 09:00 (dans 2 jours)"; `lead-hours-en-light-1440`: "opens Mon 09:00 (in 2 days)"; e2e `calling hours that open on another day …` passed
+
+### Tap targets (findings 19, 20): pass
+
+src/components/lead/lead-page.tsx:312, src/components/lead/lead-cards.tsx:282 - (19) See the whole timeline and Add contact were 36 px on phones (`min-h-9` replaced the base `min-h-11` in tailwind-merge) → `min-h-11 sm:min-h-9` (bd48cdb, 91cc2d6); tailwind-merge now keeps both classes. Re-check: e2e `dnc_lead_logs_at_every_width` measures both ≥ 44 px at 390, and Add a note ≥ 44 px at 768 and 390
+src/components/activity/outcome-pad.tsx:42 - (20) pad keys 44 px on phones, design 7.9 asks 56 → `min-h-14 sm:min-h-11` (4aa77ed). Re-check: `lead-call-*-390`, `lead-call-queued-*-390`; e2e `phone_return_how_did_it_go` measures ≥ 56 px at 390, `details_next_call_follows_an_outcome` < 48 px at 1440
+
+### Call panel live regions and timer: pass
+
+src/components/activity/call-panel.tsx:376 - the queued-call line is a `role="status"` paragraph that stays in the accessibility tree while empty (`sr-only`, not `display:none`), so its text is inserted into an existing live region and announced (77817a7). Polite, one sentence, no other text in it
+src/components/activity/call-panel.tsx:380 - the timer is `role="timer"` with `aria-label` "Time since the call started" / "Temps depuis le début de l’appel" (an `aria-label` on a plain span is not allowed; `timer` takes an author name) (ba0e7ef). Its implicit `aria-live="off"` keeps the seconds from being read out; `tabular-nums` keeps the digits still
+messages/fr.json:751 - "Appel de {who}" read as an incoming call → "Appel vers {who}" (5b308f7); `lead-call-fr-*` show it
+
+### Timeline error, Try again and toast states: pass, with one nit below
+
+src/components/activity/timeline.tsx:129-133 - first page failed: `role="alert"` with "Couldn’t load the timeline." and Try again (unchanged)
+src/components/activity/timeline.tsx:146-161 - an older page that fails shows `role="alert"` "Couldn’t load older entries." with Try again; the observer waits for the press (no retry loop); the block stays drawn while it tries again (Try again `aria-disabled`, skeleton rows below) so the focused button is not lost mid-request (b91486b). Re-check: e2e `timeline_older_page_error_waits_for_retry` passed (no new request in 4 s; 60 entries and "That’s the whole history." after Try again)
+src/components/activity/timeline.tsx:516-525 - Show more that fails (offline or an error answer) keeps the entry closed with Show more still focused and a polite toast "Couldn’t load the full text. Try again." (c720cc3). Re-check: e2e `timeline_show_more_failure_says_so` passed
+src/components/ui/toast.tsx:38-40 - toasts are one `role="status" aria-live="polite"` region; error toasts name the next step ("Try again")
+
+### Found in this pass (not fixed here; app code untouched)
+
+src/components/activity/timeline.tsx:129-133, 146-161; src/components/lead/lead-page.tsx:321-325; src/components/lead/lead-cards.tsx:209-213 - nit (WCAG 2.4.3, the class of findings 15-17): when Try again succeeds, the `role="alert"` block holding the focused button unmounts and focus falls to `<body>`; a keyboard user pressing Try again on the older-page error lands at the top of the document instead of on the entries that just loaded. Fix: on success, focus the first newly loaded entry (older page) or the list/card heading (`tabIndex=-1`) when focus was on the Try again button (same `focusWithin`-style guard as the call panel)
+src/components/ui/toast.tsx:55-57 - nit (same class): pressing a toast's action (task Undo, entry Undo) by keyboard runs it and unmounts the toast with the focused button, so focus falls to `<body>`. Fix: remember the element focused before the toast took focus (`relatedTarget` of the first focus event) and return to it, else `<main>`
+src/components/activity/call-panel.tsx:396-399 - nit: "Call not logged" is a `role="status"` block mounted together with its text, and the focus then moves to Log it inside it; a live region added with its content is often not announced (VoiceOver, NVDA), and the button's name alone ("Log it") does not say why. Fix: `aria-describedby` on Log it pointing to the "Call not logged." paragraph (or put that sentence into the always-present status line at line 376)
+src/components/activity/call-panel.tsx:73 - known nit, kept (log 11 Oct, group b): the focus fallback sets `outline: none` on `<main id="main">` permanently, which the rules flag ("never outline: none without a focus replacement") and which also removes the ring when the skip link targets `<main>`. Logged for the Day 7 polish pass (move the fallback into the layout, without the inline style)
+src/components/activity/call-panel.tsx:339-343 - nit ("overlays must not cover the focused element"): on phones the call panel is a bottom sheet that does not trap focus, so a page control reached with Tab can sit under it; the import screen's `html:has(.import-action-bar) { scroll-padding-bottom }` pattern would keep it clear. Low impact (keyboard use on a phone during a call is rare); Day 7 candidate
+
+### Checked, no change
+
+- Copy: the new lines are sentence case per the plan override, active voice, and give the next step ("Finish logging this call first. The call to {who} opens next."; "Couldn’t load the full text. Try again."); curly apostrophes in both languages; "Saving…" / "Enregistrement…".
+- Do not contact composer (finding 12): three kinds, no `mailto:` or `wa.me` link can render; buttons, not links, for the kinds; `aria-pressed` follows the effective kind (a stale Email/WhatsApp choice reads as Note).
+- Skeleton (finding 18): `aria-busy="true"` with a visually hidden "Loading…"; no spinner; the action row matches the page at 1024 and 1280 (`lead-skeleton-*`). The 19 px header-line residual is recorded in apple-design-audit.md.
+- Animation: nothing new animates except existing transitions; the pad keys list their transition properties (no `transition: all`); reduced motion unchanged.

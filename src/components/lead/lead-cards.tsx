@@ -18,6 +18,7 @@ import { callHref, whatsappHref } from "@/lib/phone";
 import { DATE_CHIPS, LEAD_TASKS_SHOWN, chipDate, isOverdue, type LeadTask } from "@/lib/tasks";
 import { addDays, browserZone, localDate, primaryZone } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
+import { cardTitle, retryKeepingFocus } from "@/lib/focus";
 
 const noop = () => () => {};
 function useViewerZone() {
@@ -208,7 +209,7 @@ export const NextStepCard = memo(function NextStepCard({ lead, initialTasks, onC
     content = (
       <div role="alert" className="flex flex-col items-start gap-2">
         <p className="text-sm">{t("tasks.error")}</p>
-        <Button variant="quiet" onClick={() => void tasks.refetch()}>
+        <Button variant="quiet" onClick={(e) => void retryKeepingFocus(e.currentTarget, cardTitle, () => tasks.refetch())}>
           {t("tasks.retry")}
         </Button>
       </div>

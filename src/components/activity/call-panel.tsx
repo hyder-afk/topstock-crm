@@ -75,7 +75,7 @@ function focusBack(opener: HTMLElement | null) {
   main.focus({ preventScroll: true });
 }
 
-const whoOf = (target: CallTarget) => (target.contactName ? `${target.leadName} · ${target.contactName}` : target.leadName);
+const whoOf = (target: CallTarget) => (target.contactName ? `${target.leadName}\u00a0· ${target.contactName}` : target.leadName);
 
 // `call` is the open panel; `next` is a call started while `call` still had its outcome step open; `nudge` counts those
 // presses so the open panel can pull the focus to itself.
@@ -184,6 +184,7 @@ function CallPanel({
   const mod = useModKey() ?? "Ctrl";
   const log = useLogActivity();
   const headingId = useId();
+  const dismissedId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<HTMLDivElement>(null);
   const logItRef = useRef<HTMLButtonElement>(null);
@@ -394,9 +395,10 @@ function CallPanel({
 
         {phase === "notLogged" ? (
           <div role="status" className="flex flex-col gap-3">
-            <p className="text-sm">{t("dismissed")}</p>
+            <p id={dismissedId} className="text-sm">{t("dismissed")}</p>
             <div className="flex gap-2">
-              <Button ref={logItRef} variant="neutral" onClick={() => onChange({ ...call, phase: "outcome" })}>
+              {/* Focus lands here as the block appears, so the reason is read with the button. */}
+              <Button ref={logItRef} variant="neutral" aria-describedby={dismissedId} onClick={() => onChange({ ...call, phase: "outcome" })}>
                 {t("logIt")}
               </Button>
               <Button variant="quiet" onClick={finish}>

@@ -25,6 +25,7 @@ import type { TimelineFilter, TimelinePage } from "@/lib/activities";
 import { LEAD_TABS, personName, type LeadDetail, type LeadStatus, type LeadTab, type TeamMember } from "@/lib/leads";
 import { isTyping } from "@/lib/shortcuts";
 import type { LeadTask } from "@/lib/tasks";
+import { cardTitle, retryKeepingFocus } from "@/lib/focus";
 
 // The lead page (Day 4 design 7.1). Server-rendered with the lead, the first timeline page and its tasks; the browser
 // keeps them in the query cache (shared with the leads preview). 1440: the header full width with the actions on the
@@ -320,7 +321,7 @@ export function LeadPage({
                 ) : timeline.isError && entries.length === 0 ? (
                   <div role="alert" className="flex flex-col items-start gap-2">
                     <p className="text-sm font-bold">{tTimeline("error")}</p>
-                    <Button variant="quiet" onClick={() => void timeline.refetch()}>
+                    <Button variant="quiet" onClick={(e) => void retryKeepingFocus(e.currentTarget, cardTitle, () => timeline.refetch())}>
                       {tTimeline("retry")}
                     </Button>
                   </div>

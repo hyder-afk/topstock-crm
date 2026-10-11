@@ -271,8 +271,14 @@ test("call_panel_survives_navigation, then undo_within_window puts the lead back
   await panel(page).getByRole("button", { name: /^Save to timeline/ }).click();
   await expect.poll(() => latest(lead)).toBe("call:no_answer");
   expect(sql(`select next_action_at from public.companies where id = '${lead}'`)).not.toBe(before);
-  await toast(page).getByRole("button", { name: "Undo" }).click();
+  // Undo from the keyboard: the toast goes with its focused button, so the focus returns to where it was before.
+  // After Save the focus is back on the Call button (finding 15).
+  const focusedBefore = await page.evaluate(() => document.activeElement?.closest("button,a")?.textContent ?? null);
+  expect(focusedBefore).toBeTruthy();
+  await toast(page).getByRole("button", { name: "Undo" }).focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByRole("status").filter({ hasText: "Undone." })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest("button,a")?.textContent ?? null)).toBe(focusedBefore);
   expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("0");
   expect(sql(`select next_action_at from public.companies where id = '${lead}'`)).toBe(before);
   expect(errors).toEqual([]);
@@ -544,10 +550,13 @@ test("timeline_older_page_error_waits_for_retry (60 entries, older page fails): 
   await page.waitForTimeout(4000);
   expect(failed).toBe(after);
   await page.unroute(older);
-  await alert.getByRole("button", { name: "Try again" }).click();
+  // Pressed from the keyboard: when the error block goes, the focus moves into the timeline, not to the top of the page.
+  await alert.getByRole("button", { name: "Try again" }).focus();
+  await page.keyboard.press("Enter");
   await expect(articles).toHaveCount(60);
   await expect(page.getByText("That’s the whole history.")).toBeVisible();
   await expect(alert).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.closest('[role="tabpanel"]') != null)).toBe(true);
   // Only the browser's own notes about the 502 answers are expected in the console.
   expect(errors.filter((e) => !/status of 502/.test(e))).toEqual([]);
   await context.close();

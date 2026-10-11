@@ -31,6 +31,7 @@ import {
 import { personName } from "@/lib/leads";
 import { addDays, browserZone, localDate } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
+import { retryKeepingFocus, timelineTarget } from "@/lib/focus";
 
 // The lead's timeline (Day 4 design 7.2): newest first, 30 a page (keyset), grouped under Today / Yesterday / a date in
 // the viewer's zone. An ordered list of articles; text is shown as text only (never HTML, never auto-linked), with
@@ -128,7 +129,7 @@ export const Timeline = memo(function Timeline({
       ) : query.isError && entries.length === 0 ? (
         <div role="alert" className="flex flex-col items-start gap-3 rounded-lg bg-card p-6">
           <p className="font-bold">{t("error")}</p>
-          <Button variant="quiet" onClick={() => void query.refetch()}>
+          <Button variant="quiet" onClick={(e) => void retryKeepingFocus(e.currentTarget, timelineTarget, () => query.refetch())}>
             {t("retry")}
           </Button>
         </div>
@@ -152,8 +153,8 @@ export const Timeline = memo(function Timeline({
                       variant="quiet"
                       aria-disabled={isFetchingNextPage || undefined}
                       className="aria-disabled:opacity-60"
-                      onClick={() => {
-                        if (!isFetchingNextPage) void fetchNextPage();
+                      onClick={(e) => {
+                        if (!isFetchingNextPage) void retryKeepingFocus(e.currentTarget, timelineTarget, () => fetchNextPage());
                       }}
                     >
                       {t("retry")}

@@ -21,6 +21,7 @@ export default async function Loading() {
             <div className={`h-7 w-56 sm:h-9 sm:w-80 ${bar}`} />
             <div className={`h-6 w-44 ${bar}`} />
             <div className={`h-5 w-64 sm:w-96 ${bar}`} />
+            <div className={`h-5 w-52 ${bar}`} />
           </div>
         </div>
         <div className="flex gap-2 xl:shrink-0">
