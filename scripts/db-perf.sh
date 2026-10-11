@@ -1,7 +1,8 @@
 #!/bin/bash
 # Leads list speed at Release 1 size: throwaway PostgreSQL 16 + auth shim + migrations + 30k fake leads, then timings
 # and query plans of the list and count functions as a signed-in rep (supabase/tests/perf_leads.sql), then 300k
-# activities and 15k tasks with the Day 4 timeline timings (supabase/tests/perf_day4.sql), then the lead import at 30k
+# activities and 15k tasks with the Day 4 timeline, lead page and outcome timings (supabase/tests/perf_day4.sql), then
+# the lead import at 30k
 # and 50k rows as an admin, with those activities and tasks in place (supabase/tests/perf_import.sql). Local only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

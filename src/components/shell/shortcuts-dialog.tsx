@@ -21,13 +21,21 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     { keys: ["?"], label: t("help") },
     ...sections.map((s) => ({ keys: ["G", goKeys[s.id].toUpperCase()], label: t("goTo", { section: nav(s.id) }) })),
   ];
+  // Day 4b: the lead page, the leads preview and the call panel.
+  const leadRows: { keys: string[]; label: string }[] = [
+    { keys: ["J", "K"], label: t("nextLead") },
+    { keys: ["O"], label: t("openLead") },
+    { keys: ["1–7", "0"], label: t("outcomeKeys") },
+    { keys: ["U"], label: t("undoLast") },
+    { keys: [mod, "↩"], label: t("saveEntry") },
+  ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* A read-only list: focus starts on the panel, not on the close button (WAI-ARIA dialog pattern). Tab reaches
           Close, Escape closes. */}
       <DialogContent
         ref={panel}
-        className="p-6"
+        className="max-h-[calc(100dvh-24vh)] overflow-y-auto p-6"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           panel.current?.focus();
@@ -43,6 +51,19 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
         <DialogDescription className="mt-1 text-sm text-muted-foreground">{t("description")}</DialogDescription>
         <dl className="mt-4 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
           {rows.map((r) => (
+            <div key={r.label} className="contents">
+              <dt className="flex gap-1">
+                {r.keys.map((k) => (
+                  <Kbd key={k}>{k}</Kbd>
+                ))}
+              </dt>
+              <dd>{r.label}</dd>
+            </div>
+          ))}
+        </dl>
+        <h3 className="mt-5 text-sm font-bold text-muted-foreground">{t("leadPage")}</h3>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+          {leadRows.map((r) => (
             <div key={r.label} className="contents">
               <dt className="flex gap-1">
                 {r.keys.map((k) => (

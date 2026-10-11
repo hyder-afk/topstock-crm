@@ -13,6 +13,7 @@ import {
   type ColumnVisibilityState,
   type RowSelectionState,
 } from "@tanstack/react-table";
+import { takeListScroll } from "@/components/lead/lead-nav";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { countryName } from "@/lib/countries";
 import { personName, type LeadRow } from "@/lib/leads";
@@ -175,6 +176,12 @@ export function LeadsTable({
     scrollPaddingStart: headerHeight,
   });
   useEffect(() => virtualizer.measure(), [rowHeight, virtualizer]);
+  // Back from a lead page: the list scrolls to where it was (once; Day 4b).
+  useEffect(() => {
+    const y = takeListScroll(`${window.location.pathname}${window.location.search}`);
+    if (y === null) return;
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: y }));
+  }, []);
 
   // Load the next page when the last loaded row comes into view.
   const items = virtualizer.getVirtualItems();
@@ -213,6 +220,7 @@ export function LeadsTable({
       aria-label={t("title")}
       aria-rowcount={total ?? undefined}
       onKeyDown={onKeyDown}
+      data-leads-scroll
       className="relative min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg bg-card"
     >
       <div style={{ minWidth }} className="relative">

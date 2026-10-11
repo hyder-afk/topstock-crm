@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page, type Request } from "@playwright/test";
 import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, sql, totp } from "./helpers";
 
 // Lead import (Day 3b): an admin imports the fake sample files end to end (choose, match, check, import, undo), the
@@ -71,7 +71,29 @@ function watchErrors(page: Page) {
   return errors;
 }
 
+// Requests each page has in flight, counted from its first openImport (every test opens a fresh page with it).
+const inFlight = new WeakMap<Page, Set<Request>>();
+function trackRequests(page: Page) {
+  let pending = inFlight.get(page);
+  if (!pending) {
+    const set = new Set<Request>();
+    page.on("request", (r) => set.add(r));
+    page.on("requestfinished", (r) => set.delete(r));
+    page.on("requestfailed", (r) => set.delete(r));
+    inFlight.set(page, set);
+    pending = set;
+  }
+  return pending;
+}
+
 async function openImport(page: Page) {
+  const pending = trackRequests(page);
+  // A page that already shows the import may have a Past-imports refresh (a server action POST to /leads/import) in
+  // flight; navigating over it makes WebKit log "Fetch API cannot load … due to access control checks", which the
+  // console-error check would rightly count (Day 3b flake, docs/log.md 11 Oct). Let those requests finish first.
+  // `waitForLoadState("networkidle")` resolves at once when the document reached that state earlier, so it cannot
+  // wait for a request started later; the page's own request count can.
+  if (page.url() !== "about:blank") await expect.poll(() => pending.size, { timeout: 15_000 }).toBe(0);
   await page.goto("/leads/import");
   await expect(page.locator("main h1")).toHaveText("Import leads");
   await expect(page.getByRole("heading", { name: "Choose your file" })).toBeVisible();

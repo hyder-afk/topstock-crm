@@ -1,3 +1,4 @@
+import { CallPanelProvider } from "@/components/activity/call-panel";
 import { Logo } from "@/components/logo";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Dock } from "@/components/shell/dock";
@@ -16,17 +17,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <QueryProvider>
       <ToastProvider>
         <KeyboardLayer isAdmin={profile?.role === "admin"}>
-          <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col px-4 sm:px-8">
-            <header className="flex h-[72px] shrink-0 items-center justify-between gap-4">
-              <Logo className="h-auto w-[184px] text-foreground" />
-              <SearchButton />
-            </header>
-            {/* Bottom padding keeps the last content clear of the dock and its bead. */}
-            <main id="main" className="flex flex-1 flex-col pb-36">
-              {children}
-            </main>
-            <Dock />
-          </div>
+          {/* The call panel lives here, so a call started on one page survives moving to another (Day 4 design 7.3). */}
+          <CallPanelProvider>
+            <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col px-4 sm:px-8">
+              <header className="flex h-[72px] shrink-0 items-center justify-between gap-4">
+                <Logo className="h-auto w-[184px] text-foreground" />
+                <SearchButton />
+              </header>
+              {/* Bottom padding keeps the last content clear of the dock and its bead. */}
+              <main id="main" className="flex flex-1 flex-col pb-36">
+                {children}
+              </main>
+              <Dock />
+            </div>
+          </CallPanelProvider>
         </KeyboardLayer>
       </ToastProvider>
     </QueryProvider>

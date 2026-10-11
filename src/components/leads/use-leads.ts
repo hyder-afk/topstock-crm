@@ -118,11 +118,12 @@ export function useLeadChanges(team: TeamMember[]) {
     [patch],
   );
 
+  // Cool off may carry a return date ("Until when?", Day 4b); without one the database brings the lead back in 90 days.
   const changeStatus = useCallback(
-    async (before: Before[], status: LeadStatus) => {
+    async (before: Before[], status: LeadStatus, returnAt: string | null = null) => {
       const ids = before.map((b) => b.id);
       patch(new Map(ids.map((id) => [id, { lead_status: status }])));
-      const res = await setLeadsStatus(ids, status);
+      const res = await setLeadsStatus(ids, status, returnAt);
       if (!res.ok) {
         restore(before);
         toast.show(tErr(res.error));

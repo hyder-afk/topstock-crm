@@ -1,25 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Building2, ChevronDown, Mail, Pencil, Phone, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Building2, Mail, Pencil, Phone, Plus, X } from "lucide-react";
 import { addContact, updateContact, updateLead } from "@/app/(app)/leads/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
+import { useCallPanel } from "@/components/activity/call-panel";
+import { prefetchLead } from "@/components/activity/use-activities";
+import { callTarget } from "@/components/lead/lead-data";
+import { StatusMenu } from "@/components/lead/status-menu";
 import { ContactForm, contactToValues } from "@/components/leads/contact-form";
 import { LeadForm, leadToValues } from "@/components/leads/lead-form";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { leadKey, rowBefore, useLead, useLeadChanges } from "@/components/leads/use-leads";
 import { countryName } from "@/lib/countries";
-import { leadStatuses, mailHref, personName, telHref, type LeadDetail, type LeadStatus, type TeamMember } from "@/lib/leads";
+import { mailHref, personName, telHref, type LeadDetail, type TeamMember } from "@/lib/leads";
+import { callHref } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 
 // Compact actions so Call, Email, Set status and Edit fit one row in the preview panel.
@@ -30,11 +29,13 @@ export function LeadPreview({
   team,
   canAssign,
   onClose,
+  onOpenPage,
 }: {
   id: string;
   team: TeamMember[];
   canAssign: boolean;
   onClose: () => void;
+  onOpenPage?: () => void;
 }) {
   const t = useTranslations("Leads.preview");
   const tLeads = useTranslations("Leads");
@@ -77,7 +78,7 @@ export function LeadPreview({
         <p className="text-muted-foreground">{t("notFound")}</p>
       </div>
     );
-  return <LeadDetailView key={lead.id} lead={lead} team={team} canAssign={canAssign} header={header} />;
+  return <LeadDetailView key={lead.id} lead={lead} team={team} canAssign={canAssign} header={header} onOpenPage={onOpenPage} />;
 }
 
 function LeadDetailView({
@@ -85,15 +86,16 @@ function LeadDetailView({
   team,
   canAssign,
   header,
+  onOpenPage,
 }: {
   lead: LeadDetail;
   team: TeamMember[];
   canAssign: boolean;
   header: React.ReactNode;
+  onOpenPage?: () => void;
 }) {
   const t = useTranslations("Leads.preview");
   const tLeads = useTranslations("Leads");
-  const tStatus = useTranslations("Leads.status");
   const tForm = useTranslations("Leads.form");
   const tContact = useTranslations("Leads.contactForm");
   const format = useFormatter();
@@ -101,8 +103,20 @@ function LeadDetailView({
   const queryClient = useQueryClient();
   const toast = useToast();
   const { changeStatus } = useLeadChanges(team);
+  const { startCall } = useCallPanel();
+  const tPage = useTranslations("LeadPage");
   const [editing, setEditing] = useState(false);
   const [contactEdit, setContactEdit] = useState<string | "new" | null>(null);
+  // Hover or focus on Open lead warms the page in full: the lead and its first timeline page into the query cache, and
+  // the server-rendered page itself (Link prefetch={true}, kept by the router for 5 minutes), so the click draws from
+  // memory without a server round trip. Before that, the default prefetch (down to the page's loading skeleton).
+  const [warm, setWarm] = useState(false);
+  const warmUp = () => {
+    prefetchLead(queryClient, lead.id);
+    setWarm(true);
+    // The page's code is loaded and run now, not on the click (the router's prefetch downloads it but runs it later).
+    void import("@/components/lead/lead-page");
+  };
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: leadKey(lead.id) });
@@ -175,13 +189,32 @@ function LeadDetailView({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {lead.phone ? (
-          <a href={telHref(lead.phone)} className={cn(buttonVariants({ variant: "brand" }), compact)}>
+        {/* Day 4b: the full lead page (timeline, composer, tasks), warmed on hover. */}
+        <Link
+          href={`/leads/${lead.id}`}
+          data-open-lead=""
+          prefetch={warm ? true : null}
+          onClick={onOpenPage}
+          onPointerEnter={warmUp}
+          onFocus={warmUp}
+          className={cn(buttonVariants({ variant: "neutral" }), compact)}
+        >
+          {tPage("openLead")}
+          <ArrowUpRight aria-hidden="true" strokeWidth={2} className="size-4" />
+        </Link>
+        {lead.phone && !lead.phone_wrong_at && lead.lead_status !== "do_not_contact" ? (
+          <a
+            href={callHref(lead.phone, lead.country)}
+            onClick={(e) =>
+              startCall(callTarget(lead, { number: lead.phone as string, dialled: "lead", contactId: null, contactName: null, wrong: false }), e.currentTarget)
+            }
+            className={cn(buttonVariants({ variant: "brand" }), compact)}
+          >
             <Phone aria-hidden="true" strokeWidth={2} className="size-4" />
             {t("call")}
           </a>
         ) : null}
-        {lead.email ? (
+        {lead.email && lead.lead_status !== "do_not_contact" ? (
           <a href={mailHref(lead.email)} className={cn(buttonVariants({ variant: "quiet" }), compact)}>
             <Mail aria-hidden="true" strokeWidth={1.75} className="size-4" />
             {t("email")}
@@ -189,24 +222,12 @@ function LeadDetailView({
         ) : null}
         {lead.can_edit ? (
           <>
-            <DropdownMenu>
-              <DropdownMenuTrigger className={cn(buttonVariants({ variant: "quiet" }), compact)}>
-                {tLeads("setStatus")}
-                <ChevronDown aria-hidden="true" strokeWidth={1.75} className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuRadioGroup
-                  value={lead.lead_status}
-                  onValueChange={(v) => v !== lead.lead_status && void changeStatus([before], v as LeadStatus)}
-                >
-                  {leadStatuses.map((s) => (
-                    <DropdownMenuRadioItem key={s} value={s}>
-                      {tStatus(s)}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <StatusMenu
+              variant="button"
+              status={lead.lead_status}
+              callZoneKey={lead.call_zone_key ?? "Europe/Paris"}
+              onChange={(status, returnAt) => void changeStatus([before], status, returnAt)}
+            />
             {!editing ? (
               <Button variant="quiet" className={compact} onClick={() => setEditing(true)}>
                 <Pencil aria-hidden="true" strokeWidth={1.75} className="size-4" />
