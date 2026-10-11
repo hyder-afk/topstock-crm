@@ -30,7 +30,7 @@ against CLAUDE.md SECURITY, Master Plan section 8 (A to F) and the Day 6 design'
 | Roles (S5, S6) | Corrections (receive, adjust, count) need manager or admin plus a code under 10 minutes; Arrived needs manager or admin (RPC and guard); a hold needs the lead's editor; a release needs the hold's creator or the lead's editor; products are created and changed by managers and admins; archive needs a fresh code and no stock; restore is admin with a fresh code; costs are managers and admins only; settings and place names are admin only; the stock check is admin only |
 | Other organisation | Every policy has `org_id = current_org_id()`; the guard checks the place and the lead belong to the product's organisation; the deal is read under the deals policy and again under a lock in the apply step. Org C1's admin gets P0002 on every RPC (`other_org_product_not_found`); mutation rows 42, 62, 63 (33 documented: the guard's place check stands behind the places policy) |
 | Restrictive two-factor | `require_mfa` on all 9 new tables; every RPC refuses aal1 itself as well (`aal1_every_stock_rpc_denied`) |
-| Concurrency (S2, S3, S8) | Rules checked on the locked level; one lock order (deal, product, levels by location id, holds), with a hold's deal locked by the RPC **before its expiry rows** (in `expire_due_holds`) and again in the apply step. The first build locked the deal only in the apply step, after an expiry row had locked the level, and the verifier reproduced a deadlock with a deal lost at the same moment; case 9c now covers it. A deferred check pairs every departure from transit with its arrival. `stock_concurrency.sh` covers the last pieces, two holds, archive versus receipt, lock timeout, both lock-order races, and a deal lost during a hold in four variants (both orders, an expired hold at the level, a hold inserted straight into the ledger) |
+| Concurrency (S2, S3, S8) | Rules checked on the locked level; one lock order (deal, product, levels by location id, holds), with a hold's deal locked by the RPC **before its expiry rows** (in `expire_due_holds`) and again in the apply step. The first build locked the deal only in the apply step, after an expiry row had locked the level, and the verifier reproduced a deadlock with a deal lost at the same moment; case 9c now covers it. A deal lost or deleted locks its holds' products before it reads the holds, so an Arrived holding a product (and moving or splitting the deal's holds) commits first and every hold is released where it now is (case 9e, verifier round 2). A deferred check pairs every departure from transit with its arrival. `stock_concurrency.sh` covers the last pieces, two holds, archive versus receipt, lock timeout, both lock-order races, and a deal lost during a hold in five variants (both orders, an expired hold at the level, a hold inserted straight into the ledger, Arrived moving the deal's holds) |
 | Injection (S11) | Static SQL only; no `format()` or `EXECUTE` with user values (the two `format()` loops run over constant names at migration time); `search_path = ''` on every function, all names schema-qualified |
 | Errors and logs (A2) | A constant-message pre-check runs before every CHECK a client can reach (names, categories, notes, quantities, prices, dates, place names, request kinds); unique violations on the product name become `name_taken`. No value of the caller's text is put in a message |
 | Audit (A1) | One minimal audit row per ledger row (kind, product, place, changes, reason, references, note length; never the note). Costs and settings audited with diffs; `audit_log` stays admin-only, and admins may read costs anyway |
@@ -64,7 +64,9 @@ Rows from design section 9 that 6a delivers. Sales (ship, return, record_sale), 
 
 ## Re-check after the verifier's findings (11 Oct, code head 47b68f9)
 
-- **Deadlock (S3):** fixed as above; case 9c fails with 40P01 when the RPC's deal lock is removed (mutation row 64).
+- **Deadlock (S3):** fixed as above; with the RPC's deal lock removed (mutation row 64), case 9c fails, either through
+  the deadlock (40P01) or because the hold goes through for the deal being lost (the run in `mutations.md` failed the
+  second way).
 - **A deal lost through a BEFORE trigger kept its holds:** the release trigger now fires on any update that leaves the
   deal lost (row 65). Relevant to Day 5, which may move deals to Closed/lost through a stage change.
 - **Rate guard:** the system's release rows no longer count against the person who lost the deal (row 66). A person
@@ -75,12 +77,27 @@ Rows from design section 9 that 6a delivers. Sales (ship, return, record_sale), 
   level order, and the RPC reads two values from `RETURNING` instead of re-reading. Transfers' tests and mutation rows
   12, 13, 14, 22 to 26 and 34 were re-run on the trimmed code.
 
+## Re-check after the verifier's second round (11 Oct, code head 96ff420)
+
+- **A lost deal kept holds that Arrived was moving (integrity, S3):** the deal-lost trigger read the deal's holds
+  before Arrived (holding the product) committed. The release row for the old place then waited on the product and was
+  skipped once the hold had moved, and the part split off at the warehouse was never seen. The deal kept up to its
+  whole hold until the end date (at most 90 days), and the integrity check stayed clean. Not an access problem (no
+  other organisation or role involved), but stock stayed reserved for a lost deal. Fixed: the trigger share-locks the
+  holds' products first (deal, product, levels: the existing lock order, so no new deadlock path) and reads the holds
+  in a separate statement. Case 9e reproduced it before the fix (`warehouse 50/50`) and passes now; mutation row 68
+  removes the lock and is caught. Mutation rows 13, 26, 27, 49, 50 and 64 to 66 re-run and caught.
+- **`expire_due_holds` deal lock:** noted under README deviation 19 and in residual risk 1 below.
+
 ## Residual risks (none blocks 6a)
 
 1. **Expiry helpers granted to `authenticated`.** `private.expire_due_holds` and `private.sweep_expired_holds` must be
    executable by the invoker RPCs. They are not reachable through PostgREST (`private` is not exposed) and only end
    holds that are already past their end date, in the caller's organisation, as the design intends. If `private` were
-   ever exposed, the worst a caller could do is run the expiry early (no data access).
+   ever exposed, the worst a caller could do is run the expiry early (no data access). A caller who reaches the
+   database directly can also pass any deal of their own organisation to `expire_due_holds` and share-lock it until
+   their transaction ends: changing, losing or deleting that deal waits for that one transaction. No data is read back
+   and no other organisation is reached.
 2. **`movement_requests.result` is writable by its owner** (the RPC stores its answer through the caller's grant). A
    person can only change what their own retries return; the app must treat a replayed answer as a hint and re-read
    the levels (6b's server actions already re-read after every write in the design).

@@ -39,7 +39,8 @@ migration; 4b's is `20261012090000`)
     a departure from transit needs its arrival in the same transaction).
   - Expiry (D8): `expire_due_holds(product, place, deal)` before an RPC takes room (a hold for a deal locks the deal
     there first), `sweep_expired_holds()` at most once a minute per org, both over `expire_holds_for`; holds of a deal
-    lost or deleted are released by `release_deal_holds` (on any update that leaves the deal lost, and before delete).
+    lost or deleted are released by `release_deal_holds` (on any update that leaves the deal lost, and before delete;
+    it share-locks the holds' products before reading the holds, so an Arrived moving them commits first).
 - **Part 3: RPCs, integrity, nightly job, audit, import undo.**
   - `post_stock_movement` (design 4.2), `create_product` (opening stock is a receipt with a fresh code; idempotent),
     `update_product`, `set_product_cost`, `archive_product`, `restore_product`, `release_expired_reservations`,
@@ -58,16 +59,33 @@ migration; 4b's is `20261012090000`)
   6a in 9 sections (catalog, name key, access, validation, rules, transfers, permissions, holds and deals, other rules,
   1,000 random operations, ledger sums in every organisation), plus "products has no unit column".
 - `supabase/tests/stock_concurrency.sh` (new; same hooks): 11 cases of design 11.2 for 6a (sales stand in as
-  corrections until 6d), and a `perf` mode for I16. Case 9 has four parts: a hold and a deal lost in both orders, (c)
-  with an expired hold at the level (the deadlock the verifier found) and (d) a hold inserted straight into the ledger.
+  corrections until 6d), and a `perf` mode for I16. Case 9 has five parts: a hold and a deal lost in both orders, (c)
+  with an expired hold at the level (the deadlock the verifier found), (d) a hold inserted straight into the ledger and
+  (e) Arrived holding the product while the deal is lost (one hold moved whole, one split; verifier round 2).
 - `supabase/tests/import_attack.sql`: `import_fk_coverage` expects `private.stock_reservations`.
-- `scripts/db-mutations.py`: `--set day6a`, 67 rows (design mutations 1 to 16 tagged `[design N]`, plus every
-  protection the build added; two-layer protections split each way; rows 64 to 67 for the verifier's findings).
+- `scripts/db-mutations.py`: `--set day6a`, 68 rows (design mutations 1 to 16 tagged `[design N]`, plus every
+  protection the build added; two-layer protections split each way; rows 64 to 67 for the verifier's first findings,
+  row 68 for its second round).
 - `supabase/tests/perf_stock.sql` (new, part 1) and its `scripts/db-perf.sh` hook; `stock_concurrency.sh perf` at the
   end of `db-perf.sh`.
 - `docs/evidence/day6a/spikes/`: spikes S2, S3, S6 and the throwaway S1 (results in `docs/log.md`).
 
 ## Check results
+
+**After the verifier's second round (11 Oct): code head 96ff420** (b8dd28f: the fix and case 9e; 96ff420: mutation row
+68; later commits change only documents). Rows not listed here (perf set C, Playwright, Semgrep) stand as in round 2:
+the fix adds one product share lock to the deal-lost trigger only, which no timed path runs.
+
+| Check (round 3) | Result |
+|---|---|
+| Case 9e before the fix (test added, migration not yet changed) | `bash scripts/db-test.sh` exit 1: `FAIL: reserve_vs_deal_lost (e): a lost deal kept an active hold: transit 50/0, warehouse 50/50` (the verifier's defect reproduced) |
+| `bash scripts/db-test.sh` (on 96ff420) | exit 0: `rls_attack`, `import_attack`, `import_concurrency`, `activity_attack`, `activity_concurrency`: all checks passed; `stock_attack: all checks passed` (`integrity_after_random_ops: 769 applied, 231 refused`); `stock_concurrency: all checks passed` (`twenty_reservers_one_product: 10 of 20 succeeded, wall clock 332 ms`, `random_ops_three_sessions: 283 applied, 17 refused, no deadlock`); `advisors: no ERROR-level findings` (WARN `set_user_role` as before, INFO 1 unindexed FK, 11 unused indexes) |
+| Mutations round 4 (on 96ff420, throwaway worktree, removed after) | rows 13, 26, 27, 49, 50, 64, 65, 66 (Arrived, the deal locks and the release trigger) and new 68: `day6a: 9 rows run: 9 caught, 0 documented two-layer rows not caught, 0 not as listed` (exit 0); row 68 fails on `reserve_vs_deal_lost (e)`. **Final: 62 of 62 caught, 6 documented two-layer rows (68 rows)** |
+| `npm run lint` (on 96ff420) | exit 0, 0 errors (the 2 existing warnings) |
+| `npm run typecheck` (on 96ff420) | exit 0 |
+| `npm run test:unit` (on 96ff420) | 166 passed (exit 0) |
+| `npm audit --omit=dev` (on 96ff420) | found 0 vulnerabilities |
+| gitleaks (`origin/main..HEAD`) | not installed in this session; to run on the final head before merge (CI's gitleaks job runs on the PR) |
 
 **After the verifier's findings (11 Oct): code head 47b68f9, branch head 61bb7e7** (later commits change only
 documents). The first build's rows follow; each row says which commit it ran on.
@@ -173,9 +191,23 @@ only documents. Each row says which commit it ran on.
     postgres (the nightly job, tests); any other caller gets its own organisation whatever it passes, and
     `check_stock_integrity` passes none (test `integrity_rows_ignore_client_org`, mutation row 67). `private` has no
     REST endpoint.
+    Note (verifier round 2): `private.expire_due_holds(product, place, deal)` is granted to `authenticated` too (the
+    invoker RPCs call it), also in `private` with no REST endpoint. Its deal argument lets a signed-in caller who
+    reaches the database directly share-lock any deal of their own organisation until their transaction ends: a
+    change, loss or deletion of that deal waits for that one transaction (a hold for the deal holds the same lock
+    anyway). It reads nothing back and touches no other organisation.
 20. **Arrived trimmed** after the first timings: one expiry call for both places (expire_holds_for goes in level
     order), the two places read in one statement, what is left in transit and the held pieces moved taken from the
     rows' `RETURNING` snapshots (written under the lock) instead of reading the level and the ledger again.
+21. **A deal lost or deleted share-locks its holds' products before reading the holds** (verifier round 2), keeping the
+    lock order deal, product, levels. The holds are then read in a separate statement, which under READ COMMITTED
+    takes a fresh snapshot. Before, the trigger read the holds while an Arrived held the product: Arrived had moved one
+    hold to the warehouse (or split it, leaving part in transit) but not committed. The release row for the old place
+    waited on the product, and after Arrived committed the apply step found the hold elsewhere and skipped it (a
+    `deal_lost` release is skipped silently, by design, when its hold changed). The part split off at the warehouse was
+    never seen. The lost deal kept those holds until they ran out (up to 90 days), and the integrity check stayed clean,
+    because levels and holds still agreed. Case 9e (Arrived of 50 with holds of 30 and 40 at transit for the deal)
+    failed before the fix (`warehouse 50/50`) and passes now; mutation row 68 removes the lock.
 
 ## Open risks
 
@@ -252,3 +284,13 @@ Looked up **before** writing the verifier fixes (same library):
 - **Trigger functions in PL/pgSQL** (`plpgsql-trigger.html`): a BEFORE row trigger's modified NEW is the row stored and
   the one `INSERT ... RETURNING` returns. Hence the trimmed Arrived reads `on_hand_after` and `d_reserved` from
   `RETURNING`.
+
+For the verifier's second round (deviation 21) the pages were read **after** the fix was written, before it was
+committed (a process slip, logged):
+
+- **Read Committed** (`transaction-iso.html` 13.2.1) and **SPI_execute** (`spi-spi-execute.html`): each command starts
+  with a new snapshot of everything committed so far, and a read-write function takes a new snapshot before each
+  command in READ COMMITTED. Hence the holds are read in a statement after the product lock, not in the same one.
+- **Row-level locks** (`explicit-locking.html`, table 13.3): FOR SHARE conflicts with FOR NO KEY UPDATE, so the
+  trigger's product lock waits for an Arrived holding the product. Under REPEATABLE READ or SERIALIZABLE the apply
+  step's FOR UPDATE would raise a serialization error instead of skipping (the transaction fails, nothing is kept).

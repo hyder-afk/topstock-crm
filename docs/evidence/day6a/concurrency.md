@@ -23,3 +23,17 @@ twenty_reservers_one_product: 10 of 20 succeeded, wall clock 405 ms
 random_ops_three_sessions: 275 applied, 25 refused, no deadlock
 stock_concurrency: all checks passed
 ```
+
+## Re-run after the verifier's second round (code head 96ff420)
+
+Case 9 now has five parts: (e) Arrived of 50 holds the product's lock (and has moved the deal's transit holds: 30 moved
+whole, 40 split into 20 at the warehouse and 20 left in transit) while the deal is lost. The deal must keep no active
+hold, both levels must end with nothing held (transit 50/0, warehouse 50/0), and the split must have happened. Before
+the fix, `bash scripts/db-test.sh` stopped with
+`FAIL: reserve_vs_deal_lost (e): a lost deal kept an active hold: transit 50/0, warehouse 50/50`. After it (exit 0):
+
+```text
+twenty_reservers_one_product: 10 of 20 succeeded, wall clock 332 ms
+random_ops_three_sessions: 283 applied, 17 refused, no deadlock
+stock_concurrency: all checks passed
+```

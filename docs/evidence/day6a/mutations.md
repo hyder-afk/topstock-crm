@@ -38,8 +38,14 @@ behave as listed.
   (row 64) stands in front of the apply step's for every RPC call. Row 64 fails first on "a hold went through for a deal
   being lost": the deadlock aborts the deal's session, so the hold commits for a deal that the session meant to lose.
   The rows not re-run touch code and tests that round 3 did not change.
+- **Round 4, on 96ff420** (after the verifier's second round: the deal-lost trigger locks the holds' products before
+  reading them, b8dd28f, with concurrency case 9e). Rows run: every row on Arrived, the deal locks and the release
+  trigger (13, 26, 27, 49, 50, 64, 65, 66) and the new row 68:
+  `day6a: 9 rows run: 9 caught, 0 documented two-layer rows not caught, 0 not as listed` (exit 0). Each re-run row
+  failed on the same first line as in round 3. Row 68 fails on case 9e (`a lost deal kept an active hold: transit 50/0,
+  warehouse 50/50`), exactly as the test did before the fix was written.
 
-**Result on the final code: 61 of 61 caught; the 6 documented two-layer rows not caught, as listed (67 rows).** Each
+**Result on the final code: 62 of 62 caught; the 6 documented two-layer rows not caught, as listed (68 rows).** Each
 documented row's protection is still proved by its pair:
 
 | Documented row | Stands behind | Pair that is caught |
@@ -73,7 +79,7 @@ probe expecting no change does not survive. Each is still a failing check of tha
 | 10 | No deal-on-this-lead check in the guard (the apply step checks it again) [design 7] | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings | 2 (6f37e23) |
 | 11 | No deal-on-this-lead check in the apply step (the guard checks it first) [design 7] | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings | 2 (6f37e23) |
 | 12 | Levels locked in the opposite order [design 8] | caught | 40P01: deadlock detected | 3 (61bb7e7); before: 2 (6f37e23); round 1: NOT CAUGHT |
-| 13 | Arrived moves unheld pieces first [design 9] | caught | FAIL: transfer_moves_held_pieces_first: {"moved": 5, "levels": [{"on_hand": 805, "location": "warehouse", "reserved": 800, "available": 5},  | 3 (61bb7e7); before: 2 (6f37e23); round 1: NOT CAUGHT |
+| 13 | Arrived moves unheld pieces first [design 9] | caught | FAIL: transfer_moves_held_pieces_first: {"moved": 5, "levels": [{"on_hand": 805, "location": "warehouse", "reserved": 800, "available": 5},  | 4 (96ff420); before: 3 (61bb7e7); before: 2 (6f37e23); round 1: NOT CAUGHT |
 | 14 | The RPC does not end due holds before it writes [design 10] | caught | stock is held | 3 (61bb7e7); before: 1 (fa74b6c) |
 | 15 | The guard trusts any current_user [design 11] | caught | FAIL: "insert into private.stock_movements (group_id, product_id, location_id, kind, | 3 (61bb7e7); before: 1 (fa74b6c) |
 | 16 | No FOR SHARE on the product in the apply step (archive racing a receipt) [design 12] | caught | FAIL: archive_vs_receive_race (b): stock was received into a product being archived | 1 (fa74b6c) |
@@ -86,8 +92,8 @@ probe expecting no change does not survive. Each is still a failing check of tha
 | 23 | A transfer_in may reuse a departure that already arrived (guard and unique index, both layers) | caught | FAIL: "insert into private.stock_movements (group_id, product_id, location_id, kind, qty, pair_id) | 3 (61bb7e7); before: 1 (fa74b6c) |
 | 24 | No not-paired-yet check in the guard (the unique index refuses with 23505 instead of a constant error) | caught | FAIL: "insert into private.stock_movements (group_id, product_id, location_id, kind, qty, pair_id) | 3 (61bb7e7); before: 1 (fa74b6c) |
 | 25 | No unique index on pair_id (backstop behind the guard) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings | 3 (61bb7e7); before: 2 (6f37e23) |
-| 26 | Arrived takes no product lock before the levels (deadlock with a movement holding the product's share lock) | caught | 40P01: deadlock detected | 3 (61bb7e7); before: 1 (fa74b6c) |
-| 27 | A hold for a deal does not lock the deal in the apply step (a hold inserted straight into the ledger keeps its lost deal's hold) | caught | FAIL: reserve_vs_deal_lost (d): a lost deal kept an active hold | 3 (61bb7e7); before: 1 (fa74b6c) |
+| 26 | Arrived takes no product lock before the levels (deadlock with a movement holding the product's share lock) | caught | 40P01: deadlock detected | 4 (96ff420); before: 3 (61bb7e7); before: 1 (fa74b6c) |
+| 27 | A hold for a deal does not lock the deal in the apply step (a hold inserted straight into the ledger keeps its lost deal's hold) | caught | FAIL: reserve_vs_deal_lost (d): a lost deal kept an active hold | 4 (96ff420); before: 3 (61bb7e7); before: 1 (fa74b6c) |
 | 28 | Archive with stock left | caught | FAIL: "select public.archive_product('e832b25f-d37c-4517-ae27-b6569cbf58ab')" succeeded, expected 22023 | 1 (fa74b6c) |
 | 29 | Archive without a fresh code in the product guard (a direct update) | caught | FAIL: "update public.products set archived_at = now() where id = '7a000000-0000-0000-0000-000000000009'" succeeded, expected 42501 | 1 (fa74b6c) |
 | 30 | A manager restores an archived product (product guard) | caught | FAIL: "update public.products set archived_at = null where id = '7a000000-0000-0000-0000-000000000009'" succeeded, expected 42501 | 1 (fa74b6c) |
@@ -109,8 +115,8 @@ probe expecting no change does not survive. Each is still a failing check of tha
 | 46 | The alert assignee may be outside the organisation | caught | FAIL: "update private.inventory_settings set alert_assignee_id = '00000000-0000-0000-0000-0000000000c1'" succeeded, expected 22023 | 1 (fa74b6c) |
 | 47 | Import undo does not count holds (it would try to delete a lead with stock history) | caught | FAIL: undo preview with a hold {"kept": 0, "tagged": 2, "removable": 2} | 1 (fa74b6c) |
 | 48 | Holds deleted with their lead (on delete cascade) | caught | FAIL: hold foreign key actions | 1 (fa74b6c) |
-| 49 | A lost deal keeps its holds (trigger dropped) | caught | FAIL: release_deal_holds_lost must have no column list | 3 (61bb7e7); before: 1 (fa74b6c) |
-| 50 | A deleted deal keeps its holds (trigger dropped) | caught | FAIL: deal_delete_releases_holds | 3 (61bb7e7); before: 1 (fa74b6c) |
+| 49 | A lost deal keeps its holds (trigger dropped) | caught | FAIL: release_deal_holds_lost must have no column list | 4 (96ff420); before: 3 (61bb7e7); before: 1 (fa74b6c) |
+| 50 | A deleted deal keeps its holds (trigger dropped) | caught | FAIL: deal_delete_releases_holds | 4 (96ff420); before: 3 (61bb7e7); before: 1 (fa74b6c) |
 | 51 | The page-load sweep is not throttled | caught | FAIL: a second sweep within a minute should do nothing | 1 (fa74b6c) |
 | 52 | No not-enough-stock rule in the apply step (the CHECK fires instead of a constant error) | caught | FAIL: "select pg_temp.mv('7a000000-0000-0000-0000-000000000001', 'adjust_out', 97, reason => 'lost')" gave 22023 (hint "below_reserved", sto | 1 (fa74b6c) |
 | 53 | The public RPCs keep PUBLIC execute (anon could call them) | caught | FAIL: execute rights on public.post_stock_movement(uuid, text, integer, text, text, text, uuid, uuid, uuid, date, integer, uuid) | 1 (fa74b6c) |
@@ -124,9 +130,10 @@ probe expecting no change does not survive. Each is still a failing check of tha
 | 61 | No two-factor policy on the levels, ledger, holds, hold uses and request ids | caught | FAIL: public.stock_levels lacks the restrictive two-factor policy | 1 (fa74b6c) |
 | 62 | A place of another organisation is accepted (no same-organisation check and places readable by everyone, both layers) | caught | FAIL: "insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason) | 2 (6f37e23) |
 | 63 | Places readable across organisations (policy) | caught | FAIL: the other org sees this org's stock | 2 (6f37e23) |
-| 64 | The RPC does not lock a hold's deal before its expiry rows (deadlock with a deal lost at the same moment) | caught | FAIL: reserve_vs_deal_lost (c): a hold went through for a deal being lost | 3 (61bb7e7) |
-| 65 | The deal-lost release fires only on an UPDATE naming status (a status set by a BEFORE trigger keeps the holds) | caught | FAIL: release_deal_holds_lost must have no column list | 3 (61bb7e7) |
-| 66 | The rate guard counts the system's deal-lost release rows | caught | FAIL: rate_guard_skips_deal_lost_releases: a row of g's was refused: too many stock changes in a minute | 3 (61bb7e7) |
+| 64 | The RPC does not lock a hold's deal before its expiry rows (deadlock with a deal lost at the same moment) | caught | FAIL: reserve_vs_deal_lost (c): a hold went through for a deal being lost | 4 (96ff420); before: 3 (61bb7e7) |
+| 65 | The deal-lost release fires only on an UPDATE naming status (a status set by a BEFORE trigger keeps the holds) | caught | FAIL: release_deal_holds_lost must have no column list | 4 (96ff420); before: 3 (61bb7e7) |
+| 66 | The rate guard counts the system's deal-lost release rows | caught | FAIL: rate_guard_skips_deal_lost_releases: a row of g's was refused: too many stock changes in a minute | 4 (96ff420); before: 3 (61bb7e7) |
 | 67 | stock_integrity_rows honours any caller's organisation argument | caught | FAIL: integrity_rows_ignore_client_org | 3 (61bb7e7) |
+| 68 | The deal-lost release reads the holds before locking their products (Arrived moving them meanwhile: the lost deal keeps them) | caught | FAIL: reserve_vs_deal_lost (e): a lost deal kept an active hold: transit 50/0, warehouse 50/50 | 4 (96ff420) |
 
-Raw runner output: the count lines of rounds 1 to 3 as quoted above.
+Raw runner output: the count lines of rounds 1 to 4 as quoted above.
