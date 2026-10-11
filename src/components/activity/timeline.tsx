@@ -227,7 +227,8 @@ function useDayLabel() {
     },
     [zone, today, t, format],
   );
-  return { now, label };
+  const day = useCallback((e: TimelineEntry) => dayOf(zone, e.created_at), [zone]);
+  return { now, label, day };
 }
 
 /** Per entry, what the reader opened (Show more and its full text), kept while a virtualised row is off screen. */
@@ -393,23 +394,30 @@ export function EntryList({
   /** Inside a card (Summary): rows divided by lines instead of cards of their own. */
   compact?: boolean;
 }) {
-  const { now, label: dayLabel } = useDayLabel();
+  const { now, label: dayLabel, day: dayOfEntry } = useDayLabel();
   // Entries seen at the first draw do not animate; later ones (just logged) rise in once.
   const [seen] = useState(() => new Set(entries.map((e) => e.id)));
 
-  const groups: { label: string; items: TimelineEntry[] }[] = [];
+  // Each group is keyed by its calendar day (one group in Summary), never by its first entry: a newly logged, undone or
+  // deleted entry at the top would change that key and remount the group, closing an open edit and its draft.
+  const groups: { key: string; day: string; label: string; items: TimelineEntry[] }[] = [];
+  const used = new Map<string, number>();
   for (const e of entries) {
-    const label = dayLabel(e);
+    const day = dayOfEntry(e);
     const last = groups[groups.length - 1];
-    if (grouped && last && last.label === label) last.items.push(e);
-    else if (!grouped && last) last.items.push(e);
-    else groups.push({ label, items: [e] });
+    if (last && (!grouped || last.day === day)) last.items.push(e);
+    else {
+      // Newest first, so a day comes once; a clock-skewed optimistic entry could bring it back, and keys stay unique.
+      const n = used.get(day) ?? 0;
+      used.set(day, n + 1);
+      groups.push({ key: grouped ? (n ? `${day}~${n}` : day) : "all", day, label: dayLabel(e), items: [e] });
+    }
   }
 
   return (
     <div className="flex flex-col gap-5">
       {groups.map((g) => (
-        <div key={g.label + g.items[0].id} className="flex flex-col gap-2">
+        <div key={g.key} className="flex flex-col gap-2">
           {grouped ? <h3 className="font-mono text-xs text-muted-foreground">{g.label}</h3> : null}
           <ol className={cn("flex flex-col", compact ? "divide-y divide-border" : "gap-2")}>
             {g.items.map((e) => (

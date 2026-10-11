@@ -489,6 +489,31 @@ test("timeline_older_page_error_waits_for_retry (60 entries, older page fails): 
   await context.close();
 });
 
+test("timeline_edit_survives_new_entry: an open edit keeps its draft while a note is logged from the rail", async ({ browser }) => {
+  const lead = makeLead("Comptoir Brouillon");
+  sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${userId(adminEmail)}', 'note', null, 'Older today', now() - interval '1 minute'
+       from public.companies c where c.id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead, "timeline");
+  const timeline = page.getByRole("tabpanel");
+  const entry = timeline.getByRole("article").filter({ hasText: "Older today" });
+  await entry.getByRole("button", { name: "Entry options" }).click();
+  await page.getByRole("menuitem", { name: "Edit text" }).click();
+  const edit = timeline.getByRole("textbox", { name: "Text of the entry" });
+  await edit.fill("Draft kept while logging");
+  // A new entry at the top of Today (optimistic, then the saved one) leaves the day's group and the open edit in place.
+  const composer = page.getByRole("form", { name: "Log activity" });
+  await composer.getByRole("textbox", { name: "Note" }).fill("Fresh note");
+  await composer.getByRole("button", { name: /^Save to timeline/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Logged: Note" })).toBeVisible();
+  await expect(timeline.getByRole("article").filter({ hasText: "Fresh note" })).toBeVisible();
+  await expect.poll(() => sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("2");
+  await expect(edit).toHaveValue("Draft kept while logging");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("timeline_virtualised_past_120 (150 entries): a feed with positions, the end reached, the menu and Show more work", async ({ browser }) => {
   const lead = makeLead("Comptoir Cent Cinquante");
   sql(`insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
