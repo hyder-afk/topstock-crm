@@ -120,12 +120,11 @@ create table public.products (
   name text not null,                                            -- CATÉGORIE
   name_key text generated always as (private.product_name_key(name)) stored,
   category text,                                                 -- optional grouping, set in the app
-  unit text not null default 'piece',                            -- display word only (open question 16)
   pieces_per_carton integer not null,                            -- QTY PAR CARTON
   cartons_per_pallet integer,
   reorder_point integer,                                         -- warehouse available pieces; null = no alert
-  price_min numeric(12,4),                                       -- PRIX PAR PCS: internal floor, EUR per piece
-  price_max numeric(12,4),                                       -- PRIX PAR PCS MAX: the price clients see
+  price_min numeric(12,4),                                       -- PRIX PAR PCS: internal floor, EUR per piece excl. VAT
+  price_max numeric(12,4),                                       -- PRIX PAR PCS MAX: the price clients see, excl. VAT
   transit_eta date,                                              -- expected arrival of the In Transit pieces
   share_visible boolean not null default true,                   -- "Hide from clients" (6e)
   archived_at timestamptz,
@@ -139,7 +138,6 @@ create table public.products (
   constraint products_category_check check (category is null or (char_length(category) between 1 and 80
     and category = btrim(category)
     and category !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]')),
-  constraint products_unit_check check (unit in ('piece', 'pair')),
   constraint products_carton_check check (pieces_per_carton between 1 and 1000000),
   constraint products_pallet_check check (cartons_per_pallet between 1 and 10000),
   constraint products_reorder_check check (reorder_point between 0 and 50000000),
@@ -206,9 +204,6 @@ begin
     raise exception 'a category needs at most 80 characters, without control characters'
       using errcode = '22023', hint = 'category';
   end if;
-  if new.unit is null or new.unit not in ('piece', 'pair') then
-    raise exception 'unknown unit' using errcode = '22023', hint = 'unit';
-  end if;
   if new.pieces_per_carton is null or new.pieces_per_carton not between 1 and 1000000 then
     raise exception 'pieces per carton must be 1 to 1,000,000' using errcode = '22023', hint = 'carton';
   end if;
@@ -244,7 +239,8 @@ $$;
 create trigger product_guard before insert or update on public.products
   for each row execute function private.product_guard();
 
--- Cost per piece (D15): managers and admins only, in a table no product query touches.
+-- Cost per piece (D15): managers and admins only, in a table no product query touches. From a stock sheet it is
+-- PP ÷ QUANTITÉ (PP is the lot's total purchase cost; Haider confirmed 11 Oct 2026).
 create table private.product_costs (
   product_id uuid primary key references public.products (id),
   org_id uuid not null references public.orgs (id),
@@ -345,9 +341,9 @@ create policy products_update on public.products for update to authenticated
   using (org_id = (select private.current_org_id()) and (select private.is_manager_or_admin()))
   with check (org_id = (select private.current_org_id()) and (select private.is_manager_or_admin()));
 grant select,
-      insert (name, category, unit, pieces_per_carton, cartons_per_pallet, reorder_point, price_min, price_max,
+      insert (name, category, pieces_per_carton, cartons_per_pallet, reorder_point, price_min, price_max,
               transit_eta, share_visible),
-      update (name, category, unit, pieces_per_carton, cartons_per_pallet, reorder_point, price_min, price_max,
+      update (name, category, pieces_per_carton, cartons_per_pallet, reorder_point, price_min, price_max,
               transit_eta, share_visible, archived_at)
   on public.products to authenticated;
 
@@ -1258,7 +1254,6 @@ create function public.create_product(
   p_price_min numeric default null,
   p_price_max numeric default null,
   p_category text default null,
-  p_unit text default 'piece',
   p_cartons_per_pallet integer default null,
   p_reorder_point integer default null,
   p_transit_eta date default null,
@@ -1313,9 +1308,9 @@ begin
     end if;
   end if;
   begin
-    insert into public.products (name, category, unit, pieces_per_carton, cartons_per_pallet, reorder_point, price_min,
+    insert into public.products (name, category, pieces_per_carton, cartons_per_pallet, reorder_point, price_min,
                                  price_max, transit_eta, share_visible)
-    values (p_name, p_category, coalesce(p_unit, 'piece'), p_pieces_per_carton, p_cartons_per_pallet, p_reorder_point,
+    values (p_name, p_category, p_pieces_per_carton, p_cartons_per_pallet, p_reorder_point,
             p_price_min, p_price_max, p_transit_eta, coalesce(p_share_visible, true))
     returning id into v_id;
   exception when unique_violation then
@@ -1347,7 +1342,6 @@ create function public.update_product(
   p_price_min numeric default null,
   p_price_max numeric default null,
   p_category text default null,
-  p_unit text default 'piece',
   p_cartons_per_pallet integer default null,
   p_reorder_point integer default null,
   p_transit_eta date default null,
@@ -1369,7 +1363,7 @@ begin
   begin
     update public.products p
        set name = p_name, pieces_per_carton = p_pieces_per_carton, price_min = p_price_min, price_max = p_price_max,
-           category = p_category, unit = coalesce(p_unit, 'piece'), cartons_per_pallet = p_cartons_per_pallet,
+           category = p_category, cartons_per_pallet = p_cartons_per_pallet,
            reorder_point = p_reorder_point, transit_eta = p_transit_eta, share_visible = coalesce(p_share_visible, true)
      where p.id = p_id
     returning p.id, p.number, p.updated_at into v_row;
@@ -1668,8 +1662,8 @@ declare
 begin
   foreach f in array array[
     'public.post_stock_movement(uuid, text, integer, text, text, text, uuid, uuid, uuid, date, integer, uuid)',
-    'public.create_product(text, integer, numeric, numeric, text, text, integer, integer, date, boolean, numeric, integer, text, uuid)',
-    'public.update_product(uuid, text, integer, numeric, numeric, text, text, integer, integer, date, boolean)',
+    'public.create_product(text, integer, numeric, numeric, text, integer, integer, date, boolean, numeric, integer, text, uuid)',
+    'public.update_product(uuid, text, integer, numeric, numeric, text, integer, integer, date, boolean)',
     'public.set_product_cost(uuid, numeric)',
     'public.archive_product(uuid)',
     'public.restore_product(uuid)',

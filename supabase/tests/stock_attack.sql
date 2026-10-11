@@ -196,15 +196,20 @@ begin
    where attrelid = 'public.products'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'INSERT');
   if cols is distinct from array['cartons_per_pallet', 'category', 'name', 'pieces_per_carton', 'price_max', 'price_min',
-                                 'reorder_point', 'share_visible', 'transit_eta', 'unit'] then
+                                 'reorder_point', 'share_visible', 'transit_eta'] then
     raise exception 'FAIL: product insert columns are %', cols;
   end if;
   select array_agg(attname::text order by attname) into cols from pg_attribute
    where attrelid = 'public.products'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'UPDATE');
   if cols is distinct from array['archived_at', 'cartons_per_pallet', 'category', 'name', 'pieces_per_carton', 'price_max',
-                                 'price_min', 'reorder_point', 'share_visible', 'transit_eta', 'unit'] then
+                                 'price_min', 'reorder_point', 'share_visible', 'transit_eta'] then
     raise exception 'FAIL: product update columns are %', cols;
+  end if;
+  -- Units are pieces only (Haider, 11 Oct 2026): no per-product unit label anywhere.
+  if exists (select 1 from pg_attribute where attrelid = 'public.products'::regclass and attname = 'unit'
+               and not attisdropped) then
+    raise exception 'FAIL: products has a unit column';
   end if;
   select array_agg(attname::text order by attname) into cols from pg_attribute
    where attrelid = 'private.stock_movements'::regclass and attnum > 0 and not attisdropped
@@ -270,8 +275,8 @@ begin
   -- RPCs: authenticated only, invoker, search_path pinned; anon_no_execute_on_stock_rpcs.
   foreach f in array array[
     'public.post_stock_movement(uuid, text, integer, text, text, text, uuid, uuid, uuid, date, integer, uuid)',
-    'public.create_product(text, integer, numeric, numeric, text, text, integer, integer, date, boolean, numeric, integer, text, uuid)',
-    'public.update_product(uuid, text, integer, numeric, numeric, text, text, integer, integer, date, boolean)',
+    'public.create_product(text, integer, numeric, numeric, text, integer, integer, date, boolean, numeric, integer, text, uuid)',
+    'public.update_product(uuid, text, integer, numeric, numeric, text, integer, integer, date, boolean)',
     'public.set_product_cost(uuid, numeric)', 'public.archive_product(uuid)', 'public.restore_product(uuid)',
     'public.release_expired_reservations()', 'public.check_stock_integrity()'] loop
     if has_function_privilege('anon', f, 'EXECUTE') or not has_function_privilege('authenticated', f, 'EXECUTE') then
@@ -598,7 +603,7 @@ begin
     values ('Server fields', 12, '00000000-0000-0000-0000-0000000000cc')$q$, '42501');
   perform pg_temp.expect_error($q$insert into public.products (name, pieces_per_carton, import_batch_id)
     values ('Server fields', 12, '90000000-0000-0000-0000-00000000000a')$q$, '42501');
-  insert into public.products (name, pieces_per_carton, category, unit) values ('  Server fields  ', 12, '  ', 'pair')
+  insert into public.products (name, pieces_per_carton, category) values ('  Server fields  ', 12, '  ')
   returning org_id, created_by, archived_at, name, category, number into r;
   if r.org_id is distinct from current_setting('t.org')::uuid or r.created_by is distinct from '00000000-0000-0000-0000-00000000000a'
      or r.archived_at is not null or r.name is distinct from 'Server fields' or r.category is not null or r.number is null then
@@ -610,7 +615,6 @@ begin
       ($q$insert into public.products (name, pieces_per_carton) values ('!!!', 12)$q$, 'product_name'),
       ($q$insert into public.products (name, pieces_per_carton) values ('', 12)$q$, 'product_name'),
       ($q$insert into public.products (name, pieces_per_carton, category) values ('MARK3 ok', 12, 'MARK3' || repeat('c', 80))$q$, 'category'),
-      ($q$insert into public.products (name, pieces_per_carton, unit) values ('MARK3 ok', 12, 'box')$q$, 'unit'),
       ($q$insert into public.products (name, pieces_per_carton) values ('MARK3 ok', 0)$q$, 'carton'),
       ($q$insert into public.products (name, pieces_per_carton) values ('MARK3 ok', null)$q$, 'carton'),
       ($q$insert into public.products (name, pieces_per_carton, cartons_per_pallet) values ('MARK3 ok', 12, 0)$q$, 'pallet'),
@@ -892,9 +896,9 @@ declare
 begin
   perform pg_temp.expect_ok($q$select pg_temp.mv('7a000000-0000-0000-0000-000000000005', 'adjust_in', 1, reason => 'found')$q$);
   -- create_product with a cost and opening stock; a retry with the same request id returns the same product.
-  v_id := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 'pair', 40, 48, current_date + 20, true, 1.25, 72,
+  v_id := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 40, 48, current_date + 20, true, 1.25, 72,
                                 'transit', req);
-  v_again := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 'pair', 40, 48, current_date + 20, true, 1.25, 72,
+  v_again := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 40, 48, current_date + 20, true, 1.25, 72,
                                    'transit', req);
   if v_again is distinct from v_id or (select count(*) from public.products where name = 'Manager product') <> 1
      or pg_temp.oh(v_id, 'transit') <> 72 or pg_temp.oh(v_id, 'warehouse') <> 0
@@ -913,10 +917,10 @@ begin
   perform pg_temp.expect_error($q$select public.create_product('Huge price', 12, 1e20)$q$, '22023', 'price');
   perform pg_temp.expect_error($q$select public.create_product('Huge cost', 12, p_cost_per_piece => 1e20)$q$, '22023', 'cost');
   -- update_product replaces the editable fields.
-  r := public.update_product(v_id, 'Manager product v2', 12, 2.5, 5, null, 'piece', null, 10, null, false);
-  if (select row(name, pieces_per_carton, price_min, price_max, category, unit, cartons_per_pallet, reorder_point,
+  r := public.update_product(v_id, 'Manager product v2', 12, 2.5, 5, null, null, 10, null, false);
+  if (select row(name, pieces_per_carton, price_min, price_max, category, cartons_per_pallet, reorder_point,
                  transit_eta, share_visible)::text from public.products where id = v_id)
-     is distinct from '("Manager product v2",12,2.5000,5.0000,,piece,,10,,f)' or r ->> 'id' is distinct from v_id::text then
+     is distinct from '("Manager product v2",12,2.5000,5.0000,,,10,,f)' or r ->> 'id' is distinct from v_id::text then
     raise exception 'FAIL: update_product: %', (select row_to_json(p) from public.products p where id = v_id);
   end if;
   perform pg_temp.expect_error(format('select public.update_product(%L, %L, 12)', gen_random_uuid(), 'Ghost'), 'P0002');
