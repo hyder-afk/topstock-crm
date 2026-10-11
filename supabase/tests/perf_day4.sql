@@ -214,6 +214,7 @@ do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
 -- number, the caller's call task due yesterday, and (busiest only) 50 more open tasks.
 --  P1:  get_lead on both, as the admin (perf user a1: the first user, so admin), 10 runs to settle plans (run 6 logged
 --       for the busiest lead: generic-plan check), then the average of 5.
+--  P2:  list_lead_activities itself (part 1 timed the same query from a stand-in function): three pages as in part 1.
 --  P4:  log_activity "wrong number" on the contact: it locks contact and lead, marks the contact, completes the due call
 --       task and makes "find the right number"; with a request id, as the app sends. P4b: undo_activity on it. Each run
 --       rolled back; 10 runs, then 5 timed; runs 6 to 10 log any statement inside them slower than 1 ms (auto_explain).
@@ -302,7 +303,7 @@ begin
 end;
 $$;
 
-\echo '=== P1, P4, P4b plan check: 5 runs to settle, then run 6 with every inner statement logged (auto_explain) ==='
+\echo '=== P1, P2 (RPC), P4, P4b plan check: 5 runs to settle, then run 6 with every inner statement logged (auto_explain) ==='
 set auto_explain.log_min_duration = -1;
 set role authenticated;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
@@ -311,6 +312,9 @@ begin
   for r in 1..5 loop
     perform public.get_lead(current_setting('perf.heavy')::uuid);
     perform pg_temp.outcome_round(current_setting('perf.heavy')::uuid, current_setting('perf.heavy_contact')::uuid);
+    perform count(*) from public.list_lead_activities(current_setting('perf.heavy')::uuid, null,
+                                                      current_setting('perf.cur_at')::timestamptz,
+                                                      current_setting('perf.cur_id')::uuid, 30);
   end loop;
 end $$;
 reset role;
@@ -318,11 +322,41 @@ set auto_explain.log_min_duration = 0;
 set role authenticated;
 \echo '--- P1 run 6: get_lead, the lead with 10,008 entries'
 select public.get_lead(current_setting('perf.heavy')::uuid) is not null as found;
+\echo '--- P2 (the real RPC) run 6: list_lead_activities, page at row 5,000 of the lead with 10,008 entries'
+select count(*) from public.list_lead_activities(current_setting('perf.heavy')::uuid, null,
+                                                 current_setting('perf.cur_at')::timestamptz, current_setting('perf.cur_id')::uuid, 30);
 \echo '--- P4 and P4b run 6: log_activity (wrong number on the contact) and undo_activity, the lead with 10,008 entries'
 select pg_temp.outcome_round(current_setting('perf.heavy')::uuid, current_setting('perf.heavy_contact')::uuid);
 reset role;
 set auto_explain.log_min_duration = -1;
 set role authenticated;
+
+\echo '=== P2 on the real RPC (list_lead_activities, with its joins): average of 5 warm runs after 10, milliseconds ==='
+do $$
+declare
+  heavy uuid := current_setting('perf.heavy')::uuid;
+  cur_at timestamptz := current_setting('perf.cur_at')::timestamptz;
+  cur_id uuid := current_setting('perf.cur_id')::uuid;
+  t0 timestamptz;
+  total numeric;
+  n integer;
+begin
+  for c in 1..3 loop
+    for r in 1..15 loop
+      t0 := clock_timestamp();
+      case c
+        when 1 then select count(*) into n from public.list_lead_activities(heavy);
+        when 2 then select count(*) into n from public.list_lead_activities(heavy, null, cur_at, cur_id);
+        else select count(*) into n from public.list_lead_activities(heavy, array['call']);
+      end case;
+      if r = 11 then total := 0; end if;
+      if r > 10 then total := total + extract(epoch from clock_timestamp() - t0) * 1000; end if;
+    end loop;
+    if n <> 30 then raise exception 'FAIL: page size %', n; end if;
+    raise notice '% : % ms', rpad((array['P2 RPC first page, lead with 10,008 entries', 'P2 RPC page at row 5,000',
+                                          'P2 RPC calls only, first page'])[c], 44), round(total / 5, 2);
+  end loop;
+end $$;
 
 \echo '=== P1, P4, P4b timings: average of 5 warm runs after 10, milliseconds ==='
 do $$
