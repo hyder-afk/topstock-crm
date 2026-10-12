@@ -30,11 +30,12 @@ import { cn } from "@/lib/utils";
 // ever left behind without a line: when the check after upload cannot read the bytes, the upload is cancelled at once
 // (and the line keeps the id to cancel again on Dismiss if that call failed). Focus never drops to the page: when a
 // line's button changes (Cancel, then nothing while checking, then Try again or Dismiss), it moves to the line's new
-// button or the line itself. While the tab is hidden (another tab selected), outcomes also show as a toast, and a file
+// button or the line itself; the Delete dialog (Escape, Cancel, a cancelled code, a failed delete) closes back onto the
+// row's Actions, its Retry once stuck deleting, or the heading when the row is gone. While the tab is hidden (another tab selected), outcomes also show as a toast, and a file
 // dropped outside the zone is ignored instead of replacing the page. Rows link with plain <a> to /api/files/<id>, never Next Link, so hovering never prefetches, and
 // the 60-second link to the bytes exists only in that route's redirect.
 
-type StepUp = { ensureFresh: (minSeconds?: number) => Promise<boolean>; requireFresh: () => Promise<boolean> };
+type StepUp = { ensureFresh: (minSeconds?: number, focusFallback?: () => HTMLElement | null) => Promise<boolean>; requireFresh: () => Promise<boolean> };
 type Upload = {
   key: number;
   name: string;
@@ -97,6 +98,9 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
   const [said, setSaid] = useState<{ id: number; text: string }[]>([]);
   const saidSeq = useRef(0);
   const [confirm, setConfirm] = useState<LeadFile | null>(null);
+  // The file whose Delete was chosen: its menu item is gone when the dialog closes, so the focus goes back to the row's
+  // own button (Actions, or Retry once it is stuck deleting) or, when the row is gone, the heading (round 3 finding 1).
+  const returnTo = useRef<string | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
   const rows = files.data?.pages.flatMap((p) => p.files) ?? [];
@@ -279,9 +283,29 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
     );
   };
 
+  /** The row's own button (Actions, or Retry while stuck deleting) for a file still listed, else the heading. */
+  const rowTarget = useCallback(
+    (id: string | null): HTMLElement | null => {
+      const listed = !!id && !!queryClient.getQueryData<InfiniteData<FilesPage>>(filesKey(leadId))?.pages.some((p) => p.files.some((f) => f.id === id));
+      const el = listed ? listRef.current?.querySelector<HTMLElement>(`[data-file-actions="${CSS.escape(id)}"]`) : null;
+      return el ?? headingRef.current;
+    },
+    [queryClient, leadId],
+  );
+  /** Puts the focus on the row (or the heading) only when nothing has it, so a focus the person moved is never taken. */
+  const refocusRow = useCallback(
+    (id: string | null) => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      rowTarget(id)?.focus();
+    },
+    [rowTarget],
+  );
+
   const remove = async (file: LeadFile) => {
+    returnTo.current = file.id;
     setConfirm(null);
-    if (file.status === "ready" && !(await stepUp.ensureFresh(60))) return;
+    if (file.status === "ready" && !(await stepUp.ensureFresh(60, () => rowTarget(file.id)))) return;
     setBusyIds((s) => new Set(s).add(file.id));
     let res = await deleteFile({ id: file.id }).catch(() => ({ ok: false as const, error: "unavailable" as const }));
     if (!res.ok && res.error === "step_up" && (await stepUp.requireFresh())) {
@@ -295,6 +319,9 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
     if (!res.ok) {
       if (res.error !== "step_up") toast.show(t("errors.deleteFailed"));
       await queryClient.invalidateQueries({ queryKey: filesKey(leadId) });
+      // The refetch may have swapped the row's menu for Retry (stuck deleting) or removed the row: the focus goes to
+      // what the row has now, never to the page.
+      requestAnimationFrame(() => requestAnimationFrame(() => refocusRow(file.id)));
       return;
     }
     queryClient.setQueryData<InfiniteData<FilesPage>>(filesKey(leadId), (old) =>
@@ -493,7 +520,11 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
                   sizeLabel={size(f.size)}
                   dateLabel={fileDateLabel(format, now, f.created_at)}
                   busy={busyIds.has(f.id)}
-                  onDelete={() => (f.status === "deleting" ? void remove(f) : setConfirm(f))}
+                  onDelete={() => {
+                    returnTo.current = f.id;
+                    if (f.status === "deleting") void remove(f);
+                    else setConfirm(f);
+                  }}
                 />
               </motion.li>
             ))}
@@ -529,7 +560,15 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
       ) : null}
 
       <Dialog open={confirm !== null} onOpenChange={(open) => (open ? null : setConfirm(null))}>
-        <DialogContent className={cn(phoneSheet, "sm:w-[min(440px,calc(100%-32px))]")}>
+        <DialogContent
+          className={cn(phoneSheet, "sm:w-[min(440px,calc(100%-32px))]")}
+          // Radix would return the focus to the menu item that opened it, which is gone (so to the page): the row's own
+          // button instead, unless the next dialog (a new code) already has it.
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            refocusRow(returnTo.current);
+          }}
+        >
           <div className="flex flex-col gap-5 p-6">
             <div className="flex flex-col gap-2">
               <DialogTitle className="text-xl font-bold text-balance">{t("deleteConfirm.title")}</DialogTitle>
@@ -622,6 +661,7 @@ function FileRow({
               {/* aria-disabled, not disabled: a disabled button drops its focus to the page; the name says which file. */}
               <button
                 type="button"
+                data-file-actions={file.id}
                 onClick={() => (busy ? undefined : onDelete())}
                 aria-disabled={busy || undefined}
                 aria-label={t("retryDeleteNamed", { name: file.name })}
@@ -646,6 +686,7 @@ function FileRow({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
+              data-file-actions={file.id}
               aria-label={t("menu", { name: file.name })}
               className="relative grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] sm:size-9"
             >
