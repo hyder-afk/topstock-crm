@@ -13,7 +13,8 @@ the same thing: it must stay NOT CAUGHT, and the row removing both layers must b
 An edit is (old, new) on the set's own migration, or (path, old, new) on another one. A mutation edits the definition
 that is live after every migration: Day 4a redefines the import "untouched" rule (so Day 3b's mutations of it edit the
 Day 4a migration), and Day 4b redefines the audit trigger, the activity and task delete policies and the insert lock
-(so the Day 3b and Day 4a mutations of those edit the Day 4b migration).
+(so the Day 3b and Day 4a mutations of those edit the Day 4b migration), and Day 4d redefines the "untouched" rule again
+(so those mutations now edit the Day 4d migration).
 """
 import pathlib
 import subprocess
@@ -76,13 +77,13 @@ MUTATIONS_3B = [
     ("One import at a time: index not unique",
      [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
     ("Undo: leads with an activity count as untouched",
-     [(MIG_4A, "     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
     ("Undo: leads with a contact count as untouched",
-     [(MIG_4A, "     and not exists (select 1 from public.contacts k where k.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.contacts k where k.company_id = c.id)\n", "")]),
     ("Undo: leads with a deal count as untouched",
-     [(MIG_4A, "     and not exists (select 1 from public.deals d where d.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.deals d where d.company_id = c.id)\n", "")]),
     ("Undo: edited leads count as untouched",
-     [(MIG_4A, "c.import_batch_id = p_batch and c.updated_at = c.created_at", "c.import_batch_id = p_batch")]),
+     [(MIG_4D, "c.import_batch_id = p_batch and c.updated_at = c.created_at", "c.import_batch_id = p_batch")]),
     ("Undo: no second look before deleting (race with a new contact)",
      [("   where c.id = any (v_ids) and c.id in (select private.lead_import_untouched(p_batch, p_max_rows));",
        "   where c.id = any (v_ids);")]),
@@ -164,7 +165,7 @@ MUTATIONS_4A = [
      [(MIG_4B, "    diff := jsonb_build_object('old', (rec - 'body') || jsonb_build_object('body_len', char_length(rec ->> 'body')));\n",
        "    diff := jsonb_build_object('old', rec);\n")]),
     ("Import undo: leads with a task count as untouched",
-     [("     and not exists (select 1 from public.tasks t where t.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.tasks t where t.company_id = c.id)\n", "")]),
     ("Task guard: keeps the client's done_at",
      [("      new.done_at := now();\n      new.completed_by := caller;\n", "      new.completed_by := caller;\n")]),
     ("Task guard: the source entry need not be the caller's",
