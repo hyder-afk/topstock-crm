@@ -213,7 +213,7 @@ begin
   r := public.begin_file_upload('35000000-0000-0000-0000-0000000000a1', 'Devis n°12 — été 🧾.pdf', 'application/pdf', 1200);
   -- file_path_server_built: org/lead/<new id>.pdf, from ids and the type only.
   if r ->> 'path' is distinct from current_setting('t.org') || '/35000000-0000-0000-0000-0000000000a1/' || (r ->> 'id') || '.pdf'
-     or r -> 'stale_paths' is distinct from '[]'::jsonb then
+     or r -> 'stale' is distinct from '[]'::jsonb then
     raise exception 'FAIL: file_path_server_built: %', r;
   end if;
   select * into f from public.files where id = (r ->> 'id')::uuid;
@@ -388,7 +388,7 @@ begin
   perform pg_temp.expect_error(format($q$select pg_temp.put(%L, 10, 'application/pdf')$q$, current_setting('t.late_path')), '42501');
   -- The next begin marks it "deleting" and hands its path back for clean-up.
   r := public.begin_file_upload('35000000-0000-0000-0000-0000000000a1', 'next.pdf', 'application/pdf', 10);
-  if r -> 'stale_paths' is distinct from jsonb_build_array(current_setting('t.late_path'))
+  if r -> 'stale' is distinct from jsonb_build_array(jsonb_build_object('id', current_setting('t.late'), 'path', current_setting('t.late_path')))
      or (select status from public.files where id = current_setting('t.late')::uuid) <> 'deleting' then
     raise exception 'FAIL: stale uploads handed back: %', r;
   end if;
@@ -509,7 +509,7 @@ declare
 begin
   r := public.open_file(current_setting('t.f2')::uuid);
   if r is distinct from jsonb_build_object('path', current_setting('t.f2_path'), 'name', 'price list.xlsx',
-       'mime', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') then
+       'mime', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'size', 4096) then
     raise exception 'FAIL: open_file: %', r;
   end if;
   if public.file_usage() is distinct from (select sum(size)::bigint from public.files where status = 'ready') then

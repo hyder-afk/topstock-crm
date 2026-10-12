@@ -352,12 +352,12 @@ $$;
 -- ===========================================================================
 -- Part 6. RPCs (SECURITY INVOKER, static SQL; design 4.3)
 -- ===========================================================================
--- Start an upload: first the caller's own uploads left pending for over 15 minutes become "deleting" (their paths come
--- back for clean-up: remove the object, then finish_file_delete), then the new row. Returns {id, path, stale_paths}.
+-- Start an upload: first the caller's own uploads left pending for over 15 minutes become "deleting" (their ids and paths
+-- come back for clean-up: remove the object, then finish_file_delete), then the new row. Returns {id, path, stale}.
 create function public.begin_file_upload(p_company uuid, p_name text, p_mime text, p_size integer) returns jsonb
 language plpgsql volatile set search_path = '' as $$
 declare
-  v_stale text[];
+  v_stale jsonb;
   v_id uuid;
   v_path text;
 begin
@@ -382,11 +382,11 @@ begin
                      where s.uploaded_by = (select auth.uid()) and s.status = 'pending'
                        and s.created_at <= now() - interval '15 minutes'
                      order by s.created_at limit 20)
-    returning f.storage_path)
-  select coalesce(array_agg(storage_path), '{}') into v_stale from stale;
+    returning f.id, f.storage_path)
+  select coalesce(jsonb_agg(jsonb_build_object('id', id, 'path', storage_path)), '[]'::jsonb) into v_stale from stale;
   insert into public.files (company_id, name, mime, size) values (p_company, p_name, p_mime, p_size)
   returning id, storage_path into v_id, v_path;
-  return jsonb_build_object('id', v_id, 'path', v_path, 'stale_paths', to_jsonb(v_stale));
+  return jsonb_build_object('id', v_id, 'path', v_path, 'stale', v_stale);
 end;
 $$;
 
@@ -489,7 +489,7 @@ begin
 end;
 $$;
 
--- Open a ready file the caller can see: {path, name, mime}; writes the file_access audit row. The server then checks
+-- Open a ready file the caller can see: {path, name, mime, size}; writes the file_access audit row. The server then checks
 -- the stored bytes again (every open) and answers with a 60-second link.
 create function public.open_file(p_id uuid) returns jsonb
 language plpgsql volatile set search_path = '' as $$
@@ -499,7 +499,7 @@ begin
   if (select auth.uid()) is null or not (select private.has_aal2()) then
     raise exception 'two-factor sign-in required' using errcode = '42501';
   end if;
-  select jsonb_build_object('path', f.storage_path, 'name', f.name, 'mime', f.mime) into r
+  select jsonb_build_object('path', f.storage_path, 'name', f.name, 'mime', f.mime, 'size', f.size) into r
     from public.files f
    where f.id = p_id and f.status = 'ready';
   if r is null then
