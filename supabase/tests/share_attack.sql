@@ -497,7 +497,7 @@ begin
 end $$;
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30) \g /dev/null
-select pg_temp.expect_error($q$select public.share_view(current_setting('t.tok'))$q$, '42501');
+select pg_temp.expect_error($q$select public.share_view(current_setting('t.tok'))$q$, '42501') \g /dev/null
 reset role;
 
 -- 7. Requests: share_request_creates_request_and_one_task, share_request_task_assignee_fallback,
