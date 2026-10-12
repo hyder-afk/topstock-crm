@@ -4,8 +4,10 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useQueryClient } from "@tanstack/react-query";
 import { animate, motion, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { project, springs } from "@/lib/motion";
+import { prefetchPipeline } from "@/lib/prefetch";
 import { sectionForPath, sections, type SectionId } from "@/lib/nav";
 import { goKeys } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
@@ -22,6 +24,7 @@ export function Dock() {
   const tShortcut = useTranslations("Shortcuts");
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const reduce = useReducedMotion();
   const barRef = useRef<HTMLDivElement>(null);
   const links = useRef(new Map<SectionId, HTMLAnchorElement>());
@@ -137,6 +140,9 @@ export function Dock() {
                 else links.current.delete(s.id);
               }}
               aria-current={active === s.id ? "page" : undefined}
+              // Day 5b (design D32): the pipeline's data goes into the cache on hover or focus, so the route renders at once.
+              onPointerEnter={s.id === "pipeline" ? () => prefetchPipeline(queryClient) : undefined}
+              onFocus={s.id === "pipeline" ? () => prefetchPipeline(queryClient) : undefined}
               title={tShortcut("tooltip", { key: goKeys[s.id].toUpperCase() })}
               className={cn(
                 "group flex min-w-0 flex-col items-center justify-end gap-0.5 rounded-lg pb-2 text-[0.6875rem] tracking-[0.01em] transition-colors duration-150",
