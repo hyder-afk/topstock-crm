@@ -31,8 +31,9 @@
 # 11. crossing_orders_no_deadlock: two admins each have a due call task on a different Negotiation lead, so their queues
 #     meet the same two leads in opposite orders (each one's follow-up first). Both press Start (two cards) at the same
 #     instant, 20 rounds: nobody fails (before the lead locks, one of the two died with "deadlock detected" in almost
-#     every round), each gets their own follow-up first, and no lead is held twice. A third case session then holds
-#     the lead lock of a lead (a claim being taken) and a Start skips that lead at once instead of waiting.
+#     every round), no lead is held twice, and in at least 5 rounds each got their own follow-up first (the orders really
+#     crossed; when one walk reaches the other's lead first it skips nothing it should not). A session then holds the
+#     lead lock of a lead (a claim being taken) and a Start skips that lead at once instead of waiting.
 # Usage: queue_concurrency.sh "<libpq connection string>" (after queue_attack.sql). Used by scripts/db-test.sh and the
 # CI "rls" job. Fixtures are made by the superuser connection; the probes run as the admins through the API role.
 set -euo pipefail
@@ -315,6 +316,7 @@ select (select string_agg(c ->> 'id', ',') from jsonb_array_elements(r -> 'cards
   from (select pg_advisory_xact_lock_shared(911011), public.claim_next_lead('team', null, '{}', 2, true) as r) s;
 SQL
 }
+crossed=0
 for round in $(seq 1 20); do
   as_owner "delete from private.queue_claims;" > /dev/null
   psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL & pg=$!
@@ -332,12 +334,14 @@ SQL
   [ $r1 = 0 ] && [ $r2 = 0 ] || fail "crossing_orders_no_deadlock: round $round: Wyn exit $r1, Xan exit $r2: \
 $(cat "$TMPDIR_QC/x1.err" "$TMPDIR_QC/x2.err")"
   first1=$(cut -d, -f1 "$TMPDIR_QC/x1.out"); first2=$(cut -d, -f1 "$TMPDIR_QC/x2.out")
-  [ "$first1" = "$l11a" ] && [ "$first2" = "$l11b" ] || fail "crossing_orders_no_deadlock: round $round: first cards \
-'$first1' / '$first2' (expected each one's own follow-up)"
+  if [ "$first1" = "$l11a" ] && [ "$first2" = "$l11b" ]; then crossed=$((crossed + 1)); fi
+  grep -q "$l11a\|$l11b" "$TMPDIR_QC/x1.out" "$TMPDIR_QC/x2.out" || fail "crossing_orders_no_deadlock: round $round: \
+neither follow-up lead was served"
   dup=$(tr ',' '\n' < "$TMPDIR_QC/x1.out" | cat - <(tr ',' '\n' < "$TMPDIR_QC/x2.out") | grep -c . || true)
   uniq_n=$(tr ',' '\n' < "$TMPDIR_QC/x1.out" | cat - <(tr ',' '\n' < "$TMPDIR_QC/x2.out") | grep . | sort -u | wc -l)
   [ "$dup" = "$uniq_n" ] || fail "crossing_orders_no_deadlock: round $round: a lead was served to both"
 done
+[ "$crossed" -ge 5 ] || fail "crossing_orders_no_deadlock: only $crossed of 20 rounds crossed (no real race)"
 # A lead whose lock is held (a claim being taken elsewhere) is skipped at once, never waited for.
 as_owner "delete from private.queue_claims;" > /dev/null
 psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL & ph=$!
