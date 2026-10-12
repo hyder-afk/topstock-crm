@@ -103,6 +103,7 @@ export function useLogActivity() {
   const t = useTranslations("Outcomes");
   const tTypes = useTranslations("Composer.types");
   const tStatus = useTranslations("Leads.status");
+  const tStage = useTranslations("Stages");
   const tErr = useTranslations("Errors");
   const format = useFormatter();
   const undo = useUndoActivity();
@@ -166,6 +167,21 @@ export function useLogActivity() {
             ? `${tTypes("meeting")} · ${t(input.outcome)}`
             : tTypes(input.type);
       const parts = [t("toast.logged", { what })];
+      // Day 5b: the deal Interested or Book meeting opened, or why it was not.
+      const dealPart = saved.deal
+        ? saved.deal.opened
+          ? t("toast.dealOpened", { stage: tStage("lead") })
+          : saved.deal.reason === "not_editable"
+            ? ownerName
+              ? t("dealSkipped.not_editable", { owner: ownerName })
+              : t("dealSkipped.not_editableUnowned")
+            : t(`dealSkipped.${saved.deal.reason}`)
+        : null;
+      if (saved.deal || input.dealId) {
+        void queryClient.invalidateQueries({ queryKey: ["lead-deals", input.leadId] });
+        void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+        if (input.dealId) void queryClient.invalidateQueries({ queryKey: ["deal", input.dealId] });
+      }
       if (input.type === "call" && saved.editable === false) {
         parts.push(ownerName ? t("toast.notEditable", { owner: ownerName }) : t("toast.notEditableUnowned"));
       } else if (input.type === "call") {
@@ -176,6 +192,7 @@ export function useLogActivity() {
           parts.push(t("toast.back", { date: format.dateTime(new Date(saved.next_action_at), { weekday: "short", day: "numeric", month: "short" }) }));
         }
       }
+      if (dealPart) parts.push(dealPart);
       toast.show(
         parts.join(" · "),
         saved.undo_until
@@ -188,7 +205,7 @@ export function useLogActivity() {
       );
       return result;
     },
-    [queryClient, toast, t, tTypes, tStatus, tErr, format, undo],
+    [queryClient, toast, t, tTypes, tStatus, tStage, tErr, format, undo],
   );
 }
 
@@ -226,8 +243,15 @@ export function useUndoActivity() {
         old ? { ...old, pages: old.pages.map((p) => ({ ...p, entries: p.entries.filter((e) => e.id !== activityId) })) } : old,
       );
       refreshLead(queryClient, leadId);
+      // Day 5b: the deal the call opened went with it, or stayed because it changed since.
+      if (result.data.deal) {
+        void queryClient.invalidateQueries({ queryKey: ["lead-deals", leadId] });
+        void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+      }
       // The entry had changed the status, and it did not come back: a colleague changed it since (never overwritten).
-      toast.show(statusExpected && !result.data.restored.status ? t("undonePartly") : t("undone"));
+      toast.show(
+        result.data.deal === "kept" ? t("dealKept") : statusExpected && !result.data.restored.status ? t("undonePartly") : t("undone"),
+      );
       return true;
     },
     [queryClient, toast, t, tErr],

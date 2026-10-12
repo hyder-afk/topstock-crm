@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo } from "motion/react";
 import { PhoneOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { FollowUpPicker, OutcomePad, followUpArgs, followUpReady, noFollowUp, type FollowUp } from "@/components/activity/outcome-pad";
 import { lastUndoable, useLogActivity, useUndoActivity } from "@/components/activity/use-activities";
 import { followUpRule, outcomeForKey, type CallOutcome } from "@/lib/activities";
+import type { StageKey } from "@/lib/deals";
+import { formatMoney, parseMoney } from "@/lib/money";
 import { project, springs } from "@/lib/motion";
 import { isTyping } from "@/lib/shortcuts";
 import { browserZone, nextWorkingDate } from "@/lib/timezones";
@@ -33,6 +35,10 @@ export type CallTarget = {
   dialled: "lead" | "contact";
   contactId: string | null;
   contactName: string | null;
+  /** Day 5b (design 7.9): the lead's open deals the caller sees, and whether the caller may open one here. */
+  openDeals?: number;
+  latestDeal?: { stage: StageKey; value: string | null } | null;
+  canOpenDeal?: boolean;
 };
 
 type Phase = "calling" | "outcome" | "notLogged";
@@ -199,21 +205,33 @@ function CallPanel({
   const [saving, setSaving] = useState(false);
   const [now] = useState(() => new Date());
   const { target, phase } = call;
+  // Day 5b (design 7.9, D17): Interested and Book meeting offer "Open a deal" (on when the lead has no open deal),
+  // with an optional title and value; hidden for people who may not change the lead.
+  const tStage = useTranslations("Stages");
+  const locale = useLocale();
+  const [openDeal, setOpenDeal] = useState(false);
+  const [dealTitle, setDealTitle] = useState("");
+  const [dealValue, setDealValue] = useState("");
+  const dealOutcome = outcome === "interested" || outcome === "meeting_booked";
+  const canDeal = dealOutcome && !!target.canOpenDeal;
+  const dealValueParsed = dealValue.trim() ? parseMoney(dealValue, locale) : null;
+  const dealValueBad = openDeal && canDeal && dealValue.trim() !== "" && dealValueParsed === null;
   const clock = useClock(call.startedAt, phase === "calling");
   const viewerZone = browserZone() ?? "Europe/Paris";
   const rule = outcome ? followUpRule("call", outcome) : "none";
-  const ready = !!outcome && followUpReady(rule, follow) && !saving;
+  const ready = !!outcome && followUpReady(rule, follow) && !saving && !dealValueBad;
 
   // Picking an outcome sets its follow-up default: Interested → the next working day on the lead's side.
   const pick = useCallback(
     (o: CallOutcome) => {
       setOutcome(o);
+      setOpenDeal((o === "interested" || o === "meeting_booked") && !!target.canOpenDeal && (target.openDeals ?? 0) === 0);
       const r = followUpRule("call", o);
       if (r === "date_or_time") setFollow({ date: nextWorkingDate(new Date(), target.callZoneKey), time: null });
       else if (r === "time") setFollow({ date: nextWorkingDate(new Date(), target.callZoneKey), time: "10:00" });
       else setFollow(noFollowUp);
     },
-    [target.callZoneKey],
+    [target.callZoneKey, target.canOpenDeal, target.openDeals],
   );
 
   // Ends the panel. Focus returns to the opener only if it was in the panel (or lost), not if the person has moved on.
@@ -246,13 +264,14 @@ function CallPanel({
         dialled: target.dialled,
         ...followUpArgs(follow, viewerZone),
         leadName: target.leadName,
+        openDeal: openDeal && canDeal ? { title: dealTitle.trim() || null, value: dealValueParsed } : null,
       },
       preview: { contact_name: target.contactName },
       ownerName: target.ownerName,
     });
     setSaving(false);
     if (res.ok) finish();
-  }, [outcome, ready, isPresent, log, target, note, follow, viewerZone, finish]);
+  }, [outcome, ready, isPresent, log, target, note, follow, viewerZone, finish, openDeal, canDeal, dealTitle, dealValueParsed]);
 
   // End call moves the focus to the pad (design 7.3).
   useEffect(() => {
@@ -303,6 +322,12 @@ function CallPanel({
         return;
       }
       if (isTyping(event.target)) return;
+      // D toggles "Open a deal" (event.key: a letter, wherever it sits on the keyboard).
+      if (event.key.toLowerCase() === "d" && !event.metaKey && !event.ctrlKey && !event.altKey && phase === "outcome" && canDeal) {
+        event.preventDefault();
+        setOpenDeal((on) => !on);
+        return;
+      }
       const o = outcomeForKey(event);
       if (!o) return;
       event.preventDefault();
@@ -311,7 +336,7 @@ function CallPanel({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPresent, phase, save, dismiss, pick, onChange, call]);
+  }, [isPresent, phase, save, dismiss, pick, onChange, call, canDeal]);
 
   // Grow from the Call button: the transform origin is that button's centre, relative to where the panel sits.
   const [origin, setOrigin] = useState("50% 100%");
@@ -432,6 +457,62 @@ function CallPanel({
                 now={now}
                 legend={rule === "time" ? tOut("meetingWhen") : undefined}
               />
+            ) : null}
+            {canDeal ? (
+              <div className="flex flex-col gap-2 rounded-md bg-muted/60 p-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={openDeal}
+                  aria-keyshortcuts="D"
+                  onClick={() => setOpenDeal((on) => !on)}
+                  className="flex min-h-11 items-center justify-between gap-3 text-left text-sm font-bold"
+                >
+                  <span>{tOut("openDeal")}</span>
+                  <span className="flex items-center gap-2">
+                    <Kbd aria-hidden="true">D</Kbd>
+                    <span aria-hidden="true" className={cn("relative h-6 w-10 rounded-full transition-colors duration-150", openDeal ? "bg-primary" : "bg-border")}>
+                      <span className={cn("absolute top-0.5 size-5 rounded-full bg-card shadow-sm transition-transform duration-150", openDeal ? "translate-x-[18px]" : "translate-x-0.5")} />
+                    </span>
+                  </span>
+                </button>
+                {!openDeal && (target.openDeals ?? 0) > 0 && target.latestDeal ? (
+                  <p className="text-xs text-muted-foreground">
+                    {target.latestDeal.value
+                      ? tOut("dealOpen", { stage: tStage(target.latestDeal.stage), value: formatMoney(target.latestDeal.value, locale) })
+                      : tOut("dealOpenNoValue", { stage: tStage(target.latestDeal.stage) })}
+                  </p>
+                ) : null}
+                {openDeal ? (
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,7rem)] gap-2">
+                    <label className="flex min-w-0 flex-col gap-1 text-xs">
+                      <span className="text-muted-foreground">{tOut("dealTitle")}</span>
+                      <input
+                        name="deal_title"
+                        autoComplete="off"
+                        dir="auto"
+                        maxLength={120}
+                        value={dealTitle}
+                        onChange={(e) => setDealTitle(e.target.value)}
+                        className="min-h-11 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      />
+                    </label>
+                    <label className="flex min-w-0 flex-col gap-1 text-xs">
+                      <span className="text-muted-foreground">{tOut("dealValue")}</span>
+                      <input
+                        name="deal_value"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={dealValue}
+                        onChange={(e) => setDealValue(e.target.value)}
+                        aria-invalid={dealValueBad || undefined}
+                        className="min-h-11 rounded-md border border-border bg-background px-2 font-mono text-sm text-foreground aria-invalid:border-status-red"
+                      />
+                    </label>
+                    {dealValueBad ? <p className="col-span-2 text-xs text-status-red">{tOut("dealValueInvalid")}</p> : null}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-bold">{t("note")}</span>

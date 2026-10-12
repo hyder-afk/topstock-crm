@@ -11,6 +11,8 @@ import { FollowUpPicker, OutcomePad, followUpArgs, followUpReady, noFollowUp, ty
 import { typeIcon } from "@/components/activity/timeline";
 import { useLogActivity } from "@/components/activity/use-activities";
 import { leadEmails, leadNumbers } from "@/components/lead/lead-data";
+import { ComposerDealChip } from "@/components/lead/deal-chip";
+import { useLeadDeals } from "@/components/lead/deals-tab";
 import {
   ACTIVITY_TYPES,
   BODY_COUNTER_FROM,
@@ -82,6 +84,12 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   const [emailIndex, setEmailIndex] = useState(0);
   const [contactId, setContactId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  // Day 5b (design 7.9): the deal an entry is about. Undefined: the default (the newest open deal); null: none.
+  const hasOpenDeal = (lead.deals?.open_count ?? 0) > 0;
+  const leadDeals = useLeadDeals(lead.id, hasOpenDeal);
+  const openDeals = useMemo(() => (leadDeals.data ?? []).filter((d) => d.status === "open"), [leadDeals.data]);
+  const [dealChoice, setDealChoice] = useState<string | null | undefined>(undefined);
+  const dealId = dealChoice === undefined ? (openDeals[0]?.id ?? null) : openDeals.some((d) => d.id === dealChoice) ? dealChoice : null;
   const [now] = useState(() => new Date());
   const viewerZone = useSyncExternalStore(noopSubscribe, () => browserZone() ?? "Europe/Paris", () => "Europe/Paris");
 
@@ -190,6 +198,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
         dialled: type === "call" && number ? number.dialled : null,
         ...(rule === "none" ? { followUpDate: null, followUpAt: null } : followUpArgs(follow, viewerZone)),
         leadName: lead.name,
+        dealId,
       },
       preview: { contact_name: contactName ?? null },
       ownerName,
@@ -404,6 +413,8 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
           </Select>
         </label>
       ) : null}
+
+      <ComposerDealChip deals={openDeals} value={dealId} onChange={setDealChoice} />
 
       <div className="flex flex-col gap-2">
         {type === "email" ? (
