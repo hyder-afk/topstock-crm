@@ -67,12 +67,34 @@ Code head **b8e839f** (the last commit that changes code; later commits change `
 | `npm run lint` | exit 0: 0 errors, the 2 existing React Compiler warnings |
 | `npm run typecheck` | exit 0 |
 | `npm run test:unit` | 329 passed (321 before plus `sql-guc.spec.ts`'s 8) |
-| gitleaks (`origin/main..HEAD`) | GITLEAKS_RESULT |
+| gitleaks (`origin/main..HEAD`, on 25d2278) | 19 commits scanned (incl. the design commit 5c3e4c3), no leaks found, exit 0 |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
 | Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
 | `/security-review` | not run in this step (the lead builder runs it on the PR head in the advisor loop); the threat table is re-checked in `security-review.md` |
 | Playwright | not needed: no UI change in 5a (the existing suites are unchanged) |
 
+
+## Commits (`origin/main..HEAD`, oldest first; this README's own commit follows)
+
+- 5c3e4c3 Day 5 and Day 6 designs (three designs, judges, synthesis; Haider accepted all recommendations on 11 Oct)
+- 937e3f2 Day 5a: log the read-only dev pre-check (deals 0, 5 seeded stages, deal constraint names)
+- ea17e85 Day 5a: spikes S6 to S9 on a throwaway PG16 (NaN/Infinity, FOR NO KEY UPDATE under RLS, lock coexistence, trigger candidates) and their decisions
+- 2635596 Day 5a migration: stage keys, deal columns and guard, stage history, move records, policies, grants, audit, deal RPCs
+- 3fe87b8 Day 5a fixture updates (design 8.1): stage key on the other org's stage, deal probes without a client stage, title as the deal update probe
+- f49769d Day 5a tests: deals_attack.sql, deal_concurrency.sh part 1, migration order check; wired into db-test.sh and db.yml
+- ea573d7 Day 5a unit test sql-guc.spec.ts: no bare current_setting( in any migration (threat 29)
+- 2b412d7 Day 5a tests: CHECK backstops without the guard, duplicate request id, lost note paths, moves not blocked by an entry's key lock
+- 4782724 Day 5a mutation set (52 rows) in db-mutations.py; earlier rows aimed at audit_row and task_guard follow the live Day 5a copy; --anchors mode
+- 615d6f6 Day 5a perf part 1: perf_day5.sql (P1 to P4b, P6) and deal_concurrency p10 in db-perf.sh; the board reads its cards in one call, column pages look up the lead only for stalled-only
+- 7ec5295 Day 5a: get_deal.can_delete follows the delete policy's undo-record condition (and a test)
+- cff33b5 Day 5a: plpgsql_check clean (pipeline_board array default typed)
+- 96b3579 Day 5a test: the keyset paging loop is bounded (a repeating cursor fails instead of looping)
+- 8bd6e4b Day 5a concurrency: an 'unchanged' answer is a valid outcome in the 3-session random run (a colleague moved the deal to that stage first)
+- 3a21018 Day 5a: null-safe comparisons in deals_attack (mutation 37 slipped past owner <> admin); the insert clock mutation documented as two layers plus a both-layers row
+- 9970269 Day 5a evidence: mutations.md (day5a 49 caught, 4 documented two-layer rows; 36 re-aimed earlier rows caught), README and security review drafts
+- 0b9d470 Day 5a: the board summary reads a deal's lead only when its stage clock is already past the limit (19 ms to 4 ms on the perf seed)
+- b8e839f Day 5a: the board summary's aggregate is computed once (materialized), not once per stage row
+- 25d2278 Day 5a evidence: perf.md (3 runs on b8e839f, P9 against main with the same deals), README check results and open risks, log rows
 
 ## Spikes (design 2.4; full results in `docs/log.md`, scripts in `spikes/`)
 
