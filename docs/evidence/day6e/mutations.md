@@ -71,3 +71,32 @@ All 8 as listed (caught).
 | 50 | The view answer is passed on without the output schema | caught | unit `share.spec.ts` (`share_output_schema_strips_cost`) |
 | 51 | The honeypot and the time trap call the database | caught | e2e `share_public_route_guards` (`--e2e 51`: mutated build on the shared local stack, then a clean build) |
 | 52 | The proxy keeps incoming surface headers | caught | unit `proxy-share.spec.ts` |
+
+## Verifier round (12 Oct 2026, database at 888258d, app at 6065688)
+
+The verifier's finding 6 changed `share_link_caps` (an organisation transaction lock before the count; the trigger
+also runs on `update of expires_at`) and added two checks (`share_concurrency.sh` case 4
+`share_link_cap_parallel_creates`, `share_attack.sql` `extend_counts_against_the_cap`), both seen failing on the old
+migration first. Two rows were added for the new protections and the rows touching the caps and the link guard were
+re-run with `python3 scripts/db-mutations.py --set day6e 17 18 20 30 31` in a throwaway worktree at 888258d (its
+`db-test.sh` copy on port 54392; removed afterwards). Rows 1 to 4 also ran again in a first full-set pass (stopped
+there to save time; all 4 caught as before).
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 17 | A link without a fresh code | caught | FAIL: "select public.create_share_link('5e000000-0000-0000-0000-0000000000b1', 'en')" gave 22023 (hint "too_many_links", too many active lin |
+| 18 | A revoked link may be brought back | caught | FAIL: "update private.share_links set revoked_at = null where id = '0ea27976-…'" succeeded, expected 22023 |
+| 20 | No cap on active links a lead | caught | FAIL: "select public.create_share_link('5e000000-0000-0000-0000-0000000000d0', 'en')" succeeded, expected 22023 |
+| 30 | The link caps count without the organisation's lock (two creates at once pass the cap) | caught | FAIL: share_link_cap_parallel_creates: the second create answered: tss_C0co… |
+| 31 | The link caps run on a new link only (Extend brings an expired link back past the cap) | caught | FAIL: "select public.extend_share_link('8d02f337-…', 30)" succeeded, expected 22023 |
+
+day6e now: 31 rows, 31 caught (rows 1 to 29 as listed above, 30 and 31 here).
+
+App rows (`python3 scripts/app-mutations.py`, in place in the 6a worktree, file restored after each row): 48, 49, 50
+and 52 caught again (51 needs the e2e stack, unchanged code); new rows for the client page's own checks:
+
+| # | Protection removed | Result |
+|---|---|---|
+| 53 | The client page counts lengths in UTF-16 units (an emoji at the limit blanks the list) [verifier 1] | caught |
+| 54 | The client page sends the elapsed time uncapped (a page open a day is refused) [verifier 2] | caught |
+| 55 | The token must end the fragment (a glued full stop makes the link inactive) [verifier 3] | caught |

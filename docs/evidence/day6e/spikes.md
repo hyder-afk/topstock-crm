@@ -41,3 +41,13 @@ Cannot be checked from this session (no deployment): whether the platform overwr
 Firewall rate-limit rule is free on Hobby or Pro, whether POST bodies stay out of runtime logs. The build follows the
 decision rule's safe side: the per-IP limiter keys on the first `x-forwarded-for` address and falls back to one shared
 key (`unknown`); the database limits stand alone either way. For Haider's preview check (Day 8) and the Gate 1 list.
+
+Added after the verifier (finding 7, info): **whether Vercel overwrites `x-forwarded-host` and `host`** with the host
+the request was really sent to. `assertSameOrigin` (`src/lib/http.ts`) compares the `Origin` header with
+`x-forwarded-host` first, then `host`, as Next.js does for server actions and as Day 4c's helper does. If the platform
+passed a client's `x-forwarded-host` through, a non-browser client could make the check pass; that client could just as
+well send a matching `Origin`, so the check only ever stops browsers, which cannot set either header across sites
+without a preflight the routes refuse. The share routes carry no cookie, so a passed check gives nothing a direct call
+does not. Check on the preview: send `x-forwarded-host: evil.example` with `Origin: https://evil.example` to
+`/api/share/view` and expect 403; if it answers 200, compare with `host` only. Kept as is until then (one helper with
+4c at the rebase).

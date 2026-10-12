@@ -33,6 +33,8 @@ toolbar width fix).
 - The product: a split panel at ≥ 1280 px (spring, transform and opacity), a right side sheet from 1024 to 1279 px, its
   own page `/inventory/p/[id]` below (`loading.tsx`); actions Arrived, Correct stock (count, add, take out), Receive,
   Edit, Hide from clients, Archive / Restore, release a hold with Undo (A and E keys).
+  Added in the Day 6e verifier round (05f15dd): Record sale (`S`) and Hold (`R`) on the panel for everyone, listed in
+  the `?` sheet (design 10.1); see `docs/evidence/day6e/README.md`.
 - Dialogs: new product (opening stock is a receipt: fresh code), correct and receive (fresh code), Arrived (partial,
   holds move with the stock), ETA inline on Arriving with bulk Arrived.
 - `/inventory/settings` (admins, `loading.tsx`): alert assignee, default hold length, place names.

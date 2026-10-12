@@ -6,6 +6,9 @@ VAT**, never PP (cost) or the minimum price; clients can ask for other stock; li
 rate-limited and revocable; sharing stays off until he switches it on (open question 11). Built on `day6a-local` after
 6d. Fake data only.
 
+Verifier round commits: df56ab0, 5297d5c, 3a16ba1, 8e735dd, 888258d, 05f15dd, 6065688, 4fd8c8a, 9c67930, 26bfa53 and
+the evidence commit (section "Verifier round" below).
+
 Commits: b326afb (database, `share_attack.sql`, `share_concurrency.sh`), c24418c (libraries, routes, proxy, headers,
 i18n subset, robots, ESLint, gitleaks, team actions, unit tests, mutation set), 5bd81c5 (pages and components, messages),
 ca18b65 (perf: product numbers and positional arrays on the wire, targeted visibility check; e2e), bb81d5d (app mutation
@@ -26,7 +29,7 @@ gitleaks false positive, the e2e's per-IP addresses and WebKit), and the evidenc
   `inventory_settings.sharing_enabled` (off by default). RLS, restrictive `require_mfa`, column grants.
 - `share_link_guard` (invoker; the token made here: `gen_random_bytes(32)`; share_reader may move only the counters;
   a teammate's insert needs a fresh code; revoke is permanent; expiry changes need a fresh code and 1 hour to 366 days),
-  `share_link_caps` (definer trigger: 3 active links a lead, 200 an org), `audit_share_link_row` (hash hidden, counters
+  `share_link_caps` (definer trigger: 3 active links a lead, 200 an org; counted under an organisation transaction lock, also when the expiry moves), `audit_share_link_row` (hash hidden, counters
   no diff), `stock_request_task` (definer trigger: one task for the lead's owner, else the link's creator, else the
   oldest admin; a lead with an open request task keeps one).
 - `private.share_items(org, with_transit)`: the one whitelist, 8-place arrays `[number, name, category, max price,
@@ -61,6 +64,41 @@ gitleaks false positive, the e2e's per-IP addresses and WebKit), and the evidenc
   Extend, "Send stock list as text"). Settings › Client links (the switch and every active link). What clients see
   (`/inventory/client-view`, Cmd+K).
 - Messages `Share` and `ShareLinks` in EN and FR (French typography checked by `messages.spec.ts`).
+
+## Verifier round (12 Oct 2026, head 001bad5: NOT READY, 7 findings)
+
+Every finding fixed or recorded; behaviour fixes have a test that failed before the fix.
+
+| # | Finding | What changed | How it was checked |
+|---|---|---|---|
+| 1 | Medium: the client page counted name / category / signature lengths in UTF-16 units; a 200-character name ending in an emoji passed the server and blanked every client's list | `wire.ts` counts characters (`[...v].length`, a string over 2 × max units refused without counting); dates must exist on the calendar (2026-02-30 was accepted by the page, refused by `z.iso.date()`) (df56ab0) | unit `wire_counts_characters_like_the_server` (failed first; parity with `mapShareItem` on emoji, limit and impossible-date rows, a whole snapshot with a 60-character signature); app mutation row 53 |
+| 2 | Medium: a request sent from a page open more than 24 hours was refused | `requestElapsed(now, loadedAt)` caps `t` at the server's bound and floors it at 0; the page uses it (5297d5c) | unit `share_request_after_a_day_open` (failed first); app mutation row 54 |
+| 3 | Low: a full stop glued to the link made it inactive | `tokenFromHash` takes the 43 characters when the next one cannot be part of a token (`.`, `)`, quotes, `%2E`, a space…); another token character is still refused (3a16ba1). The message puts the link on its own line, so nothing follows it (8e735dd) | unit `share_token_trailing_punctuation` (failed first) and `share_link_message_from_messages`; app mutation row 55; e2e `share_link_create_needs_code_and_shows_once` checks the exact e-mail body |
+| 4 | Low: the link message and stock list text were EN/FR strings in TypeScript | New `ShareText` namespace in `messages/en.json` and `fr.json` (message, signature, e-mail subject, list head, line, per piece, price on request, more), read through `createTranslator` in the link's language; the request config adds both languages' ShareText as `ShareTextByLanguage` for the team app (the client page's subset is unchanged); `ShareLinks.emailSubject` moved there (8e735dd) | unit tests above, `messages.spec.ts` (same keys, French typography) now covers `ShareText`; `share_messages_subset_exact` unchanged; e2e: the French subject and body from an English interface |
+| 5 | Low: Cmd+K "Hold stock…" / "Share stock with…" and Inventory keys S and R were missing | Product panel: Record sale (`S`) and Hold (`R`) for every role, each opening its sheet with the product and the lead search; the hold sheet picks its lead and reads that lead's deals when opened without one; Cmd+K "Hold stock…" (`/inventory?hold=1`) and "Share stock with…" (`?share=1`: a lead search that opens the lead's Stock tab on the client link card); both keys in the `?` sheet; EN and FR (05f15dd). A dialog without a Radix Trigger now gives the focus back to its opener, else the page heading, never `<body>` (4fd8c8a, found by the new e2e); `/favicon.ico` redirects to the app icon (Chromium asked for it after the same-page Cmd+K navigation and logged a 404; 9c67930); the panel's Record sale is quiet so the header's red one and Arrived stay the strong actions (26bfa53) | e2e `product_keys_s_and_r_then_palette_hold_stock` (sales) and `palette_share_stock_with_opens_the_lead_link_card` (share); screenshots `hold-from-product` and `share-with` |
+| 6 | Low: two links made at the same moment could pass the cap | `share_link_caps` takes an organisation transaction lock (`pg_advisory_xact_lock`) before counting, and also runs on `update of expires_at` (Extend could bring an expired link back as a 4th) (888258d) | `share_concurrency.sh` case 4 `share_link_cap_parallel_creates` (a held uncommitted create, then a second: refused, 3 active) and `share_attack.sql` `extend_counts_against_the_cap`, both failed on the old migration; mutation rows 30 and 31 caught |
+| 7 | Info: the same-origin check trusts `x-forwarded-host` | Kept (as Next.js does for server actions and as Day 4c's helper does); added to spike S5 with the exact preview check (`spikes.md`) and to open risk 2 | review only |
+
+### Checks after the verifier round (code head 26bfa53)
+
+| Check | Result |
+|---|---|
+| `db-test.sh` copy on port 54391 (database files at 888258d, unchanged since) | exit 0: every suite passed, including `share_attack` (with `extend_counts_against_the_cap`) and `share_concurrency` (4 cases, with `share_link_cap_parallel_creates`); advisors: no ERROR (WARN `share_view` / `share_request` for anon by design, `set_user_role`; INFO 2 unindexed foreign keys, 10 unused indexes). On the old migration the two new checks failed (`attack-before`, `conc-before`) |
+| Mutations | day6e rows 17, 18, 20, 30, 31 caught (throwaway worktree, port 54392, removed); rows 1 to 4 caught again in a stopped full pass; app rows 48, 49, 50, 52 caught again, new rows 53 to 55 caught (`mutations.md`) |
+| `npm run lint` | 0 errors (the 3 existing warnings) |
+| `npm run typecheck` | passed |
+| `npm run test:unit` | 402 passed (398 + the 4 new cases) |
+| Playwright Chromium `share` + `inventory` + `sales` + `stock-import` (shared local stack serving 6a, this worktree's own `next start`, build of 26bfa53) | 40 passed in 14.0 min (38 before, plus `product_keys_s_and_r_then_palette_hold_stock` and `palette_share_stock_with_opens_the_lead_link_card`); no console errors, no horizontal scroll in the screens runs |
+| Screenshots (`screens/`, 92) | added: `share-with-*` (Cmd+K Share stock with…), `hold-from-product-*` (R from the panel, lead search first), `product-panel-*` (Record sale S and Hold R) at 390 and 1440, light and dark, EN and FR |
+| gitleaks (`origin/main..HEAD`) | no leaks found |
+| `npm audit --omit=dev` | found 0 vulnerabilities |
+| `/security-review` (`security-review.md`, verifier-round section) | no new vulnerability |
+| Not run here | WebKit, Semgrep (CI only), Lighthouse, Supabase MCP and hosted advisors (no remote database) |
+
+The e2e needed several attempts on the shared stack: twice a `next start` from another checkout was already listening on
+port 3100 and Playwright reused it (`reuseExistingServer`), so the first page showed another build and the server then
+went away; once another workflow had restarted the stack (incident in `docs/log.md`). The final run started this
+worktree's own server first and checked its working directory.
 
 ## Check results
 
@@ -104,6 +142,8 @@ gitleaks false positive, the e2e's per-IP addresses and WebKit), and the evidenc
 8. **Lighthouse not run** (not installed; no new dependency in this session).
 9. **E2E names grouped** in `share.spec.ts` (team and public in one serial file); the design's `lead-stock.spec.ts`
    link cases are there.
+10. **No Share button in the Inventory header** (design 10.1): sharing starts from Cmd+K "Share stock with…" or the
+    lead's Stock tab (the header has no room at 390 px without a menu). Added in the verifier round.
 
 ## Rebase points (built before Day 4c, 4d and 5a are merged)
 
@@ -121,14 +161,17 @@ gitleaks false positive, the e2e's per-IP addresses and WebKit), and the evidenc
 referrer; `robots.ts`), `/amannn/next-intl` (request config reading `headers()`, passing a message subset to the
 provider), `/colinhacks/zod/v4.6.5` (strictObject, refine), `/supabase/supabase-js` 2.117 (`createClient` auth
 options without session persistence, `rpc`), PostgreSQL 16/17 manual (role membership `WITH SET`, function ownership
-and `CREATE` on the schema, policies `TO role`, `sha256`, `trim_scale`, pgcrypto `gen_random_bytes`).
+and `CREATE` on the schema, policies `TO role`, `sha256`, `trim_scale`, pgcrypto `gen_random_bytes`). Verifier round:
+`/amannn/next-intl` (`createTranslator` from the core library with a locale and messages; `useMessages`),
+`/websites/postgresql_16` (advisory lock functions: `pg_advisory_xact_lock` held to the end of the transaction).
 
 ## Open risks
 
 1. **Switch on sharing in production?** (HAIDER DECIDES) Recommended after Gate 1 and the Vercel Pro upgrade (open
    question 11). Until then every link answers "This link isn't active".
 2. Spike S1 on the hosted database and S5 on Vercel are unverified here (`spikes.md`): the CI `db` job and the dev
-   deploy check S1; the preview check S5.
+   deploy check S1; the preview check S5, now including whether Vercel overwrites `x-forwarded-host` (verifier
+   finding 7).
 3. I9's p95 brushes 40 ms on this runner (average 30–33 ms) for 2,000 items.
 4. The client list renders up to 2,000 rows without virtualisation (design 10.5); fine at realistic sizes (hundreds),
    unmeasured at 2,000 on a slow phone.

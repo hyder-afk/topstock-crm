@@ -38,3 +38,22 @@ No high-confidence vulnerability.
 3. Spike S5 (Vercel's `x-forwarded-for`, Firewall rules, log contents) is unverified until a preview deployment; the
    limiter falls back to one shared key when the header is absent; if the platform passed a client's own header
    through, a caller could rotate it past the per-IP limiter, never past the database limits.
+
+## Verifier round (12 Oct 2026, commits df56ab0 to 05f15dd)
+
+Reviewed by hand on `git diff 001bad5..HEAD` with the same method:
+
+- `share_link_caps` (definer trigger, revoked) now takes `pg_advisory_xact_lock(hashtextextended('topstock.share_link_caps:' || org_id, 0))`
+  before counting and also fires on `update of expires_at`: the key comes from the row's own `org_id` (no user text),
+  the lock is transaction-scoped (released at commit or rollback), one lock a statement (no lock-order deadlock). The
+  cap can no longer be passed by two creates at once or by extending an expired link.
+- The client page's wire check now counts characters (no change to what is accepted beyond agreeing with the server),
+  caps the request's elapsed time (the server's bounds are unchanged), and reads a token followed by punctuation (the
+  43 characters still must match exactly; a 44th token character is refused).
+- `ShareTextByLanguage`: the team app's request config adds the ShareText words of both languages to the messages
+  (public marketing words, no data); the client page's subset is unchanged (`share_messages_subset_exact`).
+- Record sale / Hold from the product panel and Cmd+K use the existing server actions (`recordSale`, `reserveStock`)
+  and their authz; the hold sheet's lead search uses the existing `/api/leads` route under RLS; no new route or RPC.
+- `DialogContent` focuses the page heading when a dialog closes with no opener: client focus only.
+
+No new vulnerability found. Finding 7 (`x-forwarded-host`) stays with spike S5 (`spikes.md`).

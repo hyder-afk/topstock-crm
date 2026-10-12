@@ -50,6 +50,8 @@ commit.
   "Show all"); Inventory › Sales (type chips in the URL, detail with lines, Undo or Cancel with a reason and a code)
   and › Requests (status chips in the URL, Record sale prefilled, In progress, Done, Decline); the Requests badge;
   Cmd+K "Record sale…" and "Stock requests".
+  Added in the Day 6e verifier round (05f15dd): Cmd+K "Hold stock…" (the hold sheet now picks its lead when opened
+  without one) and the product panel's Record sale (`S`) and Hold (`R`); see `docs/evidence/day6e/README.md`.
 - Messages `Sales` in EN and FR (French typography checked by `messages.spec.ts`).
 
 ## Check results
