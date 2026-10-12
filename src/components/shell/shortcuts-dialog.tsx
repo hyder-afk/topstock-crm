@@ -47,6 +47,20 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     { keys: ["⌫"], label: t("tasksDelete") },
     { keys: ["↩"], label: t("tasksOpen") },
   ];
+  // Day 5b: the pipeline board and its focused card (design 7.7).
+  const pipelineRows: { keys: string[]; label: string }[] = [
+    { keys: ["N"], label: t("pipeline.newDeal") },
+    { keys: ["U"], label: t("pipeline.undo") },
+    { keys: ["↑", "↓", "←", "→"], label: t("pipeline.walk") },
+    { keys: ["↩"], label: t("pipeline.open") },
+    { keys: ["⇧", "←/→"], label: t("pipeline.step") },
+    { keys: ["1–5"], label: t("pipeline.digit") },
+    { keys: ["Space"], label: t("pipeline.drag") },
+    { keys: ["E"], label: t("pipeline.edit") },
+    { keys: ["O"], label: t("pipeline.openLead") },
+    { keys: ["Del"], label: t("pipeline.delete") },
+    { keys: ["⇧", "F10"], label: t("pipeline.menu") },
+  ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* A read-only list: focus starts on the panel, not on the close button (WAI-ARIA dialog pattern). Tab reaches
@@ -83,6 +97,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           { title: t("leadPage"), rows: leadRows },
           { title: t("queue"), rows: queueRows },
           { title: t("tasks"), rows: taskRows },
+          { title: t("pipeline.title"), rows: pipelineRows },
         ].map((group) => (
           <div key={group.title}>
             <h3 className="mt-5 text-sm font-bold text-muted-foreground">{group.title}</h3>
