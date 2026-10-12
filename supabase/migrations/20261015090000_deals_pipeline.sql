@@ -1360,7 +1360,9 @@ language sql stable set search_path = '' as $$
                                                                 'last_name', o.last_name) end,
     'can_delete', ((select private.has_recent_aal2(600)) and (select private.is_manager_or_admin()))
                   or (d.created_by = (select auth.uid()) and d.version = 0
-                      and d.created_at > now() - interval '120 seconds'),
+                      and d.created_at > now() - interval '120 seconds'
+                      and (d.source_activity_id is null
+                           or not exists (select 1 from private.activity_undo u where u.activity_id = d.source_activity_id))),
     'stall_days', s.stall_days,
     'undo', (select jsonb_build_object('history_id', h.id, 'to_stage', h.from_stage,
                                        'until', h.created_at + interval '120 seconds')

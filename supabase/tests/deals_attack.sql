@@ -914,6 +914,7 @@ begin
   perform pg_temp.act(r1, 'aal2', null);
   deal := pg_temp.open(lead, 'Mistake');
   if (select lead_status from public.companies where id = lead) <> 'warm' then raise exception 'FAIL: open made the lead warm'; end if;
+  if not (public.get_deal(deal) ->> 'can_delete')::boolean then raise exception 'FAIL: get_deal.can_delete in the creator''s window'; end if;
   perform public.delete_deal(deal);
   perform pg_temp.su();
   if exists (select 1 from public.deals where id = deal) or (select lead_status from public.companies where id = lead) <> 'cold'
@@ -965,6 +966,9 @@ begin
   perform pg_temp.act(r1, 'aal2', null);
   call := public.log_activity(lead_b, 'call', 'interested', null, null, null, current_date + 3, null, 'Call back');
   insert into public.deals (company_id, source_activity_id) values (lead_b, (call ->> 'activity_id')::uuid) returning id into deal;
+  if (public.get_deal(deal) ->> 'can_delete')::boolean then
+    raise exception 'FAIL: get_deal.can_delete while the call''s undo record stands';
+  end if;
   delete from public.deals where id = deal;
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL: deal_direct_delete_refused_while_activity_undo_record'; end if;
