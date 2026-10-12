@@ -59,6 +59,8 @@ export function TasksWorkspace({
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<{ task: TaskListRow; from: HTMLElement } | null>(null);
   const quickRef = useRef<HTMLInputElement>(null);
+  // Where the focus goes back when the delete question closes (the state is cleared before Radix asks).
+  const deleteFrom = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const { ensureFresh, requireFresh, dialog: stepUpDialog } = useStepUp(stepUpSeconds, "bodyDeleteTask");
   // The server read the first tab: its page seeds that query only.
@@ -104,6 +106,7 @@ export function TasksWorkspace({
     const check = (el: Element | null | undefined) => el?.querySelector<HTMLElement>("[data-task-check]") ?? null;
     const target = check(row?.nextElementSibling) ?? check(row?.previousElementSibling) ?? document.getElementById(`${ID_BASE}-panel-${tab}`);
     target?.focus({ preventScroll: true });
+    return target;
   }, [tab]);
 
   const actions = useMemo<RowActions>(() => {
@@ -152,7 +155,10 @@ export function TasksWorkspace({
           });
         });
       },
-      askDelete: (task, from) => setDeleting({ task, from }),
+      askDelete: (task, from) => {
+        deleteFrom.current = from;
+        setDeleting({ task, from });
+      },
       save: async (task, edit) => {
         const res = await call(updateTask({ id: task.id, title: edit.title, dueDate: edit.dueDate, dueAt: edit.dueAt, assigneeId: edit.assigneeId, contactId: task.contact_id }));
         if (!res.ok) {
@@ -183,7 +189,8 @@ export function TasksWorkspace({
       fail(res);
       return;
     }
-    focusAfterLeaving(from);
+    // The dialog gives the focus back when it has closed: to the neighbour of the deleted task.
+    deleteFrom.current = focusAfterLeaving(from);
     removeTask(queryClient, task.id);
     refreshTasks(queryClient, task.company_id);
     toast.show(t("deleted"));
@@ -396,7 +403,7 @@ export function TasksWorkspace({
           onCloseAutoFocus={(e) => {
             // Back to the row (still there when the delete was cancelled), else the list.
             e.preventDefault();
-            const from = deleting?.from;
+            const from = deleteFrom.current;
             if (from?.isConnected) from.focus();
             else document.getElementById(`${ID_BASE}-panel-${tab}`)?.focus();
           }}
