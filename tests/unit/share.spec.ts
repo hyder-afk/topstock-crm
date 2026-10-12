@@ -122,6 +122,23 @@ test.describe("map", () => {
     }
     expect(mapShareRequest({ status: "boom" })).toEqual({ status: "unavailable" });
   });
+
+  test("wire_counts_characters_like_the_server: an emoji at the length limit passes both checks, one past fails both", () => {
+    // Zod and Postgres count characters (code points); the browser must too, or one long name blanks every client page.
+    const at = [42, "a".repeat(199) + "😀", "c".repeat(79) + "🧵", "2.5", 24, 480, 0, null];
+    const past = [42, "a".repeat(200) + "😀", null, "2.5", 24, 480, 0, null];
+    const pastCategory = [42, "x", "c".repeat(80) + "🧵", "2.5", 24, 480, 0, null];
+    const cases = [at, past, pastCategory, [42, "😀", null, null, 1, 1, 0, null], [42, "x", null, null, 1, 1, 0, "2026-02-30"],
+                   [42, "x", null, null, 1, 1, 0, "2028-02-29"], [42, "x", null, null, 1, 1, 0, "2026-04-31"]];
+    for (const r of cases) expect(itemFromWire(r), JSON.stringify(r).slice(0, 40)).toEqual(mapShareItem(r));
+    expect(itemFromWire(at)).not.toBeNull();
+    expect(itemFromWire(past)).toBeNull();
+    // The whole list is read, not refused, when one name sits at the limit; a signature of 60 characters too.
+    const snap = { status: "ok", version: "0123456789abcdef", language: "fr", currency: "EUR", showInTransit: true, allowRequests: true,
+                   signature: "é".repeat(59) + "😀", generatedAt: "2026-10-12T10:00:00Z", items: [row, at] };
+    expect(snapshotFromWire(snap)?.items).toHaveLength(2);
+    expect(snapshotFromWire({ ...snap, signature: "é".repeat(60) + "😀" })).toBeNull();
+  });
 });
 
 test.describe("rate limit", () => {
