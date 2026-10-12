@@ -5,7 +5,7 @@ import { invalid, toActionFailure, type ActionResult } from "@/lib/db-errors";
 import { cleanFileName } from "@/lib/files/name";
 import { checkStoredFile } from "@/lib/files/stored";
 import { afterUploadCheck } from "@/lib/files/stored-bytes";
-import { BUCKET, beginUploadInput, fileIdInput, type FileMime, type LeadFile } from "@/lib/files/types";
+import { BUCKET, beginUploadHint, beginUploadInput, fileIdInput, type FileMime, type LeadFile } from "@/lib/files/types";
 
 // The Files tab's writes (Day 4 design 4.3 and 5.7). Each action: Zod strictObject first, then requireSession()
 // (two-factor sessions only), then the database functions with their arguments named one by one. Storage calls run
@@ -29,7 +29,7 @@ async function clearDeleting(supabase: Supabase, items: { id?: string; path: str
  *  it, and the abandoned bytes no longer count when the space is judged (verifier 4d round 2 finding 4). */
 export async function beginUpload(input: unknown): Promise<ActionResult<{ id: string; path: string; name: string }>> {
   const parsed = beginUploadInput.safeParse(input);
-  if (!parsed.success) return invalid("file_type");
+  if (!parsed.success) return invalid(beginUploadHint(parsed.error));
   const v = parsed.data;
   const name = cleanFileName(v.name, v.mime);
   const { supabase } = await requireSession();

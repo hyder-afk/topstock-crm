@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } fro
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
 import { filesKey, sizeParts, useFiles } from "@/components/files/use-files";
-import { splitName } from "@/lib/files/name";
+import { cleanFileName, splitName } from "@/lib/files/name";
 import { fileDateLabel } from "@/lib/files/dates";
 import { canRetry, checkLocalFile, failureToUpload, uploadBytes, type UploadError } from "@/lib/files/upload";
 import { ACCEPT, FILES_PER_DROP, TEAM_QUOTA_BYTES, fileKind, opensInline, type FileKind, type FileMime, type FilesPage, type LeadFile } from "@/lib/files/types";
@@ -192,7 +192,9 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
       }
       mime = local.mime;
       patch(key, { mime });
-      const begun = await beginUpload({ leadId, name: file.name, mime, size: file.size }).catch(() => null);
+      // The cleaned name (at most 180 characters), as the server would store it: a real file with a very long name is
+      // not refused for it (verifier 4d round 3 finding 2). The server cleans it again.
+      const begun = await beginUpload({ leadId, name: cleanFileName(file.name, mime), mime, size: file.size }).catch(() => null);
       if (!begun) return fail("connection");
       if (!begun.ok) return fail(failureToUpload(begun));
       say(t("announce.uploading", { name: begun.data.name }));

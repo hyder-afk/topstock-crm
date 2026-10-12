@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { canRetry, checkLocalFile, failureToUpload, objectUrl } from "@/lib/files/upload";
+import { cleanFileName } from "@/lib/files/name";
+import { beginUploadHint, beginUploadInput } from "@/lib/files/types";
 import { DOCX, makeZip } from "./helpers/zip";
 
 // The browser's checks before an upload (Day 4 design 5.7): too big, empty, wrong type and wrong bytes are refused
@@ -66,4 +68,31 @@ test("checkLocalFile: a read that fails is unreadable, not mismatch", async () =
 test("canRetry: only failures that are not the file's own fault offer Try again", () => {
   for (const e of ["connection", "unavailable", "tooMany"] as const) expect(canRetry(e)).toBe(true);
   for (const e of ["tooBig", "empty", "type", "unreadable", "mismatch", "quota", "rateLimited", "tooManyPending"] as const) expect(canRetry(e)).toBe(false);
+});
+
+// Verifier 4d round 3 finding 2: a refused beginUpload input says which field failed. A name over 400 characters is
+// "file_name" (shown as unavailable), never "file_type" ("Only PDF, PNG, JPG…" for a real PDF); and the browser sends
+// the cleaned name (at most 180 characters), so a real file with a very long name is not refused at all.
+test("beginUploadHint: the failing field's hint; a long name is cleaned before it is sent", () => {
+  const lead = "6f1c2f4e-0b7a-4d43-9a57-3c1f0b2a9d10";
+  const ok = { leadId: lead, name: "devis.pdf", mime: "application/pdf", size: 4096 };
+  const hint = (input: unknown) => {
+    const parsed = beginUploadInput.safeParse(input);
+    return parsed.success ? "passes" : beginUploadHint(parsed.error);
+  };
+  expect(hint(ok)).toBe("passes");
+  const long = `${"Devis printemps grossiste ".repeat(17)}.pdf`;
+  expect(long.length).toBeGreaterThan(400);
+  expect(hint({ ...ok, name: long })).toBe("file_name");
+  expect(failureToUpload({ ok: false, error: "invalid", hint: hint({ ...ok, name: long }) as "file_name" })).toBe("unavailable");
+  expect(hint({ ...ok, name: "" })).toBe("file_name");
+  expect(hint({ ...ok, size: 10_485_761 })).toBe("file_size");
+  expect(hint({ ...ok, mime: "image/svg+xml" })).toBe("file_type");
+  expect(hint({ ...ok, leadId: "not-a-uuid" })).toBe("file_lead");
+  expect(hint({ ...ok, extra: 1 })).toBeUndefined();
+  // What the Files tab sends: the cleaned name, which always passes.
+  const sent = cleanFileName(long, "application/pdf");
+  expect(Array.from(sent).length).toBeLessThanOrEqual(180);
+  expect(sent.endsWith(".pdf")).toBe(true);
+  expect(hint({ ...ok, name: sent })).toBe("passes");
 });

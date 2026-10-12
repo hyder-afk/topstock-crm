@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { InvalidHint } from "@/lib/db-errors";
 
 // Files on a lead (Day 4 design 3.4, 5.7; Haider, open question 6): PDF, PNG, JPG, Word and Excel only, 10 MB a file,
 // 800 MB for the team. Shared by the browser, the server and the tests (tests/unit/day4-parity.spec.ts holds them
@@ -69,3 +70,10 @@ export const beginUploadInput = z.strictObject({
   size: z.int().min(1).max(MAX_FILE_BYTES),
 });
 export const fileIdInput = z.strictObject({ id: z.uuid() });
+
+/** Which field a refused beginUpload input failed, as the database's own hints (verifier 4d round 3 finding 2): a long
+ *  or empty name is "file_name" (shown as unavailable), never "file_type". An unknown field has no hint. */
+export function beginUploadHint(error: z.ZodError): InvalidHint | undefined {
+  const field = error.issues[0]?.path[0];
+  return field === "name" ? "file_name" : field === "size" ? "file_size" : field === "mime" ? "file_type" : field === "leadId" ? "file_lead" : undefined;
+}
