@@ -407,6 +407,13 @@ test("screens", async ({ browser }) => {
           await page.waitForTimeout(350);
           await page.screenshot({ path: name("correct") });
           await page.keyboard.press("Escape");
+          await expect(page.getByRole("dialog")).toHaveCount(width >= 1024 && width < 1280 ? 1 : 0);
+          // Hold from the product (R): the sheet opens on the lead search with this product set.
+          await page.getByRole("button", { name: locale === "fr" ? "Réserver" : "Hold", exact: true }).click();
+          await expect(page.getByRole("dialog", { name: locale === "fr" ? "Réserver du stock" : "Hold stock" })).toBeVisible();
+          await page.waitForTimeout(350);
+          await page.screenshot({ path: name("hold-from-product") });
+          await page.keyboard.press("Escape");
           await gotoInventory(page, "?tab=arriving");
           await expect(page.getByRole("tabpanel")).toBeVisible();
           await page.screenshot({ path: name("arriving"), fullPage: true });

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { Eye, History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Receipt, Search, Settings, Sun, Upload, type LucideIcon } from "lucide-react";
+import { Eye, Hand, History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Receipt, Search, Settings, Share2, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -92,6 +92,18 @@ export function CommandPalette({
                 icon={Receipt}
                 label={t("recordSale")}
                 onSelect={() => run(() => router.push("/inventory?tab=sales&record=1"))}
+              />
+              <Item
+                value="hold stock reserve for a lead reserver du stock"
+                icon={Hand}
+                label={t("holdStock")}
+                onSelect={() => run(() => router.push("/inventory?tab=stock&hold=1"))}
+              />
+              <Item
+                value="share stock with client link whatsapp partager le stock lien client"
+                icon={Share2}
+                label={t("shareStock")}
+                onSelect={() => run(() => router.push("/inventory?tab=stock&share=1"))}
               />
               <Item
                 value="stock requests client wants demandes de stock"

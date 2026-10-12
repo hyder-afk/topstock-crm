@@ -88,7 +88,7 @@ export function RecordSaleSheet({
     setFulfilment("from_stock");
     setLines(
       prefill?.lines?.length
-        ? prefill.lines.map((l) => ({ ...blankLine(), product: l.product, qtyText: String(l.pieces), priceText: priceText(l.product.price_max) }))
+        ? prefill.lines.map((l) => ({ ...blankLine(), product: l.product, qtyText: l.pieces > 0 ? String(l.pieces) : "", priceText: priceText(l.product.price_max) }))
         : [blankLine()],
     );
     setDealId(prefill?.dealId ?? null);

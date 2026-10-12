@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Eye, EyeOff, PackagePlus, Pencil, SlidersHorizontal, Truck, X } from "lucide-react";
+import { Archive, ArchiveRestore, Eye, EyeOff, Hand, PackagePlus, Pencil, Receipt, SlidersHorizontal, Truck, X } from "lucide-react";
 import { archiveProduct, restoreProduct, setProductVisibility } from "@/app/(app)/inventory/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
@@ -17,6 +17,8 @@ import { ArrivedDialog, StockChangeDialog } from "@/components/inventory/stock-d
 import { runWithStepUp, useStockErrorText, type StepUp } from "@/components/inventory/stock-actions";
 import { refreshInventory, useProduct } from "@/components/inventory/use-inventory";
 import { useReleaseHold } from "@/components/inventory/use-hold-actions";
+import { HoldSheet } from "@/components/sales/hold-and-request-sheets";
+import { RecordSaleSheet } from "@/components/sales/record-sale-sheet";
 import { pieces as fmtPieces, priceRange, pricePerPiece } from "@/lib/inventory/format";
 import { productRef, weekStart } from "@/lib/inventory/status";
 import type { ProductDetail } from "@/lib/inventory/types";
@@ -28,8 +30,10 @@ export type Role = "admin" | "manager" | "rep";
 type Dialogs = "edit" | "correct" | "receive" | "arrived" | "archive" | null;
 
 // The product panel (design 10.1): name, category and status; a number grid (warehouse available / on hand / held,
-// transit and its week, pieces per carton, pallets, price range, cost for managers and admins, reorder point); actions
-// (Arrived A, Correct stock, Receive, Edit E, Hide from clients, Archive, Restore); then its holds and recent movements.
+// transit and its week, pieces per carton, pallets, price range, cost for managers and admins, reorder point); Record
+// sale (S) and Hold (R) for everyone, each opening its sheet with this product and the lead search; actions for managers
+// and admins (Arrived A, Correct stock, Receive, Edit E, Hide from clients, Archive, Restore); then its holds and recent
+// movements.
 // On desktop it sits beside the table (split view); on phones it is the full page /inventory/p/<id>.
 export function ProductPanel({
   id,
@@ -51,19 +55,27 @@ export function ProductPanel({
   const t = useTranslations("Inventory.panel");
   const query = useProduct(id, initial);
   const [dialog, setDialog] = useState<Dialogs>(null);
+  const [sheet, setSheet] = useState<{ kind: "sale" | "hold" | null; key: number }>({ kind: null, key: 0 });
+  const openSheet = (kind: "sale" | "hold") => setSheet((x) => ({ kind, key: x.key + 1 }));
   const canManage = role === "admin" || role === "manager";
   const p = query.data;
 
-  // A and E on an open product (quiet while typing, in a dialog, or with a modifier).
+  // S, R, A and E on an open product (quiet while typing, in a dialog, or with a modifier).
   useEffect(() => {
-    if (!p || !canManage) return;
+    if (!p || p.archived) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
       if (document.querySelector("[role=dialog]")) return;
-      if (e.key === "a" && p.tr_on_hand > 0 && !p.archived) {
+      if (e.key === "s" || e.key === "r") {
+        e.preventDefault();
+        setSheet((x) => ({ kind: e.key === "s" ? "sale" : "hold", key: x.key + 1 }));
+        return;
+      }
+      if (!canManage) return;
+      if (e.key === "a" && p.tr_on_hand > 0) {
         e.preventDefault();
         setDialog("arrived");
-      } else if (e.key === "e" && !p.archived) {
+      } else if (e.key === "e") {
         e.preventDefault();
         setDialog("edit");
       }
@@ -100,9 +112,19 @@ export function ProductPanel({
     <div className="flex min-w-0 flex-col gap-5">
       <PanelHeader p={p} onClose={onClose} asPage={asPage} />
       <NumberGrid p={p} canManage={canManage} />
+      {!p.archived ? <SellHoldActions onSheet={openSheet} /> : null}
       {canManage ? <PanelActions p={p} role={role} stepUp={stepUp} onDialog={setDialog} /> : null}
       <HoldsSection p={p} me={me} canManage={canManage} />
       <RecentMovements p={p} />
+      <RecordSaleSheet
+        key={`sale-${sheet.key}`}
+        open={sheet.kind === "sale"}
+        onOpenChange={(o) => setSheet((x) => ({ ...x, kind: o ? "sale" : null }))}
+        lead={null}
+        prefill={{ lines: [{ product: p, pieces: 0 }] }}
+        canSellBelowMin={canManage}
+      />
+      <HoldSheet open={sheet.kind === "hold"} onOpenChange={(o) => setSheet((x) => ({ ...x, kind: o ? "hold" : null }))} lead={null} product={p} />
       {canManage ? (
         <>
           <ProductFormDialog open={dialog === "edit"} onOpenChange={(o) => setDialog(o ? "edit" : null)} product={p} stepUp={stepUp} />
@@ -185,6 +207,25 @@ function NumberGrid({ p, canManage }: { p: ProductDetail; canManage: boolean }) 
       ) : null}
       <Figure label={t("reorder")} value={p.reorder_point !== null ? fmtPieces(locale, p.reorder_point) : t("noReorder")} />
     </dl>
+  );
+}
+
+function SellHoldActions({ onSheet }: { onSheet: (kind: "sale" | "hold") => void }) {
+  const t = useTranslations("Inventory.panel");
+  const action = "min-h-11 justify-start gap-2 px-3 text-sm sm:min-h-10";
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <Button variant="neutral" className={action} aria-keyshortcuts="S" onClick={() => onSheet("sale")}>
+        <Receipt aria-hidden="true" strokeWidth={1.75} className="size-4" />
+        <span className="flex-1 text-left">{t("recordSale")}</span>
+        <Kbd aria-hidden="true" className="hidden border-transparent bg-transparent text-current opacity-70 lg:inline-grid">S</Kbd>
+      </Button>
+      <Button variant="quiet" className={action} aria-keyshortcuts="R" onClick={() => onSheet("hold")}>
+        <Hand aria-hidden="true" strokeWidth={1.75} className="size-4" />
+        <span className="flex-1 text-left">{t("hold")}</span>
+        <Kbd aria-hidden="true" className="hidden lg:inline-grid">R</Kbd>
+      </Button>
+    </div>
   );
 }
 

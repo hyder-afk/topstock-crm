@@ -18,6 +18,8 @@ import { StockToolbar } from "@/components/inventory/stock-toolbar";
 import { ArrivingList, ListState, MovementsList, ReservedList } from "@/components/inventory/tab-lists";
 import { prefetchProduct, useProduct, useStock, useSummary } from "@/components/inventory/use-inventory";
 import { RecordSaleSheet, type SaleLead, type SalePrefill } from "@/components/sales/record-sale-sheet";
+import { HoldSheet } from "@/components/sales/hold-and-request-sheets";
+import { ShareWithDialog } from "@/components/share-links/share-with-dialog";
 import { RequestsList, SalesList } from "@/components/sales/sales-tabs";
 import { useAlerts } from "@/components/sales/use-sales";
 import {
@@ -96,6 +98,8 @@ function useWidthClass(): "xl" | "lg" | "sm" {
     () => "xl",
   );
 }
+
+const URL_SHEETS = ["record", "hold", "share"] as const;
 
 // The Inventory page (design 10.1): header (Import for admins in 6c, New product for managers and admins, Settings for
 // admins, Record sale in red from 6d), the KPI row, the tabs Stock · Arriving · Reserved · Movements · Sales · Requests, and the
@@ -203,21 +207,27 @@ export function InventoryWorkspace({
     (tab: InventoryTab) => navigate({ ...ui, tab, movementsProduct: tab === "movements" ? ui.movementsProduct : null, company: tab === "sales" ? ui.company : null }, "replace"),
     [navigate, ui],
   );
-  // Record sale (design 10.1: the red primary of this page): from the header, a request, or Cmd+K ("?record=1").
+  // Record sale (design 10.1: the red primary of this page): from the header, a request, or Cmd+K ("?record=1"). Cmd+K
+  // also opens Hold stock ("?hold=1", lead and product searched in the sheet) and Share stock with ("?share=1", a lead
+  // search that opens the lead's Stock tab on the client link card).
   const [sale, setSale] = useState<{ open: boolean; lead: SaleLead | null; prefill: SalePrefill | null; key: number }>({ open: false, lead: null, prefill: null, key: 0 });
   const openSale = useCallback((lead: SaleLead | null, prefill: SalePrefill | null) => setSale((s) => ({ open: true, lead, prefill, key: s.key + 1 })), []);
-  const wantsRecord = searchParams.get("record") === "1";
-  const [recordSeen, setRecordSeen] = useState(false);
-  if (wantsRecord !== recordSeen) {
-    setRecordSeen(wantsRecord);
-    if (wantsRecord) setSale((x) => ({ open: true, lead: null, prefill: null, key: x.key + 1 }));
+  const [holding, setHolding] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const wants = URL_SHEETS.find((k) => searchParams.get(k) === "1") ?? null;
+  const [wantsSeen, setWantsSeen] = useState<string | null>(null);
+  if (wants !== wantsSeen) {
+    setWantsSeen(wants);
+    if (wants === "record") setSale((x) => ({ open: true, lead: null, prefill: null, key: x.key + 1 }));
+    else if (wants === "hold") setHolding(true);
+    else if (wants === "share") setSharing(true);
   }
   useEffect(() => {
-    if (!wantsRecord) return;
+    if (!wants) return;
     const url = new URL(window.location.href);
-    url.searchParams.delete("record");
+    for (const k of URL_SHEETS) url.searchParams.delete(k);
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
-  }, [wantsRecord]);
+  }, [wants]);
   const alerts = useAlerts();
   const movementsProduct = useProduct(ui.movementsProduct);
 
@@ -393,6 +403,8 @@ export function InventoryWorkspace({
         prefill={sale.prefill}
         canSellBelowMin={canManage}
       />
+      <HoldSheet open={holding} onOpenChange={setHolding} lead={null} />
+      <ShareWithDialog open={sharing} onOpenChange={setSharing} />
       {stepUpHook.dialog}
     </div>
   );

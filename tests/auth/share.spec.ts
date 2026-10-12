@@ -183,6 +183,25 @@ test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
   await context.close();
 });
 
+test("palette_share_stock_with_opens_the_lead_link_card", async ({ browser }) => {
+  const { context, page, errors } = await openApp(browser, adminState);
+  await settled(page);
+  await page.goto("/inventory");
+  await appReady(page);
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("combobox").first().fill("Share stock");
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Share stock with…" });
+  await expect(dialog.getByRole("combobox", { name: "Lead" })).toBeFocused();
+  await page.keyboard.type(leadName);
+  await expect(dialog.getByRole("option", { name: new RegExp(leadName) })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/leads/${leadId}\\?tab=stock$`));
+  await expect(page.getByRole("region", { name: "Client link" })).toBeVisible();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("share_public_lists_warehouse_stock_with_max_price_and_never_cost", async ({ browser }) => {
   const { context, page, errors, urls, bodies } = await openPublic(browser, link);
   await expect(page.getByRole("heading", { name: "Stock disponible", level: 1 })).toBeVisible();
@@ -440,6 +459,13 @@ test("screens", async ({ browser }) => {
           await expect(app.page.getByText(visible)).toBeVisible();
           expect(await noSideways(app.page)).toBeLessThanOrEqual(0);
           await app.page.screenshot({ path: name("client-view"), fullPage: true });
+          await app.page.keyboard.press("ControlOrMeta+k");
+          await app.page.getByRole("combobox").first().fill(locale === "fr" ? "Partager le stock" : "Share stock");
+          await app.page.keyboard.press("Enter");
+          await expect(app.page.getByRole("dialog", { name: locale === "fr" ? "Partager le stock avec…" : "Share stock with…" })).toBeVisible();
+          await app.page.waitForTimeout(350);
+          await app.page.screenshot({ path: name("share-with") });
+          await app.page.keyboard.press("Escape");
           expect(app.errors, `app ${locale} ${scheme} ${width}`).toEqual([]);
           await app.context.close();
         }

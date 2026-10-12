@@ -33,6 +33,8 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const inventoryRows: { keys: string[]; label: string }[] = [
     { keys: ["/"], label: t("stockSearch") },
     { keys: ["J", "K"], label: t("stockRows") },
+    { keys: ["S"], label: t("stockSale") },
+    { keys: ["R"], label: t("stockHold") },
     { keys: ["A"], label: t("stockArrived") },
     { keys: ["E"], label: t("stockEdit") },
     { keys: ["Esc"], label: t("stockClose") },

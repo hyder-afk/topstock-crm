@@ -155,7 +155,9 @@
     "importStock": "Importer une feuille de stock",
     "recordSale": "Enregistrer une vente…",
     "stockRequests": "Demandes de stock",
-    "clientView": "Ce que voient les clients"
+    "clientView": "Ce que voient les clients",
+    "holdStock": "Réserver du stock…",
+    "shareStock": "Partager le stock avec…"
   },
   "Shortcuts": {
     "title": "Raccourcis clavier",
@@ -177,7 +179,9 @@
     "stockRows": "Produit suivant ou précédent",
     "stockArrived": "Marquer le produit ouvert comme arrivé",
     "stockEdit": "Modifier le produit ouvert",
-    "stockClose": "Fermer le panneau du produit"
+    "stockClose": "Fermer le panneau du produit",
+    "stockSale": "Enregistrer une vente du produit ouvert",
+    "stockHold": "Réserver le produit ouvert pour un prospect"
   },
   "Profile": {
     "title": "Votre nom",
@@ -1203,7 +1207,9 @@
       "toWarehouse": "Transit vers entrepôt",
       "heldShort": "réservées",
       "allMovements": "Voir tous les mouvements",
-      "back": "Stock"
+      "back": "Stock",
+      "recordSale": "Enregistrer une vente",
+      "hold": "Réserver"
     },
     "movement": {
       "receive": "Reçu",
@@ -1981,7 +1987,10 @@
     "textEmpty": "Rien en stock à envoyer.",
     "options": "Options du lien",
     "readOnly": "Seuls {owner}, un manager ou un admin peuvent partager le stock avec ce prospect.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "pickTitle": "Partager le stock avec…",
+    "pickBody": "Choisissez le prospect. Son onglet Stock s’ouvre sur le lien client.",
+    "pickLabel": "Prospect"
   },
   "ShareText": {
     "message": "Bonjour, voici notre stock en direct avec les prix à la pièce :\n{link}\nTouchez un article pour le demander. {who}",

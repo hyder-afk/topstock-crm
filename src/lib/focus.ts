@@ -21,3 +21,13 @@ export const timelineTarget = (el: HTMLElement) => {
   const panel = el.closest<HTMLElement>('[role="tabpanel"]');
   return panel?.querySelector<HTMLElement>('[role="feed"]') ?? panel;
 };
+
+/** When a dialog closes with nothing left to return to (it was opened from the URL or the command menu, whose opener is
+ *  gone), the focus would fall to <body>: it moves to the page's heading instead, or to <main>. Tabindex -1 if needed. */
+export function focusPageIfLost() {
+  if (document.activeElement && document.activeElement !== document.body) return;
+  const target = document.querySelector<HTMLElement>("main h1") ?? document.querySelector<HTMLElement>("main");
+  if (!target) return;
+  if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  target.focus({ preventScroll: true });
+}

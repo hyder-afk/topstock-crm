@@ -1,6 +1,7 @@
 "use client";
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { focusPageIfLost } from "@/lib/focus";
 import { cn } from "@/lib/utils";
 
 // shadcn-style dialog on TopStock tokens. A floating layer: shadow allowed, solid card (DESIGN.md), opacity + scale
@@ -15,7 +16,7 @@ export const DialogClose = DialogPrimitive.Close;
 export const phoneSheet =
   "phone-sheet max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-[24px] max-sm:pb-[env(safe-area-inset-bottom)]";
 
-export function DialogContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+export function DialogContent({ className, children, onCloseAutoFocus, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="dialog-overlay fixed inset-0 z-50 bg-[rgb(14_14_16/0.4)]" />
@@ -27,6 +28,11 @@ export function DialogContent({ className, children, ...props }: React.Component
           className,
         )}
         {...props}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          // Radix returns the focus to the opener; when there is none (opened from the URL or Cmd+K), the page heading.
+          requestAnimationFrame(focusPageIfLost);
+        }}
       >
         {children}
       </DialogPrimitive.Content>

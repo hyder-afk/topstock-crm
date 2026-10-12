@@ -9,8 +9,8 @@ import { logStockRequest } from "@/app/(app)/inventory/sales/actions";
 import { QuantityField, fieldPieces, useQtyText } from "@/components/inventory/bits";
 import { requestId as newRequestId, useStockErrorText } from "@/components/inventory/stock-actions";
 import { focusField } from "@/components/sales/bits";
-import { ProductPicker } from "@/components/sales/pickers";
-import { refreshSales } from "@/components/sales/use-sales";
+import { LeadPicker, ProductPicker } from "@/components/sales/pickers";
+import { refreshSales, useLeadStock } from "@/components/sales/use-sales";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
@@ -30,7 +30,8 @@ const plusDays = (n: number) => {
 };
 
 // Hold stock for a lead (design 10.3): product, place (In transit when arriving stock is free), pieces or cartons,
-// Until chips (7, 14, 30 days or a date within 90), the deal, a note. One tap, no code.
+// Until chips (7, 14, 30 days or a date within 90), the deal, a note. One tap, no code. Opened without a lead (a
+// product's R, Cmd+K "Hold stock…"), it starts with the lead search and reads that lead's deals itself.
 export function HoldSheet({
   open,
   onOpenChange,
@@ -40,11 +41,12 @@ export function HoldSheet({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  lead: { id: string; name: string };
-  deals: LeadDealOption[];
+  lead: { id: string; name: string } | null;
+  deals?: LeadDealOption[];
   product?: Product | null;
 }) {
   const t = useTranslations("Sales.hold");
+  const tp = useTranslations("Sales.sheet");
   const qty = useQtyText();
   const format = useFormatter();
   const errorText = useStockErrorText();
@@ -52,6 +54,7 @@ export function HoldSheet({
   const queryClient = useQueryClient();
   const formId = useId();
   const [product, setProduct] = useState<Product | null>(fixedProduct ?? null);
+  const [chosenLead, setChosenLead] = useState(lead);
   const [place, setPlace] = useState<"warehouse" | "transit">("warehouse");
   const [text, setText] = useState("");
   const [unit, setUnit] = useState<QtyUnit>("piece");
@@ -67,6 +70,7 @@ export function HoldSheet({
     setWas(open);
     if (open) {
       setProduct(fixedProduct ?? null);
+      setChosenLead(lead);
       setPlace("warehouse");
       setText("");
       setUnit("piece");
@@ -82,8 +86,11 @@ export function HoldSheet({
   const pieces = fieldPieces(text, unit, ppc);
   const room = product ? (place === "warehouse" ? product.wh_available : product.tr_available) : 0;
   const until = days === "pick" ? picked : plusDays(days);
-  const fromStockDeals = deals.filter((d) => d.fulfilment === "from_stock");
-  const reason = !product
+  const leadStock = useLeadStock(open && !deals ? (chosenLead?.id ?? null) : null);
+  const fromStockDeals = (deals ?? leadStock.data?.deals ?? []).filter((d) => d.fulfilment === "from_stock");
+  const reason = !chosenLead
+    ? tp("needLead")
+    : !product
     ? t("needProduct")
     : pieces === null || pieces < 1
       ? t("needQuantity")
@@ -93,12 +100,12 @@ export function HoldSheet({
           ? t("untilRange")
           : null;
   const submit = async () => {
-    if (reason || busy || !product || pieces === null) return;
+    if (reason || busy || !product || !chosenLead || pieces === null) return;
     setBusy(true);
     setFailure(null);
     const res = await reserveStock({
       productId: product.id,
-      companyId: lead.id,
+      companyId: chosenLead.id,
       dealId,
       place,
       pieces,
@@ -107,7 +114,7 @@ export function HoldSheet({
       requestId: reqId,
     }).catch(() => null);
     setBusy(false);
-    refreshSales(queryClient, lead.id);
+    refreshSales(queryClient, chosenLead.id);
     if (!res || !res.ok) {
       setFailure(res ?? { ok: false, error: "unavailable" });
       return;
@@ -128,10 +135,32 @@ export function HoldSheet({
         >
           <div className="flex flex-col gap-1">
             <DialogTitle className="text-xl font-bold tracking-[-0.03em]">{t("title")}</DialogTitle>
-            <DialogDescription id={`${formId}-desc`} className="text-sm text-muted-foreground" translate="no">
-              {lead.name}
+            <DialogDescription id={`${formId}-desc`} className="text-sm text-muted-foreground" translate={chosenLead ? "no" : undefined}>
+              {chosenLead ? chosenLead.name : tp("needLead")}
             </DialogDescription>
           </div>
+          {!lead ? (
+            chosenLead ? (
+              <div className="flex items-center justify-between gap-2 rounded-md bg-muted px-3 py-2">
+                <span className="truncate font-bold" translate="no">
+                  {chosenLead.name}
+                </span>
+                <Button type="button" variant="link" onClick={() => setChosenLead(null)}>
+                  {tp("changeLead")}
+                </Button>
+              </div>
+            ) : (
+              <LeadPicker
+                label={tp("lead")}
+                autoFocus
+                onPick={(l) => {
+                  setChosenLead({ id: l.id, name: l.name });
+                  setDealId(null);
+                  focusField(formId, product ? "quantity" : "product");
+                }}
+              />
+            )
+          ) : null}
           {product ? (
             <div className="flex items-center justify-between gap-2 rounded-md bg-muted px-3 py-2">
               <span className="truncate font-bold" translate="no">
@@ -146,7 +175,7 @@ export function HoldSheet({
           ) : (
             <ProductPicker
               label={t("product")}
-              autoFocus
+              autoFocus={!!chosenLead}
               onPick={(p) => {
                 setProduct(p);
                 focusField(formId, "quantity");

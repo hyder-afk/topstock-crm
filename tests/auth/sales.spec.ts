@@ -288,6 +288,58 @@ test("rep_sees_read_only_stock_tab", async ({ browser }) => {
   await context.close();
 });
 
+test("product_keys_s_and_r_then_palette_hold_stock", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoInventory(page, `?q=${encodeURIComponent(cup)}`);
+  const table = page.getByRole("table", { name: "Stock" });
+  const row = table.getByRole("link", { name: new RegExp(cup) });
+  await row.click();
+  const product = page.getByRole("complementary", { name: "Product" });
+  await expect(product.getByRole("heading", { name: cup })).toBeVisible();
+  await expect(product.getByRole("button", { name: /^Record sale/ })).toBeVisible();
+  // S: the sale sheet with this product on its first line and the lead search focused; Esc gives the focus back.
+  await row.focus();
+  await page.keyboard.press("s");
+  const sale = page.getByRole("dialog", { name: "Record sale" });
+  await expect(sale.getByRole("combobox", { name: "Lead" })).toBeFocused();
+  await expect(sale.getByText(cup).first()).toBeVisible();
+  await expect(sale.getByLabel("Quantity")).toHaveValue("");
+  await page.keyboard.press("Escape");
+  await expect(sale).toHaveCount(0);
+  await expect(row).toBeFocused();
+  // R: the hold sheet with this product; the lead, the quantity, Hold.
+  await page.keyboard.press("r");
+  const hold = page.getByRole("dialog", { name: "Hold stock" });
+  await expect(hold.getByRole("combobox", { name: "Lead" })).toBeFocused();
+  await page.keyboard.type(leadName);
+  await expect(hold.getByRole("option", { name: new RegExp(leadName) })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(hold.getByLabel("Quantity")).toBeFocused();
+  await page.keyboard.type("10");
+  await hold.getByRole("button", { name: "Hold 10 pcs" }).click();
+  await expect(toast(page)).toContainText(`10 pcs of ${cup} held until`);
+  expect(sql(`select count(*) from private.stock_reservations r where r.company_id = '${leadId}' and r.product_id = '${pid(cup)}'
+              and r.status = 'active' and r.quantity = 10`)).toBe("1");
+  // Cmd+K "Hold stock…": lead and product searched in the sheet; closing it leaves the focus on the page, not <body>.
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.getByRole("combobox").first().fill("Hold stock");
+  await page.keyboard.press("Enter");
+  const fromPalette = page.getByRole("dialog", { name: "Hold stock" });
+  await expect(fromPalette.getByRole("combobox", { name: "Lead" })).toBeFocused();
+  await expect(fromPalette.getByRole("combobox", { name: "Product" })).toBeVisible();
+  await expect(page).not.toHaveURL(/hold=1/);
+  await page.keyboard.press("Escape");
+  await expect(fromPalette).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  // The ? sheet lists both keys.
+  await page.keyboard.press("?");
+  const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(help.getByText("Record a sale of the open product")).toBeVisible();
+  await expect(help.getByText("Hold the open product for a lead")).toBeVisible();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("empty_sections_and_palette_record_sale", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await gotoStockTab(page, emptyLeadId);

@@ -155,7 +155,9 @@
     "importStock": "Import a stock sheet",
     "recordSale": "Record sale…",
     "stockRequests": "Stock requests",
-    "clientView": "What clients see"
+    "clientView": "What clients see",
+    "holdStock": "Hold stock…",
+    "shareStock": "Share stock with…"
   },
   "Shortcuts": {
     "title": "Keyboard shortcuts",
@@ -177,7 +179,9 @@
     "stockRows": "Next or previous product",
     "stockArrived": "Mark the open product arrived",
     "stockEdit": "Edit the open product",
-    "stockClose": "Close the product panel"
+    "stockClose": "Close the product panel",
+    "stockSale": "Record a sale of the open product",
+    "stockHold": "Hold the open product for a lead"
   },
   "Profile": {
     "title": "Your name",
@@ -1203,7 +1207,9 @@
       "toWarehouse": "Transit to warehouse",
       "heldShort": "held",
       "allMovements": "See all movements",
-      "back": "Inventory"
+      "back": "Inventory",
+      "recordSale": "Record sale",
+      "hold": "Hold"
     },
     "movement": {
       "receive": "Received",
@@ -1981,7 +1987,10 @@
     "textEmpty": "Nothing in stock to send.",
     "options": "Link options",
     "readOnly": "Only {owner}, a manager or an admin can share stock with this lead.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "pickTitle": "Share stock with…",
+    "pickBody": "Choose the lead. Their Stock tab opens on the client link.",
+    "pickLabel": "Lead"
   },
   "ShareText": {
     "message": "Hello, here is our live stock with prices per piece:\n{link}\nTap an item to ask for it. {who}",

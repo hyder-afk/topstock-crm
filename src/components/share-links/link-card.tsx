@@ -40,9 +40,10 @@ const EXPIRY = [30, 90, 365] as const;
 /** The client-facing words in a link's language (request config: ShareTextByLanguage), else the interface's. */
 function useShareText(lang: ShareLang): ShareText {
   const messages = useMessages() as Record<string, unknown>;
-  const byLanguage = messages.ShareTextByLanguage as Partial<Record<ShareLang, Record<string, unknown>>> | undefined;
-  const words = byLanguage?.[lang] ?? (messages.ShareText as Record<string, unknown> | undefined) ?? {};
-  return useMemo(() => shareText(lang, words), [lang, words]);
+  return useMemo(() => {
+    const byLanguage = messages.ShareTextByLanguage as Partial<Record<ShareLang, Record<string, unknown>>> | undefined;
+    return shareText(lang, byLanguage?.[lang] ?? (messages.ShareText as Record<string, unknown> | undefined) ?? {});
+  }, [lang, messages]);
 }
 
 export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { lead: ShareLead; canEdit: boolean; ownerFirstName: string | null; me: string | null; stepUp: StepUp }) {
