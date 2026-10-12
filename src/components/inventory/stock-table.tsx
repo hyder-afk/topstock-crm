@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { EyeOff } from "lucide-react";
@@ -14,28 +14,27 @@ import { cn } from "@/lib/utils";
 // The stock table (design 10.1): virtualised rows (TanStack Virtual) over keyset pages of 100. Columns: Product (name,
 // P-ref and category muted) · Price/pc (min–max) · Pcs/ctn · In warehouse (available, the bar against 3 × the reorder
 // point, "on hand / held" on hover) · In transit (pieces and ETA week) · Cost/pc (managers and admins) · Status. At 768
-// the stock columns fold into one; under 768 each product is a card with its available pieces large. Up and Down (or J
+// the stock columns fold into one (by the table's own width); narrower, each product is a card with its available pieces large. Up and Down (or J
 // and K) move between products and open each; the page never scrolls sideways (the table scrolls inside its box).
 
 const headerHeight = 44;
 type Layout = "wide" | "medium" | "narrow";
-const queries = { wide: "(min-width: 1024px)", medium: "(min-width: 768px)" };
-function subscribe(cb: () => void) {
-  const a = window.matchMedia(queries.wide);
-  const b = window.matchMedia(queries.medium);
-  a.addEventListener("change", cb);
-  b.addEventListener("change", cb);
-  return () => {
-    a.removeEventListener("change", cb);
-    b.removeEventListener("change", cb);
-  };
-}
-function useLayout(): Layout {
-  return useSyncExternalStore(
-    subscribe,
-    () => (window.matchMedia(queries.wide).matches ? "wide" : window.matchMedia(queries.medium).matches ? "medium" : "narrow"),
-    () => "wide",
-  );
+// The layout follows the table's own width (not the window's): with the product panel open beside it at 1280 the
+// table is narrower than the window, and the stock columns fold before anything would be cut off.
+function useLayout(ref: React.RefObject<HTMLDivElement | null>, showCost: boolean): Layout {
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  if (width === null) return "wide";
+  if (width >= (showCost ? 1000 : 900)) return "wide";
+  if (width >= 600) return "medium";
+  return "narrow";
 }
 
 export function StockTable({
@@ -66,8 +65,8 @@ export function StockTable({
   const locale = useLocale();
   const format = useFormatter();
   const qty = useQtyText();
-  const layout = useLayout();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const layout = useLayout(scrollRef, showCost);
 
   const cols =
     layout === "wide"
@@ -76,7 +75,7 @@ export function StockTable({
         ? ["minmax(200px,2fr)", "140px", "minmax(170px,1fr)", "120px"]
         : ["minmax(0,1fr)"];
   const template = cols.join(" ");
-  const minWidth = layout === "wide" ? 220 + 150 + 84 + 180 + 160 + (showCost ? 110 : 0) + 130 : 0;
+  const minWidth = 0;
   const rowHeight = layout === "narrow" ? 96 : 64;
 
   const virtualizer = useVirtualizer({
@@ -194,7 +193,7 @@ export function StockTable({
                   {r.name}
                 </span>
                 <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground">
-                  <span className="font-mono">{productRef(r.number)}</span>
+                  <span className="font-mono" translate="no">{productRef(r.number)}</span>
                   {r.category ? <span className="truncate" dir="auto">· {r.category}</span> : null}
                   {!r.share_visible ? (
                     <span className="inline-flex items-center gap-1">

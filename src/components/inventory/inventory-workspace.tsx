@@ -288,14 +288,16 @@ export function InventoryWorkspace({
         </div>
         {panelOpen && ui.product ? (
           <aside aria-label={t("panelLabel")} className="min-w-0 self-start rounded-lg bg-card p-5 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-32px)] xl:overflow-y-auto xl:overscroll-contain">
-            <ProductPanel key={ui.product} id={ui.product} role={role} me={me} stepUp={stepUp} onClose={closeProduct} />
+            <div key={ui.product} className="animate-panel">
+              <ProductPanel id={ui.product} role={role} me={me} stepUp={stepUp} onClose={closeProduct} />
+            </div>
           </aside>
         ) : null}
       </div>
 
       {/* 1024 to 1279 px: the panel as a right-hand sheet over the list. */}
       <Dialog open={!!ui.product && width === "lg"} onOpenChange={(o) => !o && closeProduct()}>
-        <DialogContent className="top-0 right-0 bottom-0 left-auto mx-0 h-dvh w-[min(440px,100%)] max-w-none overflow-y-auto overscroll-contain rounded-none rounded-l-xl border-y-0 border-r-0 p-5">
+        <DialogContent className="side-sheet top-0 right-0 bottom-0 left-auto mx-0 h-dvh w-[min(440px,100%)] max-w-none overflow-y-auto overscroll-contain rounded-none rounded-l-xl border-y-0 border-r-0 p-5">
           <DialogTitle className="sr-only">{t("panelLabel")}</DialogTitle>
           <DialogDescription className="sr-only">{t("panelBody")}</DialogDescription>
           {ui.product ? <ProductPanel key={ui.product} id={ui.product} role={role} me={me} stepUp={stepUp} onClose={closeProduct} /> : null}

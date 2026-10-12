@@ -147,6 +147,8 @@ export function ProductFormDialog({
   );
   const inputProps = (f: Field) => ({
     id: `${id}-${f}`,
+    name: f,
+    autoComplete: "off",
     "aria-invalid": failure?.field === f || undefined,
     "aria-describedby": errorFor(f),
   });
@@ -168,9 +170,9 @@ export function ProductFormDialog({
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              {field("name", t("name"), <Input {...inputProps("name")} value={v.name} onChange={set("name")} maxLength={200} autoComplete="off" autoFocus dir="auto" />)}
+              {field("name", t("name"), <Input {...inputProps("name")} value={v.name} onChange={set("name")} maxLength={200} autoFocus dir="auto" />)}
             </div>
-            {field("category", t("category"), <Input {...inputProps("category")} value={v.category} onChange={set("category")} maxLength={80} autoComplete="off" dir="auto" />, t("categoryHint"))}
+            {field("category", t("category"), <Input {...inputProps("category")} value={v.category} onChange={set("category")} maxLength={80} dir="auto" />, t("categoryHint"))}
             {field("carton", t("carton"), <Input {...inputProps("carton")} value={v.carton} onChange={set("carton")} inputMode="numeric" className="text-right font-mono" />)}
             {field("priceMin", t("priceMin"), <Input {...inputProps("priceMin")} value={v.priceMin} onChange={set("priceMin")} inputMode="decimal" className="text-right font-mono" />, t("priceHint"))}
             {field("priceMax", t("priceMax"), <Input {...inputProps("priceMax")} value={v.priceMax} onChange={set("priceMax")} inputMode="decimal" className="text-right font-mono" />, t("priceMaxHint"))}

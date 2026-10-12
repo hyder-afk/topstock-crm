@@ -75,7 +75,7 @@ export function StockToolbar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-[1_1_260px]">
+        <div className="relative min-w-0 flex-[1_1_220px]">
           <label htmlFor={`${id}-q`} className="sr-only">
             {t("search")}
           </label>
@@ -110,7 +110,7 @@ export function StockToolbar({
           )}
         </div>
         {summary && summary.categories.length > 0 ? (
-          <div className="w-full min-w-0 sm:w-48">
+          <div className="w-full min-w-0 sm:w-40">
             <label htmlFor={`${id}-cat`} className="sr-only">
               {t("category")}
             </label>
@@ -129,7 +129,7 @@ export function StockToolbar({
             </Select>
           </div>
         ) : null}
-        <div className="min-w-0 flex-1 sm:w-48 sm:flex-none">
+        <div className="min-w-0 flex-1 sm:w-40 sm:flex-none">
           <label htmlFor={`${id}-sort`} className="sr-only">
             {t("sort")}
           </label>

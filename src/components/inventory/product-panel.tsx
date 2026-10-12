@@ -131,7 +131,7 @@ function PanelHeader({ p, onClose, asPage }: { p: ProductDetail; onClose?: () =>
           </h2>
         )}
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span className="font-mono">{productRef(p.number)}</span>
+          <span className="font-mono" translate="no">{productRef(p.number)}</span>
           {p.category ? <span dir="auto">· {p.category}</span> : null}
           <StockStatusBadge status={p.status_key} />
           {!p.share_visible ? (

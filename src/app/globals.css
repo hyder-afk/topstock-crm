@@ -203,6 +203,36 @@
   }
 }
 
+/* The product panel as a right-hand sheet (1024 to 1279 px) slides in from the right edge it is attached to, and the
+   panel beside the stock table (1280 px and up) settles in from the right on each product (Day 6b). */
+@keyframes side-in {
+  from {
+    opacity: 0.6;
+    transform: translateX(100%);
+  }
+}
+@keyframes side-out {
+  to {
+    opacity: 0.6;
+    transform: translateX(100%);
+  }
+}
+.side-sheet.dialog-content[data-state="open"] {
+  animation: side-in 320ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.side-sheet.dialog-content[data-state="closed"] {
+  animation: side-out 200ms cubic-bezier(0.32, 0, 0.67, 0);
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+.animate-panel {
+  animation: panel-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (pointer: fine) {
   html {
     overscroll-behavior: none;

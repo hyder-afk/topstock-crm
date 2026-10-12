@@ -1317,7 +1317,7 @@
     "kpi": {
       "warehouse": "En entrepôt",
       "transit": "En transit",
-      "held": "Réservé pour des clients",
+      "held": "Réservé clients",
       "low": "Bas",
       "pcs": "pcs",
       "products": "produits"

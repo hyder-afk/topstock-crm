@@ -137,7 +137,7 @@ export function ArrivingList({ canManage, stepUp, onOpen }: { canManage: boolean
             <button type="button" onClick={() => onOpen(r.id)} className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center rounded-sm text-left">
               <span className="max-w-full truncate font-bold" dir="auto">{r.name}</span>
               <span className="text-xs text-muted-foreground">
-                <span className="font-mono">{productRef(r.number)}</span>
+                <span className="font-mono" translate="no">{productRef(r.number)}</span>
                 {r.tr_reserved > 0 ? ` · ${t("held", { qty: qty(r.tr_reserved, r.pieces_per_carton) })}` : ""}
               </span>
             </button>
@@ -194,6 +194,7 @@ function EtaField({ row, onSaved }: { row: StockRow; onSaved: () => void }) {
       </label>
       <input
         id={id}
+        name="eta"
         type="date"
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -340,11 +341,11 @@ export function MovementsList({
         </div>
         <div className="flex flex-[1_1_140px] flex-col gap-1">
           <label htmlFor={`${id}-f`} className="text-xs text-muted-foreground">{t("from")}</label>
-          <input id={`${id}-f`} type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="min-h-11 rounded-md border border-border bg-card px-2 font-mono text-sm sm:min-h-10" />
+          <input id={`${id}-f`} name="from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="min-h-11 rounded-md border border-border bg-card px-2 font-mono text-sm sm:min-h-10" />
         </div>
         <div className="flex flex-[1_1_140px] flex-col gap-1">
           <label htmlFor={`${id}-t`} className="text-xs text-muted-foreground">{t("to")}</label>
-          <input id={`${id}-t`} type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="min-h-11 rounded-md border border-border bg-card px-2 font-mono text-sm sm:min-h-10" />
+          <input id={`${id}-t`} name="to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="min-h-11 rounded-md border border-border bg-card px-2 font-mono text-sm sm:min-h-10" />
         </div>
       </div>
       {product ? (

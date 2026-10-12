@@ -22,9 +22,9 @@ export default async function Loading() {
       <div className={`h-[52px] w-full max-w-[420px] rounded-md sm:h-11 ${bar}`} />
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
-          <div className={`h-11 min-w-0 flex-[1_1_260px] rounded-md sm:h-10 ${bar}`} />
-          <div className={`h-11 w-full rounded-md sm:h-10 sm:w-48 ${bar}`} />
-          <div className={`h-11 flex-1 rounded-md sm:h-10 sm:w-48 sm:flex-none ${bar}`} />
+          <div className={`h-11 min-w-0 flex-[1_1_220px] rounded-md sm:h-10 ${bar}`} />
+          <div className={`h-11 w-full rounded-md sm:h-10 sm:w-40 ${bar}`} />
+          <div className={`h-11 flex-1 rounded-md sm:h-10 sm:w-40 sm:flex-none ${bar}`} />
           <div className={`h-[52px] w-[112px] rounded-md sm:h-11 ${bar}`} />
         </div>
         <div className="flex gap-2 overflow-hidden">
