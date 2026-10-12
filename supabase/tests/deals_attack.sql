@@ -278,6 +278,44 @@ begin
     raise exception 'FAIL: stage_key_flags_consistent';
   exception when check_violation then null;
   end;
+  -- The CHECKs hold without the guard (superuser, no signed-in user): NaN, over the cap, won without value or
+  -- shipping, lost without a reason, other without a note, closed time out of step, bidi in a title (S6, G2, G6).
+  declare
+    lead uuid := (select id from public.companies where org_id = (select id from public.orgs where name = 'TopStock Wholesale') limit 1);
+    st record;
+    stmt text;
+  begin
+    select org_id, (select id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'won') as won,
+           (select id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'lost') as lost,
+           (select id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'lead') as open
+      into st from public.companies c where c.id = lead;
+    foreach stmt in array array[
+        format('insert into public.deals (org_id, company_id, stage_id, value) values (%L, %L, %L, %L)', st.org_id, lead, st.open, 'NaN'),
+        format('insert into public.deals (org_id, company_id, stage_id, value) values (%L, %L, %L, 100000000.01)', st.org_id, lead, st.open),
+        format('insert into public.deals (org_id, company_id, stage_id, value) values (%L, %L, %L, -1)', st.org_id, lead, st.open),
+        format('insert into public.deals (org_id, company_id, stage_id, status, closed_at, fulfilment) values (%L, %L, %L, %L, now(), %L)', st.org_id, lead, st.won, 'won', 'from_stock'),
+        format('insert into public.deals (org_id, company_id, stage_id, status, closed_at, value) values (%L, %L, %L, %L, now(), 5)', st.org_id, lead, st.won, 'won'),
+        format('insert into public.deals (org_id, company_id, stage_id, status, closed_at, value, fulfilment) values (%L, %L, %L, %L, now(), 0, %L)', st.org_id, lead, st.won, 'won', 'from_stock'),
+        format('insert into public.deals (org_id, company_id, stage_id, status, closed_at) values (%L, %L, %L, %L, now())', st.org_id, lead, st.lost, 'lost'),
+        format('insert into public.deals (org_id, company_id, stage_id, status, closed_at, lost_reason) values (%L, %L, %L, %L, now(), %L)', st.org_id, lead, st.lost, 'lost', 'other'),
+        format('insert into public.deals (org_id, company_id, stage_id, status, closed_at, lost_reason) values (%L, %L, %L, %L, now(), %L)', st.org_id, lead, st.lost, 'lost', 'bored'),
+        format('insert into public.deals (org_id, company_id, stage_id, status) values (%L, %L, %L, %L)', st.org_id, lead, st.won, 'won'),
+        format('insert into public.deals (org_id, company_id, stage_id, closed_at) values (%L, %L, %L, now())', st.org_id, lead, st.open),
+        format('insert into public.deals (org_id, company_id, stage_id, currency) values (%L, %L, %L, %L)', st.org_id, lead, st.open, 'USD'),
+        format('insert into public.deals (org_id, company_id, stage_id, title) values (%L, %L, %L, %L)', st.org_id, lead, st.open, 'x' || chr(8238)),
+        format('insert into public.deals (org_id, company_id, stage_id, version) values (%L, %L, %L, -1)', st.org_id, lead, st.open)] loop
+      begin
+        execute stmt;
+        raise exception 'FAIL: a deal CHECK let this through: %', stmt;
+      exception when check_violation then null;
+      end;
+    end loop;
+    begin
+      insert into public.deals (org_id, stage_id) values (st.org_id, st.open);
+      raise exception 'FAIL: a deal without a lead (G5)';
+    exception when not_null_violation then null;
+    end;
+  end;
   -- closing_blocked_stub_null (threat 30)
   if private.deal_closing_blocked(gen_random_uuid()) is not null then
     raise exception 'FAIL: closing_blocked_stub_null';
@@ -382,6 +420,8 @@ begin
   if (select lead_status from public.companies where id = lead) <> 'warm' then
     raise exception 'FAIL: opening a deal should make a cold lead warm';
   end if;
+  perform pg_temp.act(r1);  -- a second direct insert with the same request id: the unique index is the backstop
+  perform pg_temp.expect_error(format('insert into public.deals (company_id, request_id) values (%L, %L)', lead, req), '23505');
   -- request_id_other_author_no_collision: another person's same request id is another deal.
   perform pg_temp.act(admin);
   r := public.open_deal(lead, 'Admin order', p_request_id => req);
@@ -603,8 +643,9 @@ begin
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L)', deal, 'closed/won'), '22023', 'stage');
   perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L), lost_reason = %L where id = %L', 'qualified', 'price', deal), '22023', 'state');
   perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L), value = 5 where id = %L', 'qualified', deal), '22023', 'state');
-  -- Same stage: an open deal's reason changes only with a loss.
+  -- Same stage: an open deal's reason and note change only with a loss (and every change moves the version).
   perform pg_temp.expect_error(format('update public.deals set lost_reason = %L where id = %L', 'price', deal), '22023', 'state');
+  perform pg_temp.expect_error(format('update public.deals set lost_note = %L where id = %L', 'quiet edit', deal), '22023', 'state');
   if pg_temp.key(deal) <> 'lead' or (select count(*) from public.deal_stage_history where deal_id = deal) <> 1 then
     raise exception 'FAIL: refused stage changes wrote something';
   end if;
@@ -618,6 +659,7 @@ begin
   perform pg_temp.expect_error(format('update public.deals set value = 1 where id = %L', deal), '22023', 'closed');
   perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'direct_from_source', deal), '22023', 'closed');
   perform pg_temp.expect_error(format('update public.deals set expected_close = current_date where id = %L', deal), '22023', 'closed');
+  perform pg_temp.expect_error(format('update public.deals set lost_note = %L where id = %L', 'after the win', deal), '22023', 'closed');
   perform pg_temp.expect_error(format('select public.update_deal(%L, %s, %L, p_value => 1)', deal,
                                       (select version from public.deals where id = deal), '{value}'), '22023', 'closed');
   r := public.update_deal(deal, (select version from public.deals where id = deal), '{title}', 'Renamed after the win');

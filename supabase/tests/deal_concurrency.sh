@@ -13,7 +13,10 @@
 #     deal's lock, sees the version moved, then finds the first move's record).
 #  7. two_people_open_deal_same_lead: two people open deals on one lead at once: serialised by the lead lock, 2 deals,
 #     2 open rows, the second answer counts 2 open deals.
-#  8. history_chain_consistent: 3 sessions x 100 random stage changes over 20 deals (owner, manager and admin), each in
+#  8. move_not_blocked_by_activity_fk: an entry naming the deal is being saved (its foreign key check holds the deal FOR
+#     KEY SHARE) while a move and a value change run: both go through at once (lock_timeout 1 s), because they lock the
+#     deal FOR NO KEY UPDATE (spike S8; 5b's log_activity with a deal relies on it). A delete would wait.
+#  9. history_chain_consistent: 3 sessions x 100 random stage changes over 20 deals (owner, manager and admin), each in
 #     its own transaction, deadlock_timeout 200 ms: no deadlock and no error other than the rules' own refusals; history
 #     rows = successful moves + 20 opens; versions strictly increase; status follows the stage. With "p10" as the second
 #     argument only this case runs, timed (perf P10: p95 per move, on the perf seed's database).
@@ -156,9 +159,26 @@ wait $pa || fail "two_people_open_deal_same_lead: the first failed"
 [ "$out" = "2" ] && [ "$(as_owner "select count(*) from public.deal_stage_history h join public.deals d on d.id = h.deal_id
                                     where d.company_id = '$lead' and h.kind = 'open';")" = "2" ] \
   || fail "two_people_open_deal_same_lead: second answer counted '$out'"
+
+# 8. A move and a value change are not blocked by an entry's foreign key lock on the deal ------------------------------
+lead=$(new_lead 'Concurrency FK lock')
+deal=$(new_deal "$lead" 'Not blocked')
+psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 -c "begin;
+  insert into public.activities (org_id, company_id, deal_id, type, body)
+  select org_id, company_id, id, 'note', 'held' from public.deals where id = '$deal';
+  select pg_sleep(2); rollback;" > /dev/null & pa=$!
+sleep 0.5
+out=$(as_user "$R1" "set lock_timeout = '1s';
+select public.move_deal('$deal', 'qualified', 0) ->> 'result';
+select public.update_deal('$deal', 1, '{value}', p_value => 10) ->> 'result';" | tr '\n' ' ') \
+  || fail "move_not_blocked_by_activity_fk: the move or the value change waited for the entry's key lock"
+out_del=$(psql "$CONN" -X -q -A -t -c "set lock_timeout = '500ms'; begin; delete from public.deals where id = '$deal'; rollback;" 2>&1 || true)
+wait $pa || fail "move_not_blocked_by_activity_fk: the entry session failed"
+[ "$out" = "moved updated " ] || fail "move_not_blocked_by_activity_fk: '$out'"
+case "$out_del" in *"lock timeout"*) ;; *) fail "move_not_blocked_by_activity_fk: a delete should wait for the key lock ('$out_del')";; esac
 fi
 
-# 8. history_chain_consistent: 3 sessions x 100 random moves over 20 deals ----------------------------------------------
+# 9. history_chain_consistent: 3 sessions x 100 random moves over 20 deals ----------------------------------------------
 lead=$(new_lead 'Concurrency chain')
 as_owner "create table if not exists public.conc_deals (n integer primary key, id uuid not null);
           grant select on public.conc_deals to authenticated; truncate public.conc_deals;" > /dev/null
