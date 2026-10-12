@@ -374,7 +374,7 @@ begin
   insert into public.deals (company_id, title, value) values (lead, '  Denim jackets, 2 pallets  ', 1200) returning id into deal;
   perform pg_temp.su();
   select dd.*, s.key into d from public.deals dd join public.pipeline_stages s on s.id = dd.stage_id where dd.id = deal;
-  if d.key <> 'lead' or d.status <> 'open' or d.version <> 0 or d.created_by <> r1 or d.owner_id <> r1
+  if d.key <> 'lead' or d.status <> 'open' or d.version <> 0 or d.created_by is distinct from r1 or d.owner_id is distinct from r1
      or d.currency <> 'EUR' or d.closed_at is not null or d.title <> 'Denim jackets, 2 pallets' or d.value <> 1200
      or d.fulfilment is not null or d.stage_entered_at <> now() then
     raise exception 'FAIL: deal_opens_at_lead / deal_created_by_forced: %', row_to_json(d);
@@ -430,11 +430,11 @@ begin
   end if;
   -- owner_defaults_to_creator (G11: an admin naming nobody), owner_must_be_org_member, an admin may name a teammate.
   insert into public.deals (company_id) values (lead) returning id into deal;
-  if (select owner_id from public.deals where id = deal) <> admin then
+  if (select owner_id from public.deals where id = deal) is distinct from admin then
     raise exception 'FAIL: owner_defaults_to_creator';
   end if;
   perform pg_temp.expect_error(format('select public.open_deal(%L, p_owner => %L)', lead, '00000000-0000-0000-0000-0000000000c1'), '42501');
-  if (public.open_deal(lead, p_owner => r2) -> 'deal' ->> 'owner_id')::uuid <> r2 then
+  if (public.open_deal(lead, p_owner => r2) -> 'deal' ->> 'owner_id')::uuid is distinct from r2 then
     raise exception 'FAIL: an admin may open a deal for a teammate';
   end if;
   -- Validation before any write, constant messages (threats 8, 21): a planted value never reaches the error.
@@ -714,7 +714,7 @@ begin
     raise exception 'FAIL: undo_restores_clock_close_value_fulfilment % / %', u, row_to_json(d);
   end if;
   -- A restored 10-day clock in Negotiations (limit 21 days) is not stalled; in Lead (7 days) it is (next block).
-  if (select is_stalled from private.deal_cards(array[deal])) or (select quiet_days from private.deal_cards(array[deal])) <> 10 then
+  if (select is_stalled from private.deal_cards(array[deal])) or (select quiet_days from private.deal_cards(array[deal])) is distinct from 10 then
     raise exception 'FAIL: the restored clock: 10 quiet days in Negotiations is not stalled';
   end if;
   perform pg_temp.invariants('undo of a win');
@@ -750,7 +750,7 @@ begin
   u := pg_temp.mv(deal, 'lead');  -- dragging back by hand within 120 s: the same undo
   if not (u ->> 'undone')::boolean or (select stage_entered_at from public.deals where id = deal) <> now() - interval '10 days'
      or not (select is_stalled from private.deal_cards(array[deal]))
-     or (select quiet_days from private.deal_cards(array[deal])) <> 9 then
+     or (select quiet_days from private.deal_cards(array[deal])) is distinct from 9 then
     raise exception 'FAIL: a hand drag back should undo and restore the 10-day clock %', u;
   end if;
   r := pg_temp.mv(deal, 'qualified');  -- moving again after an undo: ordinary (only the latest change is undoable)
@@ -766,7 +766,7 @@ begin
   perform pg_temp.act(admin);
   r := pg_temp.mv(deal, 'lead');
   if (r ->> 'undone')::boolean or pg_temp.last_kind(deal) <> 'move'
-     or (select actor_id from public.deal_stage_history where deal_id = deal order by id desc limit 1) <> admin then
+     or (select actor_id from public.deal_stage_history where deal_id = deal order by id desc limit 1) is distinct from admin then
     raise exception 'FAIL: reverse_by_other_user_is_ordinary_move / history_actor_forced %', r;
   end if;
   -- reverse_after_121s_is_ordinary_move
@@ -823,7 +823,7 @@ begin
   update public.deals set stage_id = private.stage_id('negotiations') where id = deal;  -- a direct reopen
   perform pg_temp.su();
   if (select count(*) from public.deal_stage_history where deal_id = deal) <> n + 1 or pg_temp.last_kind(deal) <> 'reopen'
-     or (select actor_id from public.deal_stage_history where deal_id = deal order by id desc limit 1) <> r1 then
+     or (select actor_id from public.deal_stage_history where deal_id = deal order by id desc limit 1) is distinct from r1 then
     raise exception 'FAIL: history_written_on_direct_patch';
   end if;
   -- The version moves on every change, including a lost note on its own path (mutation 31) and a title.
@@ -1121,7 +1121,7 @@ begin
   u := pg_temp.mv(deal2, 'lead', undo_of => (r ->> 'history_id')::bigint);
   perform pg_temp.su();
   if (select lead_status from public.companies where id = lead2) <> 'negotiation'
-     or (select next_action_at from public.companies where id = lead2) <> nxt then
+     or (select next_action_at from public.companies where id = lead2) is distinct from nxt then
     raise exception 'FAIL: undo of a loss puts back the status and the date';
   end if;
   perform pg_temp.invariants('lead undo');
