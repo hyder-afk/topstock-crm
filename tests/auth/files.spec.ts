@@ -30,7 +30,7 @@ function makeLead(name: string, ownerEmail: string) {
   expect(id).toMatch(uuid);
   return id;
 }
-// A ready file row (and, in this local stack's storage stand-in, its object), as if uploaded and checked. Test-only.
+// A ready file row and its object row (no bytes), as if uploaded and checked. Test-only.
 function seedFile(lead: string, name: string, o: { by: string; size?: number; mime?: string; status?: "ready" | "deleting"; ago?: string } = { by: adminEmail }) {
   const mime = o.mime ?? "application/pdf";
   const status = o.status ?? "ready";
@@ -39,6 +39,16 @@ function seedFile(lead: string, name: string, o: { by: string; size?: number; mi
                          ${status === "ready" ? "now()" : "null"}, now() - interval '${o.ago ?? "1 hour"}'
                   from public.companies c where c.id = '${lead}' returning id`);
   expect(id).toMatch(uuid);
+  // open_file serves a ready file only while its stored object is the one checked at finish (same version, size and
+  // type): the stand-in object row has the row's size and type, and no version on either side. Where the real
+  // storage-api refuses a direct insert (CI), the row stays without an object, and opening it answers "not found".
+  if (status === "ready") {
+    sql(`do $$ begin
+           insert into storage.objects (bucket_id, name, metadata)
+           select 'lead-files', f.storage_path, jsonb_build_object('size', f.size, 'mimetype', f.mime) from public.files f where f.id = '${id}';
+         exception when others then null;
+         end $$`);
+  }
   return id;
 }
 
@@ -447,6 +457,57 @@ test.describe("with storage-api (CI)", () => {
     expect(rep.status).toBe(303);
     expect(rep.location.origin).toBe("http://localhost:3100");
     expect(rep.location.pathname).toBe("/files/unavailable");
+  });
+
+  test("signed_upsert_overwrite_after_ready_refused: a signed upload link made with upsert while pending cannot swap a ready file", async ({ browser }) => {
+    test.setTimeout(240_000);
+    // Verifier 4d round 2 finding 1. storage-api checks the policies only when a signed upload link is made; with
+    // x-upsert the bytes later sent to it are written as its own superuser. The link is made while the file is pending,
+    // the genuine PDF is sent through it and finished, then other bytes of the same size and type are sent to the same
+    // link. The ready row is bound to the object version checked at finish, so the open must answer "unavailable".
+    const token = await aal2Token(adminEmail, adminSecret);
+    const genuine = pdfBytes(8192);
+    const swapped = Buffer.from(genuine);
+    swapped.write("%PDF-1.7 other bank details", 0, "latin1");
+    const begun = await rpc(token, "begin_file_upload", { p_company: lead, p_name: "Facture signée.pdf", p_mime: "application/pdf", p_size: genuine.length });
+    expect(begun.status).toBe(200);
+    const auth = { apikey: env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), Authorization: `Bearer ${token}` };
+    const sign = await fetch(`${env("SUPABASE_LOCAL_URL")}/storage/v1/object/upload/sign/lead-files/${begun.body.path}`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "x-upsert": "true" },
+      body: "{}",
+    });
+    expect(sign.status).toBe(200);
+    const signedUrl = `${env("SUPABASE_LOCAL_URL")}/storage/v1${((await sign.json()) as { url: string }).url}`;
+    const send = async (body: Buffer) =>
+      (await fetch(signedUrl, { method: "PUT", headers: { "content-type": "application/pdf", "x-upsert": "true", "cache-control": "max-age=0" }, body: new Uint8Array(body) })).status;
+    expect(await send(genuine)).toBe(200);
+    expect((await rpc(token, "finish_file_upload", { p_id: begun.body.id })).status).toBe(200);
+    const versionAtFinish = sql(`select version from storage.objects where bucket_id = 'lead-files' and name = '${begun.body.path}'`);
+    expect(sql(`select object_version from public.files where id = '${begun.body.id}'`)).toBe(versionAtFinish);
+    const { context, page } = await open(browser, adminState);
+    await page.goto("/leads");
+    const ask = async () => {
+      const res = await page.request.get(`/api/files/${begun.body.id}?disposition=attachment`, { headers: { "Sec-Fetch-Site": "same-origin" }, maxRedirects: 0 });
+      expect(res.status()).toBe(303);
+      return new URL(res.headers()["location"], "http://localhost:3100");
+    };
+    expect((await ask()).origin).toBe(new URL(env("SUPABASE_LOCAL_URL")).origin); // as checked at finish: opens
+    const overwrite = await send(swapped);
+    const versionNow = sql(`select version from storage.objects where bucket_id = 'lead-files' and name = '${begun.body.path}'`);
+    test.info().annotations.push({ type: "signed upsert after ready", description: JSON.stringify({ overwrite_status: overwrite, version_changed: versionNow !== versionAtFinish }) });
+    const after = await ask();
+    if (overwrite >= 200 && overwrite < 300) {
+      // storage-api replaced the ready object (the gap the finding describes): the open refuses it.
+      expect(versionNow).not.toBe(versionAtFinish);
+      expect(after.origin).toBe("http://localhost:3100");
+      expect(after.pathname).toBe("/files/unavailable");
+    } else {
+      // storage-api refused the overwrite: the object is the one checked at finish and still opens.
+      expect(versionNow).toBe(versionAtFinish);
+      expect(after.origin).toBe(new URL(env("SUPABASE_LOCAL_URL")).origin);
+    }
+    await context.close();
   });
 
   test("direct_api_html_as_pdf_refused_at_open: bytes stored by a direct API call are checked when opened", async ({ browser }) => {
