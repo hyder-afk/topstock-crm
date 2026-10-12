@@ -227,7 +227,8 @@ begin
   select array_agg(attname::text order by attname) into cols from pg_attribute
    where attrelid = 'private.inventory_settings'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'UPDATE');
-  if cols is distinct from array['alert_assignee_id', 'hold_days'] then raise exception 'FAIL: settings update columns are %', cols; end if;
+  -- 6e adds the sharing switch (its guard lets non-admins change only that, and only to off).
+  if cols is distinct from array['alert_assignee_id', 'hold_days', 'sharing_enabled'] then raise exception 'FAIL: settings update columns are %', cols; end if;
   select array_agg(attname::text order by attname) into cols from pg_attribute
    where attrelid = 'public.locations'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'UPDATE');
@@ -351,7 +352,8 @@ begin
              ('private', 'product_costs'), ('private', 'inventory_settings'), ('private', 'stock_reservations'),
              ('private', 'stock_movements'), ('private', 'stock_hold_uses'), ('private', 'movement_requests'))
          and policyname <> 'require_mfa')
-     is distinct from array['private.inventory_settings:inventory_settings_select',
+     is distinct from array['private.inventory_settings:inventory_settings_reader',   -- 6e: share_reader, org-bound
+                            'private.inventory_settings:inventory_settings_select',
                             'private.inventory_settings:inventory_settings_update',
                             'private.movement_requests:movement_requests_own', 'private.product_costs:product_costs_rw',
                             'private.stock_hold_uses:stock_hold_uses_select',
@@ -359,10 +361,12 @@ begin
                             'private.stock_movements:stock_movements_select',
                             'private.stock_reservations:stock_reservations_extend',
                             'private.stock_reservations:stock_reservations_select',
-                            'public.locations:locations_select', 'public.locations:locations_update',
+                            'public.locations:locations_reader', 'public.locations:locations_select',
+                            'public.locations:locations_update',
                             'public.products:products_import_column', 'public.products:products_insert',
-                            'public.products:products_select',
-                            'public.products:products_update', 'public.stock_levels:stock_levels_select'] then
+                            'public.products:products_reader', 'public.products:products_select',
+                            'public.products:products_update', 'public.stock_levels:stock_levels_reader',
+                            'public.stock_levels:stock_levels_select'] then
     raise exception 'FAIL: stock policies are %', (select array_agg(schemaname || '.' || tablename || ':' || policyname order by schemaname || '.' || tablename || ':' || policyname)
       from pg_policies where tablename in ('products', 'locations', 'stock_levels', 'product_costs', 'inventory_settings',
         'stock_reservations', 'stock_movements', 'stock_hold_uses', 'movement_requests') and policyname <> 'require_mfa');
@@ -1506,9 +1510,8 @@ do $$
 declare
   n integer;
 begin
-  update private.inventory_settings set hold_days = 30;
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'FAIL: a manager changed the settings'; end if;
+  -- 6e: managers may reach the row (to switch sharing off); the guard refuses every other setting.
+  perform pg_temp.expect_error($q$update private.inventory_settings set hold_days = 30$q$, '42501', 'forbidden');
   update public.locations set name = 'Renamed by manager';
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL: a manager renamed a place'; end if;
