@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readAndSniff, type Fetcher } from "@/lib/files/stored-bytes";
+import { afterUploadCheck, readAndSniff, type Fetcher } from "@/lib/files/stored-bytes";
 import { DOCX, makeZip } from "./helpers/zip";
 
 // The check on every open and at finish (Day 4 design 5.7) reads stored bytes back. Spike S3 (does a signed link honour
@@ -115,4 +115,15 @@ test("a Storage error, a missing object and a short body are unreadable; refused
     expect(await readAndSniff(store(macro, honour).fetcher, W, macro.length)).toEqual({ ok: false, reason: "mismatch", rangeHonoured: honour });
     expect(await readAndSniff(store(fakePdf(), honour).fetcher, "application/pdf", fakePdf().length)).toEqual({ ok: false, reason: "mismatch", rangeHonoured: honour });
   }
+});
+
+test("finishUpload deletes only a mismatch: a timed-out read keeps the pending row", async () => {
+  const zip = makeZip(DOCX);
+  const silent: Fetcher = async () => {
+    throw new DOMException("The operation timed out.", "TimeoutError");
+  };
+  expect(afterUploadCheck(await readAndSniff(silent, W, zip.length))).toBe("keep_pending");
+  expect(afterUploadCheck(await readAndSniff(store(zip, true).fetcher, W, zip.length))).toBe("finish");
+  const macro = makeZip([...DOCX, { name: "word/vbaProject.bin" }]);
+  expect(afterUploadCheck(await readAndSniff(store(macro, false).fetcher, W, macro.length))).toBe("discard");
 });

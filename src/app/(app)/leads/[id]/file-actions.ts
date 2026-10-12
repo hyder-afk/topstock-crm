@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { invalid, toActionFailure, type ActionResult } from "@/lib/db-errors";
 import { cleanFileName } from "@/lib/files/name";
 import { checkStoredFile } from "@/lib/files/stored";
+import { afterUploadCheck } from "@/lib/files/stored-bytes";
 import { BUCKET, beginUploadInput, fileIdInput, type FileMime, type LeadFile } from "@/lib/files/types";
 
 // The Files tab's writes (Day 4 design 4.3 and 5.7). Each action: Zod strictObject first, then requireSession()
@@ -50,8 +51,9 @@ export async function finishUpload(input: unknown): Promise<ActionResult<Pick<Le
   if (pending.error) return toActionFailure(pending.error);
   const p = pending.data as { path: string; mime: FileMime; size: number };
   const stored = await checkStoredFile(supabase, p.path, p.mime, p.size);
-  if (!stored.ok) {
-    if (stored.reason !== "mismatch") return { ok: false, error: "unavailable" };
+  const next = afterUploadCheck(stored);
+  if (next === "keep_pending") return { ok: false, error: "unavailable" };
+  if (next === "discard") {
     await discard(supabase, parsed.data.id);
     return { ok: false, error: "type_mismatch" };
   }

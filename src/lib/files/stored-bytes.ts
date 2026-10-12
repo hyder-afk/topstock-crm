@@ -82,3 +82,11 @@ export async function readAndSniff(fetcher: Fetcher, mime: FileMime, size: numbe
     return unreadable(null);
   }
 }
+
+/** What finishUpload does with a check: mark it ready (the database still matches size and type), delete it as a fake
+ *  file (only bytes read in full and refused), or answer "unavailable" and leave the pending row for Cancel or the
+ *  15-minute cleanup (any failure to read: a real file is never deleted because Storage was slow). */
+export function afterUploadCheck(check: StoredCheck): "finish" | "discard" | "keep_pending" {
+  if (check.ok) return "finish";
+  return check.reason === "mismatch" ? "discard" : "keep_pending";
+}
