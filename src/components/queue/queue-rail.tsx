@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useId } from "react";
+import { forwardRef, useEffect, useId, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { FollowUpPicker, OutcomePad, type FollowUp } from "@/components/activity/outcome-pad";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { followUpRule, type CallOutcome } from "@/lib/activities";
 import { cn } from "@/lib/utils";
 
 // The queue's outcome rail (Day 4 design 7.4): the shared outcome pad (keys 1 to 7 and 0, 56 px on phones), the note
-// (N), Skip (S), this session's counts, and "1 outcome not saved · Retry". Outcomes 5, 6 and 0 open their follow-up
+// (N), Skip (S) and this session's counts ("1 outcome not saved · Retry" is in the page header, in every phase). Outcomes 5, 6 and 0 open their follow-up
 // inline (the default chip highlighted, ↩ confirms, Esc cancels; Book meeting needs a time); 7 asks once more. On a lead
 // marked Do not contact meanwhile only 7 and Skip work.
 export const QueueRail = forwardRef<HTMLTextAreaElement, {
@@ -29,9 +29,6 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
   onlyDnc: boolean;
   noNumber: boolean;
   stats: { calls: number; talks: number };
-  notSaved: number;
-  retrying: boolean;
-  onRetry: () => void;
   disabled: boolean;
 }>(function QueueRail(p, noteRef) {
   const t = useTranslations("Queue");
@@ -47,25 +44,34 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
   if (p.noNumber) disabled.wrong_number = true;
   if (p.disabled) disabled.do_not_contact = true;
 
+  // Below 1024 the follow-up (5, 6, 0) and the Do not contact question open under the pad, which can be below the fold
+  // and behind the dock on a phone: they are scrolled into view (clear of the dock) and take the focus, so the tap
+  // visibly opens them and Confirm is in reach. At desktop width the rail is beside the card: nothing moves.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const choice = p.choice;
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!choice || !panel || window.matchMedia("(min-width: 1024px)").matches) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    panel.focus({ preventScroll: true });
+    panel.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [choice]);
+
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {p.notSaved > 0 ? (
-        <div role="status" className="flex flex-wrap items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-status-amber" />
-          <span className="flex-1 font-bold">{t("notSaved", { count: p.notSaved })}</span>
-          <Button variant="neutral" className="min-h-11 px-3 text-sm sm:min-h-9" aria-disabled={p.retrying || undefined} onClick={() => !p.retrying && p.onRetry()}>
-            {p.retrying ? t("retrying") : t("retry")}
-          </Button>
-        </div>
-      ) : null}
-
       <section aria-labelledby={`${id}-pad`} className="flex flex-col gap-3">
         <h2 id={`${id}-pad`} className="text-sm font-bold text-muted-foreground">
           {t("padTitle")}
         </h2>
         <OutcomePad value={p.choice} onChange={p.onPick} disabled={disabled} className="max-lg:grid-cols-2 lg:grid-cols-1" />
         {expanded ? (
-          <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+          <div
+            ref={panelRef}
+            tabIndex={-1}
+            role="group"
+            aria-label={tOut(p.choice ?? "connected")}
+            className="flex scroll-mt-4 scroll-mb-[calc(112px+env(safe-area-inset-bottom,0px))] flex-col gap-3 rounded-md border border-border p-3 focus-visible:outline-offset-2"
+          >
             {p.choice === "do_not_contact" ? (
               <p className="text-sm">{tOut("confirmDnc")}</p>
             ) : (

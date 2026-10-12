@@ -104,6 +104,8 @@ export function QueueWorkspace({
       } else if (e.kind === "failed") {
         toast.show(tErr(e.error === "invalid" && e.hint ? `hint.${e.hint}` : e.error));
       } else if (e.kind === "undone") {
+        // The lead comes back on screen: its heading takes the focus (the card it replaces is leaving and inert).
+        if (e.claimed) advanced.current = true;
         toast.show(e.claimed ? tOut("toast.undone") : t("lostClaim"));
       } else if (e.kind === "undoFailed") {
         toast.show(tErr(e.error));
@@ -137,7 +139,9 @@ export function QueueWorkspace({
       }
     }
     if (lastLogged.lostClaim) parts.push(t("lostClaim"));
-    toast.show(parts.join(" · "), { label: `${tOut("toast.undo")} (U)`, run: () => void undo() }, { duration: 10_000 });
+    // The polite message already said what was logged and who is next (one announcement per key): the toast is shown,
+    // not read out, unless it also says a card went to a teammate.
+    toast.show(parts.join(" · "), { label: `${tOut("toast.undo")} (U)`, run: () => void undo() }, { duration: 10_000, quiet: !lastLogged.lostClaim });
     // Once per logged entry: undo changes with it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastLogged]);
@@ -210,7 +214,13 @@ export function QueueWorkspace({
           ? t(what === "skip" ? "liveSkip" : "live", {
               outcome: what,
               lead: leadName,
-              next: [n.name, n.city, now ? format.dateTime(now, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: spanEnds(n.call_zone)?.[0] ?? n.call_zone }) : null].filter(Boolean).join(", "),
+              next: [
+                n.name,
+                n.city,
+                now ? t("theirTime", { time: format.dateTime(now, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: spanEnds(n.call_zone)?.[0] ?? n.call_zone }) }) : null,
+              ]
+                .filter(Boolean)
+                .join(", "),
             })
           : t("liveEnd", { outcome: what, lead: leadName }),
       );
@@ -277,6 +287,16 @@ export function QueueWorkspace({
     [current, onlyDnc, dialled, commit],
   );
 
+  // Cancel the follow-up or the Do not contact question: if the focus was inside it (phones move it there), it goes
+  // back to the card's heading instead of the page.
+  const cancelChoice = useCallback(() => {
+    setChoice(null);
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body || !active.isConnected) headingRef.current?.focus();
+    });
+  }, []);
+
   const confirm = useCallback(() => {
     if (!choice) return;
     if (choice === "meeting_booked" && (!follow.date || !follow.time)) return;
@@ -305,6 +325,12 @@ export function QueueWorkspace({
     focusStart.current = true;
     q.stop();
   }, [q]);
+  // Try again after an error: the button goes away while cards load, so the title holds the focus meanwhile.
+  const retry = useCallback(() => {
+    advanced.current = true;
+    titleRef.current?.focus({ preventScroll: true });
+    q.retry();
+  }, [q]);
 
   // Keys: on the start screen ↩ starts; while working, digits (by position), S, N, C, U and Cmd/Ctrl+Z; with a follow-up
   // open, ↩ confirms and Esc cancels. Quiet while typing (except ↩/Esc in the follow-up's date and time fields), during
@@ -324,13 +350,22 @@ export function QueueWorkspace({
         }
         return;
       }
-      if (q.phase !== "working" || !current) return;
+      if (q.phase !== "working" || !current) {
+        // The empty state and the loading card: U (or Cmd/Ctrl+Z) still takes back the latest outcome, as its toast says.
+        if (isTyping(target)) return;
+        const key = queueKeyFor(event);
+        if (key?.kind === "undo" && q.canUndo()) {
+          event.preventDefault();
+          q.undo();
+        }
+        return;
+      }
       if (choice && (event.key === "Enter" || event.key === "Escape") && (!isTyping(target) || inPicker)) {
         // Confirm and Cancel (and the pad) do their own job; on a date chip, ↩ confirms the follow-up as chosen.
         if (event.key === "Enter" && target?.tagName === "BUTTON" && !target.closest("fieldset")) return;
         event.preventDefault();
         if (event.key === "Enter") confirm();
-        else setChoice(null);
+        else cancelChoice();
         return;
       }
       if (isTyping(target)) {
@@ -365,6 +400,18 @@ export function QueueWorkspace({
   const scopeLabel = (s: QueueScope) => t(`scope.${s === "mine_unassigned" ? "mineUnassigned" : s}`);
   const n = (chunks: React.ReactNode) => <span className="font-mono text-lg font-bold tabular-nums">{chunks}</span>;
 
+  // Outcomes whose tries all failed (or that an earlier visit left): said in the header, in every phase, with Retry.
+  const notSaved =
+    q.notSaved > 0 ? (
+      <div role="status" className="flex w-full max-w-[720px] flex-wrap items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
+        <span aria-hidden="true" className="size-1.5 rounded-full bg-status-amber" />
+        <span className="flex-1 font-bold">{t("notSaved", { count: q.notSaved })}</span>
+        <Button variant="neutral" className="min-h-11 px-3 text-sm sm:min-h-9" aria-disabled={q.saving || undefined} onClick={() => !q.saving && q.retryPending()}>
+          {q.saving ? t("retrying") : t("retry")}
+        </Button>
+      </div>
+    ) : null;
+
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex min-w-0 flex-col gap-1">
@@ -386,15 +433,24 @@ export function QueueWorkspace({
           {t("stop")}
         </Button>
       ) : null}
+      {notSaved}
     </div>
+  );
+  // One polite message across every phase (it stays mounted, so "Logged … for …" is still read when the last card
+  // leaves for the empty state).
+  const liveRegion = (
+    <p aria-live="polite" className="sr-only">
+      {live}
+    </p>
   );
 
   // Start screen: scope (admins), the counts, the lunch switch, Start.
   if (q.phase === "start") {
     const s = summaryQuery.data;
     return (
-      <div className="flex min-w-0 flex-col gap-6 pt-2">
+      <div data-owns-undo="" className="flex min-w-0 flex-col gap-6 pt-2">
         {header}
+        {liveRegion}
         <section aria-labelledby="queue-counts" className="flex max-w-[720px] min-w-0 flex-col gap-5 rounded-lg bg-card p-5 sm:p-6">
           {q.released ? (
             <div role="status" className="flex flex-col items-start gap-1.5 rounded-md bg-muted p-4">
@@ -510,10 +566,11 @@ export function QueueWorkspace({
       body = <p>{sameDay ? t("empty.opensNext", values) : t("empty.opensNextDay", values)}</p>;
     }
     return (
-      <div className="flex min-w-0 flex-col gap-6 pt-2">
+      <div data-owns-undo="" className="flex min-w-0 flex-col gap-6 pt-2">
         {header}
-        <section role="status" className="flex max-w-[720px] flex-col items-start gap-3 rounded-lg bg-card p-5 sm:p-6">
-          <h2 ref={emptyRef} tabIndex={-1} className="text-xl font-bold focus-visible:outline-offset-4">
+        {liveRegion}
+        <section aria-labelledby="queue-empty-title" className="flex max-w-[720px] flex-col items-start gap-3 rounded-lg bg-card p-5 sm:p-6">
+          <h2 id="queue-empty-title" ref={emptyRef} tabIndex={-1} className="text-xl font-bold focus-visible:outline-offset-4">
             {reason === "noneMine" ? t("empty.noneMineTitle") : reason === "outsideHours" ? t("empty.outsideHoursTitle") : t("empty.allDoneTitle")}
           </h2>
           {reason === "noneMine" ? <p className="text-muted-foreground">{t("empty.noneMineBody")}</p> : body}
@@ -546,16 +603,14 @@ export function QueueWorkspace({
 
   // Working.
   return (
-    <div className="flex min-w-0 flex-col gap-5 pt-2">
+    <div data-owns-undo="" className="flex min-w-0 flex-col gap-5 pt-2">
       {header}
-      <p aria-live="polite" className="sr-only">
-        {live}
-      </p>
+      {liveRegion}
       {q.error && !current ? (
         <div role="alert" className="flex max-w-[720px] flex-col items-start gap-3 rounded-lg bg-card p-5">
           <p className="font-bold">{t("error")}</p>
           <p className="text-sm text-muted-foreground">{tErr(q.error)}</p>
-          <Button variant="quiet" onClick={q.retry}>
+          <Button variant="quiet" onClick={retry}>
             {t("retry")}
           </Button>
         </div>
@@ -595,7 +650,7 @@ export function QueueWorkspace({
               follow={follow}
               onFollow={setFollow}
               onConfirm={confirm}
-              onCancel={() => setChoice(null)}
+              onCancel={cancelChoice}
               viewerZone={viewerZone}
               leadZoneKey={current.call_zone}
               now={now ?? new Date()}
@@ -606,9 +661,6 @@ export function QueueWorkspace({
               onlyDnc={onlyDnc}
               noNumber={!dialled}
               stats={stats}
-              notSaved={q.notSaved}
-              retrying={q.saving}
-              onRetry={q.retryPending}
               disabled={false}
             />
           </aside>

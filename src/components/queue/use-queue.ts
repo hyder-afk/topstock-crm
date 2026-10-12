@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { releaseClaims, renewClaims, startQueue, undoOutcome } from "@/app/(app)/leads/queue/actions";
+import { refreshLead } from "@/components/activity/use-activities";
 import { fetchLead } from "@/components/leads/use-leads";
+import { refreshTasks } from "@/components/tasks/use-tasks";
 import type { CallOutcome, LoggedActivity } from "@/lib/activities";
 import type { ActionResult, AppError } from "@/lib/db-errors";
 import {
@@ -39,10 +42,15 @@ import {
 // longer keeps (claim_next_lead's `kept`) or that a teammate is working when it is read again leaves at once ("A
 // teammate is on that one now"); and when the claims end (10 minutes without a key or a click, or renew_claims finds
 // none) the cards go and the start screen says so, with a link to log a call made on the card that was showing.
+// Each run of the queue (Start to Done for now, or the claims ending) is a session with its own number: an answer
+// that comes back for an earlier session (a save or a claim still on its way when the person pressed Done for now)
+// never puts cards on the screen or changes what it shows; the leads it claimed are let go at once.
+// U undoes the person's latest outcome: pressed while that outcome is still on its way, it waits for it (in the same
+// chain) and then takes back that one, never the one before.
 
 export type QueuePhase = "start" | "working" | "empty";
 /** A saved outcome; `lostClaim`: the same answer took a card off the screen (a teammate is on it), said in one toast. */
-export type LoggedEntry = { activityId: string; card: QueueCard; outcome: CallOutcome; until: number; result: LoggedActivity; lostClaim: boolean };
+export type LoggedEntry = { requestId: string; activityId: string; card: QueueCard; outcome: CallOutcome; until: number; result: LoggedActivity; lostClaim: boolean };
 export type QueueEvent =
   | { kind: "logged"; entry: LoggedEntry }
   | { kind: "failed"; error: AppError; hint?: string; leadName: string }
@@ -91,7 +99,8 @@ async function safe<T>(p: Promise<ActionResult<T>>): Promise<ActionResult<T>> {
 }
 
 export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
-  const [phase, setPhase] = useState<QueuePhase>("start");
+  const queryClient = useQueryClient();
+  const [phase, setPhaseState] = useState<QueuePhase>("start");
   const [settings, setSettings] = useState<Settings>(initial);
   const [cards, setCardsState] = useState<Card[]>([]);
   const [summary, setSummary] = useState<QueueSummary | null>(null);
@@ -101,7 +110,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   // outcome still being tried is not counted, so the chip appears only after the last try (0.5, 1 and 2 s).
   const [stuck, setStuck] = useState<string[]>([]);
   const [saving, setSaving] = useState(0);
-  const [lastLogged, setLastLogged] = useState<LoggedEntry | null>(null);
+  const [lastLogged, setLastLoggedState] = useState<LoggedEntry | null>(null);
   const [changed, setChanged] = useState<Record<string, string>>({});
   const [released, setReleased] = useState<ReleasedNotice | null>(null);
 
@@ -110,7 +119,13 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   const excludeRef = useRef<string[]>([]);
   const chain = useRef<Promise<void>>(Promise.resolve());
   const lastInput = useRef(0);
+  // Read by the server calls when they run (never a render behind): the phase, this session's number, the outcome
+  // last saved (Undo), the latest outcome pressed and the outcomes whose tries all failed.
   const phaseRef = useRef<QueuePhase>("start");
+  const sessionRef = useRef(0);
+  const lastLoggedRef = useRef<LoggedEntry | null>(null);
+  const latestRef = useRef<string | null>(null);
+  const stuckRef = useRef<string[]>([]);
   const eventRef = useRef(onEvent);
   useEffect(() => {
     eventRef.current = onEvent;
@@ -118,9 +133,19 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
+  const setPhase = useCallback((p: QueuePhase) => {
+    phaseRef.current = p;
+    setPhaseState(p);
+  }, []);
+  const setLastLogged = useCallback((entry: LoggedEntry | null) => {
+    lastLoggedRef.current = entry;
+    setLastLoggedState(entry);
+  }, []);
+  /** A new session: answers still on their way for the one before change nothing on screen. */
+  const newSession = useCallback(() => {
+    sessionRef.current += 1;
+    return sessionRef.current;
+  }, []);
 
   const setCards = useCallback((update: (cur: Card[]) => Card[]) => {
     cardsRef.current = update(cardsRef.current);
@@ -149,8 +174,15 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
    * Answers true when a card was lost.
    */
   const take = useCallback(
-    (answer: ClaimAnswer | null, keep: readonly string[] | null, sentAt: number, quiet = false) => {
+    (answer: ClaimAnswer | null, keep: readonly string[] | null, sentAt: number, session: number, quiet = false) => {
       if (!answer) return false;
+      if (session !== sessionRef.current) {
+        // An answer for an earlier session (Done for now, or the claims ended, while it was on its way): the screen
+        // stays as it is, and the leads it claimed are let go (the kept ones go with that session's own release).
+        const ids = answer.cards.map((c) => c.id).filter((id) => !cardsRef.current.some((c) => c.id === id));
+        if (ids.length) void enqueue(async () => void (await safe(releaseClaims({ ids: ids.slice(0, 3) }))));
+        return false;
+      }
       const now = Date.now();
       const lost = new Set(lostKept(keep, answer.kept));
       const wasShown = cardsRef.current.some((c) => lost.has(c.id));
@@ -168,24 +200,29 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       }
       return wasShown;
     },
-    [setCards],
+    [setCards, setPhase, enqueue],
   );
 
   // A card lost to a teammate is replaced at once: the claim calls ask again through this (set to refill below).
   const refillRef = useRef<() => void>(() => {});
   const refill = useCallback(() => {
+    const session = sessionRef.current;
     setClaiming(true);
     void enqueue(async () => {
       const next = nextRequest();
-      if (!next || phaseRef.current !== "working") {
-        setClaiming(false);
+      if (!next || phaseRef.current !== "working" || session !== sessionRef.current) {
+        if (session === sessionRef.current) setClaiming(false);
         return;
       }
       const sentAt = Date.now();
       const res = await claimMore(next);
+      if (session !== sessionRef.current) {
+        if (res.ok) take(res.data, next.keep, sentAt, session);
+        return;
+      }
       setClaiming(false);
       if (res.ok) {
-        if (take(res.data, next.keep, sentAt) && cardsRef.current.length < 2 && phaseRef.current === "working") refillRef.current();
+        if (take(res.data, next.keep, sentAt, session) && cardsRef.current.length < 2 && phaseRef.current === "working") refillRef.current();
       } else if (cardsRef.current.length === 0) setError(res.error);
     });
   }, [enqueue, nextRequest, take]);
@@ -193,11 +230,17 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     refillRef.current = refill;
   }, [refill]);
 
+  /** Sends the outcomes kept in this tab whose tries have all failed (set to retryPending below). */
+  const retryRef = useRef<() => void>(() => {});
+
   const start = useCallback(
     (over?: Partial<Settings>) => {
       const s = { ...settingsRef.current, ...over };
       settingsRef.current = s;
       setSettings(s);
+      const session = newSession();
+      // Outcomes not saved yet go first (they never claim), then the claim.
+      retryRef.current();
       setPhase("working");
       setError(null);
       setSummary(null);
@@ -208,37 +251,44 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       void enqueue(async () => {
         const sentAt = Date.now();
         const res = await safe(startQueue({ scope: s.scope, exclude: excludeRef.current, anyHours: s.anyHours, skipLunch: s.skipLunch }));
+        if (session !== sessionRef.current) {
+          if (res.ok) take(res.data, null, sentAt, session);
+          return;
+        }
         setClaiming(false);
         if (!res.ok) {
           setError(res.error);
           return;
         }
-        take(res.data, null, sentAt);
+        take(res.data, null, sentAt, session);
       });
     },
-    [enqueue, setCards, take],
+    [enqueue, setCards, take, newSession, setPhase],
   );
 
   const removeStuck = useCallback((id: string, add = false) => {
-    setStuck((list) => {
-      const rest = list.filter((x) => x !== id);
-      return add ? [...rest, id] : rest;
-    });
+    const rest = stuckRef.current.filter((x) => x !== id);
+    stuckRef.current = add ? [...rest, id] : rest;
+    setStuck(stuckRef.current);
   }, []);
 
-  /** Sends one kept outcome (with the next claim when the screen needs one), trying again on a lost connection. */
+  /**
+   * Sends one kept outcome, trying again on a lost connection. An outcome logged on a card (`card`) also claims the next
+   * card when the screen needs one, for its own session only; a retry of an outcome kept earlier never claims.
+   */
   const save = useCallback(
-    (item: PendingOutcome, card: QueueCard | null, retry = true) =>
+    (item: PendingOutcome, card: QueueCard | null, retry = true) => {
+      const session = sessionRef.current;
       // Counted from the moment it is queued, so the screen never claims on its own while an outcome waits its turn.
-      (setSaving((n) => n + 1),
-      enqueue(async () => {
+      setSaving((n) => n + 1);
+      return enqueue(async () => {
         const delays = retry ? [0, ...RETRY_DELAYS_MS] : [0];
         let res: Awaited<ReturnType<typeof logOutcomeAndClaim>> = { ok: false, error: "unavailable" };
         let next: ClaimNextInput | null = null;
         let sentAt = 0;
         for (const d of delays) {
           if (d) await wait(d);
-          next = phaseRef.current === "working" ? nextRequest() : null;
+          next = card && phaseRef.current === "working" && session === sessionRef.current ? nextRequest() : null;
           sentAt = Date.now();
           res = await logOutcomeAndClaim({ log: item.input, next });
           if (res.ok || !retryable(res.error)) break;
@@ -252,24 +302,29 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
             removeStuck(item.input.requestId);
             eventRef.current({ kind: "failed", error: res.error, hint: res.hint, leadName: item.leadName });
           }
-          if (cardsRef.current.length === 0 && phaseRef.current === "working") refill();
+          if (card && cardsRef.current.length === 0 && phaseRef.current === "working" && session === sessionRef.current) refill();
           return;
         }
         removePending(item.input.requestId);
         removeStuck(item.input.requestId);
+        // What the lead page, the Tasks page and the leads list show changed (status, next call, tasks made or done).
+        refreshLead(queryClient, item.input.leadId);
+        refreshTasks(queryClient, item.input.leadId);
         const logged = res.data.logged;
         const toastable = !!(card && logged.undo_until);
         // The next card first (a lost card is said in the "Logged" toast, or on its own when there is none).
-        const lost = res.data.claim ? take(res.data.claim, next?.keep ?? null, sentAt, toastable) : false;
+        const lost = res.data.claim ? take(res.data.claim, next?.keep ?? null, sentAt, session, toastable) : false;
         if (card && logged.undo_until) {
-          const entry: LoggedEntry = { activityId: logged.activity_id, card, outcome: item.input.outcome as CallOutcome, until: Date.parse(logged.undo_until), result: logged, lostClaim: lost };
+          const entry: LoggedEntry = { requestId: item.input.requestId, activityId: logged.activity_id, card, outcome: item.input.outcome as CallOutcome, until: Date.parse(logged.undo_until), result: logged, lostClaim: lost };
           setLastLogged(entry);
           eventRef.current({ kind: "logged", entry });
         }
+        if (session !== sessionRef.current) return;
         if (lost && cardsRef.current.length < 2 && phaseRef.current === "working") refill();
         if (!res.data.claim && res.data.claimError && cardsRef.current.length === 0) setError(res.data.claimError);
-      })),
-    [enqueue, nextRequest, refill, take, removeStuck],
+      });
+    },
+    [enqueue, nextRequest, refill, take, removeStuck, setLastLogged, queryClient],
   );
 
   /**
@@ -279,13 +334,15 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   const releaseAll = useCallback(() => {
     const shown = cardsRef.current[0] ?? null;
     const ids = cardsRef.current.map((c) => c.id);
+    newSession();
+    setClaiming(false);
     setCards(() => []);
     setPhase("start");
     setError(null);
     setReleased({ leadId: shown?.id ?? null, leadName: shown?.name ?? null });
     eventRef.current({ kind: "released" });
     if (ids.length) void enqueue(async () => void (await safe(releaseClaims({ ids: ids.slice(0, 3) }))));
-  }, [enqueue, setCards]);
+  }, [enqueue, setCards, setPhase, newSession]);
 
   /** True (and the cards go) when a card on screen may no longer be held. */
   const checkHeld = useCallback(() => {
@@ -303,6 +360,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       if (!checkHeld()) return;
       lastInput.current = Date.now();
       const item: PendingOutcome = { input, leadName: card.name, at: Date.now() };
+      latestRef.current = input.requestId;
       addPending(item);
       excludeRef.current = addExcluded(excludeRef.current, card.id);
       setCards((cur) => cur.slice(1));
@@ -319,58 +377,98 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     excludeRef.current = addExcluded(excludeRef.current, card.id);
     setCards((cur) => cur.slice(1));
     setClaiming(true);
+    const session = sessionRef.current;
     void enqueue(async () => {
-      const next = nextRequest();
+      const next = session === sessionRef.current ? nextRequest() : null;
       if (!next) {
         await safe(releaseClaims({ ids: [card.id] }));
-        setClaiming(false);
+        if (session === sessionRef.current) setClaiming(false);
         return;
       }
       const sentAt = Date.now();
       const res = await claimMore(next);
+      if (session !== sessionRef.current) {
+        if (res.ok) take(res.data, next.keep, sentAt, session);
+        return;
+      }
       setClaiming(false);
       if (res.ok) {
-        if (take(res.data, next.keep, sentAt) && cardsRef.current.length < 2 && phaseRef.current === "working") refillRef.current();
+        if (take(res.data, next.keep, sentAt, session) && cardsRef.current.length < 2 && phaseRef.current === "working") refillRef.current();
       } else if (cardsRef.current.length === 0) setError(res.error);
     });
   }, [enqueue, nextRequest, setCards, take, checkHeld]);
 
-  /** Takes back the last outcome (2 minutes) and puts its lead back on screen, if nobody took it meanwhile. */
+  /** True while there is an outcome U would take back: the latest one, saved within 2 minutes or still on its way. */
+  const canUndo = useCallback(() => {
+    const want = latestRef.current;
+    if (!want) return false;
+    const last = lastLoggedRef.current;
+    if (last && last.requestId === want) return last.until > Date.now();
+    return readPending().some((p) => p.input.requestId === want) && !stuckRef.current.includes(want);
+  }, []);
+
+  /**
+   * Takes back the person's latest outcome (2 minutes) and puts its lead back on screen, if nobody took it meanwhile.
+   * Pressed while that outcome is still on its way, it runs after its save (the same chain), so it is always the latest
+   * outcome that comes back, never the one before it.
+   */
   const undo = useCallback(() => {
-    const last = lastLogged;
-    if (!last || last.until <= Date.now()) return false;
+    if (!canUndo()) return false;
+    const want = latestRef.current;
     lastInput.current = Date.now();
-    setLastLogged(null);
     void enqueue(async () => {
+      const last = lastLoggedRef.current;
+      if (!last || last.requestId !== want || last.until <= Date.now()) return;
+      setLastLogged(null);
       const sentAt = Date.now();
       const res = await safe(undoOutcome({ activityId: last.activityId, leadId: last.card.id }));
       if (!res.ok) {
         eventRef.current({ kind: "undoFailed", error: res.error });
         return;
       }
+      refreshLead(queryClient, last.card.id);
+      refreshTasks(queryClient, last.card.id);
       if (res.data.claimed) {
         excludeRef.current = excludeRef.current.filter((id) => id !== last.card.id);
+        // Undone from the start or empty screen: the queue runs again from this card (a session of its own).
+        if (phaseRef.current !== "working") {
+          newSession();
+          setReleased(null);
+        }
         setCards((cur) => [{ ...last.card, receivedAt: Date.now(), claimedUntil: sentAt + CLAIM_MS }, ...cur.filter((c) => c.id !== last.card.id)].slice(0, 3));
+        setError(null);
         setPhase("working");
       }
       eventRef.current({ kind: "undone", claimed: res.data.claimed, leadName: last.card.name });
     });
     return true;
-  }, [lastLogged, enqueue, setCards]);
+  }, [canUndo, enqueue, setCards, setPhase, setLastLogged, newSession, queryClient]);
 
-  /** Sends the outcomes kept in this tab again (Retry, or a reload with outcomes not saved). */
+  /** Sends the outcomes kept in this tab whose tries have all failed again (Retry, Start, back online); never claims. */
   const retryPending = useCallback(() => {
-    for (const item of readPending()) void save(item, null, false);
+    for (const item of readPending()) if (stuckRef.current.includes(item.input.requestId)) void save(item, null, false);
   }, [save]);
+  useEffect(() => {
+    retryRef.current = retryPending;
+  }, [retryPending]);
+  // Back online: the outcomes not saved are sent again by themselves.
+  useEffect(() => {
+    const onOnline = () => retryRef.current();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
 
   /** Leaves the queue inside the app: the claims go, the start screen comes back. */
   const stop = useCallback(() => {
     const ids = cardsRef.current.map((c) => c.id);
+    newSession();
+    setClaiming(false);
     setCards(() => []);
     setPhase("start");
+    setError(null);
     setReleased(null);
     if (ids.length) void enqueue(async () => void (await safe(releaseClaims({ ids: ids.slice(0, 3) }))));
-  }, [enqueue, setCards]);
+  }, [enqueue, setCards, setPhase, newSession]);
 
   // A card that waited in reserve is read again when it is shown: a lead marked Do not contact meanwhile gets a banner,
   // and a lead a teammate is working now (get_lead's worked_by names anyone but the caller) leaves the screen.
@@ -396,11 +494,11 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     };
   }, [current, setCards]);
 
-  // Outcomes kept by an earlier visit of this tab are shown as not saved, with Retry.
+  // Outcomes kept by an earlier visit of this tab are shown as not saved, with Retry (in the header, in every phase).
   useEffect(() => {
     // Read once after mount (sessionStorage is not on the server); a subscription would be heavier for one value.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setStuck(readPending().map((p) => p.input.requestId));
+    stuckRef.current = readPending().map((p) => p.input.requestId);
+    setStuck(stuckRef.current);
   }, []);
 
   // Renewal every 4 minutes while visible and in use (a key or a click in the last 10 minutes). A renewal that finds no
@@ -412,11 +510,12 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible" || cardsRef.current.length === 0) return;
       if (Date.now() - lastInput.current > ACTIVE_WINDOW_MS) return;
+      const session = sessionRef.current;
       void enqueue(async () => {
-        if (phaseRef.current !== "working" || cardsRef.current.length === 0) return;
+        if (phaseRef.current !== "working" || cardsRef.current.length === 0 || session !== sessionRef.current) return;
         const sentAt = Date.now();
         const res = await safe(renewClaims());
-        if (!res.ok || phaseRef.current !== "working" || cardsRef.current.length === 0) return;
+        if (!res.ok || phaseRef.current !== "working" || cardsRef.current.length === 0 || session !== sessionRef.current) return;
         if (res.data.until === null) releaseAll();
         else setCards((cur) => renewedUntil(cur, sentAt));
       });
@@ -459,6 +558,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     };
     const onShow = (e: PageTransitionEvent) => {
       if (!e.persisted) return;
+      newSession();
       setCards(() => []);
       setPhase("start");
     };
@@ -471,7 +571,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       const ids = cardsRef.current.map((c) => c.id).slice(0, 3);
       if (ids.length) void safe(releaseClaims({ ids }));
     };
-  }, [setCards]);
+  }, [setCards, setPhase, newSession]);
 
   return {
     phase,
@@ -486,6 +586,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     notSaved: stuck.length,
     saving: saving > 0,
     lastLogged,
+    canUndo,
     changedStatus: current ? (changed[current.id] ?? null) : null,
     released,
     start,
@@ -497,6 +598,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     retry: () => {
       setError(null);
       if (cardsRef.current.length === 0) start();
+      else retryPending();
     },
   };
 }

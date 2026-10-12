@@ -215,9 +215,9 @@ test("work queue at 4x CPU slow-down: key to next card, key to saved, 10 keys in
       () =>
         new Promise<{ paint: number; saved: number }>((resolve, reject) => {
           const heading = () => document.querySelector("main section[role=region]:not([data-leaving]) h2")?.textContent ?? "";
-          const toastText = () => [...document.querySelectorAll("[role=status]")].map((n) => n.textContent ?? "").join("|");
+          const toastText = () => [...document.querySelectorAll("[data-toast]")].map((n) => n.textContent ?? "").join("|");
           const before = heading();
-          const toastBefore = document.querySelector("[aria-live=polite] > div");
+          const toastBefore = document.querySelector("[data-toast]");
           let painted = -1;
           const t0 = performance.now();
           const observer = new MutationObserver(() => {
@@ -225,7 +225,7 @@ test("work queue at 4x CPU slow-down: key to next card, key to saved, 10 keys in
               painted = 0;
               requestAnimationFrame(() => setTimeout(() => (painted = performance.now() - t0), 0));
             }
-            const toast = document.querySelector("[aria-live=polite] > div");
+            const toast = document.querySelector("[data-toast]");
             if (toast && toast !== toastBefore && toastText().includes("Logged")) {
               const done = () => (painted > 0 ? (observer.disconnect(), resolve({ paint: painted, saved: performance.now() - t0 })) : setTimeout(done, 5));
               done();

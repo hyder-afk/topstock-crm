@@ -51,7 +51,8 @@ const takeClaim = (email: string, lead: string) =>
 
 const card = (page: Page) => page.locator("main section[role=region]:not([data-leaving])");
 const heading = (page: Page) => card(page).locator("h2");
-const toast = (page: Page) => page.getByRole("status").filter({ hasText: /\S/ }).last();
+// The toast as drawn (a "Logged" toast is shown but not read out: the page's own live message says it once).
+const toast = (page: Page) => page.locator("[data-toast]").last();
 
 async function openQueue(page: Page) {
   await settled(page);
@@ -437,6 +438,221 @@ test("focus_never_drops_to_body: after Start, Done for now, the empty state and 
   expect(await onBody()).toBe(false);
   await page.getByRole("button", { name: "Back to the start" }).click();
   await expect(page.getByRole("button", { name: "Start" })).toBeFocused();
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
+});
+
+/** Holds this page's requests to `match` (POST only) for `ms` before sending them on: a slow connection. */
+async function slow(page: Page, match: (url: URL) => boolean, ms: number, also: (h: Record<string, string>) => boolean = () => true) {
+  await page.route(
+    (url) => match(url),
+    async (route) => {
+      if (route.request().method() === "POST" && also(route.request().headers())) await new Promise((r) => setTimeout(r, ms));
+      await route.continue().catch(() => {});
+    },
+  );
+}
+
+test("stop_while_in_flight: Done for now while a save or Start is on its way leaves no hidden claim and no jump", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Stop Alpha", "Stop Bravo", "Stop Charlie", "Stop Delta"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  // 1. A save on its way (it also claims the next reserve card) when Done for now is pressed.
+  await slow(page, (u) => u.pathname === "/api/queue/outcome", 1500);
+  const first = await current(page);
+  await page.keyboard.press("Digit1");
+  await page.getByRole("button", { name: "Done for now" }).click();
+  await expect.poll(() => outcomes(leadId(adminEmail, first)), { timeout: 10_000 }).toBe("no_answer");
+  // The lead that answer claimed is let go at once (before: held for 10 minutes by nobody on screen).
+  await expect.poll(() => claims(adminEmail), { timeout: 10_000 }).toBe("0");
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(card(page)).toHaveCount(0);
+  // 2. The last lead: the answer finds nothing more, and the start screen stays (before: "Everyone due has been called").
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Stop Last"]);
+  await page.getByRole("button", { name: "Start" }).click();
+  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await expect(heading(page)).toHaveText("Stop Last");
+  await page.keyboard.press("Digit1");
+  await page.getByRole("button", { name: "Done for now" }).click();
+  await expect.poll(() => outcomes(leadId(adminEmail, "Stop Last")), { timeout: 10_000 }).toBe("no_answer");
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Everyone due has been called." })).toHaveCount(0);
+  // 3. Start's own claim on its way when Done for now is pressed: its cards are let go, nothing shows.
+  await page.unrouteAll({ behavior: "wait" });
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Stop Echo", "Stop Foxtrot", "Stop Golf"]);
+  await slow(page, (u) => u.pathname === "/leads/queue", 1500, (h) => !!h["next-action"]);
+  await page.getByRole("button", { name: "Start" }).click();
+  if (!open) {
+    // Every zone is closed: Start lands on the outside-hours state first; take the escape, then stop at once.
+    await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  }
+  await page.getByRole("button", { name: "Done for now" }).click();
+  await page.waitForTimeout(2500);
+  await expect.poll(() => claims(adminEmail), { timeout: 10_000 }).toBe("0");
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(card(page)).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await settled(page);
+  await context.close();
+});
+
+test("undo_latest_outcome: U right after a key takes back that outcome (not the one before), and its lead's heading has the focus", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Latest Alpha", "Latest Bravo", "Latest Charlie", "Latest Delta"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  const first = await current(page);
+  await page.keyboard.press("Digit1");
+  await expect.poll(() => outcomes(leadId(adminEmail, first))).toBe("no_answer");
+  await expect(toast(page)).toContainText("Logged: No answer");
+  // The next save is slow; U pressed before it lands waits for it and takes back that one.
+  await slow(page, (u) => u.pathname === "/api/queue/outcome", 1500);
+  const second = await current(page);
+  await page.keyboard.press("Digit2");
+  await expect(heading(page)).not.toHaveText(second);
+  await page.keyboard.press("u");
+  await expect(heading(page)).toHaveText(second, { timeout: 10_000 });
+  await expect(heading(page)).toBeFocused();
+  await expect.poll(() => outcomes(leadId(adminEmail, second))).toBe("");
+  expect(outcomes(leadId(adminEmail, first))).toBe("no_answer");
+  expect(errors).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await settled(page);
+  await context.close();
+});
+
+test("undo_on_empty_screen and queue_owns_u: U on the empty state brings the lead back; a lead-page entry is never undone from the queue", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  // A lead outside the queue, with a note logged on its page (the lead page's U would take that back).
+  const pageLead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, country)
+                        select org_id, 'Undo Page Lead', id, 'disqualified', '+33 6 00 00 00 77', 'FR' from public.profiles
+                        where id = '${userId(adminEmail)}' returning id`);
+  makeLeads(adminEmail, ["Undo Only"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await settled(page);
+  await page.goto(`/leads/${pageLead}`);
+  await appReady(page);
+  const composer = page.getByRole("form", { name: "Log activity" });
+  await composer.getByRole("textbox", { name: "Note" }).fill("Kept on the lead page");
+  await composer.getByRole("button", { name: /^Save to timeline/ }).click();
+  await expect.poll(() => sql(`select count(*) from public.activities where company_id = '${pageLead}'`)).toBe("1");
+  // G then Q: the queue opens inside the app (its key listener comes after the lead page's).
+  await page.locator("main h1").click();
+  await page.keyboard.press("g");
+  await page.keyboard.press("q");
+  await expect(page.locator("main h1")).toContainText("Work queue");
+  await page.getByRole("button", { name: "Start" }).click();
+  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await expect(heading(page)).toHaveText("Undo Only");
+  await page.keyboard.press("Digit1");
+  // The last lead: the empty state, whose toast offers Undo (U).
+  await expect(page.getByRole("heading", { name: "Everyone due has been called." })).toBeVisible();
+  await expect.poll(() => outcomes(leadId(adminEmail, "Undo Only"))).toBe("no_answer");
+  await expect(toast(page)).toContainText("Undo (U)");
+  await page.keyboard.press("u");
+  await expect(heading(page)).toHaveText("Undo Only", { timeout: 10_000 });
+  await expect(heading(page)).toBeFocused();
+  await expect.poll(() => outcomes(leadId(adminEmail, "Undo Only"))).toBe("");
+  // The note on the other lead's page is still there.
+  expect(sql(`select count(*) from public.activities where company_id = '${pageLead}'`)).toBe("1");
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
+});
+
+test("not_saved_in_every_phase: an outcome that never saved stays visible on the empty state, and Retry saves it", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Unsaved Only"]);
+  const { context, page } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  let cut = true;
+  await page.route("**/api/queue/outcome", async (route) => (cut && route.request().method() === "POST" ? route.abort() : route.continue()));
+  await page.keyboard.press("Digit1");
+  // Every try fails; nothing is left to call: the empty state shows, and so does the outcome not saved.
+  await expect(page.getByRole("heading", { name: "Everyone due has been called." })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("1 outcome not saved")).toBeVisible({ timeout: 15_000 });
+  expect(outcomes(leadId(adminEmail, "Unsaved Only"))).toBe("");
+  cut = false;
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByText("1 outcome not saved")).toHaveCount(0);
+  await expect.poll(() => outcomes(leadId(adminEmail, "Unsaved Only"))).toBe("no_answer");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await settled(page);
+  await context.close();
+});
+
+test("caches_after_outcome: back on the lead page after a queue outcome, its timeline and tasks show it", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  const [lead] = makeLeads(adminEmail, ["Cache Comptoir"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await settled(page);
+  await page.goto(`/leads/${lead}`);
+  await appReady(page);
+  await expect(page.locator("main h1")).toHaveText("Cache Comptoir");
+  await page.locator("main h1").click();
+  await page.keyboard.press("g");
+  await page.keyboard.press("q");
+  await expect(page.locator("main h1")).toContainText("Work queue");
+  await page.getByRole("button", { name: "Start" }).click();
+  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await expect(heading(page)).toHaveText("Cache Comptoir");
+  await page.keyboard.press("Digit5");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => outcomes(lead)).toBe("interested");
+  // Back inside the app, within the lead page's cache time (30 s): the new task and the entry are there.
+  await page.goBack();
+  await expect(page.locator("main h1")).toHaveText("Cache Comptoir");
+  await expect(page.getByRole("main").getByText("Follow up with Cache Comptoir").first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("main").getByText("Interested").first()).toBeVisible();
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
+});
+
+test("phone_followup_in_view: at 390 the follow-up and the Do not contact question come into view above the dock", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Phone Alpha", "Phone Bravo", "Phone Charlie"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { width: 390, baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  const clear = (name: string) =>
+    expect
+      .poll(async () => {
+        const b = page.getByRole("button", { name, exact: true });
+        const box = await b.boundingBox();
+        if (!box) return "no box";
+        return page.evaluate(
+          ({ x, y, name }) => {
+            const el = document.elementFromPoint(x, y)?.closest("button");
+            return el && el.textContent?.trim().startsWith(name) && y < window.innerHeight ? "clear" : `covered at ${Math.round(y)}`;
+          },
+          { x: box.x + box.width / 2, y: box.y + box.height / 2, name },
+        );
+      })
+      .toBe("clear");
+  await page.locator('button[data-outcome="interested"]').tap();
+  await clear("Confirm");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("role"))).toBe("group");
+  await page.getByRole("button", { name: "Cancel" }).tap();
+  await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  await page.locator('button[data-outcome="do_not_contact"]').tap();
+  await clear("Mark as do not contact");
   expect(errors).toEqual([]);
   await settled(page);
   await context.close();
