@@ -156,6 +156,75 @@ day4c now: **87 rows: 77 caught, 10 documented two-layer rows, 0 not as listed**
 touches no other row's anchor: every anchor of every set still matches exactly once, dry check).
 
 
+### Review round 3 (68723f4, 12 Oct 2026)
+
+Two database findings of the review were fixed in 7b3fa92 (case 11's threshold settled in 68723f4):
+- **A claim renewed after its lead was reassigned** (finding 1): the claim guard now refuses renewing a claim on a lead
+  the caller may no longer claim (owner, manager, admin), and `renew_claims` and `claim_next_lead`'s keep path let such
+  a claim go first. Test: `queue_attack.sql` 9b.
+- **`claim_next_lead` deadlock when two admins' orders cross** (finding 2): a lead's claim row changes only under that
+  lead's advisory lock; the walk only tries it (`pg_try_advisory_xact_lock`) and skips a lead someone else is claiming;
+  the functions that change the caller's own claims, `claim_lead` and `log_activity` wait for it. Test:
+  `queue_concurrency.sh` case 11 (20 rounds of two admins pressing Start together with crossing follow-ups; at least 5
+  rounds must really cross), and a held lead lock is skipped at once. Case 9 (`second_look`) now holds X with a claim
+  row written by the superuser (no lead lock), since a claim taken through the functions is skipped instead of waited
+  for.
+
+Five rows were added (88 to 92). They ran, with every earlier day4c row whose anchor lies in a function this round
+changed (claim guard, `claim_next_lead`, `claim_lead`, `renew_claims`, `release_claims`, `log_activity`), in a throwaway
+worktree (`<scratchpad>/wt-4c-mut4` at 68723f4, its `db-test.sh` on port 54352; removed afterwards, `git status` there
+showed only the port change). Its baseline passed first (all nine suites, advisors no ERROR). Command:
+`python3 scripts/db-mutations.py --set day4c 1 4 8 11 16 31 32 33 34 35 37 38 39 40 42 43 44 45 46 47 54 55 56 57 80 82
+83 86 87 88 89 90 91 92`. Script exit code 0: **34 rows: 29 caught, 5 documented two-layer rows, 0 not as listed.**
+A first attempt on 7b3fa92 was stopped: case 11 then also required each admin's own follow-up first, which a fair race
+does not always give (one walk can reach the other's lead first), so three two-layer rows read as caught; the check now
+counts the rounds that crossed instead.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 1 | claim_next_lead and queue_candidates: no scope check (a rep works Team or the unassigned leads; both layers) | caught | FAIL: "select public.claim_next_lead('team', null, '{}', 1, true)" succeeded, expected 42501 |
+| 4 | Claim guard: keeps the client's end time (a claim stretched for a year) | caught | FAIL: a client stretched a claim |
+| 8 | claim_next_lead: no calling-hours filter | caught | FAIL: queue_skips_closed_zones: a lead outside hours was served |
+| 11 | claim_next_lead: no scope check (queue_candidates still refuses the scope) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 16 | claim_lead: no editor pre-check (the policy answers without the scope hint) | caught | FAIL: "select public.claim_lead('07eaf2af-e8b9-43ea-a4de-c8afb381d1be')" gave 42501 (hint "", new row violates row-level security policy for |
+| 31 | Claim guard: the client's person kept (the grant and the insert policy still stop it) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 32 | Claim guard, grant and insert policy: a claim for someone else (all three layers) | caught | FAIL: private.queue_claims protections |
+| 33 | Claim guard: no limit of 3 | caught | FAIL: "insert into private.queue_claims (company_id) values ('31193861-1e38-41df-8ca6-412bd9388b0b')" succeeded, expected 22023 |
+| 34 | Claim guard: expired claims count toward the limit | caught | you are already working on 3 leads |
+| 35 | Claim guard: renewing an expired claim passes the limit | caught | FAIL: "update private.queue_claims set expires_at = now() where company_id = 'bc7d4bc8-5ab0-4cdf-a54e-f6ac25867548'" succeeded, expected 220 |
+| 37 | Claim guard: other fields may change (the column grants still stop it) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 38 | Claim guard: no per-person lock (claim_lead and the queue still take it) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 39 | Claims: no per-person lock anywhere (two tabs pass the limit) | caught | FAIL: claim_cap_two_tabs: the second tab took a fourth claim |
+| 40 | claim_next_lead: an expired claim is not removed first (a closed laptop keeps its leads) | caught | FAIL: claim_next_lead must take over an expired claim: {"kept": [], "cards": [{"id": "268cfae0-6802-44ad-873d-afaa9bdd2426", "city": null, " |
+| 42 | claim_next_lead: no second look after winning a claim (a lead a teammate just called is served again) | caught | FAIL: second_look: the queue served '929a8f49-817c-4388-a7e6-ab647c8e3af7,4530360d-5080-41dd-882c-568fa3a76edd' (expected only X; L was just |
+| 43 | claim_next_lead: the session's skips ignored | caught | FAIL: queue order: got {9a81d5a5-b071-4341-b130-969ec35dab11,9a81d5a5-b071-4341-b130-969ec35dab11,9a81d5a5-b071-4341-b130-969ec35dab11,9a81d |
+| 44 | claim_next_lead: the caller's other claims kept (the screen holds more than it shows) | caught | you are already working on 3 leads |
+| 45 | claim_next_lead: a reload resumes claims that are no longer eligible | caught | FAIL: reload with a lead no longer due: {930d1358-bdb6-4a45-892d-c8a6ca12624b,b9cda188-3e64-4ac5-8a14-72bdec3d6980} |
+| 46 | claim_next_lead: no limit on kept plus new cards | caught | FAIL: "select public.claim_next_lead('mine', '{650da8e3-cea1-44ac-a606-5bb2e297e22b,1edf2cdd-4491-447e-bb33-c07ad1d20f83}'::uuid[], '{}', 2, |
+| 47 | claim_next_lead: follow-ups not first (the walk starts at Negotiation) | caught | FAIL: queue order: got {f727f472-3f7f-4bc5-b317-9ede151d9558,367186b1-270d-4eca-922e-11eaae7d82a6,1da6de77-cdca-467e-b821-66ff554c26d3,cc68c |
+| 54 | log_activity: a call from the queue keeps its claim | caught | FAIL: p_from_queue must release the caller's claim, and only then |
+| 55 | log_activity: a call from the queue releases anyone's claim (the delete policy still stops it) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 56 | log_activity and the delete policy: a call from the queue releases a teammate's claim (both layers) | caught | FAIL: claim_delete_other_fresh_zero_rows |
+| 57 | log_activity: the lead locked FOR UPDATE again (a claim waits for the call) | caught | FAIL: claim_does_not_wait_for_the_lead: the claim waited 1563 ms for the lead |
+| 80 | renew_claims: brings back expired claims | caught | FAIL: renew_claims brought back an expired claim |
+| 82 | claim_next_lead: null in the skips accepted (every lead skipped) | caught | FAIL: "select public.claim_next_lead('mine', null, array[null]::uuid[], 1, true)" succeeded, expected 22023 |
+| 83 | Queue Mine: future dates served (no stop at now, and no second look after the claim; both layers) | caught | FAIL: queue order: got {7b91b649-f6e1-45f9-bb2f-9ef80511e83e,53d53771-ba63-45a4-b7f3-ddf64c399462,6caac78e-77ec-48d3-8aee-a673402f6ce5,217db |
+| 86 | Wrong number: a contact number without a digit counts as another working number (no find-the-number task) | caught | FAIL: wrong main line with only a digitless contact number: task <NULL> rank <NULL> |
+| 87 | Wrong number: a main line without a digit counts as another working number (no find-the-number task) | caught | FAIL: wrong contact number with a digitless main line: task <NULL> rank <NULL> |
+| 88 | Claim guard: a renewal of a lead that changed hands passes (renew_claims and the keep path still let it go) | caught | FAIL: "update private.queue_claims set expires_at = now() where company_id = '00ef3e59-6673-499d-9166-fcde32d1c78d'" succeeded, expected 425 |
+| 89 | renew_claims: a reassigned lead's claim is renewed, not let go (the claim guard then refuses the renewal) | caught | only a lead the caller may change can stay claimed |
+| 90 | claim_next_lead keep: a reassigned lead's claim is kept (the claim guard then refuses the renewal) | caught | only a lead the caller may change can stay claimed |
+| 91 | Renewals of a reassigned lead: the guard, renew_claims and the keep path all let it pass (all three layers) | caught | FAIL: "update private.queue_claims set expires_at = now() where company_id = 'b1acd2fe-50b3-4798-8855-8d8d0afbaf97'" succeeded, expected 425 |
+| 92 | claim_next_lead walk: no lead lock tried (waits on a teammate's claim; two crossing walks deadlock) | caught | deadlock detected |
+
+Row 92 (the walk without the lead lock) fails with "deadlock detected" in case 11, the deadlock the review reproduced.
+The lead locks in the functions that change the caller's own claims have no row of their own: they close the remaining
+ways a walk could wait in a circle (two people's expired claims picked up by each other's walk at the same instant),
+which no test can make happen on demand; row 92 removes the part the crossing case can see.
+
+day4c now: **92 rows** (rows 1 to 87 as above, 88 to 92 here); every anchor of every set still matches exactly once
+(dry check after the change).
+
 ## Earlier rows moved to the Day 4c migration (runs on 8192480 and b235bad)
 
 `REDEFINED_IN_4C` in `scripts/db-mutations.py`: these rows edited the Day 4b definitions of the audit trigger,
