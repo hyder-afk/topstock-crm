@@ -67,9 +67,52 @@ test("a size that does not match the stored body, a missing object or a store er
   const zip = makeZip(DOCX);
   expect((await readAndSniff(store(zip, false).fetcher, W, zip.length + 1)).ok).toBe(false);
   const missing: Fetcher = async () => new Response("not found", { status: 400 });
-  expect(await readAndSniff(missing, "application/pdf", 10)).toEqual({ ok: false, rangeHonoured: null });
+  expect(await readAndSniff(missing, "application/pdf", 10)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: null });
   const broken: Fetcher = async () => {
     throw new Error("timeout");
   };
-  expect(await readAndSniff(broken, "application/pdf", 10)).toEqual({ ok: false, rangeHonoured: null });
+  expect(await readAndSniff(broken, "application/pdf", 10)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: null });
+});
+
+// Verifier 4d finding 1: a read that fails (timeout, Storage error, no link, a cut-off body) is not a fake file. Only
+// bytes that were read in full and refused by sniffFile are a "mismatch" (finishUpload deletes the upload); anything
+// else is "unreadable" (finishUpload answers "unavailable" and leaves the row pending for Cancel or the 15-minute
+// cleanup), so a real Word or Excel file is never deleted because Storage was slow.
+test("a read that times out is unreadable, not a mismatch", async () => {
+  const zip = makeZip(DOCX);
+  // Storage ignores Range and the whole body is slow: the fetcher's own timeout aborts the stream mid-read.
+  const slow: Fetcher = async (_range, timeoutMs) => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(zip.subarray(0, 100));
+        setTimeout(() => controller.error(new DOMException("The operation timed out.", "TimeoutError")), Math.min(timeoutMs, 50));
+      },
+    });
+    return new Response(stream, { status: 200 });
+  };
+  expect(await readAndSniff(slow, W, zip.length, 50)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: null });
+  // The fetch itself timing out (no answer at all).
+  const silent: Fetcher = async () => {
+    throw new DOMException("The operation timed out.", "TimeoutError");
+  };
+  expect(await readAndSniff(silent, W, zip.length)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: null });
+});
+
+test("a Storage error, a missing object and a short body are unreadable; refused bytes are a mismatch", async () => {
+  const zip = makeZip(DOCX);
+  const error: Fetcher = async () => new Response("upstream", { status: 503 });
+  expect(await readAndSniff(error, W, zip.length)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: null });
+  const missing: Fetcher = async () => new Response("not found", { status: 400 });
+  expect(await readAndSniff(missing, "application/pdf", 10)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: null });
+  // A body cut short (the stream ends before the declared size) when Range is ignored, and a short tail when honoured.
+  expect(await readAndSniff(store(zip.subarray(0, zip.length - 10), false).fetcher, W, zip.length)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: false });
+  const cut = store(zip, true);
+  const shortTail: Fetcher = async (range, ms) => (range.startsWith("bytes=-") ? new Response(zip.subarray(zip.length - 5), { status: 206 }) : cut.fetcher(range, ms));
+  expect(await readAndSniff(shortTail, W, zip.length)).toEqual({ ok: false, reason: "unreadable", rangeHonoured: true });
+  // Bytes read in full that are not what they claim: the only mismatch.
+  const macro = makeZip([...DOCX, { name: "word/vbaProject.bin" }]);
+  for (const honour of [true, false]) {
+    expect(await readAndSniff(store(macro, honour).fetcher, W, macro.length)).toEqual({ ok: false, reason: "mismatch", rangeHonoured: honour });
+    expect(await readAndSniff(store(fakePdf(), honour).fetcher, "application/pdf", fakePdf().length)).toEqual({ ok: false, reason: "mismatch", rangeHonoured: honour });
+  }
 });

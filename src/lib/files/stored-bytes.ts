@@ -6,9 +6,16 @@ import { MAX_FILE_BYTES, type FileMime } from "@/lib/files/types";
 // Excel, the last 1 MiB. When the store answers 206, those ranges are all it reads. When it ignores Range (200, the
 // whole body), it reads the stream itself: the first 8 KiB for PDF and images, or the whole file (at most 10 MiB) for
 // Word and Excel, keeping the head and the last bytes, and cancels the rest.
+// A failed check says why: "mismatch" only when the bytes were read in full and sniffFile refused them; "unreadable"
+// for everything else (no link, a Storage error, the time budget, a stream cut short), so a slow read is never taken
+// for a fake file (finishUpload deletes only on "mismatch").
 
 export type Fetcher = (range: string, timeoutMs: number) => Promise<Response>;
-export type StoredCheck = { ok: boolean; rangeHonoured: boolean | null };
+export type StoredCheck =
+  | { ok: true; rangeHonoured: boolean }
+  | { ok: false; reason: "unreadable" | "mismatch"; rangeHonoured: boolean | null };
+
+const unreadable = (rangeHonoured: boolean | null): StoredCheck => ({ ok: false, reason: "unreadable", rangeHonoured });
 
 async function read(fetcher: Fetcher, range: string, want: number, timeoutMs: number, wholeIfIgnored: boolean) {
   const res = await fetcher(range, timeoutMs);
@@ -41,35 +48,37 @@ async function read(fetcher: Fetcher, range: string, want: number, timeoutMs: nu
   return { bytes, whole };
 }
 
-/** Reads what sniffFile needs and runs it. False on any failure (status, timeout, short body, odd bytes). */
+/** Reads what sniffFile needs and runs it: ok, or why not ("unreadable": status, timeout, short body; "mismatch": the
+ *  bytes, read in full, are not what they claim). */
 export async function readAndSniff(fetcher: Fetcher, mime: FileMime, size: number, budgetMs = 3000): Promise<StoredCheck> {
   try {
     const deadline = Date.now() + budgetMs;
     const office = needsTail(mime);
     const first = await read(fetcher, `bytes=0-${HEAD_BYTES - 1}`, HEAD_BYTES, budgetMs, office);
-    if (!first) return { ok: false, rangeHonoured: null };
+    if (!first) return unreadable(null);
     let head = first.bytes.subarray(0, HEAD_BYTES);
     let tail: Uint8Array | undefined;
     if (office) {
       if (first.whole) {
-        if (first.bytes.length !== size) return { ok: false, rangeHonoured: false };
+        if (first.bytes.length !== size) return unreadable(false);
         tail = first.bytes.subarray(Math.max(0, size - TAIL_BYTES));
       } else {
         const want = Math.min(size, TAIL_BYTES);
         const last = await read(fetcher, `bytes=-${want}`, want, Math.max(1, deadline - Date.now()), true);
-        if (!last) return { ok: false, rangeHonoured: true };
+        if (!last) return unreadable(true);
         if (last.whole) {
-          if (last.bytes.length !== size) return { ok: false, rangeHonoured: false };
+          if (last.bytes.length !== size) return unreadable(false);
           head = last.bytes.subarray(0, HEAD_BYTES);
           tail = last.bytes.subarray(Math.max(0, size - TAIL_BYTES));
         } else {
-          if (last.bytes.length !== want) return { ok: false, rangeHonoured: true };
+          if (last.bytes.length !== want) return unreadable(true);
           tail = last.bytes;
         }
       }
     }
-    return { ok: sniffFile({ mime, size, head, tail }), rangeHonoured: !first.whole };
+    const rangeHonoured = !first.whole;
+    return sniffFile({ mime, size, head, tail }) ? { ok: true, rangeHonoured } : { ok: false, reason: "mismatch", rangeHonoured };
   } catch {
-    return { ok: false, rangeHonoured: null };
+    return unreadable(null);
   }
 }

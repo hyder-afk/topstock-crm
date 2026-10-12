@@ -24,10 +24,11 @@ export async function signedLink(supabase: SupabaseClient, path: string, seconds
   }
 }
 
-/** Re-reads the stored object and runs sniffFile. False on any failure (missing, timeout, other origin, odd bytes). */
+/** Re-reads the stored object and runs sniffFile: ok, "unreadable" (no link, other origin, missing, timeout) or
+ *  "mismatch" (the bytes are not what they claim). */
 export async function checkStoredFile(supabase: SupabaseClient, path: string, mime: FileMime, size: number): Promise<StoredCheck> {
   const url = await signedLink(supabase, path, 30);
-  if (!url) return { ok: false, rangeHonoured: null };
+  if (!url) return { ok: false, reason: "unreadable", rangeHonoured: null };
   return readAndSniff(
     (range, timeoutMs) => fetch(url, { headers: { Range: range }, signal: AbortSignal.timeout(timeoutMs), cache: "no-store", redirect: "error" }),
     mime,

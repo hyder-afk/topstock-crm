@@ -39,7 +39,9 @@ export async function beginUpload(input: unknown): Promise<ActionResult<{ id: st
 }
 
 /** Finishes an upload: the stored bytes are read back and checked (sniffFile); a file that is not what it claims is
- *  removed (type_mismatch); otherwise the database marks it ready once the stored size and type match the declared. */
+ *  removed (type_mismatch); otherwise the database marks it ready once the stored size and type match the declared.
+ *  When the bytes cannot be read back (Storage error, timeout, no link) nothing is deleted: the answer is
+ *  "unavailable" and the row stays pending until Cancel or the 15-minute cleanup removes it. */
 export async function finishUpload(input: unknown): Promise<ActionResult<Pick<LeadFile, "id" | "name" | "mime" | "size" | "created_at">>> {
   const parsed = fileIdInput.safeParse(input);
   if (!parsed.success) return invalid();
@@ -49,6 +51,7 @@ export async function finishUpload(input: unknown): Promise<ActionResult<Pick<Le
   const p = pending.data as { path: string; mime: FileMime; size: number };
   const stored = await checkStoredFile(supabase, p.path, p.mime, p.size);
   if (!stored.ok) {
+    if (stored.reason !== "mismatch") return { ok: false, error: "unavailable" };
     await discard(supabase, parsed.data.id);
     return { ok: false, error: "type_mismatch" };
   }
