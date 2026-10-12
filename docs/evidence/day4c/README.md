@@ -151,6 +151,55 @@ e2e ran on the isolated copy: README deviation 12):
 | Head | code and tests final on 3b55c1b (db-test, unit 341, lint, typecheck re-run there); the commits after it change only `docs/` |
 | Not run here | WebKit, Semgrep, `journey.spec.ts` (CI); the whole auth suite (only the affected specs above) |
 
+## Review round 3 (12 Oct 2026): the verifier's round 2 and the 24 confirmed review findings
+
+The verifier's round 2 said NOT READY with two new should-fix items and a nit (the speed-budget question stays with
+Haider, Open risks). The review's 24 confirmed findings (`day4c-findings.json`; 9 and 14 are the same focus issue, 10
+and 17 the same lead-picker issue) were fixed alongside. Each behavioural fix has a test that fails without it: the
+database ones through mutation rows 88 to 92 (`mutations.md`), the unit ones by running them on the old files, the e2e
+ones by building the app with this round's app files taken back to 7b3fa92 (the new toast hook kept, so the tests can
+find the toast) and running the new tests on it.
+
+| Finding | What changed | How it was checked |
+|---|---|---|
+| Verifier 1 (Done for now while a save is on its way: a hidden claim, or a jump to the empty state) and review 7 (Stop during an in-flight claim) | `use-queue.ts`: each run is a session (`sessionRef`, bumped by Start, Done for now, the claims ending and the page cache); every server call remembers its session; an answer for an earlier session never touches the cards, phase or summary, and lets the leads it claimed go (`release_claims`); a save started before Stop no longer claims; the phase is read from a ref set with the state (never a render behind) | e2e `stop_while_in_flight` (the outcome route held 1.5 s, then Done for now: no claim left, start screen kept; the last lead: no empty state; Start's own action held 1.5 s, then Done for now: no claim, no card) |
+| Verifier 2 (U+237D in the English interface's French script) | `messages/en.json`: the three characters are U+202F | unit `messages.spec.ts`: no U+237D in either file, the scripts match across locales, French typography on en.json's French script |
+| Verifier 3 (nit: second-tab wording) | Open risks reworded (the second tab's Start takes the first tab's live claims back; each tab's saves then delete the other's) | read |
+| 1 (a claim renewed after its lead was reassigned) | Migration: the claim guard refuses renewing a claim on a lead the caller may no longer claim (42501 `scope`); `renew_claims` and `claim_next_lead`'s keep path let such a claim go first (the keep path also checks the queue scope), so `kept` leaves it out and the screen lets the card go | `queue_attack.sql` 9b (claim, reassign; a direct renewal is refused, the keep path drops it, `renew_claims` answers null, the new owner claims at once); mutation rows 88 to 91 caught |
+| 2 (`claim_next_lead` deadlock when two admins' orders cross) | Migration: a lead's claim row changes only under that lead's advisory lock (lock order: the person, then the lead); the walk only tries it (`pg_try_advisory_xact_lock`) and skips a lead someone else is claiming; the caller's own claims (keep and reload paths, `renew_claims`, `release_claims`), `claim_lead` and `log_activity`'s release take it (several in lead id order); a lead deleted mid-claim is skipped too | `queue_concurrency.sh` case 11 (two admins with crossing follow-ups press Start together, 20 rounds: no failure, nothing held twice, at least 5 rounds really crossed; a held lead lock is skipped at once, under 1 s); mutation row 92 (no try-lock) caught with "deadlock detected"; case 9 now holds X with a raw claim row (no lead lock) |
+| 3 (wrong-number task when the remaining number has no digits) | Already fixed in 881585a (log_activity step 7 uses the digit rule); the "dialled number is empty" check keeps `is null` (the lead page may still log a call on a digitless number; logging never depends on it) | `queue_attack.sql` 5b (main line "( )" plus a wrong contact: the task is made); mutation rows 86 and 87 caught again this round |
+| 4 (U on the queue could undo a lead-page entry) | The queue's root carries `data-owns-undo` in every phase; the call panel's global U listener stands aside on such a page | e2e `undo_on_empty_screen and queue_owns_u` (a note logged on a lead page, G then Q, an outcome, U: the outcome is undone, the note stays) |
+| 5 (U did nothing on the empty screen) and 8 (U right after a key undid the previous outcome) | U and Cmd/Ctrl+Z are handled on the empty state and the loading card; `undo()` targets the latest outcome pressed (`latestRef`): if it is still on its way, the undo job waits in the same chain for its save and then takes back that one, never the one before; `canUndo()` says whether there is one | e2e `undo_on_empty_screen…` (U on "Everyone due has been called." brings the lead back); `undo_latest_outcome` (A saved, B's save held 1.5 s, U at once: B comes back, A stays) |
+| 6 (unsaved outcomes only in the rail) | The "1 outcome not saved · Retry" chip moved to the page header, shown in every phase; stored outcomes are retried on Start, on the error card's Retry and on the browser's `online` event; retries never claim a card | e2e `not_saved_in_every_phase` (every try fails on the last lead: the empty state shows the chip; Retry saves it once); screenshot `queue-not-saved` |
+| 9 and 14 (focus dropped to `<body>`) | Round 2 fixed Start, Done for now, the empty state and Back to the start; now also: the restored card after Undo takes the focus (`advanced` on "undone"), the error card's Retry puts it on the title and then the first card, Cancel in a follow-up gives it to the heading; one polite live region stays mounted across phases (so "Logged … for …" is still read when the last card leaves); the empty state is no longer a `role=status` section holding buttons | e2e `undo_latest_outcome` and `undo_on_empty_screen…` (heading focused after U), `focus_never_drops_to_body` (round 2), `phone_followup_in_view` (Cancel: focus not on body) |
+| 10 and 17 (picking a lead dropped the focus) | `lead-picker.tsx`: after a pick the chip's remove button takes the focus | e2e `lead_picker_focus` |
+| 11 (a failed toggle left a filled check) | `task-row.tsx`: a row put back while fading out resets its check (`useIsPresent`), and the toggle's failure path resets it too | e2e `failed_toggle_reverts` (a second task keeps the list on screen; offline, then a refusal held 150 ms: the row is back with `aria-checked=false`, still so after the exit spring); fails on the old files |
+| 12 (optimistic removal did not cancel refetches) | `removeTask` awaits `cancelQueries(["tasks"])` before the snapshot (as 4b's timeline); its three callers await it | unit `tasks-cache.spec.ts` (a read in flight lands after the removal: the row stays gone; fails without the cancel) |
+| 13 (caches stale after queue outcomes and undo; time zone) | After a saved outcome or an undo: `refreshLead` (timeline, lead, lead tasks, leads list) and `refreshTasks`; saving the time zone invalidates `["tasks"]` | e2e `caches_after_outcome` (lead page, G then Q, Interested, back: the follow-up task and the entry show at once) |
+| 15 (at 390 the follow-up and Do not contact question were off screen) | `queue-rail.tsx`: below 1024 the panel (`role=group`, named by the outcome) scrolls into view with a bottom scroll margin clear of the dock (smooth; instant with reduced motion) and takes the focus; at desktop width nothing moves | e2e `phone_followup_in_view` (Confirm and "Mark as do not contact" in view and not under the dock); screenshot `queue-followup-view` |
+| 16 (Enter on a lead-less task's check completed it) | Enter on a check always calls `preventDefault`; it opens the lead when there is one | e2e `enter_on_task_without_lead` (Enter: still open; Space ticks it) |
+| 18 (44 px lead link on phones) | Already fixed in 2d01de0 (tap area 10 px above and below) | e2e `phone_lead_link_target` passes again |
+| 19 (each outcome announced twice; no "their time") | The "Logged" toast is shown but not read out (`quiet`: drawn outside the live region) unless it also says a card went to a teammate; the live message's next-lead time uses `Queue.theirTime`; the e2e toast helper finds the toast by `data-toast` | code review (web-design-guidelines addendum); e2e queue specs find the toast |
+| 20 (queue skeleton 58 px short in French at 390) | `leads/queue/loading.tsx`: the intro, scope switch and lunch line carry their own words, invisible on grey bars (`box-decoration-break: clone`), so they wrap as the page does in either language | screenshots `leads-queue-skeleton-*` against `queue-start-*` |
+| 21 (key hints broke between a key and its word) | No-break spaces inside each "key word" pair of `Queue.keysHint`, `Queue.confirmKeys`, `Tasks.keysHint` (EN and FR) | unit `messages.spec.ts` (no ordinary space inside a part) |
+| 22 (the Tasks title count read as a bare number) | An sr-only sentence and a `title`: `Tasks.dueCount` ("5 tasks due today or overdue", FR plural) | unit `messages.spec.ts`; screenshots `tasks-*` |
+| 23 (new tasks appeared with no entrance) | A task row added after the list first shows fades in and rises 8 px (`smooth`); reduced motion: the fade only; rows present at first draw do not move | visual (screens); no test can time an entrance reliably |
+| 24 (no More screenshots in the 4c evidence) | `screens.spec.ts`: the route skeleton test also shoots More (EN light and FR dark, 390 and 1440); the app-shell test's `more-*` shots are kept here | `screens/README.md` |
+
+**Review round 3 checks** (code final on 139a528; tests on 2aea16d: two e2e selectors in 4615c89, the stronger toggle test in 2aea16d):
+
+| Check | Result |
+|---|---|
+| `db-test.sh` (a copy on port 54351) | re-run on the final code: all nine suites pass, including `queue_attack` 9b and `queue_concurrency` case 11; advisors: no ERROR (WARN `set_user_role`, accepted); exit 0 |
+| Mutations (throwaway worktree at 68723f4, port 54352) | baseline passed; 34 rows (88 to 92 and every earlier row in a changed function): 29 caught, 5 documented two-layer rows, 0 not as listed; exit 0 |
+| `npm run lint` / `npm run typecheck` | exit 0 (the 2 existing TanStack Virtual warnings) / exit 0 |
+| `npm run test:unit` | 345 passed, exit 0 (4 new: three in `messages.spec.ts`, `tasks-cache.spec.ts`); the new ones fail on the old files (3 and 1 failed) |
+| E2E Chromium, shared local stack (this worktree's `start.sh`, Next on 3100) | on 2aea16d: `tasks.spec.ts` and `queue.spec.ts` 29 passed (11 + 18; 3 and 6 new), exit 0; on 139a528: `queue-multi`, `day4-security`, `lead-page`, `shell`: 56 passed, 1 failed (the 4c CSP check waited for the empty state as a `role=status` section, which this round removed; its selector fixed in 4615c89, then 1 passed, exit 0) |
+| Without the fixes (app files of 7b3fa92, rebuilt) | each new test run alone (`--grep`, a fresh server per run): `stop_while_in_flight`, `undo_latest_outcome`, `undo_on_empty_screen…`, `not_saved_in_every_phase`, `caches_after_outcome`, `phone_followup_in_view`, `lead_picker_focus` and `enter_on_task_without_lead` failed (exit 1 each). `failed_toggle_reverts` first passed there: alone in Today, its row left the list for the empty state and came back as a new row, which hid the bug. It now keeps a second task on the list and adds a refusal that arrives while the row fades out (request held 150 ms, then cut); on the old files it then failed (`aria-checked` "true"), on the fixed ones it passes (`tasks.spec.ts` re-run: see the E2E row). A first attempt ran while another checkout had restarted the shared stack (no Day 4c tables there) and was discarded |
+| Screenshots | `screens.spec.ts` "app shell", "tasks page", "work queue", "route skeletons": 4 passed, exit 0 (a first run failed on the French Confirm name, "Confirmer", fixed in 4615c89); 54 kept shots replaced, 16 added (`screens/README.md`) |
+| gitleaks / `npm audit --omit=dev` | gitleaks `origin/main..HEAD` on 2aea16d: 39 commits scanned, no leaks found, exit 0; gitleaks `dir` on `docs/evidence/day4c` and `docs/log.md` before the evidence commit: no leaks, exit 0 / `npm audit --omit=dev`: found 0 vulnerabilities, exit 0 |
+| Not run here | WebKit, Semgrep, `journey.spec.ts` (CI); `day4-perf` and `day4-chunks` (PERF=1 only; the perf spec's toast hook changed to `data-toast`) |
+
 ## Check results
 
 App checks on **e8ce3c9** (the last code commit; the commits after it change only `docs/`). Database part: as
@@ -250,11 +299,13 @@ VM with the `psql`-per-call REST stand-in.
   At normal pace, one call between keys, you will not see either. Do you accept this for now and let me look again in
   the Day 7 polish (my recommendation), or should I fix it before merging? Fixing the second one means holding two
   leads in reserve instead of one, so a laptop left open would hold three leads for up to 10 minutes instead of two."
-- **A second tab of the same person** ends the first tab's claims (each claim call keeps only its own cards, design
-  5.4) without any time passing in the first tab: its reserve card leaves at its next save (the `kept` check) and a
-  card shown after 15 s is read again (`worked_by`), but an outcome key on its current card is still logged (a claim
-  never gates logging). Rare (one person, two queue tabs); the notice wording covers it ("or the queue was opened in
-  another tab").
+- **A second tab of the same person:** its Start (`p_keep` null) takes the first tab's live claims back as its own
+  cards (they are the same person's claims), and from then on each tab's saves keep only that tab's cards, so each
+  deletes the other tab's claims (design 5.4: a claim call keeps only the cards its screen holds). The first tab's
+  reserve card leaves at its next save (the `kept` check) and a card shown after 15 s is read again (`worked_by`), but
+  an outcome key on its current card is still logged (a claim never gates logging), so the two tabs can show the same
+  lead. Rare (one person, two queue tabs); the notice wording covers it ("or the queue was opened in another tab").
+  (Wording corrected in review round 3: the earlier text said the second tab "ends" the first tab's claims.)
 - **Calling hours in e2e follow the real clock:** the outside-hours test is skipped when no listed country is closed
   (never in practice), and every queue test uses "Show leads outside calling hours" when every zone is closed
   (weekends), so the in-hours path is then not exercised.
