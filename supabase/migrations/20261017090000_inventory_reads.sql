@@ -5,6 +5,9 @@
 -- the cost per piece only for managers and admins (a rep's left join on private.product_costs finds nothing). Lists
 -- return keyset pages of at most 200 rows (PostgREST cuts set-returning RPCs at 1,000); the rest return jsonb.
 -- Every refusal is a constant message with a hint (22023), 42501 for who, P0002 for what is missing or not visible.
+-- The list RPCs take optional filters; each runs with plan_cache_mode = force_custom_plan, so every call is planned
+-- with its own arguments (a generic plan cannot drop an unused "filter is null or ..." branch, and walked all 100,000
+-- movements before a cursor in 300 ms instead of reading 51 rows down the (org_id, id) index).
 -- Shared objects of earlier days: none is redefined.
 
 -- One row per product with its two places folded in (warehouse and transit), its status and its cost. A view with
@@ -69,7 +72,7 @@ create function public.list_stock(
   tr_available integer, transit_eta date, price_min numeric, price_max numeric, reorder_point integer, status_key text,
   share_visible boolean, archived boolean, cost_per_piece numeric, touched_at timestamptz, sort_value text
 )
-language plpgsql stable security invoker set search_path = '' as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = 'force_custom_plan' as $$
 declare
   v_org constant uuid := private.require_inventory_reader();
   v_like text;
@@ -140,7 +143,7 @@ $$;
 -- How many products match (the table's "1,204 products"; the same filters as list_stock).
 create function public.count_stock(p_search text default null, p_filter text default 'all', p_category text default null)
 returns integer
-language plpgsql stable security invoker set search_path = '' as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = 'force_custom_plan' as $$
 declare
   v_org constant uuid := private.require_inventory_reader();
   v_like text;
@@ -280,7 +283,7 @@ create function public.list_movements(
   note text, company_id uuid, company_name text, user_id uuid, user_first_name text, user_last_name text,
   created_at timestamptz, pair_id bigint, reservation_id uuid, import_batch_id uuid
 )
-language plpgsql stable security invoker set search_path = '' as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = 'force_custom_plan' as $$
 declare
   v_org constant uuid := private.require_inventory_reader();
 begin
@@ -295,24 +298,29 @@ begin
   if p_from > p_to or p_from < date '2020-01-01' or p_to > date '2100-01-01' then
     raise exception 'the dates are out of range' using errcode = '22023', hint = 'bounds';
   end if;
+  -- The page first (51 rows down the (org_id, id) or (org_id, kind, id) index), then the names joined to it: joined
+  -- before the limit, the planner walked every movement before the cursor.
   return query
+  with page as materialized (
+    select m.* from private.stock_movements m
+     where m.org_id = v_org
+       and (p_product is null or m.product_id = p_product)
+       and (p_kinds is null or m.kind = any (p_kinds))
+       and (p_user is null or m.user_id = p_user)
+       and (p_from is null or m.created_at >= (p_from::timestamp at time zone 'Europe/Paris'))
+       and (p_to is null or m.created_at < ((p_to + 1)::timestamp at time zone 'Europe/Paris'))
+       and (p_before_id is null or m.id < p_before_id)
+     order by m.id desc
+     limit p_limit)
   select m.id, m.group_id, m.kind, m.product_id, p.name, p.number, l.kind, m.qty, m.d_on_hand, m.d_reserved,
          m.on_hand_after, m.reserved_after, m.reason, m.note, m.company_id, c.name, m.user_id, u.first_name,
          u.last_name, m.created_at, m.pair_id, m.reservation_id, m.import_batch_id
-    from private.stock_movements m
+    from page m
     join public.products p on p.id = m.product_id
     join public.locations l on l.id = m.location_id
     left join public.companies c on c.id = m.company_id
     left join public.profiles u on u.id = m.user_id
-   where m.org_id = v_org
-     and (p_product is null or m.product_id = p_product)
-     and (p_kinds is null or m.kind = any (p_kinds))
-     and (p_user is null or m.user_id = p_user)
-     and (p_from is null or m.created_at >= (p_from::timestamp at time zone 'Europe/Paris'))
-     and (p_to is null or m.created_at < ((p_to + 1)::timestamp at time zone 'Europe/Paris'))
-     and (p_before_id is null or m.id < p_before_id)
-   order by m.id desc
-   limit p_limit;
+   order by m.id desc;
 end;
 $$;
 
@@ -331,7 +339,7 @@ create function public.list_reservations(
   hold_until date, ended boolean, note text, created_by uuid, created_by_first_name text, created_by_last_name text,
   created_at timestamptz, closed_at timestamptz, close_reason text
 )
-language plpgsql stable security invoker set search_path = '' as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = 'force_custom_plan' as $$
 declare
   v_org constant uuid := private.require_inventory_reader();
   v_today constant date := (now() at time zone 'Europe/Paris')::date;
@@ -346,22 +354,25 @@ begin
     raise exception 'this cursor is incomplete' using errcode = '22023', hint = 'bad_cursor';
   end if;
   return query
+  with page as materialized (
+    select h.* from private.stock_reservations h
+     where h.org_id = v_org
+       and (p_company is null or h.company_id = p_company)
+       and (p_product is null or h.product_id = p_product)
+       and (p_status = 'all' or (p_status = 'active') = (h.status = 'active'))
+       and (p_before_id is null or (h.created_at, h.id) < (p_before_created, p_before_id))
+     order by h.created_at desc, h.id desc
+     limit p_limit)
   select h.id, h.product_id, p.name, p.number, p.pieces_per_carton, l.kind, h.company_id, c.name,
          (select d.id from public.deals d where d.id = h.deal_id), h.quantity, h.remaining, h.status, h.hold_until,
          h.status = 'active' and h.hold_until < v_today, h.note, h.created_by, u.first_name, u.last_name,
          h.created_at, h.closed_at, h.close_reason
-    from private.stock_reservations h
+    from page h
     join public.products p on p.id = h.product_id
     join public.locations l on l.id = h.location_id
     left join public.companies c on c.id = h.company_id
     left join public.profiles u on u.id = h.created_by
-   where h.org_id = v_org
-     and (p_company is null or h.company_id = p_company)
-     and (p_product is null or h.product_id = p_product)
-     and (p_status = 'all' or (p_status = 'active') = (h.status = 'active'))
-     and (p_before_id is null or (h.created_at, h.id) < (p_before_created, p_before_id))
-   order by h.created_at desc, h.id desc
-   limit p_limit;
+   order by h.created_at desc, h.id desc;
 end;
 $$;
 
