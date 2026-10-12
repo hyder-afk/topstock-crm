@@ -4,8 +4,8 @@ import { appReady, createUser, fullSession, nextWindow, setRole, sql, totp } fro
 // Day 4 security checks that run on every Day 4 PR (design 8.5, "day4-security"), in their 4b scope: the undo records'
 // private table is not served by the REST API; a rep's own token cannot change a colleague's entry; external links
 // carry noopener and noreferrer; a server action sent from another origin is refused; error answers carry codes, never
-// database text; the lead page logs no console error and no CSP violation. The queue checks (rep scope, the release
-// route) join in 4c. CI (auth-journey) runs real PostgREST; locally scripts/local-auth/gateway.mjs stands in, and the
+// database text; the lead page logs no console error and no CSP violation. 4c adds the queue checks (rep scope, the
+// private claims table, the release route). CI (auth-journey) runs real PostgREST; locally scripts/local-auth/gateway.mjs stands in, and the
 // checks that hold only on real PostgREST are marked.
 test.describe.configure({ mode: "serial" });
 
@@ -236,5 +236,104 @@ test("error_copy_has_no_sql: the lead page APIs answer codes only", async ({ bro
     expect(Object.keys(await a.json())).toEqual(["error"]);
     expect(a.headers()["cache-control"]).toContain("no-store");
   }
+  await context.close();
+});
+
+// Day 4c: the queue's checks (design 6, threats 13, 15 and 28).
+test("rep_direct_rpc_scope_403: a rep's own token cannot work the team's queue or claim a colleague's lead", async () => {
+  for (const fn of ["claim_next_lead", "queue_summary"]) {
+    for (const scope of ["team", "mine_unassigned"]) {
+      const r = await call(`/rest/v1/rpc/${fn}`, { method: "POST", token: repToken, body: { p_scope: scope } });
+      expect(r.status, `${fn} ${scope}`).toBe(403);
+      expect((r.body as { hint?: string }).hint).toBe("scope");
+    }
+  }
+  const claim = await call("/rest/v1/rpc/claim_lead", { method: "POST", token: repToken, body: { p_company: lead } });
+  expect(claim.status).toBe(403);
+  expect(sql(`select count(*) from private.queue_claims where company_id = '${lead}' and user_id = '${userId(repEmail)}'`)).toBe("0");
+  const tasks = await call("/rest/v1/rpc/list_tasks", { method: "POST", token: repToken, body: { p_bucket: "today", p_scope: "team" } });
+  expect(tasks.status).toBe(403);
+});
+
+test("private_tables_not_exposed: queue claims are not served by the REST API", async () => {
+  const claimed = await call("/rest/v1/rpc/claim_lead", { method: "POST", token: adminToken, body: { p_company: lead } });
+  expect(claimed.status).toBe(200);
+  expect(sql(`select count(*) from private.queue_claims where company_id = '${lead}'`)).toBe("1");
+  const plain = await call("/rest/v1/queue_claims?select=company_id", { token: adminToken });
+  expect(plain.status).toBe(404);
+  expect(Array.isArray(plain.body)).toBe(false);
+  const named = await call("/rest/v1/queue_claims?select=company_id", { token: adminToken, headers: { "Accept-Profile": "private" } });
+  expect(Array.isArray(named.body)).toBe(false);
+  if (realPostgrest) expect(named.status).toBe(406);
+  else expect(named.status).toBeGreaterThanOrEqual(400);
+  await call("/rest/v1/rpc/release_claims", { method: "POST", token: adminToken, body: {} });
+  expect(sql(`select count(*) from private.queue_claims where company_id = '${lead}'`)).toBe("0");
+});
+
+test("cross_origin_release_403: the release route takes same-origin JSON only, and releases only the caller's claims", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ storageState: adminState });
+  const origin = new URL(baseURL ?? "http://localhost:3100").origin;
+  // The admin holds a claim (through the API, as the queue does).
+  const claimed = await call("/rest/v1/rpc/claim_lead", { method: "POST", token: adminToken, body: { p_company: lead } });
+  expect(claimed.status).toBe(200);
+  const live = () => sql(`select count(*) from private.queue_claims where company_id = '${lead}'`);
+  expect(live()).toBe("1");
+  // Another site's page: 403, the claim stays.
+  const foreign = await context.request.post("/api/queue/release", { headers: { origin: "https://evil.example", "content-type": "application/json" }, data: { ids: [lead] } });
+  expect(foreign.status()).toBe(403);
+  expect(await foreign.json()).toEqual({ error: "forbidden" });
+  expect(foreign.headers()["cache-control"]).toContain("no-store");
+  // A form post (no preflight from another site) and an oversized body: refused.
+  const form = await context.request.post("/api/queue/release", { headers: { origin, "content-type": "application/x-www-form-urlencoded" }, data: `ids=${lead}` });
+  expect(form.status()).toBe(415);
+  const big = await context.request.post("/api/queue/release", { headers: { origin, "content-type": "application/json" }, data: JSON.stringify({ ids: [lead], pad: "x".repeat(40_000) }) });
+  expect(big.status()).toBe(413);
+  const extra = await context.request.post("/api/queue/release", { headers: { origin, "content-type": "application/json" }, data: { ids: [lead], user_id: userId(repEmail) } });
+  expect(extra.status()).toBe(400);
+  expect(live()).toBe("1");
+  // The rep, from this site, cannot release the admin's claim (release_claims removes the caller's own only).
+  const repSession = await call("/rest/v1/rpc/release_claims", { method: "POST", token: repToken, body: { p_ids: [lead] } });
+  expect(repSession.status).toBe(200);
+  expect(repSession.body).toBe(0);
+  expect(live()).toBe("1");
+  // Signed out: 401. The admin from this site: released.
+  const anonymous = await browser.newContext();
+  const out = await anonymous.request.post("/api/queue/release", { headers: { origin, "content-type": "application/json" }, data: { ids: [lead] } });
+  expect(out.status()).toBe(401);
+  await anonymous.close();
+  const same = await context.request.post("/api/queue/release", { headers: { origin, "content-type": "application/json" }, data: { ids: [lead] } });
+  expect(same.status()).toBe(200);
+  expect(await same.json()).toEqual({ released: 1 });
+  expect(live()).toBe("0");
+  await context.close();
+});
+
+test("no console errors and no CSP violations on the Tasks page, the queue and More (4c)", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: adminState, viewport: { width: 1440, height: 900 } });
+  await context.addInitScript(() => {
+    (window as unknown as { __csp: string[] }).__csp = [];
+    document.addEventListener("securitypolicyviolation", (e) =>
+      (window as unknown as { __csp: string[] }).__csp.push(`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber} ${e.sample}`),
+    );
+  });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/tasks");
+  await expect(page.locator("main h1")).toContainText("Tasks");
+  await appReady(page);
+  for (const name of [/^Overdue/, /^Upcoming/, /^Done/, /^Today/]) await page.getByRole("tab", { name }).click();
+  expect(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).toEqual([]);
+  await page.goto("/leads/queue");
+  await expect(page.locator("main h1")).toContainText("Work queue");
+  await appReady(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.locator("main section[role=region], main [role=status] h2").first()).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).toEqual([]);
+  await page.goto("/more");
+  await expect(page.getByRole("combobox", { name: "Time zone" })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).toEqual([]);
+  expect(errors).toEqual([]);
   await context.close();
 });
