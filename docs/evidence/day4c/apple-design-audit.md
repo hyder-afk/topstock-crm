@@ -43,7 +43,22 @@ heading. Both are covered by e2e (`queue.spec.ts` keys_each_outcome, note typing
 ## Kept as they are (noted)
 
 - The phone note opens a sheet whose field takes the focus at once (the sheet exists only to type the note).
-- At 4x CPU the longest task during an advance is 73–112 ms (budget 50): the new card's render (Intl formatting of the
-  contacts, notes and tasks). Recorded in the README's speed table; Day 7 polish.
+- At 4x CPU the longest task during an advance is 58–112 ms (budget 50): React's render of the new card, Motion's
+  slide and the focus's layout share the frame (README "Queue speed"). Haider is asked whether it waits for Day 7.
 - The quick add's chips row scrolls sideways inside itself on phones with no fade at the edge (as the lead page's
   tab strip, kept for Day 7 in 4b).
+
+## Verifier round (12 Oct 2026)
+
+New and changed UI, checked on the code and on `screens/queue-released-*` and the re-taken `queue-*` shots:
+
+| # | Item | Finding | Fix |
+|---|---|---|---|
+| 1 | Instant response | A card a teammate now holds leaves without any wait: the reserve (or the next claimed card) takes its place with the same `snappy` slide, so the swap reads as the usual advance; the toast says why | none needed |
+| 4 | Spatial consistency | The claims-ended notice sits at the top of the start screen's own card (the place the person looks after coming back), above the intro; no modal, nothing covers the page | none needed |
+| 6 | Restraint | One muted panel, a tiny amber dot (status colour as a dot only, DESIGN.md), one underlined link; no red: nothing failed, the leads simply went back | none needed |
+| 9 | Accessibility | The notice is `role="status"` (read once, politely); Start has the focus, so ↩ carries on; the empty state's heading and the page title take the focus when what held it leaves (verifier finding 2), with the visible focus ring on keyboard use | — (fixed in this round) |
+| 10 | Touch targets | The notice's link is 44 px tall on phones (32 px from tablet width); the task row's lead link has a 44 px tap area on phones without changing the row's height | — (fixed in this round) |
+
+Unresolved: none.
+

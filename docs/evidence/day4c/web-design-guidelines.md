@@ -70,3 +70,28 @@ leads-workspace.tsx (Work queue link) - prefetch={false} made a click wait for t
 - **Virtualising lists over 50:** task pages of 50 use `content-visibility: auto` instead (design D13's approach).
 
 Unresolved: none.
+
+## Verifier round (12 Oct 2026)
+
+Files: `src/components/queue/use-queue.ts`, `src/components/queue/queue-workspace.tsx`, `src/components/queue/queue-card.tsx`,
+`src/components/tasks/task-row.tsx`, `src/app/(app)/leads/queue/page.tsx`, `messages/*.json`; rules as pinned above.
+
+```text
+## src/components/queue/queue-workspace.tsx
+- Focus management: focus moved programmatically only to the element that replaces the one that left (card heading,
+  page title, Start, empty-state heading); never to <body>. pass
+- Live regions: the claims-ended notice is role=status (polite); the lost-claim message goes through the one toast
+  region (no second live region). pass
+- Link text: "Log your call to {lead}" names its destination; the lead name keeps dir="auto". pass
+- Touch: the notice link min-h-11 below 640 px. pass
+## src/components/tasks/task-row.tsx
+- Hit target: 44 px tap area on phones via a pseudo-element (the visual line stays 24 px). pass
+## src/components/queue/queue-card.tsx
+- Dates/times: Intl in the lead's zone ("open until") and the profile zone (follow-up time); no hand-made formats. pass
+## messages/*.json
+- No hardcoded strings: the script without a name, the notice and the named toast are messages in EN and FR; French
+  narrow no-break space before ":" and "?" (unit-checked). pass
+```
+
+Unresolved: none.
+

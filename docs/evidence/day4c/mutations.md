@@ -138,6 +138,23 @@ the other layer stops the same thing, so no test can see the removal on its own;
 
 day4c: 85 rows: 75 caught, 10 documented two-layer rows not caught, 0 not as listed
 
+### Verifier round (511df9c, 12 Oct 2026)
+
+The verifier's nit "Wrong number's other working number uses `phone is not null`" was fixed in 881585a (a number with
+at least one digit, as everywhere else in the queue; test `queue_attack.sql` 5b). Two rows were added and run in a
+throwaway worktree (`<scratchpad>/wt-4c-mut` at 511df9c, its `db-test.sh` on port 54348; removed afterwards):
+`python3 scripts/db-mutations.py --set day4c 86 87`, then `--set day4b 65` (that row's anchor is the line the fix
+changed, so it now names the Day 4c text). Script exit code 0 on both.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 86 | Wrong number: a contact number without a digit counts as another working number (no find-the-number task) | caught | FAIL: wrong main line with only a digitless contact number: task <NULL> rank <NULL> |
+| 87 | Wrong number: a main line without a digit counts as another working number (no find-the-number task) | caught | FAIL: wrong contact number with a digitless main line: task <NULL> rank <NULL> |
+| day4b 65 | Tasks: 'find the right number' although another number works (Day 4c text) | caught | FAIL: wrong main line with a working contact {"task_id": ...} |
+
+day4c now: **87 rows: 77 caught, 10 documented two-layer rows, 0 not as listed** (rows 1 to 85 as above; the fix
+touches no other row's anchor: every anchor of every set still matches exactly once, dry check).
+
 
 ## Earlier rows moved to the Day 4c migration (runs on 8192480 and b235bad)
 

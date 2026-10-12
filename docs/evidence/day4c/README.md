@@ -78,6 +78,75 @@ a7aa89e (Day 4a and Day 4b merged). Two parts: the database (build order items 1
   (the database's `now()`), so queue fixtures pick a country in hours at run time (`countryInHours` in
   `tests/auth/helpers.ts`), or use "Show leads outside calling hours" when every zone is closed.
 
+## Verifier round (12 Oct 2026): every finding, what changed, how it was checked
+
+An independent verifier said NOT READY (one blocker, four should-fix items, seven nits). All are fixed below, each
+behavioural fix with a test that fails without it (checked by building the app with the fix taken out: the three new
+queue tests failed, then passed with it).
+
+1. **Blocker: a lead on two screens.** `src/components/queue/use-queue.ts`: `take()` now reads `kept` from every
+   claim answer (`lostKept` in `src/lib/queue.ts`); a kept card the database no longer holds for the caller leaves the
+   screen at once (the quiet swap: the next card takes its place and the focus) with "A teammate is on that one now.
+   Here's the next." (inside the "Logged" toast when it comes with a save, so one toast says both), and a fresh claim
+   refills the reserve. Each card carries `claimedUntil` (the request's start plus 10 minutes, never later than the
+   database's end), renewed by every claim call and by `renew_claims` (`renewedUntil`: only cards still held when the
+   renewal was sent); `checkHeld()` runs every 15 s, when the tab comes back into view and before every key: a card
+   that may no longer be held (`claimsStale`, 20 s margin) takes all cards off the screen, lets their claims go, and
+   the start screen says "Your leads went back to the team" with a link "Log your call to {lead}" (a call made on that
+   card can still be logged on its page) and Start focused. `renew_claims` answering null while cards are held does
+   the same. A card read again when shown (after 15 s in reserve) that `get_lead.worked_by` says a teammate is working
+   leaves with "{name} is on that one now. Here's the next." Tests: unit `lostKept`, `claimsStale`, `renewedUntil`;
+   e2e `claims_end_cards_leave` (Playwright's page clock moves 10.5 minutes on, the claims are ended in the database
+   and a teammate takes the lead on screen: the card goes, the notice and link show, Start has the focus, a digit logs
+   nothing, Start again serves a lead held by this person and not the teammate's) and `lost_claim_quiet_swap` (a
+   teammate holds the reserve: after 1 it leaves with the toast, the next card is held by this person and focused,
+   nothing logged on the teammate's lead). The verifier's own probe, run again on the fixed build: focus after Start on
+   the card heading, after Done for now on Start, A's next card held by A.
+2. **Focus dropped to the page.** `src/components/queue/queue-workspace.tsx`: Start focuses the page title (it stays
+   across the phases), then the first card's heading takes it; Done for now, Back to the start and the claims ending
+   focus Start; the empty state's heading (`tabIndex -1`) takes the focus; while cards load after a loss the title
+   holds it. Test: e2e `focus_never_drops_to_body` (Start with the pointer, Done for now, the empty state, Back to the
+   start).
+3. **Speed budgets (design 8.6).** Not met; measured again and two changes tried (below, "Queue speed"); **Haider is
+   asked to decide** (Open risks, "Question for Haider").
+4. **Daylight-saving time bomb.** `tests/auth/tasks.spec.ts` karachi_today_boundary: the Paris time and day of the
+   task are worked out by the database (`to_char(... at time zone 'Europe/Paris', 'HH24:MI')` and the day difference),
+   so it reads 22:00 after 25 Oct and 23:00 before.
+5. **Phone target.** `src/components/tasks/task-row.tsx`: the lead link keeps its 24 px line (the row and its skeleton
+   keep their height) and gets a tap area 10 px above and below on phones (`max-sm:before:-inset-y-2.5`), 44 px in
+   all. Test: e2e `phone_lead_link_target` (at 390: the box stays 24 px, `elementFromPoint` 9 px above and below lands
+   on the link).
+6. **Nits.**
+   - `tasks.spec.ts`: the comment now has its attempt: a made-up option "Mars/Olympus_Mons" is added to the list in
+     the page and saved: an error alert, and the profile keeps Europe/Paris.
+   - `queue-card.tsx`: "open until" uses `openUntilMinutes` (`src/lib/timezones.ts`): 12:00 before lunch with the lunch
+     switch on in a European zone, else 18:00 (unit test).
+   - `queue-card.tsx`: a follow-up's time is shown in the profile zone (the page reads `profiles.timezone`, as Tasks).
+   - `src/lib/queue.ts` `emptyReason(..., anyHours)`: with "Show leads outside calling hours" on, the empty state is
+     "all done", never the same offer again (unit test).
+   - `supabase/migrations/20261013090000_tasks_queue.sql` (log_activity, wrong number): "another working number" needs
+     a digit (`coalesce(v_lead.phone ~ '[0-9]', false)`, `k.phone ~ '[0-9]'`), so a "( )" number no longer blocks the
+     find-the-right-number task. Test: `queue_attack.sql` 5b (digitless contact, digitless main line, a second real
+     contact number still counts); mutation rows 86 and 87 caught, day4b row 65 re-pointed and caught
+     (`mutations.md`).
+   - `messages/fr.json` `Queue.reason.retryNth`: "Nouvel essai · 3e appel".
+   - `src/app/(app)/leads/queue/page.tsx`: no "TopStock" fallback name; with no first name the script reads without a
+     name (`Queue.script.enNoName` / `frNoName`, EN and FR).
+
+**Verifier round checks** (on the head named in the last row; the shared local stack was serving the 6a checkout, so
+e2e ran on the isolated copy: README deviation 12):
+
+| Check | Result |
+|---|---|
+| `db-test.sh` (a copy on port 54347) | all nine suites pass, including the new `queue_attack` 5b; advisors: no ERROR (WARN `set_user_role`, accepted); exit 0 |
+| Mutations (throwaway worktree at 511df9c, port 54348) | day4c 86 and 87 caught, day4b 65 caught; exit 0 (`mutations.md`) |
+| `npm run lint` / `npm run typecheck` | exit 0 (the 2 existing TanStack Virtual warnings) / exit 0 |
+| `npm run test:unit` | 341 passed, exit 0 |
+| E2E Chromium (isolated stack, port 3200) | `queue.spec.ts` 12 passed (3 new), `tasks.spec.ts` 8 passed (1 new), `queue-multi.spec.ts` 1 passed, `day4-security.spec.ts` 9 passed; exit 0 |
+| Without the fixes (fix taken out, app rebuilt) | `claims_end_cards_leave`, `lost_claim_quiet_swap`, `focus_never_drops_to_body` each failed; restored and passed |
+| Screenshots | "work queue" screens test re-run: 70 shots, none failed; `queue-released` added (`screens/README.md`) |
+| Speed (PERF=1, 4x CPU) | table below, "Verifier round" column |
+
 ## Check results
 
 App checks on **e8ce3c9** (the last code commit; the commits after it change only `docs/`). Database part: as
@@ -103,12 +172,24 @@ reported for part 1 (`mutations.md`, `perf.md`), re-run below on this head.
 slow-down, timed inside the page; the local REST stand-in starts one `psql` per database call, which real PostgREST
 does not):
 
-| Measure | Server actions (33afb66's parent) | Route handlers, run 1 | run 2 | Budget |
-|---|---|---|---|---|
-| Key to next card painted, p95 of 30 | 126 ms | 75 ms | 98 ms | 100 ms: met after the switch |
-| Key to outcome saved, p95 of 30 | **616 ms** | 424 ms | 462 ms | recorded; over 400 ms triggered the D3 switch |
-| Longest task during an advance | 97 ms | 73 ms | 112 ms | 50 ms: **missed** |
-| Loading card shown in 10 keys pressed as fast as each card shows | 9 | 9 | 9 | at most 1: **missed** (see Open risks) |
+| Measure | Server actions (33afb66's parent) | Route handlers, run 1 | run 2 | Verifier round, 3 runs (2d01de0, load 2.6–4.6) | Budget |
+|---|---|---|---|---|---|
+| Key to next card painted, p95 of 30 | 126 ms | 75 ms | 98 ms | 107 / 89 / 91 ms | 100 ms: met in 2 of 3 |
+| Key to outcome saved, p95 of 30 | **616 ms** | 424 ms | 462 ms | 396 / 442 / 521 ms | recorded; over 400 ms triggered the D3 switch (applied) |
+| Longest task during an advance | 97 ms | 73 ms | 112 ms | 71 / 103 / 58 ms | 50 ms: **missed** |
+| Loading card shown in 10 keys pressed as fast as each card shows | 9 | 9 | 9 | 9 / 9 / 9 | at most 1: **missed** |
+
+What was tried in the verifier round (each measured 3 times at 4x CPU, then left out because no gain showed through
+the noise of this shared VM, whose load average went from 2.6 to 12 while other checkouts ran their tests):
+- the card's lower part (contacts, notes, tasks, script) rendered a moment later with `useDeferredValue` (React can
+  pause that render): longest task 66 / 134 / 81 ms (and 141–162 ms at load 11–12);
+- no scroll when the new heading takes the focus on wide screens (the focus forced an 11 ms layout): 61 / 110 / 59 ms.
+Where the time goes (Chrome's long-animation-frame entries over 15 advances, a scratch probe): React's render of the
+new card (24–41 ms of script), Motion's frame loop for the slide (5–16 ms), the focus's layout (11 ms), then style,
+layout and paint; no single script reaches 50 ms, the frame does. The 10-key burst cannot be met with one reserve
+card: a key arrives every ~100 ms and one save-and-claim round trip takes ~300–450 ms here, so the reserve is empty
+from the second key on. Key to saved is no budget (the D3 rule, already applied); it stays around 400–520 ms on this
+VM with the `psql`-per-call REST stand-in.
 
 ## Deviations from the design
 
@@ -135,7 +216,17 @@ does not):
     retry (with its try number), a lead back from Cool off and a first call.
 12. **Local e2e ran on a second, isolated local stack** (gateway 54421, PostgreSQL 54430, Supabase Auth 9997, Next on
     3200; scratch copies of `start.sh` and `gateway.mjs`, not committed) because the shared stack on 3100 was serving
-    the 4d and 6b checkouts during this run. Cookies are not port-scoped, so every spec ran unchanged.
+    the 4d and 6b checkouts during this run. Cookies are not port-scoped, so every spec ran unchanged. The verifier
+    round did the same (the shared stack was serving the 6a checkout).
+13. **"Restart the queue" when the claims end means the start screen, not new claims at once** (verifier finding 1):
+    the cards leave and the start screen says why, with Start focused (one ↩ to carry on). Claiming again by itself
+    would let a laptop left open hold leads for ever (every 10 minutes a new claim), against design 5.4 ("a closed
+    laptop holds at most 2 leads for at most 10 minutes"). An outcome key on a card that may no longer be held is not
+    logged from the queue; the notice links to that lead's page, where the call is logged as usual (a claim never
+    gates logging, design 5.4), so a long call is never lost.
+14. **The lost-claim toast says "A teammate is on that one now"** without a name when the database's `kept` answer is
+    what found it (the answer names no one); with the name ("Henri is on that one now") when the card was read again
+    and `worked_by` names the teammate. The design's toast is "Henri is on that one. Here's the next."
 
 ## Not done here
 
@@ -144,13 +235,22 @@ does not):
 
 ## Open risks
 
-- **Queue speed budgets partly missed** (table above): the longest task during an advance is 73–112 ms at 4x CPU
-  (budget 50: the new card's render, mostly Intl formatting of its contacts, notes and tasks); the 10-key burst shows
-  the loading card on nearly every key, because a key arrives before one save-and-claim round trip (about 300–450 ms
-  here) can refill the single reserve card. Holding two in reserve would only move the problem two keys later and would
-  let a closed laptop hold three leads (the design says two). At human pace (a call between keys) the reserve is always
-  full. Key to saved stays a little over 400 ms after the switch on this loaded VM with the `psql`-per-call REST
-  stand-in; the CI or a real Supabase project will tell.
+- **Queue speed budgets missed: Haider decides** (table above). The longest task during an advance is 58–112 ms at 4x
+  CPU (budget 50); the 10-key burst shows the loading card on 9 keys of 10 (budget 1); key to saved is 396–521 ms
+  (recorded only; the D3 switch it feeds is applied). At human pace (a call between keys) the reserve card is always
+  ready and the next card paints in about 90 ms.
+
+  **Question for Haider:** "The work queue misses two of its speed targets on our slowed-down test machine: a key
+  press can keep the screen busy for up to about a tenth of a second (target: a twentieth), and if you press keys as
+  fast as cards appear, a short loading card shows on most of them, because the next lead is fetched while you work.
+  At normal pace, one call between keys, you will not see either. Do you accept this for now and let me look again in
+  the Day 7 polish (my recommendation), or should I fix it before merging? Fixing the second one means holding two
+  leads in reserve instead of one, so a laptop left open would hold three leads for up to 10 minutes instead of two."
+- **A second tab of the same person** ends the first tab's claims (each claim call keeps only its own cards, design
+  5.4) without any time passing in the first tab: its reserve card leaves at its next save (the `kept` check) and a
+  card shown after 15 s is read again (`worked_by`), but an outcome key on its current card is still logged (a claim
+  never gates logging). Rare (one person, two queue tabs); the notice wording covers it ("or the queue was opened in
+  another tab").
 - **Calling hours in e2e follow the real clock:** the outside-hours test is skipped when no listed country is closed
   (never in practice), and every queue test uses "Show leads outside calling hours" when every zone is closed
   (weekends), so the in-hours path is then not exercised.
@@ -170,5 +270,8 @@ Context7 pages consulted before coding:
 - Reused from Day 4b's lookups (README "Docs used" there): TanStack Query v5 infinite queries and optimistic
   `setQueryData`, next-intl `useFormatter`, Next.js `Link` prefetch (`prefetch` default stops at `loading.js` for a
   dynamic route), Playwright `page.route` and `page.close({ runBeforeUnload })`.
+- **Playwright 1.64** (`/websites/playwright_dev`, verifier round): `page.clock.install()` before the page loads (time
+  then flows), `clock.fastForward()` jumps ahead and fires due timers once ("closing the laptop lid"), used by
+  `claims_end_cards_leave` and the `queue-released` shot.
 - Not looked up (platform knowledge, noted): `fetch(..., { keepalive: true })` on `pagehide`, `PageTransitionEvent`
   `persisted`, cmdk's `commandScore` (read from `node_modules/cmdk/dist/command-score.js` to fix a palette match).
