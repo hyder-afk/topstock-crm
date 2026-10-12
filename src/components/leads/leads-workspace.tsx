@@ -261,8 +261,9 @@ export function LeadsWorkspace({
           ) : null}
         </h1>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Day 4c: the work queue (no prefetch: the queue page has no side effect, but nothing is read before Start). */}
-          <Link href="/leads/queue" prefetch={false} className={buttonVariants({ variant: "quiet" })}>
+          {/* Day 4c: the work queue. The default prefetch of a dynamic page stops at its loading skeleton: no data is read
+              and nothing is claimed (claims start on Start), and the skeleton shows at once on a click. */}
+          <Link href="/leads/queue" className={buttonVariants({ variant: "quiet" })}>
             <Headset aria-hidden="true" strokeWidth={1.75} className="size-4" />
             {t("workQueue")}
           </Link>

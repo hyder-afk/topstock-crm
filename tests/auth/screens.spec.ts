@@ -567,10 +567,12 @@ test("work queue: start screen, a card, a follow-up open, no leads of one's own"
   test.setTimeout(1_500_000);
   const me = sql(`select id from auth.users where email = '${withFactor}'`);
   const open = countryInHours(true, 60);
+  // A city that belongs to the country picked for calling hours (the shots read naturally).
+  const city = ({ FR: "Lyon", GB: "London", DE: "Köln", PT: "Porto", GR: "Athens", AE: "Dubai", PK: "Karachi", IN: "Mumbai", TH: "Bangkok", JP: "Osaka", NZ: "Auckland", IS: "Reykjavík", AR: "Rosario", CO: "Medellín", CR: "San José", JM: "Kingston", SN: "Dakar", MA: "Casablanca", EG: "Cairo", SA: "Riyadh" } as Record<string, string>)[open ?? "FR"] ?? "Lyon";
   sql(`update public.companies set lead_status = 'disqualified' where owner_id = '${me}' and name like 'File %';
        delete from private.queue_claims where user_id = '${me}';`);
   const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country, last_activity_at)
-                    select org_id, 'File Maison Verdane', id, 'warm', '+33 4 78 12 34 56', 'achats@verdane.example.com', 'Lyon', '${open ?? "FR"}', now() - interval '3 days'
+                    select org_id, 'File Maison Verdane', id, 'warm', '+33 4 78 12 34 56', 'achats@verdane.example.com', '${city}', '${open ?? "FR"}', now() - interval '3 days'
                     from public.profiles where id = '${me}' returning id`);
   sql(`insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
        select org_id, id, 'Amélie', 'Laurent', 'Head buyer', 'amelie@verdane.example.com', '+33 6 12 34 56 78' from public.companies where id = '${lead}';
@@ -582,7 +584,7 @@ test("work queue: start screen, a card, a follow-up open, no leads of one's own"
          ('call', 'interested', 'Wants 300 denim jackets, grade A. Call back with the container date.', interval '1 day')
        ) as v (type, outcome, body, ago) where c.id = '${lead}';
        insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
-       select p.org_id, 'File Durand SARL ' || i, p.id, 'cold', '+33 4 72 00 00 0' || i, 'Lyon', '${open ?? "FR"}' from public.profiles p, generate_series(1, 4) i where p.id = '${me}';`);
+       select p.org_id, 'File Durand SARL ' || i, p.id, 'cold', '+33 4 72 00 00 0' || i, '${city}', '${open ?? "FR"}' from public.profiles p, generate_series(1, 4) i where p.id = '${me}';`);
   const startQueue = async (page: Page) => {
     await appReady(page);
     await page.getByRole("button", { name: /^(Start|Commencer)/ }).click();

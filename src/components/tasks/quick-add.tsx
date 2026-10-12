@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useId, useState } from "react";
+import { forwardRef, useId, useRef, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { CalendarClock, ListTodo, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,8 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
   const [lead, setLead] = useState<PickedLead | null>(null);
   const [busy, setBusy] = useState(false);
   const [tried, setTried] = useState(false);
+  const timeRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLInputElement | null>(null);
 
   const today = now ? localDate(zone, now) : null;
   const date = !now ? null : chip === "pick" ? picked : chip ? chipDate(chip, zone, now) : null;
@@ -47,6 +49,9 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
 
   const submit = async () => {
     setTried(true);
+    // The first field to fix takes the focus (the title, or a meeting's time).
+    if (title.trim() === "") titleRef.current?.focus();
+    else if (needsTime) (date ? timeRef.current : titleRef.current)?.focus();
     if (reason || busy) return;
     setBusy(true);
     const dueAt = date && time ? zonedInstant(date, time, zone).toISOString() : null;
@@ -72,7 +77,11 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
           {t("quickAdd.label")}
         </label>
         <input
-          ref={ref}
+          ref={(el) => {
+            titleRef.current = el;
+            if (typeof ref === "function") ref(el);
+            else if (ref) ref.current = el;
+          }}
           id={id}
           name="task_title"
           type="text"
@@ -135,6 +144,7 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">{kind === "meeting" ? t("quickAdd.timeRequired") : t("quickAdd.time")}</span>
           <input
+            ref={timeRef}
             type="time"
             name="task_time"
             value={time}

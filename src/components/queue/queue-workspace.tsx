@@ -352,7 +352,7 @@ export function QueueWorkspace({
         <section aria-labelledby="queue-counts" className="flex max-w-[720px] min-w-0 flex-col gap-5 rounded-lg bg-card p-5 sm:p-6">
           <p className="max-w-[65ch] text-muted-foreground">{t("intro")}</p>
           {scopes.length > 1 ? (
-            <div role="group" aria-label={t("scopeLabel")} className="flex max-w-full gap-0.5 self-start overflow-x-auto rounded-md bg-muted p-1 [scrollbar-width:none]">
+            <div role="group" aria-label={t("scopeLabel")} className="flex max-w-full flex-wrap gap-0.5 self-start rounded-md bg-muted p-1">
               {scopes.map((sc) => (
                 <button
                   key={sc}
@@ -405,7 +405,7 @@ export function QueueWorkspace({
                 writeSkipLunch(on);
                 setSettings((cur) => ({ ...cur, skipLunch: on }));
               }}
-              className={cn("relative h-7 w-12 shrink-0 rounded-full transition-colors duration-150", settings.skipLunch ? "bg-primary" : "bg-muted ring-1 ring-border ring-inset")}
+              className={cn("relative h-7 w-12 shrink-0 rounded-full transition-[background-color,transform] duration-150 active:scale-[0.97]", settings.skipLunch ? "bg-primary" : "bg-muted ring-1 ring-border ring-inset")}
             >
               <span
                 aria-hidden="true"
@@ -420,7 +420,7 @@ export function QueueWorkspace({
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={() => start()} aria-keyshortcuts="Enter">
               {t("start")}
-              <Kbd aria-hidden="true" className="border-transparent bg-brand-foreground/10 text-brand-foreground">
+              <Kbd aria-hidden="true" className="hidden border-transparent bg-brand-foreground/10 text-brand-foreground sm:inline-grid">
                 ↩
               </Kbd>
             </Button>
@@ -499,7 +499,7 @@ export function QueueWorkspace({
       ) : !current ? (
         <QueueCardSkeleton label={t("loading")} />
       ) : (
-        <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 [grid-template-areas:'head'_'rail'_'details'] lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:[grid-template-areas:'head_rail'_'details_rail']">
+        <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 [grid-template-areas:'head'_'rail'_'details'] lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr] lg:items-start lg:[grid-template-areas:'head_rail'_'details_rail']">
           <AnimatePresence mode="popLayout" initial={false}>
             <CardShell key={current.id} labelledBy={`queue-card-${current.id}`} reduce={!!reduce}>
               {onlyDnc ? (
@@ -571,12 +571,14 @@ export function QueueWorkspace({
             <DialogDescription className="sr-only">{current?.name}</DialogDescription>
             <textarea
               name="queue_note_sheet"
+              autoComplete="off"
               value={note}
               onChange={(e) => current && setNotes((m) => ({ ...m, [current.id]: e.target.value }))}
               placeholder={t("notePlaceholder")}
               dir="auto"
               rows={4}
               maxLength={10000}
+              // The sheet opens only to write the note (N, or Note on phones): the field takes the focus at once.
               autoFocus
               className="min-h-28 rounded-md border border-border bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground"
             />

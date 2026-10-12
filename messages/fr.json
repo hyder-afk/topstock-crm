@@ -968,7 +968,7 @@
     "countsLabel": "En ce moment",
     "callableNow": "{count, plural, one {<n>#</n> à appeler maintenant} other {<n>#</n> à appeler maintenant}}",
     "followUpsDue": "{count, plural, one {<n>#</n> relance due} other {<n>#</n> relances dues}}",
-    "laterToday": "{count, plural, one {<n>#</n> de plus plus tard aujourd’hui} other {<n>#</n> de plus plus tard aujourd’hui}}",
+    "laterToday": "{count, plural, one {<n>#</n> autre plus tard aujourd’hui} other {<n>#</n> autres plus tard aujourd’hui}}",
     "noNumber": "{count, plural, one {<n>#</n> prospect sans numéro} other {<n>#</n> prospects sans numéro}}",
     "claimedByOthers": "{count, plural, one {<n>#</n> en cours d’appel par un collègue} other {<n>#</n> en cours d’appel par des collègues}}",
     "summaryError": "Impossible de charger les chiffres.",

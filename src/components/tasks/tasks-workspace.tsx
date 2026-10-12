@@ -13,7 +13,6 @@ import { TaskRow, type RowActions } from "@/components/tasks/task-row";
 import { insertTask, prefetchTasks, refreshTasks, removeTask, restoreLists, useTaskList, type TaskPageWithCounts } from "@/components/tasks/use-tasks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
-import { Kbd } from "@/components/ui/kbd";
 import { TabList, TabPanel } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import type { ActionResult } from "@/lib/db-errors";
@@ -386,19 +385,11 @@ export function TasksWorkspace({
       <div className="flex min-w-0 flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabList items={tabs} value={tab} onChange={setTab} onIntent={(id) => prefetchTasks(queryClient, scope, id)} label={t("tabsLabel")} idBase={ID_BASE} />
-          <p className="hidden items-center gap-1 text-xs text-muted-foreground lg:inline-flex" aria-hidden="true">
-            <Kbd>T</Kbd>
-            <Kbd>J</Kbd>
-            <Kbd>K</Kbd>
-            <Kbd>X</Kbd>
-            <Kbd>E</Kbd>
-            <Kbd>D</Kbd>
-          </p>
+          <p className="hidden text-xs text-muted-foreground lg:block">{t("keysHint")}</p>
         </div>
         <TabPanel idBase={ID_BASE} id={tab} className="min-w-0 overflow-hidden rounded-lg bg-card">
           {body}
         </TabPanel>
-        <p className="sr-only">{t("keysHint")}</p>
       </div>
 
       <Dialog open={!!deleting} onOpenChange={(open) => (open ? null : setDeleting(null))}>

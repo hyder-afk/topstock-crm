@@ -9,7 +9,7 @@ import { countryName } from "@/lib/countries";
 import { personName, type LeadStatus } from "@/lib/leads";
 import { callHref } from "@/lib/phone";
 import type { QueueCard as Card } from "@/lib/queue";
-import { CALL_WINDOW, isOpen, primaryZone, spanEnds } from "@/lib/timezones";
+import { CALL_WINDOW, isOpen, localDate, primaryZone, spanEnds, zonedInstant } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 /** The number a call goes to: the lead's main line, or one contact's. */
@@ -78,12 +78,16 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
       if (ends) clock = t("spanTime", { from: time(format, now, ends[1]), to: time(format, now, ends[0]) });
       else clock = open ? t("theirTime", { time: time(format, now, zone) }) : t("outsideCard", { time: time(format, now, zone) });
     }
-    const until = `${String(CALL_WINDOW.end / 60).padStart(2, "0")}:00`;
+    // The end of calling hours on the lead's side today, worded by Intl in that zone.
+    const until = now ? time(format, zonedInstant(localDate(zone, now), `${String(CALL_WINDOW.end / 60).padStart(2, "0")}:00`, zone), zone) : "";
     const mainNumber = card.phone && /\d/.test(card.phone) ? card.phone : null;
     return (
       <div className="flex min-w-0 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="inline-flex min-h-7 items-center rounded-sm bg-muted px-2 font-mono text-xs">{reason}</span>
+          {/* Warm and Negotiation are the status itself: the badge says it once. */}
+          {card.reason !== "warm" && card.reason !== "negotiation" ? (
+            <span className="inline-flex min-h-7 items-center rounded-sm bg-muted px-2 font-mono text-xs">{reason}</span>
+          ) : null}
           <StatusBadge status={status} />
           {card.owner ? (
             <span className="text-sm text-muted-foreground">{t("owner", { name: personName(card.owner) || tLeads("noName") })}</span>
@@ -107,7 +111,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
           ) : null}
           {clock && open && !ends ? (
             <span className="text-muted-foreground">
-              <span aria-hidden="true">· </span>
+              <span aria-hidden="true" className="max-sm:hidden">· </span>
               {t("openUntil", { time: until })}
             </span>
           ) : null}
@@ -154,11 +158,12 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
               const usable = c.phone && /\d/.test(c.phone);
               return (
                 <li key={c.id} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted/60 px-3 py-2">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold" dir="auto">
+                  {/* The name takes a line of its own when the row is narrow (phones), never cut to "A…". */}
+                  <span className="min-w-[10rem] flex-1">
+                    <span className="block text-sm font-bold break-words" dir="auto">
                       {personName(c) || tLeads("noName")}
                     </span>
-                    {c.title ? <span className="block truncate text-xs text-muted-foreground">{c.title}</span> : null}
+                    {c.title ? <span className="block text-xs break-words text-muted-foreground">{c.title}</span> : null}
                   </span>
                   {c.phone ? (
                     <span translate="no" className={cn("font-mono text-base", c.phone_wrong && "text-muted-foreground line-through")}>

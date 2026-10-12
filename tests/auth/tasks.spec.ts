@@ -194,26 +194,26 @@ test("karachi_today_boundary: Today and Tomorrow follow the profile's zone, not 
 });
 
 test("team_scope_admin_only: a rep has no Team switch and the API refuses it; an admin sees the rep's task with initials", async ({ browser }) => {
-  makeTask(repEmail, "Rep follow-up call", { date: todayIn("Europe/Paris") });
+  makeTask(repEmail, `Rep follow-up call ${run}`, { date: todayIn("Europe/Paris") });
   const rep = await signedInPage(browser, repState, { baseURL: baseURL() });
   await openTasks(rep.page);
-  await expect(row(rep.page, "Rep follow-up call")).toBeVisible();
+  await expect(row(rep.page, `Rep follow-up call ${run}`)).toBeVisible();
   await expect(rep.page.getByRole("group", { name: "Whose tasks" })).toHaveCount(0);
   const refused = await rep.context.request.get("/api/tasks?bucket=today&scope=team");
   expect(refused.status()).toBe(403);
   expect(await refused.json()).toEqual({ error: "forbidden" });
   // ?scope=team in the address is ignored for a rep.
   await openTasks(rep.page, "?scope=team");
-  await expect(row(rep.page, "Rep follow-up call")).toBeVisible();
+  await expect(row(rep.page, `Rep follow-up call ${run}`)).toBeVisible();
   expect(rep.errors).toEqual([]);
   await rep.context.close();
 
   const admin = await signedInPage(browser, adminState, { baseURL: baseURL() });
   await openTasks(admin.page);
-  await expect(row(admin.page, "Rep follow-up call")).toHaveCount(0);
+  await expect(row(admin.page, `Rep follow-up call ${run}`)).toHaveCount(0);
   await admin.page.getByRole("group", { name: "Whose tasks" }).getByRole("button", { name: "Team" }).click();
   await expect(admin.page).toHaveURL(/scope=team/);
-  await expect(row(admin.page, "Rep follow-up call")).toContainText("MP");
+  await expect(row(admin.page, `Rep follow-up call ${run}`)).toContainText("MP");
   expect(admin.errors).toEqual([]);
   await admin.context.close();
 });

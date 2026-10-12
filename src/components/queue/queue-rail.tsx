@@ -101,6 +101,7 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
         <textarea
           ref={noteRef}
           name="queue_note"
+          autoComplete="off"
           value={p.note}
           onChange={(e) => p.onNote(e.target.value)}
           placeholder={t("notePlaceholder")}

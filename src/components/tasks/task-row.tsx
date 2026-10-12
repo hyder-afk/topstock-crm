@@ -88,7 +88,8 @@ export const TaskRow = memo(function TaskRow({
       exit={{ opacity: 0 }}
       transition={reduce ? { duration: 0.12 } : springs.smooth}
       data-task-id={task.id}
-      className={cn("flex min-h-14 items-start gap-2 border-b border-border px-2 py-1.5 last:border-b-0 sm:px-3", task.pending && "opacity-70")}
+      // Long lists (pages of 50 add up): rows far off screen skip layout and paint until they come near.
+      className={cn("flex min-h-14 items-start gap-2 border-b border-border px-2 py-1.5 [contain-intrinsic-size:auto_64px] [content-visibility:auto] last:border-b-0 sm:px-3", task.pending && "opacity-70")}
     >
       {editing ? (
         <EditForm task={task} zone={zone} team={team} canAssign={canAssign} onSave={(v) => actions.save(task, v)} onClose={() => onEditChange(null)} />
