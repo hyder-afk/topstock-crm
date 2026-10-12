@@ -28,6 +28,12 @@ const namespaces = [
   "Queue",
   "Tasks",
   "Profile",
+  // Day 5b: the pipeline, deals and their words in the lead page, the call panel and the command menu.
+  "Stages",
+  "Pipeline",
+  "Deals",
+  "LostReasons",
+  "Fulfilment",
   "Palette",
 ];
 
