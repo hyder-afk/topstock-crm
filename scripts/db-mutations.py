@@ -690,6 +690,8 @@ MUTATIONS_4B = [
 INS_POLICY = ("execute $p$create policy lead_files_insert on storage.objects for insert to authenticated with check (\n"
               "    bucket_id = 'lead-files' and (select private.has_aal2())\n"
               "    and (storage.foldername(name))[1] = (select private.current_org_id())::text\n")
+SEL_POLICY = ("execute $p$create policy lead_files_select on storage.objects for select to authenticated using (\n"
+              "    bucket_id = 'lead-files' and (select private.has_aal2())\n")
 MUTATIONS_4D = [
     ("Storage insert policy: no organisation folder check",
      [(INS_POLICY, INS_POLICY.replace("    and (storage.foldername(name))[1] = (select private.current_org_id())::text\n", ""))]),
@@ -702,7 +704,7 @@ MUTATIONS_4D = [
      [("  elsif old.status = 'ready' and new.status = 'deleting' then\n    if not (select private.has_recent_aal2(600)) then\n      raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n    end if;\n",
        "  elsif old.status = 'ready' and new.status = 'deleting' then\n    null;\n")]),
     ("Update guard: finish without the size and type match",
-     [("                      and private.object_size(o.metadata) = old.size\n                      and private.object_mime(o.metadata) = old.mime) then", ") then")]),
+     [("\n       and private.object_size(o.metadata) = old.size\n       and private.object_mime(o.metadata) = old.mime;", ";")]),
     ("Insert guard: the space counts declared sizes, not stored bytes",
      [("  if private.org_storage_bytes(new.org_id) + v_reserved + new.size > private.file_quota_bytes() then",
        "  if (select coalesce(sum(f.size), 0) from public.files f where f.org_id = new.org_id) + new.size > private.file_quota_bytes() then")]),
@@ -756,12 +758,12 @@ MUTATIONS_4D = [
     ("Storage insert policy: bytes accepted after 15 minutes",
      [("                and f.uploaded_by = (select auth.uid()) and f.created_at > now() - interval '15 minutes'))$p$;",
        "                and f.uploaded_by = (select auth.uid())))$p$;")]),
-    ("begin_file_upload: stale uploads not handed back",
+    ("take_stale_uploads: stale uploads not handed back",
      [("                       and s.created_at <= now() - interval '15 minutes'", "                       and false")]),
     ("audit_file_access: any organisation",
      [("   where f.id = p_file and f.org_id = v_org and f.status = 'ready';", "   where f.id = p_file and f.status = 'ready';")]),
     ("Import undo: a lead with a file counts as untouched",
-     [("     and not exists (select 1 from public.files f where f.company_id = c.id)\n", "")]),
+     [("     and not private.lead_has_files(c.id)\n", "")]),
     ("begin_file_delete: no fresh-code pre-check (no step_up hint from the function)",
      [("  if v_status = 'ready' and not (select private.has_recent_aal2(600)) then\n    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n", "")], SURVIVES),
     ("begin_file_delete pre-check and the update guard's step-up both removed (both layers)",
@@ -770,6 +772,45 @@ MUTATIONS_4D = [
        "  elsif old.status = 'ready' and new.status = 'deleting' then\n    null;\n")]),
     ("file_usage: for everyone",
      [("  if not (select private.is_manager_or_admin()) then\n    return null;\n  end if;\n  return (select", "  return (select")]),
+    # Verifier 4d round 2. Finding 1: a ready file is bound to the stored object checked at finish.
+    ("open_file: the object's version not compared (an overwrite through a signed upsert link opens)",
+     [("     and o.version is not distinct from f.object_version\n", "")]),
+    ("open_file: the object's size and type not compared",
+     [("     and private.object_size(o.metadata) = f.size\n     and private.object_mime(o.metadata) = f.mime;", ";")]),
+    ("Update guard: the object's version not recorded at finish",
+     [("    new.object_version := v_version;\n", "")]),
+    ("Update guard: a client may change the recorded object version",
+     [("  keep constant text[] := array['status', 'ready_at', 'updated_at'];", "  keep constant text[] := array['status', 'ready_at', 'object_version', 'updated_at'];")]),
+    ("Insert guard: the client's object version kept",
+     [("  new.object_version := null;\n", "")]),
+    # Finding 3: import undo sees every file of a lead, whoever uploaded it. The static list of definers in files_attack
+    # section 0 is adjusted in the same run, so the behaviour test (section 12) is what must catch it.
+    ("lead_has_files: security invoker (another person's pending upload hidden; the undo fails with 23503)",
+     [("language sql stable security definer set search_path = '' as $$\n  select exists (select 1 from public.files f\n",
+       "language sql stable set search_path = '' as $$\n  select exists (select 1 from public.files f\n"),
+      (ROOT / "supabase/tests/files_attack.sql", "array['audit_file_access', 'file_guard_insert', 'lead_has_files']",
+       "array['audit_file_access', 'file_guard_insert']")]),
+    ("lead_has_files: any organisation",
+     [(" and f.org_id = (select private.current_org_id()))\n$$;", ")\n$$;")]),
+    # Finding 5: reads at aal1 once ready files and their objects exist (section 6b).
+    ("Files: require_mfa no longer applies to reads (an aal1 session reads file rows)",
+     [("create index files_company_idx on public.files (company_id);\n",
+       "create index files_company_idx on public.files (company_id);\nalter policy require_mfa on public.files using (true);\n")]),
+    ("Storage select policy: two-factor check made always true (the files row it needs is still hidden at aal1)",
+     [(SEL_POLICY, SEL_POLICY.replace("(select private.has_aal2())", "(select private.has_aal2() or true)"))], SURVIVES),
+    ("Storage select policy two-factor check and files require_mfa reads both removed (both layers)",
+     [(SEL_POLICY, SEL_POLICY.replace("(select private.has_aal2())", "(select private.has_aal2() or true)")),
+      ("create index files_company_idx on public.files (company_id);\n",
+       "create index files_company_idx on public.files (company_id);\nalter policy require_mfa on public.files using (true);\n")]),
+    # Finding 6: the clauses of the space and waiting limits, each removed on its own.
+    ("Insert guard: the space reserves uploads begun over 15 minutes ago (another person's abandoned upload, forever)",
+     [("   where f.org_id = new.org_id and f.status = 'pending' and f.created_at > now() - interval '15 minutes'\n",
+       "   where f.org_id = new.org_id and f.status = 'pending'\n")]),
+    ("Insert guard: a waiting upload whose bytes are stored is also reserved (counted twice)",
+     [("\n     and not exists (select 1 from storage.objects o where o.bucket_id = 'lead-files' and o.name = f.storage_path);", ";")]),
+    ("Insert guard: the 5-waiting limit counts uploads begun over 15 minutes ago",
+     [("       where f.uploaded_by = caller and f.status = 'pending' and f.created_at > now() - interval '15 minutes') >= 5 then",
+       "       where f.uploaded_by = caller and f.status = 'pending') >= 5 then")]),
 ]
 
 
