@@ -44,8 +44,10 @@ export async function beginUpload(input: unknown): Promise<ActionResult<{ id: st
 
 /** Finishes an upload: the stored bytes are read back and checked (sniffFile); a file that is not what it claims is
  *  removed (type_mismatch); otherwise the database marks it ready once the stored size and type match the declared.
- *  When the bytes cannot be read back (Storage error, timeout, no link) nothing is deleted: the answer is
- *  "unavailable" and the row stays pending until Cancel or the 15-minute cleanup removes it. */
+ *  When the bytes cannot be read back (Storage error, timeout, no link) nothing is deleted here: the answer is
+ *  "unavailable" and the row stays pending. The Files tab then cancels it at once (abortUpload) and offers Try again on
+ *  the same file; if that cancel fails too, the line keeps the id and Dismiss or Try again cancels it, and the 15-minute
+ *  clean-up is the last resort (verifier 4d round 2 finding 7). */
 export async function finishUpload(input: unknown): Promise<ActionResult<Pick<LeadFile, "id" | "name" | "mime" | "size" | "created_at">>> {
   const parsed = fileIdInput.safeParse(input);
   if (!parsed.success) return invalid();

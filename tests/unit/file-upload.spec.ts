@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { checkLocalFile, failureToUpload, objectUrl } from "@/lib/files/upload";
+import { canRetry, checkLocalFile, failureToUpload, objectUrl } from "@/lib/files/upload";
 import { DOCX, makeZip } from "./helpers/zip";
 
 // The browser's checks before an upload (Day 4 design 5.7): too big, empty, wrong type and wrong bytes are refused
@@ -44,4 +44,26 @@ test("failureToUpload: file_type and file_size are worded; file_name, file_lead 
   expect(failureToUpload({ ok: false, error: "busy" })).toBe("tooManyPending");
   expect(failureToUpload({ ok: false, error: "type_mismatch" })).toBe("mismatch");
   expect(failureToUpload({ ok: false, error: "not_found" })).toBe("unavailable");
+});
+
+// Verifier 4d round 2 finding 9: a file the browser cannot read (moved or changed after it was picked, a cloud
+// placeholder, no permission) is "unreadable", never called fake ("mismatch"); a fake file still is.
+test("checkLocalFile: a read that fails is unreadable, not mismatch", async () => {
+  const broken = (name: string, type: string) => {
+    const f = new File([new Uint8Array(64).fill(0x25)], name, { type });
+    // File.slice() returns a Blob whose arrayBuffer() rejects, as Chrome and Safari do with NotReadableError.
+    Object.defineProperty(f, "slice", {
+      value: () => ({ arrayBuffer: () => Promise.reject(new DOMException("The file could not be read.", "NotReadableError")) }),
+    });
+    return f;
+  };
+  expect(await checkLocalFile(broken("devis.pdf", "application/pdf"))).toEqual({ ok: false, reason: "unreadable" });
+  expect(await checkLocalFile(broken("offre.docx", W))).toEqual({ ok: false, reason: "unreadable" });
+  const fake = new File([new Uint8Array([0x4d, 0x5a, 0x90, 0])], "facture.pdf", { type: "application/pdf" });
+  expect(await checkLocalFile(fake)).toEqual({ ok: false, reason: "mismatch", mime: "application/pdf" });
+});
+
+test("canRetry: only failures that are not the file's own fault offer Try again", () => {
+  for (const e of ["connection", "unavailable", "tooMany"] as const) expect(canRetry(e)).toBe(true);
+  for (const e of ["tooBig", "empty", "type", "unreadable", "mismatch", "quota", "rateLimited", "tooManyPending"] as const) expect(canRetry(e)).toBe(false);
 });

@@ -955,9 +955,12 @@
     "empty": "Aucun fichier pour l’instant. Ajoutez des devis, des tarifs ou des photos.",
     "error": "Impossible de charger les fichiers.",
     "retry": "Réessayer",
+    "retryUpload": "Réessayer {name}",
     "loadOlder": "Afficher les fichiers plus anciens",
+    "errorOlder": "Impossible de charger les fichiers plus anciens.",
     "stuckDeleting": "Suppression inachevée",
     "retryDelete": "Réessayer",
+    "retryDeleteNamed": "Réessayer de supprimer {name}",
     "deleted": "{name} supprimé",
     "deleteConfirm": {
       "title": "Supprimer ce fichier ?",
@@ -969,6 +972,7 @@
       "tooBig": "Trop lourd : 10 Mo maximum par fichier. Réduisez-le ou découpez-le.",
       "empty": "Ce fichier est vide.",
       "type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
+      "unreadable": "Impossible de lire ce fichier. Choisissez-le à nouveau.",
       "mismatch": {
         "pdf": "Ce fichier n’est pas vraiment un PDF. Enregistrez-le ou exportez-le à nouveau en PDF, puis ajoutez-le.",
         "image": "Ce fichier n’est pas vraiment une photo (PNG ou JPG). Enregistrez-le en JPG ou PNG, puis ajoutez-le.",
@@ -986,7 +990,8 @@
     "announce": {
       "uploading": "Envoi de {name}",
       "added": "{name} ajouté",
-      "failed": "{name} n’a pas été ajouté",
+      "failed": "{name} n’a pas été ajouté. {reason}",
+      "tooMany": "{count, plural, one {# fichier n’a pas été ajouté : 5 à la fois au maximum.} other {# fichiers n’ont pas été ajoutés : 5 à la fois au maximum.}}",
       "cancelled": "Envoi de {name} annulé"
     },
     "unavailable": {

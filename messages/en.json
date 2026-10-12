@@ -955,9 +955,12 @@
     "empty": "No files yet. Add quotes, price lists or photos.",
     "error": "Couldn’t load the files.",
     "retry": "Try again",
+    "retryUpload": "Try {name} again",
     "loadOlder": "Show older files",
+    "errorOlder": "Couldn’t load older files.",
     "stuckDeleting": "Couldn’t finish deleting",
     "retryDelete": "Retry",
+    "retryDeleteNamed": "Retry deleting {name}",
     "deleted": "Deleted {name}",
     "deleteConfirm": {
       "title": "Delete this file?",
@@ -969,6 +972,7 @@
       "tooBig": "Too big: a file can be up to 10 MB. Make it smaller, or split it.",
       "empty": "This file is empty.",
       "type": "Only PDF, PNG, JPG, Word or Excel files.",
+      "unreadable": "Couldn’t read this file. Choose it again.",
       "mismatch": {
         "pdf": "This file isn’t really a PDF. Save or export it as a PDF again, then add it.",
         "image": "This file isn’t really a photo (PNG or JPG). Save it as JPG or PNG, then add it.",
@@ -986,7 +990,8 @@
     "announce": {
       "uploading": "Uploading {name}",
       "added": "Added {name}",
-      "failed": "{name} wasn’t added",
+      "failed": "{name} wasn’t added. {reason}",
+      "tooMany": "{count, plural, one {# file wasn’t added: up to 5 at a time.} other {# files weren’t added: up to 5 at a time.}}",
       "cancelled": "Cancelled {name}"
     },
     "unavailable": {

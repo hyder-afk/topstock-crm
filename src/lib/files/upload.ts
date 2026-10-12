@@ -9,26 +9,48 @@ import { BUCKET, MAX_FILE_BYTES, type FileMime } from "@/lib/files/types";
 
 export type LocalCheck =
   | { ok: true; mime: FileMime }
-  | { ok: false; reason: "tooBig" | "empty" | "type" }
+  | { ok: false; reason: "tooBig" | "empty" | "type" | "unreadable" }
   | { ok: false; reason: "mismatch"; mime: FileMime };
 
-/** Size, type (browser type or extension) and the bytes themselves (sniffFile), before any upload. */
+/** Size, type (browser type or extension) and the bytes themselves (sniffFile), before any upload. A file the browser
+ *  cannot read (changed or moved on disk after it was picked, a cloud placeholder not downloaded, no permission) is
+ *  "unreadable", never "mismatch": only sniffFile's own answer calls a file fake (verifier 4d round 2 finding 9, the
+ *  browser's twin of the server's readAndSniff). */
 export async function checkLocalFile(file: File): Promise<LocalCheck> {
   if (file.size > MAX_FILE_BYTES) return { ok: false, reason: "tooBig" };
   if (file.size === 0) return { ok: false, reason: "empty" };
   const mime = typeOf(file);
   if (!mime) return { ok: false, reason: "type" };
+  let head: Uint8Array;
+  let tail: Uint8Array | undefined;
   try {
-    const head = new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
-    const tail = needsTail(mime) ? new Uint8Array(await file.slice(Math.max(0, file.size - TAIL_BYTES)).arrayBuffer()) : undefined;
-    return sniffFile({ mime, size: file.size, head, tail }) ? { ok: true, mime } : { ok: false, reason: "mismatch", mime };
+    head = new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
+    tail = needsTail(mime) ? new Uint8Array(await file.slice(Math.max(0, file.size - TAIL_BYTES)).arrayBuffer()) : undefined;
   } catch {
-    return { ok: false, reason: "mismatch", mime };
+    return { ok: false, reason: "unreadable" };
   }
+  return sniffFile({ mime, size: file.size, head, tail }) ? { ok: true, mime } : { ok: false, reason: "mismatch", mime };
 }
 
 /** What an upload's line says when it fails (the Files tab words each one: Files.errors.<key>). */
-export type UploadError = "tooBig" | "empty" | "type" | "mismatch" | "quota" | "rateLimited" | "tooManyPending" | "connection" | "tooMany" | "unavailable";
+export type UploadError =
+  | "tooBig"
+  | "empty"
+  | "type"
+  | "unreadable"
+  | "mismatch"
+  | "quota"
+  | "rateLimited"
+  | "tooManyPending"
+  | "connection"
+  | "tooMany"
+  | "unavailable";
+
+/** Failures worth a "Try again" on the same file: nothing about the file itself was refused (the connection, Storage or
+ *  the check after upload failed, or more than 5 files were chosen at once). */
+export function canRetry(error: UploadError | undefined) {
+  return error === "connection" || error === "unavailable" || error === "tooMany";
+}
 
 /** A refusal from beginUpload or finishUpload as an upload line. Only a refused type or size is worded as such; a
  *  refused name or lead (hints file_name, file_lead) or a refusal without a hint is "unavailable". */
