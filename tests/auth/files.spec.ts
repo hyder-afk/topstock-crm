@@ -197,7 +197,7 @@ test("files_list: rows, sizes, who and when; names as text (xss); the team space
   await gotoFiles(page, lead);
   const panel = filesPanel(page);
   await expect(panel.getByRole("link", { name: /Devis printemps 2026\.pdf/ })).toBeVisible();
-  await expect(panel.getByText("1.2 MB")).toBeVisible();
+  await expect(panel.getByText("1.2 MB", { exact: true })).toBeVisible(); // exact: the team space can read "1.2 MB of 800 MB used" on a fresh stack
   await expect(panel.getByText("47 kB").or(panel.getByText("47 KB"))).toBeVisible();
   await expect(panel.getByText("Yanis Morel")).toBeVisible();
   await expect(panel.getByText("You").first()).toBeVisible();
@@ -308,17 +308,45 @@ test("delete_needs_fresh_code (the database asks for the code), stuck delete sho
   } else {
     // No storage-api here: the bytes cannot be removed, so the row stays "deleting" and says so, with Retry.
     await expect(panel.getByText("Couldn’t finish deleting")).toBeVisible();
-    await expect(panel.getByRole("button", { name: "Retry" })).toBeVisible();
+    // Retry names its file and keeps the focus through a retry that fails again (aria-disabled while busy, never
+    // disabled, so the focus does not drop to the page; verifier 4d round 2 finding 11).
+    const retry = panel.getByRole("button", { name: `Retry deleting ${name}` });
+    await expect(retry).toHaveText("Retry");
     expect(sql(`select status from public.files where id = '${id}'`)).toBe("deleting");
+    await retry.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Couldn’t finish deleting. Try again.")).toBeVisible();
+    await expect(retry).toBeFocused();
+    await expect(retry).not.toHaveAttribute("aria-disabled", "true");
   }
   expect(errors.filter((e) => !/storage\/v1|Failed to load resource/.test(e))).toEqual([]);
   await context.close();
 });
 
-test("phone_390_files: no sideways scroll, Add file and the row menus are 44 px", async ({ browser }) => {
+test("phone_390_files: no sideways scroll; Add file, the row menus, the row's open target and Retry are 44 px", async ({ browser }) => {
+  const stuck = `Ancienne fiche ${run}.pdf`;
+  seedFile(lead, stuck, { by: adminEmail, status: "deleting", ago: "30 days" });
   const { context, page, errors } = await open(browser, adminState, { width: 390 });
   await gotoFiles(page, lead);
   const panel = filesPanel(page);
+  // The name's link covers its whole line on phones (verifier 4d round 2 finding 16): a tap on the icon tile or the
+  // meta line (size, who, when) lands on the link, and that line is at least 44 px tall.
+  const link = panel.getByRole("link", { name: /Devis printemps 2026\.pdf/ });
+  const hit = await link.evaluate((a) => {
+    const row = a.closest("li")!.firstElementChild as HTMLElement;
+    row.scrollIntoView({ block: "center" }); // in the viewport and clear of the dock, for elementFromPoint
+    const r = row.getBoundingClientRect();
+    const meta = row.querySelector("p")!.getBoundingClientRect();
+    const at = (x: number, y: number) => document.elementFromPoint(x, y)?.closest("a") === a;
+    return { height: r.height, icon: at(r.left + 12, r.top + r.height / 2), meta: at(meta.left + 8, meta.top + meta.height / 2) };
+  });
+  expect(hit.height).toBeGreaterThanOrEqual(44);
+  expect(hit.icon).toBe(true);
+  expect(hit.meta).toBe(true);
+  // The stuck delete's Retry: 44 by 44 in English (a short word).
+  const retry = (await panel.getByRole("button", { name: `Retry deleting ${stuck}` }).boundingBox())!;
+  expect(retry.height).toBeGreaterThanOrEqual(44);
+  expect(retry.width).toBeGreaterThanOrEqual(44);
   const add = panel.getByRole("button", { name: "Add file" });
   await expect(add).toBeVisible();
   expect((await add.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -333,6 +361,186 @@ test("phone_390_files: no sideways scroll, Add file and the row menus are 44 px"
   expect(tab.x).toBeGreaterThanOrEqual(strip.x);
   expect(tab.x + tab.width).toBeLessThanOrEqual(strip.x + strip.width + 0.5);
   expect(errors).toEqual([]);
+  await context.close();
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Uploads without storage-api: the Storage request and the finish are held or answered by the test (page.route), so
+// each state of a line can be reached and checked here (verifier 4d round 2 findings 7, 8, 10, 13, 14, 17, 18).
+// ---------------------------------------------------------------------------------------------------------------------
+function gate() {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { open, opened };
+}
+const said = (page: Page) => filesPanel(page).locator("[role=status] p").allTextContents();
+
+test("announcements: each refusal says why, and files past 5 are announced once (finding 14)", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoFiles(page, lead);
+  const svg = (n: number) => ({ name: `plan ${n}.svg`, mimeType: "image/svg+xml", buffer: Buffer.from("<svg/>") });
+  await filesPanel(page)
+    .locator("input[type=file]")
+    .setInputFiles([
+      { name: "facture.pdf", mimeType: "application/pdf", buffer: Buffer.from([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0]) },
+      svg(1),
+      svg(2),
+      svg(3),
+      svg(4),
+      { name: "en trop 1.pdf", mimeType: "application/pdf", buffer: pdfBytes() },
+      { name: "en trop 2.pdf", mimeType: "application/pdf", buffer: pdfBytes() },
+    ]);
+  const uploads = filesPanel(page).getByRole("list", { name: "Uploads" });
+  await expect(uploads.locator("li")).toHaveCount(7);
+  await expect.poll(() => said(page)).toHaveLength(6);
+  const messages = await said(page);
+  expect(messages[0]).toBe("2 files weren’t added: up to 5 at a time.");
+  expect(messages).toContain("facture.pdf wasn’t added. This file isn’t really a PDF. Save or export it as a PDF again, then add it.");
+  for (let n = 1; n <= 4; n++) expect(messages).toContain(`plan ${n}.svg wasn’t added. Only PDF, PNG, JPG, Word or Excel files.`);
+  // The extra files can be tried again from their own line; a refused file cannot (it has to change first).
+  await expect(uploads.getByRole("button", { name: "Try en trop 1.pdf again" })).toBeVisible();
+  await expect(uploads.getByRole("button", { name: "Try facture.pdf again" })).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("upload line focus: Cancel -> the line while checking -> Try again -> Cancel -> Choose files; a failed check cancels the pending row (findings 7, 8, 13)", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoFiles(page, lead);
+  const name = `Devis focus ${run}.pdf`;
+  let storage = gate();
+  let storageDone = false;
+  let mode: "ok" | "fail" | "hold" = "ok";
+  await page.route("**/storage/v1/object/lead-files/**", async (route) => {
+    await storage.opened;
+    try {
+      if (mode === "fail") return await route.abort("failed");
+      storageDone = true;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ Key: "lead-files/x", Id: "x" }) });
+    } catch {
+      // the browser cancelled the request first (Cancel)
+    }
+  });
+  const finish = gate();
+  let finishHeld = false;
+  await page.route(
+    (url) => url.pathname === `/leads/${lead}`,
+    async (route) => {
+      const r = route.request();
+      if (r.method() === "POST" && r.headers()["next-action"] && storageDone && !finishHeld) {
+        finishHeld = true;
+        await finish.opened;
+      }
+      await route.fallback();
+    },
+  );
+  const panel = filesPanel(page);
+  const line = panel.locator("[data-upload-key]");
+  await panel.locator("input[type=file]").setInputFiles({ name, mimeType: "application/pdf", buffer: pdfBytes(64_000) });
+  const cancel = line.getByRole("button", { name: "Cancel" });
+  await expect(cancel).toBeVisible();
+  await cancel.focus();
+  // The bytes arrive: Cancel goes, the focus moves to the line (never to the page).
+  storage.open();
+  await expect(line.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "Checking the file…");
+  await expect(line).toBeFocused();
+  expect(sql(`select count(*) from public.files where company_id = '${lead}' and name = $q$${name}$q$ and status = 'pending'`)).toBe("1");
+  // The check cannot read the bytes here (no storage-api): the line says so, Try again takes the focus, and the
+  // pending row is cancelled at once instead of waiting 15 minutes unseen.
+  finish.open();
+  await expect(line).toContainText("Couldn’t add this file. Try again.");
+  const again = line.getByRole("button", { name: `Try ${name} again` });
+  await expect(again).toBeFocused();
+  await expect.poll(() => sql(`select count(*) from public.files where company_id = '${lead}' and name = $q$${name}$q$ and status = 'pending'`)).toBe("0");
+  expect(await said(page)).toContain(`${name} wasn’t added. Couldn’t add this file. Try again.`);
+  // Try again: the same line uploads again and its Cancel takes the focus; Cancel then ends on Choose files.
+  storage = gate();
+  mode = "hold";
+  await page.keyboard.press("Enter");
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByRole("button", { name: "Choose files" })).toBeFocused();
+  await expect(line).toHaveCount(0);
+  storage.open();
+  // A connection lost while sending: Cancel goes, Try again takes the focus.
+  storage = gate();
+  mode = "fail";
+  await panel.locator("input[type=file]").setInputFiles({ name, mimeType: "application/pdf", buffer: pdfBytes(64_000) });
+  await expect(cancel).toBeVisible();
+  await cancel.focus();
+  storage.open();
+  await expect(line).toContainText("Connection lost. Try again.");
+  await expect(again).toBeFocused();
+  await expect.poll(() => sql(`select count(*) from public.files where company_id = '${lead}' and name = $q$${name}$q$ and status = 'pending'`)).toBe("0");
+  expect(errors.filter((e) => !/storage\/v1|Failed to load resource|net::ERR_FAILED/.test(e))).toEqual([]);
+  await context.close();
+});
+
+test("hidden tab: an outcome shows as a toast and the line waits; a file dropped outside the zone never leaves the page (findings 17, 18)", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoFiles(page, lead);
+  const name = `Tarif caché ${run}.pdf`;
+  const storage = gate();
+  await page.route("**/storage/v1/object/lead-files/**", async (route) => {
+    await storage.opened;
+    await route.abort("failed").catch(() => null);
+  });
+  // Dropped files: refused everywhere but the zone while Files is shown; untouched while another tab is shown.
+  const dropped = (selector: string) =>
+    page.evaluate((sel) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(["%PDF-1.7"], "x.pdf", { type: "application/pdf" }));
+      const target = document.querySelector(sel)!;
+      const out: Record<string, boolean> = {};
+      for (const type of ["dragover", "drop"]) {
+        const e = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt });
+        target.dispatchEvent(e);
+        out[type] = e.defaultPrevented;
+      }
+      return out;
+    }, selector);
+  expect(await dropped("main h1")).toEqual({ dragover: true, drop: true });
+  expect(await dropped("section:has(input[type=file]) h2")).toEqual({ dragover: true, drop: true });
+  await filesPanel(page).locator("input[type=file]").setInputFiles({ name, mimeType: "application/pdf", buffer: pdfBytes(64_000) });
+  await expect(filesPanel(page).getByRole("button", { name: "Cancel" })).toBeVisible();
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Timeline" })).toBeVisible();
+  expect(await dropped("main h1")).toEqual({ dragover: false, drop: false });
+  storage.open();
+  await expect(page.getByText(`${name} wasn’t added. Connection lost. Try again.`).filter({ visible: true })).toBeVisible(); // the toast (the tab’s own status line is hidden with the tab)
+  await page.getByRole("tab", { name: "Files" }).click();
+  await expect(filesPanel(page).locator("[data-upload-key]")).toContainText("Connection lost. Try again.");
+  expect(errors.filter((e) => !/storage\/v1|Failed to load resource|net::ERR_FAILED/.test(e))).toEqual([]);
+  await context.close();
+});
+
+test("show older files: a failed page says so and keeps the focus; the last page moves the focus to its first file (finding 10)", async ({ browser }) => {
+  const many = makeLead(`Grossiste Archives ${run}`, adminEmail);
+  sql(`insert into public.files (org_id, company_id, name, mime, size, uploaded_by, status, ready_at, created_at)
+       select c.org_id, c.id, format('Lot %s.pdf', lpad(g::text, 2, '0')), 'application/pdf', 1000 + g, '${userId(adminEmail)}', 'ready', now(),
+              now() - make_interval(mins => g)
+       from public.companies c, generate_series(1, 52) g where c.id = '${many}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  let failing = true;
+  await page.route(
+    (url) => url.pathname === `/api/leads/${many}/files` && url.searchParams.has("before_at"),
+    async (route) => (failing ? route.fulfill({ status: 502, body: "" }) : route.fallback()),
+  );
+  await gotoFiles(page, many);
+  const panel = filesPanel(page);
+  await expect(panel.getByRole("link", { name: /^Lot 50\.pdf/ })).toBeVisible();
+  const more = panel.getByRole("button", { name: "Show older files" });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByRole("alert")).toHaveText("Couldn’t load older files.");
+  const tryAgain = panel.getByRole("button", { name: "Try again" });
+  await expect(tryAgain).toBeFocused();
+  failing = false;
+  await page.keyboard.press("Enter");
+  await expect(panel.getByRole("link", { name: /^Lot 52\.pdf/ })).toBeVisible();
+  await expect(tryAgain).toHaveCount(0);
+  await expect(panel.getByRole("link", { name: /^Lot 51\.pdf/ })).toBeFocused();
+  expect(errors.filter((e) => !/502|Failed to load resource/.test(e))).toEqual([]);
   await context.close();
 });
 
