@@ -346,6 +346,34 @@ begin
     current_setting('t.sale_holds')), '42501', 'forbidden');
 end $$;
 
+-- 5b. The table path (a client writing the rows itself, in one transaction): a rep's line below the minimum is refused
+--     by the line guard; a line ships once (unique index); a sale's deal is checked on insert.
+do $$
+declare
+  o uuid;
+  line uuid;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  insert into private.orders (company_id, fulfilment) values ('5a000000-0000-0000-0000-0000000000b1', 'from_stock')
+  returning id into o;
+  perform pg_temp.expect_error(format($q$insert into private.order_lines (order_id, position, product_id, product_name, quantity, unit_price)
+    values (%L, 1, %L, 'x', 1, 1.5)$q$, o, pg_temp.pid('SA P8')), '42501', 'below_min');
+  insert into private.order_lines (order_id, position, product_id, product_name, quantity, unit_price)
+  values (o, 2, pg_temp.pid('SA P1'), 'x', 1, 3) returning id into line;
+  insert into private.stock_movements (group_id, product_id, location_id, kind, qty, order_line_id)
+  select gen_random_uuid(), pg_temp.pid('SA P1'), l.id, 'ship', 1, line from public.locations l
+   where l.kind = 'warehouse' and l.org_id = (select org_id from private.orders where id = o);
+  perform pg_temp.expect_error(format($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty, order_line_id)
+    select gen_random_uuid(), %L, l.id, 'ship', 1, %L from public.locations l
+     where l.kind = 'warehouse' and l.org_id = (select org_id from private.orders where id = %L)$q$, pg_temp.pid('SA P1'), line, o),
+    '23505');
+  perform pg_temp.expect_error(format($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty, order_line_id)
+    select gen_random_uuid(), %L, l.id, 'ship', 2, %L from public.locations l
+     where l.kind = 'warehouse' and l.org_id = (select org_id from private.orders where id = %L)$q$, pg_temp.pid('SA P1'), line, o),
+    '22023', 'document');
+end $$;
+do $$ begin perform pg_temp.integrity_clean('the table path'); end $$;
+
 -- 6. first_sale_sets_customer (not from do_not_contact), undo_sale_window_no_code, undo_sale_restores_consumed_hold,
 --    undo_sale_restores_lead_status ---------------------------------------------------------------------------------
 do $$
@@ -594,6 +622,37 @@ begin
   end if;
   if (select count(*) from public.list_stock_requests(array['done'])) < 1 then
     raise exception 'FAIL: list_stock_requests';
+  end if;
+end $$;
+
+-- 11b. lead_delete_with_request_task: a lead with a request and a task that points at the request (the client link's
+--      task, 6e) can still be deleted by an admin with a fresh code (the cascade clears or removes the task).
+reset role;
+insert into public.companies (id, org_id, name, owner_id)
+select '5a000000-0000-0000-0000-0000000000f9', org_id, 'SA Gone', '00000000-0000-0000-0000-0000000000b1'
+  from public.profiles where id = '00000000-0000-0000-0000-0000000000b1';
+set role authenticated;
+do $$
+declare
+  r jsonb;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  r := public.log_stock_request('5a000000-0000-0000-0000-0000000000f9', '[{"description": "x", "quantity": "1", "unit": "piece"}]');
+  perform set_config('t.gone_request', r ->> 'request_id', false);
+end $$;
+reset role;
+insert into public.tasks (org_id, assignee_id, title, kind, company_id, source_request_id)
+select org_id, '00000000-0000-0000-0000-0000000000b1', 'Stock request (client link)', 'todo',
+       '5a000000-0000-0000-0000-0000000000f9', current_setting('t.gone_request')::uuid
+  from public.profiles where id = '00000000-0000-0000-0000-0000000000b1';
+set role authenticated;
+do $$
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  delete from public.companies where id = '5a000000-0000-0000-0000-0000000000f9';
+  if exists (select 1 from public.companies where id = '5a000000-0000-0000-0000-0000000000f9')
+     or exists (select 1 from private.stock_requests where id = current_setting('t.gone_request')::uuid) then
+    raise exception 'FAIL: lead_delete_with_request_task';
   end if;
 end $$;
 

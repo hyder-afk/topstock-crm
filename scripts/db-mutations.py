@@ -5,7 +5,7 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|day6c|all] [numbers...]  (about 40 s per mutation,
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|day6c|day6d|all] [numbers...]  (about 40 s per mutation,
 70 s once the Day 6a stock tests run; default: all
 sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
 when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
@@ -908,8 +908,80 @@ MUTATIONS_6C = [
 ]
 
 
+MUTATIONS_6D = [
+    # Design section 11.3, 6d mutations 27 to 36 (tagged [design N]); two-layer protections also get one row per layer.
+    ("A sale ignores other clients' holds (no held-above-on-hand rule for ship; the CHECK fires instead) [design 27]",
+     [("  if lvl.reserved + d_res > lvl.on_hand + d_on then\n    raise exception 'stock is held'",
+       "  if new.kind <> 'ship' and lvl.reserved + d_res > lvl.on_hand + d_on then\n    raise exception 'stock is held'")]),
+    ("A sale may use any lead's holds (not only its own lead's) [design 27]",
+     [("                  and r.company_id = new.company_id and (r.deal_id is null or r.deal_id = new.deal_id)\n",
+       "                  and (r.deal_id is null or r.deal_id = new.deal_id)\n")]),
+    ("Reps sell below the minimum price (record_sale and the line guard, both layers) [design 28]",
+     [("    if not private.is_manager_or_admin() then\n      raise exception 'only managers and admins sell below the minimum price'",
+       "    if false then\n      raise exception 'only managers and admins sell below the minimum price'"),
+      ("      if not private.is_manager_or_admin() then\n        raise exception 'only managers and admins sell below the minimum price'",
+       "      if false then\n        raise exception 'only managers and admins sell below the minimum price'")]),
+    ("Reps sell below the minimum price in record_sale (the line guard refuses the same line) [design 28]",
+     [("    if not private.is_manager_or_admin() then\n      raise exception 'only managers and admins sell below the minimum price'",
+       "    if false then\n      raise exception 'only managers and admins sell below the minimum price'")], SURVIVES),
+    ("Reps write a line below the minimum price (the line guard; the table path) [design 28]",
+     [("      if not private.is_manager_or_admin() then\n        raise exception 'only managers and admins sell below the minimum price'",
+       "      if false then\n        raise exception 'only managers and admins sell below the minimum price'")]),
+    ("The deal-lost trigger is dropped (a lost deal keeps its holds) [design 29]",
+     [(MIG_6A, "create trigger release_deal_holds_lost after update on public.deals\n  for each row when (new.status = 'lost' and old.status is distinct from 'lost')\n  execute function private.release_deal_holds();\n",
+       "")]),
+    ("The import undo misses sales (a lead with a sale counts as untouched) [design 30]",
+     [("     and not exists (select 1 from private.orders o where o.company_id = c.id)\n", "")]),
+    ("A stock sheet opens Restock tasks [design 31]",
+     [("  if new.kind in ('import_in', 'import_out', 'undo_in', 'undo_out', 'expire') or v_after >= v_before then",
+       "  if new.kind in ('expire') or v_after >= v_before then")]),
+    ("System tasks keep the caller's claims (the rep becomes the creator) [design 32]",
+     [("  perform set_config('request.jwt.claims', '', true);\n  perform set_config('request.jwt.claim.sub', '', true);\n  insert into public.tasks",
+       "  insert into public.tasks")]),
+    ("System tasks do not put the caller's claims back [design 33]",
+     [("  perform set_config('request.jwt.claims', coalesce(v_claims, ''), true);\n  perform set_config('request.jwt.claim.sub', coalesce(v_sub, ''), true);\n  return v_id;",
+       "  return v_id;")]),
+    ("A sale line may ship twice (no unique ship index) [design 34]",
+     [("create unique index movements_ship_once_idx", "create index movements_ship_once_idx")]),
+    ("Undo after 120 s without a code (record_sale's check and the order guard, both layers) [design 35]",
+     [("o.created_at <= now() - interval '120 seconds'", "o.created_at <= now() - interval '3600 seconds'"),
+      ("old.created_at > now() - interval '120 seconds' and new.cancel_reason = 'undo'",
+       "old.created_at > now() - interval '3600 seconds' and new.cancel_reason = 'undo'")]),
+    ("Undo window in undo_sale only (the order guard still refuses: forbidden instead of undo_window) [design 35]",
+     [("o.created_at <= now() - interval '120 seconds'", "o.created_at <= now() - interval '3600 seconds'")]),
+    ("Undo window in the order guard only (a direct cancel by the creator after 120 s) [design 35]",
+     [("old.created_at > now() - interval '120 seconds' and new.cancel_reason = 'undo'",
+       "old.created_at > now() - interval '3600 seconds' and new.cancel_reason = 'undo'")]),
+    ("task_guard without the new links in its cascade exception [design 36]",
+     [("       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id', 'source_product_id',\n                            'source_request_id']\n",
+       "       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id']\n")], SURVIVES),
+    ("task_guard lets a client change a system link",
+     [("    if not changed <@ array['assignee_id', 'cancelled_at', 'completed_by', 'contact_id', 'done_at', 'due_at',\n                            'due_date', 'title'] then\n      raise exception 'this part of a task cannot change'",
+       "    if not changed <@ array['assignee_id', 'cancelled_at', 'completed_by', 'contact_id', 'done_at', 'due_at',\n                            'due_date', 'title', 'source_product_id', 'source_request_id'] then\n      raise exception 'this part of a task cannot change'")]),
+    ("A sale line may be added to someone else's (or an earlier) sale",
+     [("  if not found or o.created_by is distinct from caller or o.created_at <> now() or o.status <> 'confirmed' then\n    raise exception 'lines are added with their sale only'",
+       "  if not found then\n    raise exception 'lines are added with their sale only'")]),
+    ("A ship row needs no sale recorded now by the caller",
+     [("      if trusted or sl.status <> 'confirmed' or sl.created_by is distinct from caller or sl.created_at <> now() then",
+       "      if trusted or sl.status <> 'confirmed' then")]),
+    ("record_sale does not lock the lead (a non-editor may sell)",
+     [("  select c.country into v_lead_country from public.companies c where c.id = p_company for update;",
+       "  select c.country into v_lead_country from public.companies c where c.id = p_company;")]),
+    ("Undo does not put back the holds a sale used",
+     [("              where ol.order_id = p_order and m.kind = 'ship' and r.hold_until >= v_today\n",
+       "              where ol.order_id = p_order and m.kind = 'ship' and false\n")]),
+    ("The audit keeps a request's note",
+     [("  hidden constant text[] := array['note', 'requester_name', 'idempotency_key'];",
+       "  hidden constant text[] := array['requester_name', 'idempotency_key'];")]),
+    ("A hold's whole row is writable by its editor (no extend guard)",
+     [("create trigger reservation_extend_guard before update on private.stock_reservations\n  for each row execute function private.reservation_extend_guard();\n", ""),
+      ("grant update (hold_until) on private.stock_reservations to authenticated;", "grant update (hold_until, remaining) on private.stock_reservations to authenticated;")]),
+]
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
-        "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C)}
+        "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
+        "day6d": (MIG_6D, MUTATIONS_6D)}
 
 
 def redefinitions(text: str) -> list:
