@@ -98,6 +98,61 @@
     "settings": "Settings",
     "status": "System"
   },
+  "Team": {
+    "title": "Team",
+    "subtitle": "Everyone who can sign in to TopStock CRM, and what each person may do. Changing a role asks for a code from your authenticator app.",
+    "back": "More",
+    "count": "{count, plural, one {# person} other {# people}}",
+    "you": "You",
+    "noName": "No name yet",
+    "account": "Account {id}",
+    "userId": "User ID {id}",
+    "created": "Account created {date}",
+    "noNameHint": "Their name shows here once they add it under More > Your name.",
+    "role": {
+      "admin": "Admin",
+      "manager": "Manager",
+      "rep": "Rep"
+    },
+    "roleDescription": {
+      "admin": "Everything a manager does, plus importing leads and changing roles.",
+      "manager": "Changes every lead, contact and task, and can delete leads with a code.",
+      "rep": "Sees every lead; changes the leads they own and their own tasks."
+    },
+    "roleMenu": "Role for {who}: {role}",
+    "rolesTitle": "Roles",
+    "saving": "Saving…",
+    "confirm": {
+      "title": "Change role?",
+      "body": "{who} becomes {role, select, admin {an admin} manager {a manager} other {a rep}}.",
+      "self": "You will lose the admin screens (Team and Import leads) as soon as this is saved.",
+      "code": "If your last authenticator code is more than 10 minutes old, you’ll be asked for a new one.",
+      "cancel": "Cancel",
+      "submit": "Confirm"
+    },
+    "announce": {
+      "saving": "Saving the new role for {who}…",
+      "saved": "{who} is now {role, select, admin {an admin} manager {a manager} other {a rep}}.",
+      "savedSelf": "You are now {role, select, admin {an admin} manager {a manager} other {a rep}}. The Team screen is for admins only.",
+      "cancelled": "Role not changed."
+    },
+    "errors": {
+      "last_admin": "{who} is the last admin. Make someone else an admin first.",
+      "last_admin_self": "You are the last admin. Make someone else an admin first.",
+      "forbidden": "Only admins can change roles.",
+      "not_found": "This person is no longer in your team. Reload the page.",
+      "unavailable": "Couldn’t change the role just now. Try again.",
+      "load": "Couldn’t load the team just now.",
+      "retry": "Try again"
+    },
+    "empty": {
+      "title": "No one here yet",
+      "body": "People appear here as soon as their account exists."
+    },
+    "moreSection": "Administration",
+    "moreRow": "Team",
+    "moreRowHint": "People and their roles"
+  },
   "Nav": {
     "label": "Sections",
     "home": "Home",
@@ -363,7 +418,8 @@
       "rateLimited": "Too many tries. Wait a minute, then try again.",
       "unavailable": "We couldn’t check the code just now. Try again in a moment."
     },
-    "bodyDelete": "Deleting an entry can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes."
+    "bodyDelete": "Deleting an entry can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
+    "bodyRole": "Changing a role decides what someone can see and change. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes."
   },
   "Import": {
     "title": "Import leads",

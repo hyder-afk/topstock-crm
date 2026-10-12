@@ -98,6 +98,61 @@
     "settings": "Réglages",
     "status": "Système"
   },
+  "Team": {
+    "title": "Équipe",
+    "subtitle": "Toutes les personnes qui peuvent se connecter à TopStock CRM, et ce que chacune peut faire. Changer un rôle demande un code de votre application d’authentification.",
+    "back": "Plus",
+    "count": "{count, plural, one {# personne} other {# personnes}}",
+    "you": "Vous",
+    "noName": "Pas encore de nom",
+    "account": "Compte {id}",
+    "userId": "ID utilisateur {id}",
+    "created": "Compte créé le {date}",
+    "noNameHint": "Son nom s’affichera ici dès qu’il aura été ajouté dans Plus > Votre nom.",
+    "role": {
+      "admin": "Admin",
+      "manager": "Manager",
+      "rep": "Commercial"
+    },
+    "roleDescription": {
+      "admin": "Tout ce que fait un manager, plus l’import de prospects et le changement des rôles.",
+      "manager": "Modifie tous les prospects, contacts et tâches, et peut supprimer des prospects avec un code.",
+      "rep": "Voit tous les prospects ; modifie ceux dont il est responsable et ses propres tâches."
+    },
+    "roleMenu": "Rôle de {who} : {role}",
+    "rolesTitle": "Rôles",
+    "saving": "Enregistrement…",
+    "confirm": {
+      "title": "Changer le rôle ?",
+      "body": "{who} devient {role, select, admin {admin} manager {manager} other {commercial}}.",
+      "self": "Vous perdrez les écrans d’administration (Équipe et Importer des prospects) dès l’enregistrement.",
+      "code": "Si votre dernier code d’authentification date de plus de 10 minutes, un nouveau code vous sera demandé.",
+      "cancel": "Annuler",
+      "submit": "Confirmer"
+    },
+    "announce": {
+      "saving": "Enregistrement du nouveau rôle de {who}…",
+      "saved": "{who} est maintenant {role, select, admin {admin} manager {manager} other {commercial}}.",
+      "savedSelf": "Vous êtes maintenant {role, select, admin {admin} manager {manager} other {commercial}}. L’écran Équipe est réservé aux admins.",
+      "cancelled": "Rôle inchangé."
+    },
+    "errors": {
+      "last_admin": "{who} est le dernier admin. Nommez d’abord un autre admin.",
+      "last_admin_self": "Vous êtes le dernier admin. Nommez d’abord un autre admin.",
+      "forbidden": "Seuls les admins peuvent changer les rôles.",
+      "not_found": "Cette personne ne fait plus partie de votre équipe. Rechargez la page.",
+      "unavailable": "Impossible de changer le rôle pour le moment. Réessayez.",
+      "load": "Impossible de charger l’équipe pour le moment.",
+      "retry": "Réessayer"
+    },
+    "empty": {
+      "title": "Personne pour l’instant",
+      "body": "Les personnes apparaissent ici dès que leur compte existe."
+    },
+    "moreSection": "Administration",
+    "moreRow": "Équipe",
+    "moreRowHint": "Les personnes et leurs rôles"
+  },
   "Nav": {
     "label": "Sections",
     "home": "Accueil",
@@ -363,7 +418,8 @@
       "rateLimited": "Trop d’essais. Attendez une minute, puis réessayez.",
       "unavailable": "Impossible de vérifier le code pour l’instant. Réessayez dans un instant."
     },
-    "bodyDelete": "Supprimer une entrée est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes."
+    "bodyDelete": "Supprimer une entrée est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
+    "bodyRole": "Un rôle décide de ce qu’une personne peut voir et modifier. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes."
   },
   "Import": {
     "title": "Importer des prospects",
