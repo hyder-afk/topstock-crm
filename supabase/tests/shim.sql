@@ -24,3 +24,5 @@ $$;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
 -- Supabase grants these by default on public; the migration revokes what it does not want.
 grant usage on schema public to anon, authenticated, service_role;
+-- Day 4d: the Supabase Storage stand-in (bucket and objects tables, storage.foldername).
+\ir storage_shim.sql

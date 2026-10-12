@@ -41,6 +41,7 @@ export GOTRUE_JWT_SECRET="$SECRET" GOTRUE_JWT_EXP=3600 GOTRUE_JWT_AUD=authentica
 "$OUT/gotrue" migrate > "$OUT/migrate.log" 2>&1
 PSQL="psql -h 127.0.0.1 -p 54330 -U postgres -d postgres -X -q -v ON_ERROR_STOP=1"
 $PSQL -f "$ROOT/scripts/local-auth/compat.sql"
+$PSQL -f "$ROOT/supabase/tests/storage_shim.sql"  # Day 4d: storage tables (no storage-api here; uploads are CI only)
 for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$f"; done
 $PSQL -f "$ROOT/scripts/local-auth/local-api.sql"
 nohup "$OUT/gotrue" serve > "$OUT/gotrue.log" 2>&1 < /dev/null &
