@@ -99,7 +99,8 @@ begin
   insert into public.deals (id, org_id, company_id, contact_id, stage_id, owner_id) values
     ('42000000-0000-0000-0000-0000000000b1', main_org, '32000000-0000-0000-0000-0000000000b1',
      '12000000-0000-0000-0000-0000000000b1', stage, '00000000-0000-0000-0000-0000000000b1');
-  -- An entry linked to a deal (deal_id is not a client column until Day 5) and to a contact.
+  -- An entry linked to a deal and to a contact (deal_id became a client column again on Day 5b, with an insert policy
+  -- that requires a visible deal on the same lead: deal_links_attack.sql).
   insert into public.activities (id, org_id, company_id, contact_id, deal_id, type, body, user_id) values
     ('52000000-0000-0000-0000-0000000000b1', main_org, '32000000-0000-0000-0000-0000000000b1',
      '12000000-0000-0000-0000-0000000000b1', '42000000-0000-0000-0000-0000000000b1', 'note', 'with a deal',
@@ -115,7 +116,8 @@ begin
   select array_agg(attname::text order by attname) into cols from pg_attribute
    where attrelid = 'public.activities'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'INSERT');
-  if cols is distinct from array['body', 'company_id', 'contact_id', 'outcome', 'request_id', 'type'] then
+  -- (Day 5b: deal_id is back in the insert grant, design 3.2 and 8.1.)
+  if cols is distinct from array['body', 'company_id', 'contact_id', 'deal_id', 'outcome', 'request_id', 'type'] then
     raise exception 'FAIL: activity insert columns are %', cols;
   end if;
   select array_agg(attname::text order by attname) into cols from pg_attribute

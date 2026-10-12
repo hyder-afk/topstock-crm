@@ -282,6 +282,7 @@ begin
     -- a contact of another lead, or of another org
     $q$insert into public.activities (company_id, contact_id, type) values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000b1', 'note')$q$,
     $q$insert into public.activities (company_id, type) values ('30000000-0000-0000-0000-0000000000c1', 'note')$q$,
+    -- another lead's deal (Day 5b: refused by the insert policy's same-lead deal check, no longer by the column grant)
     $q$insert into public.activities (company_id, deal_id, type) values ('30000000-0000-0000-0000-0000000000a1', '40000000-0000-0000-0000-0000000000b1', 'note')$q$,
     $q$insert into public.tasks (contact_id, title) values ('10000000-0000-0000-0000-0000000000c1', 'x')$q$,
     $q$insert into public.tasks (deal_id, title) values ('40000000-0000-0000-0000-0000000000b1', 'x')$q$,
@@ -309,7 +310,8 @@ begin
     end;
   end loop;
   -- Linking to one's own records still works, and anyone may log on any lead of the org. (Since Day 4a a call
-  -- needs its outcome, and deal_id is not a client column until Day 5; a task names its lead with its contact.)
+  -- needs its outcome; deal_id is a client column again since Day 5b, for a deal on the same lead; a task names its
+  -- lead with its contact.)
   insert into public.activities (company_id, contact_id, type, outcome)
   values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'call', 'no_answer');
   insert into public.tasks (company_id, contact_id, title)

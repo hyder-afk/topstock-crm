@@ -23,6 +23,19 @@
 #     argument only this case runs, timed (perf P10: p95 per move, on the perf seed's database).
 # 10. fresh_session_move_with_request_id: a move that does not touch the lead, sent with a request id, as the first
 #     move_deal call of a new connection (Lead -> Qualified, back, and a reopen of a won deal) answers "moved".
+# Part 2 (Day 5b, migration 20261015120000_deal_links.sql; design 5.7 and 8.2 "5b"; threat 12). Global lock order
+# contact, lead, deal: an entry naming a deal takes the deal FOR KEY SHARE (its foreign key) after the lead.
+# 11. move_vs_log_activity_with_deal_no_deadlock: (a) a move that touches the lead waits for a call naming the deal that
+#     holds the lead, then goes through; (b) a move that does not touch the lead holds the deal FOR NO KEY UPDATE and a
+#     call naming the deal goes through at once (lock_timeout 500 ms).
+# 12. undo_activity_vs_log_activity_with_deal_no_deadlock: an Undo of the call that opened a deal waits for the lead,
+#     held by a colleague's note naming that deal; then removes the untouched deal (the note keeps, with no deal).
+#     Deleting the deal before the lead lock deadlocks here (mutation 5b-3).
+# 13. delete_deal_vs_log_activity_with_deal_no_deadlock: an admin's delete waits for the lead held by a call naming the
+#     deal, then deletes it; the entry keeps, with no deal.
+# 14. undo_activity_vs_move_same_lead_no_deadlock: a colleague moves the deal to Negotiations (lead, then deal) and
+#     holds; the Undo of the call that opened it waits for the lead, then keeps the moved deal and leaves the lead as the
+#     colleague's move set it.
 # Usage: deal_concurrency.sh "<libpq connection string>" [p10]  (after deals_attack.sql). Used by scripts/db-test.sh, the
 # CI "rls" job and (p10) scripts/db-perf.sh. Fixtures are made by the superuser; the probes run through the API role.
 set -euo pipefail
@@ -198,6 +211,101 @@ out=$(as_user "$R1" "select public.move_deal('$deal', 'qualified', 3, p_request_
   || fail "fresh_session_move_with_request_id: reopening Won -> Qualified failed"
 [ "$out" = "moved" ] && [ "$(stage "$deal")" = "qualified" ] \
   || fail "fresh_session_move_with_request_id: reopening '$out', stage $(stage "$deal")"
+
+# Part 2 (Day 5b) ---------------------------------------------------------------------------------------------------------
+# Part 2 opens its deals as manager m1 (an editor of r1's leads), so r1's 30-an-hour open limit is left to case 9.
+new_deal_m1() {
+  as_user "$M1" "select public.open_deal('$1', '$2') -> 'deal' ->> 'id';"
+}
+# An Interested call by m1 on a lead that opens a deal; prints "<activity id> <deal id>".
+interested_open() {
+  as_user "$M1" "select (r ->> 'activity_id') || ' ' || (r -> 'deal' ->> 'id') from public.log_activity(
+    p_company => '$1', p_type => 'call', p_outcome => 'interested', p_follow_up_date => current_date + 1,
+    p_task_title => 'Follow up', p_open_deal => true) r;"
+}
+deadlocked() { grep -q 'deadlock\|40P01' "$@" 2>/dev/null; }
+
+# 11a. A move that touches the lead against a call naming the deal (the call holds the lead first).
+lead=$(new_lead 'Concurrency move vs call')
+deal=$(new_deal_m1 "$lead" 'Move vs call')
+as_user "$ADMIN" "begin;
+select 1 from public.companies where id = '$lead' for update \g /dev/null
+select pg_sleep(0.8) \g /dev/null
+select public.log_activity(p_company => '$lead', p_type => 'call', p_outcome => 'no_answer', p_deal => '$deal') \g /dev/null
+commit;" > /dev/null 2> "$TMP_DC/c11a.err" & pa=$!
+sleep 0.3
+out=$(as_user "$M1" "select public.move_deal('$deal', 'negotiations', 0) ->> 'result';" 2> "$TMP_DC/c11a.b.err") \
+  || fail "move_vs_log_activity_with_deal_no_deadlock (a): the move failed: $(cat "$TMP_DC/c11a.b.err")"
+wait $pa || fail "move_vs_log_activity_with_deal_no_deadlock (a): the call failed: $(cat "$TMP_DC/c11a.err")"
+[ "$out" = "moved" ] && [ "$(as_owner "select count(*) from public.activities where deal_id = '$deal';")" = "1" ] \
+  || fail "move_vs_log_activity_with_deal_no_deadlock (a): move '$out'"
+# 11b. A move that does not touch the lead holds the deal; a call naming the deal is not blocked by it.
+lead=$(new_lead 'Concurrency held move vs call')
+deal=$(new_deal_m1 "$lead" 'Held move vs call')
+as_user "$M1" "begin;
+select public.move_deal('$deal', 'qualified', 0) \g /dev/null
+select pg_sleep(1.5) \g /dev/null
+commit;" > /dev/null 2> "$TMP_DC/c11b.err" & pa=$!
+sleep 0.4
+out=$(as_user "$ADMIN" "set lock_timeout = '500ms';
+select public.log_activity(p_company => '$lead', p_type => 'call', p_outcome => 'no_answer', p_deal => '$deal') ->> 'deal_id';" 2>&1) \
+  || fail "move_vs_log_activity_with_deal_no_deadlock (b): the call waited for the held move: $out"
+wait $pa || fail "move_vs_log_activity_with_deal_no_deadlock (b): the move failed: $(cat "$TMP_DC/c11b.err")"
+[ "$out" = "$deal" ] || fail "move_vs_log_activity_with_deal_no_deadlock (b): call answered '$out'"
+
+# 12. Undo of the call that opened a deal against a colleague's note naming that deal (the note holds the lead first).
+lead=$(new_lead 'Concurrency undo vs call')
+read -r act deal <<< "$(interested_open "$lead")"
+[ -n "$deal" ] || fail "undo_activity_vs_log_activity_with_deal_no_deadlock: no deal opened"
+as_user "$ADMIN" "begin;
+select 1 from public.companies where id = '$lead' for update \g /dev/null
+select pg_sleep(0.8) \g /dev/null
+select public.log_activity(p_company => '$lead', p_type => 'note', p_body => 'held note', p_deal => '$deal') \g /dev/null
+commit;" > /dev/null 2> "$TMP_DC/c12.err" & pa=$!
+sleep 0.3
+rc=0; out=$(as_user "$M1" "select public.undo_activity('$act') ->> 'deal';" 2> "$TMP_DC/c12.b.err") || rc=$?
+rca=0; wait $pa || rca=$?
+deadlocked "$TMP_DC/c12.err" "$TMP_DC/c12.b.err" && fail "undo_activity_vs_log_activity_with_deal_no_deadlock: a deadlock"
+[ "$rc" = "0" ] && [ "$rca" = "0" ] \
+  || fail "undo_activity_vs_log_activity_with_deal_no_deadlock: undo $rc ($(cat "$TMP_DC/c12.b.err")), note $rca ($(cat "$TMP_DC/c12.err"))"
+[ "$out" = "removed" ] && [ "$(as_owner "select count(*) from public.deals where id = '$deal';")" = "0" ] \
+  && [ "$(as_owner "select count(*) from public.activities where company_id = '$lead' and type = 'note' and deal_id is null;")" = "1" ] \
+  || fail "undo_activity_vs_log_activity_with_deal_no_deadlock: undo answered '$out'"
+
+# 13. An admin's delete against a call naming the deal (the call holds the lead first).
+lead=$(new_lead 'Concurrency delete vs call')
+deal=$(new_deal_m1 "$lead" 'Delete vs call')
+as_user "$M1" "begin;
+select 1 from public.companies where id = '$lead' for update \g /dev/null
+select pg_sleep(0.8) \g /dev/null
+select public.log_activity(p_company => '$lead', p_type => 'call', p_outcome => 'voicemail', p_deal => '$deal') \g /dev/null
+commit;" > /dev/null 2> "$TMP_DC/c13.err" & pa=$!
+sleep 0.3
+rc=0; as_user "$ADMIN" "select public.delete_deal('$deal');" > /dev/null 2> "$TMP_DC/c13.b.err" || rc=$?
+rca=0; wait $pa || rca=$?
+deadlocked "$TMP_DC/c13.err" "$TMP_DC/c13.b.err" && fail "delete_deal_vs_log_activity_with_deal_no_deadlock: a deadlock"
+[ "$rc" = "0" ] && [ "$rca" = "0" ] \
+  || fail "delete_deal_vs_log_activity_with_deal_no_deadlock: delete $rc ($(cat "$TMP_DC/c13.b.err")), call $rca ($(cat "$TMP_DC/c13.err"))"
+[ "$(as_owner "select count(*) from public.deals where id = '$deal';")" = "0" ] \
+  && [ "$(as_owner "select count(*) from public.activities where company_id = '$lead' and deal_id is null;")" = "1" ] \
+  || fail "delete_deal_vs_log_activity_with_deal_no_deadlock: the deal or the entry"
+
+# 14. Undo of the call that opened a deal against a colleague's move of that deal to Negotiations (lead, then deal).
+lead=$(new_lead 'Concurrency undo vs move')
+as_owner "update public.companies set lead_status = 'cold' where id = '$lead';" > /dev/null
+read -r act deal <<< "$(interested_open "$lead")"
+as_user "$ADMIN" "begin;
+select public.move_deal('$deal', 'negotiations', 0) \g /dev/null
+select pg_sleep(1) \g /dev/null
+commit;" > /dev/null 2> "$TMP_DC/c14.err" & pa=$!
+sleep 0.3
+rc=0; out=$(as_user "$M1" "select (r ->> 'deal') || ' ' || (r -> 'lead' ->> 'lead_status') from public.undo_activity('$act') r;" 2> "$TMP_DC/c14.b.err") || rc=$?
+rca=0; wait $pa || rca=$?
+deadlocked "$TMP_DC/c14.err" "$TMP_DC/c14.b.err" && fail "undo_activity_vs_move_same_lead_no_deadlock: a deadlock"
+[ "$rc" = "0" ] && [ "$rca" = "0" ] \
+  || fail "undo_activity_vs_move_same_lead_no_deadlock: undo $rc ($(cat "$TMP_DC/c14.b.err")), move $rca ($(cat "$TMP_DC/c14.err"))"
+[ "$out" = "kept negotiation" ] && [ "$(stage "$deal")" = "negotiations" ] \
+  || fail "undo_activity_vs_move_same_lead_no_deadlock: undo answered '$out', stage $(stage "$deal")"
 fi
 
 # 9. history_chain_consistent: 3 sessions x 100 random moves over 20 deals ----------------------------------------------
