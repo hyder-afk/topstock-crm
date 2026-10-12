@@ -1161,12 +1161,13 @@ begin
     end if;
   end if;
   -- The task this entry makes: the follow-up or the meeting (the caller's), or after a wrong number with no other
-  -- working number, "find the right number" for today, for the owner when the caller may assign it. Made even when the
-  -- caller may not change the lead: they had the conversation.
+  -- working number (one with at least one digit, not marked wrong: the queue's own rule), "find the right number" for
+  -- today, for the owner when the caller may assign it. Made even when the caller may not change the lead: they had
+  -- the conversation.
   if p_outcome = 'wrong_number' then
-    if not ((v_lead.phone is not null and v_lead.phone_wrong_at is null and p_dialled <> 'lead')
+    if not ((coalesce(v_lead.phone ~ '[0-9]', false) and v_lead.phone_wrong_at is null and p_dialled <> 'lead')
             or exists (select 1 from public.contacts k
-                        where k.company_id = p_company and k.phone is not null and k.phone_wrong_at is null
+                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null
                           and not (p_dialled = 'contact' and k.id = p_contact))) then
       v_task_kind := 'todo';
       v_due_date := v_today;

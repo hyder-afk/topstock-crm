@@ -962,6 +962,12 @@ MUTATIONS_4C = [
        "  user_id = (select auth.uid()) or expires_at <= now());"),
       ("create policy claims_select on private.queue_claims for select to authenticated\n  using (org_id = (select private.current_org_id()));",
        "create policy claims_select on private.queue_claims for select to authenticated\n  using (true);")]),
+    ("Wrong number: a contact number without a digit counts as another working number (no find-the-number task)",
+     [("                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null\n",
+       "                        where k.company_id = p_company and k.phone is not null and k.phone_wrong_at is null\n")]),
+    ("Wrong number: a main line without a digit counts as another working number (no find-the-number task)",
+     [("    if not ((coalesce(v_lead.phone ~ '[0-9]', false) and v_lead.phone_wrong_at is null and p_dialled <> 'lead')",
+       "    if not ((v_lead.phone is not null and v_lead.phone_wrong_at is null and p_dialled <> 'lead')")]),
 ]
 
 # Day 4c redefines the audit trigger, get_lead and log_activity (create or replace, Day 4b's text kept): the earlier rows

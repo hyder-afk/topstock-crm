@@ -595,6 +595,48 @@ begin
 end $$;
 do $$ begin perform pg_temp.check_stored_facts(); end $$;
 
+-- 5b. wrong_number_other_number_needs_a_digit (design 5.5, key 3): "find the right number" is made when no other
+-- number can be dialled, by the queue's own rule (at least one digit, not marked wrong), so a lead never ends with no
+-- queue rank and no task. Admin a's leads, taken out of every queue afterwards.
+do $$
+declare
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  l uuid;
+  k uuid;
+  r jsonb;
+begin
+  -- The main line is wrong; the only contact number is "( )": nothing left to dial, so the task is made.
+  l := pg_temp.new_lead(admin, lead_name => 'X5b digitless contact');
+  perform pg_temp.new_contact(l, '( )');
+  perform pg_temp.act(admin);
+  r := public.log_activity(l, 'call', 'wrong_number', null, null, 'lead', null, null, 'Find the right number');
+  perform pg_temp.su();
+  if r ->> 'task_id' is null or pg_temp.rank_of(l) is not null then
+    raise exception 'FAIL: wrong main line with only a digitless contact number: task % rank %', r ->> 'task_id', pg_temp.rank_of(l);
+  end if;
+  -- A contact's number is wrong; the main line is "( )": the same.
+  l := pg_temp.new_lead(admin, phone => '( )', lead_name => 'X5b digitless main line');
+  k := pg_temp.new_contact(l);
+  perform pg_temp.act(admin);
+  r := public.log_activity(l, 'call', 'wrong_number', null, k, 'contact', null, null, 'Find the right number');
+  perform pg_temp.su();
+  if r ->> 'task_id' is null or pg_temp.rank_of(l) is not null then
+    raise exception 'FAIL: wrong contact number with a digitless main line: task % rank %', r ->> 'task_id', pg_temp.rank_of(l);
+  end if;
+  -- A second contact with a real number still counts: no task, and the lead keeps its rank.
+  l := pg_temp.new_lead(admin, phone => '( )', lead_name => 'X5b second contact works');
+  k := pg_temp.new_contact(l);
+  perform pg_temp.new_contact(l, '+33 6 39 98 00 02', 'Second');
+  perform pg_temp.act(admin);
+  r := public.log_activity(l, 'call', 'wrong_number', null, k, 'contact', null, null, 'Find the right number');
+  perform pg_temp.su();
+  if r ->> 'task_id' is not null or pg_temp.rank_of(l) is null then
+    raise exception 'FAIL: a working second contact number: task % rank %', r ->> 'task_id', pg_temp.rank_of(l);
+  end if;
+  update public.companies set lead_status = 'disqualified' where name like 'X5b %' and owner_id = admin;
+end $$;
+do $$ begin perform pg_temp.check_stored_facts(); end $$;
+
 -- 6. queue_order_fixture (design 5.4 and 8.1): Hal's leads come back in exactly the queue order, and the leads that
 -- must never be served (or not yet) do not come back at all. Outside calling hours too, so the clock does not matter.
 do $$
