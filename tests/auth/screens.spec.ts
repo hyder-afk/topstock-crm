@@ -612,6 +612,26 @@ test("work queue: start screen, a card, a follow-up open, the claims ended, no l
     await expect(page.getByRole("group", { name: /^(Follow-up|Relance)$/ })).toBeVisible();
     await page.waitForTimeout(300);
   });
+  // The follow-up as the screen shows it once Interested is tapped (viewport shots): on phones it comes into view above
+  // the dock, with Confirm in reach.
+  await shoot(browser, "full", "/leads/queue", "queue-followup-view", async (page) => {
+    await startQueue(page);
+    await page.locator('button[data-outcome="interested"]').click();
+    await expect(page.getByRole("button", { name: /^(Confirm|Valider)$/ })).toBeInViewport();
+    await page.waitForTimeout(600);
+  }, lightMatrix, undefined, { fullPage: false });
+  // An outcome an earlier visit could not save: said in the header on the start screen too (every phase), with Retry.
+  await shoot(browser, "full", "/leads/queue", "queue-not-saved", async (page) => {
+    await appReady(page);
+    await expect(page.getByText(/^(1 outcome not saved|1 résultat non enregistré)$/)).toBeVisible();
+  }, lightMatrix, async (page) => {
+    await page.addInitScript((leadId) => {
+      window.sessionStorage.setItem(
+        "topstock.queue.pending",
+        JSON.stringify([{ input: { requestId: "6f1c1d2e-3b4a-4c5d-8e9f-0a1b2c3d4e5f", leadId, type: "call", outcome: "no_answer", body: "", contactId: null, dialled: "lead", followUpDate: null, followUpAt: null, leadName: "File Maison Verdane" }, leadName: "File Maison Verdane", at: Date.now() }]),
+      );
+    }, lead);
+  });
   // The claims ended (10 minutes without a key or a click: the page's own clock moves on, the database's claims are
   // ended to match): the start screen says the leads went back to the team, with a link to log a call made meanwhile.
   await shoot(browser, "full", "/leads/queue", "queue-released", async (page) => {
@@ -655,7 +675,7 @@ test("lead page: a teammate on this lead in the queue", async ({ browser }) => {
 // The route skeletons (loading.tsx) of the Tasks page and the queue, block for block with the real pages: opened from the
 // app (the dock's Tasks at desktop width; the leads screen's Work queue), the page's own data request held back while the
 // shot is taken (prefetches pass), then let through.
-test("tasks and queue: route skeletons", async ({ browser }) => {
+test("tasks, queue and more: route skeletons", async ({ browser }) => {
   for (const { locale, scheme } of [
     { locale: "en", scheme: "light" },
     { locale: "fr", scheme: "dark" },
@@ -665,6 +685,9 @@ test("tasks and queue: route skeletons", async ({ browser }) => {
       { route: "tasks", from: "/more", link: /^(Tasks|Tâches)$/, width: 1024 },
       { route: "leads/queue", from: "/leads", link: /^(Work queue|File d’appels)$/, width: 1440 },
       { route: "leads/queue", from: "/leads", link: /^(Work queue|File d’appels)$/, width: 390 },
+      // More gained "Your time zone" in Day 4c (its skeleton too).
+      { route: "more", from: "/leads", link: /^(More|Plus)$/, width: 1440 },
+      { route: "more", from: "/leads", link: /^(More|Plus)$/, width: 390 },
     ]) {
       const context = await browser.newContext({ storageState: states.full, viewport: { width, height: width < 600 ? 844 : 900 }, colorScheme: scheme });
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);

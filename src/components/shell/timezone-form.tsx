@@ -3,6 +3,7 @@
 import { useId, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { saveTimezone } from "@/app/(app)/more/actions";
 import { Button } from "@/components/ui/button";
 import { FormMessage } from "@/components/ui/form-message";
@@ -17,6 +18,7 @@ const noop = () => () => {};
 export function TimezoneForm({ current, zones, unavailable = false }: { current: string; zones: string[]; unavailable?: boolean }) {
   const t = useTranslations("Profile");
   const router = useRouter();
+  const queryClient = useQueryClient();
   const id = useId();
   const msg = useId();
   const [value, setValue] = useState(current);
@@ -32,6 +34,8 @@ export function TimezoneForm({ current, zones, unavailable = false }: { current:
       return;
     }
     setState("saved");
+    // The Tasks lists already read put tasks in buckets by the old zone: they are read again.
+    void queryClient.invalidateQueries({ queryKey: ["tasks"] });
     router.refresh();
   };
 
