@@ -1,7 +1,7 @@
 "use client";
 
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Menus: keyboard (arrows, typeahead, Escape) and focus return come from Radix; items are 44 px tall on touch.
@@ -9,6 +9,7 @@ export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
 export const DropdownMenuGroup = Menu.Group;
 export const DropdownMenuRadioGroup = Menu.RadioGroup;
+export const DropdownMenuSub = Menu.Sub;
 
 export function DropdownMenuContent({ className, align = "end", sideOffset = 8, ...props }: React.ComponentProps<typeof Menu.Content>) {
   return (
@@ -62,4 +63,28 @@ export function DropdownMenuLabel({ className, ...props }: React.ComponentProps<
 
 export function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typeof Menu.Separator>) {
   return <Menu.Separator className={cn("my-1.5 h-px bg-border", className)} {...props} />;
+}
+
+export function DropdownMenuSubTrigger({ className, children, ...props }: React.ComponentProps<typeof Menu.SubTrigger>) {
+  return (
+    <Menu.SubTrigger className={cn(item, "data-[state=open]:bg-muted", className)} {...props}>
+      {children}
+      <ChevronRight aria-hidden="true" strokeWidth={1.75} className="ml-auto size-4" />
+    </Menu.SubTrigger>
+  );
+}
+
+export function DropdownMenuSubContent({ className, ...props }: React.ComponentProps<typeof Menu.SubContent>) {
+  return (
+    <Menu.Portal>
+      <Menu.SubContent
+        collisionPadding={16}
+        className={cn(
+          "floating-content z-40 max-h-[min(70vh,420px)] min-w-[200px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none",
+          className,
+        )}
+        {...props}
+      />
+    </Menu.Portal>
+  );
 }
