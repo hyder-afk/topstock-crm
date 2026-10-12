@@ -563,7 +563,7 @@ test("tasks page: today with rows, overdue, inline edit, delete question, team",
   await shoot(browser, "full", "/tasks?scope=team", "tasks-team", rows, lightMatrix);
 });
 
-test("work queue: start screen, a card, a follow-up open, no leads of one's own", async ({ browser }) => {
+test("work queue: start screen, a card, a follow-up open, the claims ended, no leads of one's own", async ({ browser }) => {
   test.setTimeout(1_500_000);
   const me = sql(`select id from auth.users where email = '${withFactor}'`);
   const open = countryInHours(true, 60);
@@ -571,6 +571,15 @@ test("work queue: start screen, a card, a follow-up open, no leads of one's own"
   const city = ({ FR: "Lyon", GB: "London", DE: "Köln", PT: "Porto", GR: "Athens", AE: "Dubai", PK: "Karachi", IN: "Mumbai", TH: "Bangkok", JP: "Osaka", NZ: "Auckland", IS: "Reykjavík", AR: "Rosario", CO: "Medellín", CR: "San José", JM: "Kingston", SN: "Dakar", MA: "Casablanca", EG: "Cairo", SA: "Riyadh" } as Record<string, string>)[open ?? "FR"] ?? "Lyon";
   sql(`update public.companies set lead_status = 'disqualified' where owner_id = '${me}' and name like 'File %';
        delete from private.queue_claims where user_id = '${me}';`);
+  // The person's other leads wait (next call in 30 days) while the shots are taken, whatever the clock, so the card is
+  // always this test's lead; their dates are put back at the end.
+  const parked = sql(`with old as (select id, next_action_at from public.companies
+                                    where owner_id = '${me}' and name not like 'File %' and queue_rank is not null for update)
+                      update public.companies c set next_action_at = now() + interval '30 days' from old where c.id = old.id
+                      returning old.id || '|' || coalesce(old.next_action_at::text, '')`)
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => line.split("|"));
   const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country, last_activity_at)
                     select org_id, 'File Maison Verdane', id, 'warm', '+33 4 78 12 34 56', 'achats@verdane.example.com', '${city}', '${open ?? "FR"}', now() - interval '3 days'
                     from public.profiles where id = '${me}' returning id`);
@@ -603,6 +612,15 @@ test("work queue: start screen, a card, a follow-up open, no leads of one's own"
     await expect(page.getByRole("group", { name: /^(Follow-up|Relance)$/ })).toBeVisible();
     await page.waitForTimeout(300);
   });
+  // The claims ended (10 minutes without a key or a click: the page's own clock moves on, the database's claims are
+  // ended to match): the start screen says the leads went back to the team, with a link to log a call made meanwhile.
+  await shoot(browser, "full", "/leads/queue", "queue-released", async (page) => {
+    await startQueue(page);
+    sql(`update private.queue_claims set expires_at = now() - interval '1 second' where user_id = '${me}'`);
+    await page.clock.fastForward("10:30");
+    await expect(page.getByText(/^(Your leads went back to the team|Vos prospects sont retournés à l’équipe)$/)).toBeVisible();
+    await page.waitForTimeout(300);
+  }, lightMatrix, (page) => page.clock.install());
   // A second admin with no leads of their own: "No leads are assigned to you" with "Work unassigned leads".
   const empty = `screens-q-${Date.now()}@example.test`;
   const emptySecret = await createUser(empty, password, true);
@@ -614,6 +632,7 @@ test("work queue: start screen, a card, a follow-up open, no leads of one's own"
     await expect(page.getByRole("heading", { name: /^(No leads are assigned to you\.|Aucun prospect ne vous est attribué\.)$/ })).toBeVisible();
   }, lightMatrix);
   sql(`delete from private.queue_claims where user_id = '${me}'`);
+  for (const [id, at] of parked) sql(`update public.companies set next_action_at = ${at ? `'${at}'` : "null"} where id = '${id}'`);
 });
 
 test("lead page: a teammate on this lead in the queue", async ({ browser }) => {
