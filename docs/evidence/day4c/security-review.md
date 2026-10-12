@@ -38,3 +38,34 @@ finding at medium or high confidence.**
 | Filter strings | No user text in `.or()`/`.filter()`; the lead picker's search travels as a function argument of the leads list RPC |
 | HTML and logs | No `dangerouslySetInnerHTML`, `innerHTML` or `eval`; no `console.*` in `src` |
 | Secrets | No keys; fake data and local passwords in tests only; gitleaks and `npm audit` results in `README.md` |
+
+## `/security-review` on the PR head (PR #15, head 55a8de8, 12 Oct 2026)
+
+Run by the lead builder on the main checkout at the PR head (`git diff origin/main...HEAD`), as the advisor asked;
+it replaces the earlier note that the command could not see this worktree. Method as the command sets it: one
+finder pass over the whole diff, then a false-positive filter per finding, keeping only confidence 8 or more.
+
+**Result: no findings** (nothing at high or medium; the filter step had nothing to filter).
+
+What the finder checked, in short:
+- `private.queue_claims`: not exposed (`schemas = ["public"]`), RLS with `require_mfa`, insert only on leads the caller
+  may change with `(company_id)` granted, update only `(expires_at)` on own claims, delete own or expired claims;
+  `claim_guard` sets org, user and times on the server, refuses a renewal once the lead changed hands, caps 3 live
+  claims under a per-person lock.
+- Every new RPC: SECURITY INVOKER, `search_path ''`, static SQL, `auth.uid()` and aal2 checks, fixed value lists,
+  scopes beyond `mine` need manager or admin (repeated inside `private.queue_candidates`), revoked from `public` and
+  `anon`; `delete_task` needs `has_recent_aal2(600)`; `update_task` cannot reassign for a rep
+  (`enforce_org_and_owner`) and a contact must belong to the task's lead; `set_my_timezone` checks
+  `pg_timezone_names` and touches only the caller's profile.
+- New return values (`queue_card`, `get_lead.worked_by`, `list_tasks`) read under RLS; nothing beyond the caller's
+  existing read scope or from another organisation.
+- DEFINER: only the trigger-only `sync_contact_phone` (new) and `audit_row` (redefined), execute revoked;
+  `has_contact_phone` has no grant, `call_zone` and `queue_rank` are generated.
+- `log_activity`: same signature as 4b; FOR NO KEY UPDATE still applies the UPDATE policy; it deletes only the
+  caller's own claim.
+- Dynamic SQL: only `call_zone_keys()` from the zone-map functions and the grant loop; no user input.
+- Actions and routes: Zod `strictObject`, `requireSession()`/`apiSession()` (aal2), named RPC arguments, codes only;
+  POST routes check the origin and require `application/json` (a cross-site page needs a preflight), so no CSRF;
+  GET routes read-only, aal2, Zod, no-store.
+- Client: no `dangerouslySetInnerHTML` or `eval`; `callHref` keeps digits and `+` only; `sessionStorage` holds only
+  unsent outcomes and the caller's own counts. Scripts and `db.yml` add local test steps only.
