@@ -1,0 +1,118 @@
+$ curl -sI http://localhost:3381/s/fr
+HTTP/1.1 200 OK
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Cross-Origin-Opener-Policy: same-origin
+X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+Cross-Origin-Resource-Policy: same-origin
+Cache-Control: no-store
+content-security-policy: default-src 'none'; script-src 'self' 'nonce-NjhhOTU0ZGYtYmUzZi00NTllLWI1OGMtNGNjYTMyOTI2OWVh' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+Link: </_next/static/media/DMMono_Medium-s.p.2cc_2fas92em3.ttf>; rel=preload; as="font"; crossorigin=""; nonce="NjhhOTU0ZGYtYmUzZi00NTllLWI1OGMtNGNjYTMyOTI2OWVh"; type="font/ttf", </_next/static/media/Outfit_Bold-s.p.2zxm0ku-aqaml.ttf>; rel=preload; as="font"; crossorigin=""; nonce="NjhhOTU0ZGYtYmUzZi00NTllLWI1OGMtNGNjYTMyOTI2OWVh"; type="font/ttf", </_next/static/media/Outfit_Regular-s.p.3-w9vlmtff4mv.ttf>; rel=preload; as="font"; crossorigin=""; nonce="NjhhOTU0ZGYtYmUzZi00NTllLWI1OGMtNGNjYTMyOTI2OWVh"; type="font/ttf"
+Content-Type: text/html; charset=utf-8
+Date: Mon, 12 Oct 2026 08:53:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+$ curl -sI http://localhost:3381/s/en
+HTTP/1.1 200 OK
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Cross-Origin-Opener-Policy: same-origin
+X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+Cross-Origin-Resource-Policy: same-origin
+Cache-Control: no-store
+content-security-policy: default-src 'none'; script-src 'self' 'nonce-ZTdmOWM1NGUtYjkwNi00ZTIzLWJiZDgtN2QyMTViYmM1MjQ1' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+Link: </_next/static/media/DMMono_Medium-s.p.2cc_2fas92em3.ttf>; rel=preload; as="font"; crossorigin=""; nonce="ZTdmOWM1NGUtYjkwNi00ZTIzLWJiZDgtN2QyMTViYmM1MjQ1"; type="font/ttf", </_next/static/media/Outfit_Bold-s.p.2zxm0ku-aqaml.ttf>; rel=preload; as="font"; crossorigin=""; nonce="ZTdmOWM1NGUtYjkwNi00ZTIzLWJiZDgtN2QyMTViYmM1MjQ1"; type="font/ttf", </_next/static/media/Outfit_Regular-s.p.3-w9vlmtff4mv.ttf>; rel=preload; as="font"; crossorigin=""; nonce="ZTdmOWM1NGUtYjkwNi00ZTIzLWJiZDgtN2QyMTViYmM1MjQ1"; type="font/ttf"
+Content-Type: text/html; charset=utf-8
+Date: Mon, 12 Oct 2026 08:53:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+$ curl -si -X POST http://localhost:3381/api/share/view -H "content-type: application/json" -H "origin: http://localhost:3381" -d {"token":"tss_<43 x A>"}
+HTTP/1.1 404 Not Found
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Cross-Origin-Opener-Policy: same-origin
+X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+Cross-Origin-Resource-Policy: same-origin
+Cache-Control: no-store
+content-security-policy: default-src 'none'; script-src 'self' 'nonce-MTM3YjUxYTMtY2NmYi00YmRhLTgzZjMtMDM1ZGFiZjExOWFm' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+content-type: application/json
+Date: Mon, 12 Oct 2026 08:53:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"status":"inactive"}
+$ curl -si -X GET http://localhost:3381/api/share/view
+HTTP/1.1 405 Method Not Allowed
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Cross-Origin-Opener-Policy: same-origin
+X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+Cross-Origin-Resource-Policy: same-origin
+Cache-Control: no-store
+content-security-policy: default-src 'none'; script-src 'self' 'nonce-ZTlhOTA5MDgtZjczYi00MDI4LWE4ZTktZmZjNDA5OGRkOGZi' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+Date: Mon, 12 Oct 2026 08:53:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+
+$ curl -si -X POST http://localhost:3381/api/share/request (honeypot filled)
+HTTP/1.1 200 OK
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Cross-Origin-Opener-Policy: same-origin
+X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+Cross-Origin-Resource-Policy: same-origin
+Cache-Control: no-store
+content-security-policy: default-src 'none'; script-src 'self' 'nonce-NTYwZWM3YzMtZTY3Mi00YTg2LWJhNTAtNmE5ZWIxOGNkM2Q5' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+content-type: application/json
+Date: Mon, 12 Oct 2026 08:53:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"status":"received","signature":null}
+$ curl -sI http://localhost:3381/robots.txt
+HTTP/1.1 200 OK
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Cross-Origin-Opener-Policy: same-origin
+content-security-policy: default-src 'self'; script-src 'self' 'nonce-ZWFiNGQ5MWEtZTRhOS00ZThhLWI2M2EtMDMzY2ZjZmQ0Y2Rl' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' http://127.0.0.1:54321 http://127.0.0.1:54321; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+x-nextjs-cache: HIT
+cache-control: public, max-age=0, must-revalidate
+content-type: text/plain
+Date: Mon, 12 Oct 2026 08:53:16 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+$ curl -s http://localhost:3381/robots.txt
+User-Agent: *
+Disallow: /
+
