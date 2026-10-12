@@ -570,6 +570,21 @@ begin
   perform pg_temp.expect_error(format('select public.commit_stock_import(%L)', batch), 'P0002');
   perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
   perform public.discard_stock_import(batch);
+  -- lock_helper_uploader_only: while admin a's import is committing (paused after one of two products), admin b (fresh
+  -- code) may not take its locks nor commit it; a can, and finishes it.
+  batch := pg_temp.import(jsonb_build_array(pg_temp.r(2, 'SI Lock one', 'warehouse', '5', '5'),
+                                            pg_temp.r(3, 'SI Lock two', 'warehouse', '5', '5')));
+  if public.commit_stock_import(batch, 1) ->> 'status' <> 'committing' then
+    raise exception 'FAIL: lock_helper_uploader_only: the first chunk finished the import';
+  end if;
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000b', 'aal2', 30);
+  perform pg_temp.expect_error(format('select private.lock_stock_import(%L, array[(select id from public.products where name = ''SI Lock one'')])', batch), '42501', 'forbidden');
+  perform pg_temp.expect_error(format('select public.commit_stock_import(%L)', batch), '42501');
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform private.lock_stock_import(batch, array[(select id from public.products where name = 'SI Lock one')]);
+  if pg_temp.commit_all(batch) ->> 'status' <> 'imported' then
+    raise exception 'FAIL: lock_helper_uploader_only: the uploader could not finish';
+  end if;
 end $$;
 
 -- 10. The nightly job discards stock imports left open for 24 hours (and their rows) -------------------------------------
