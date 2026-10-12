@@ -26,7 +26,11 @@
 -- the bucket row and its policies are created only when the storage schema is there (it is on Supabase and in CI with
 -- storage-api; supabase/tests/shim.sql provides a stand-in for the local test runners). files_attack.sql fails loudly
 -- when the bucket or the policies are missing.
--- REBASE: re-copy after 4c merges (private.lead_import_untouched is redefined here; 4c may redefine it too).
+-- Re-copied after Day 4c merged (12 Oct 2026): the only existing function redefined here is
+-- private.lead_import_untouched; Day 4c (20261013090000_tasks_queue.sql, which runs first) does not redefine it, so the
+-- live definition before this migration is still Day 4a's, copied below with the files rule added. Day 4c's queue
+-- claims are left out of that rule on purpose (a claim is not work; it goes with the lead). Day 4c's audit_row,
+-- get_lead and log_activity are not redefined here, so their Day 4c versions stay live.
 
 do $$
 begin
@@ -361,7 +365,7 @@ $$;
 -- Import undo: a lead with a file (any state, anyone's) has been worked on, so an undo keeps it (and its bytes). Day 4a's
 -- definition plus files. rollback_lead_import locks the candidates first, so an upload begun meanwhile waits for the
 -- undo (its foreign key check needs a share lock) or is seen by the second statement and keeps its lead.
--- REBASE: re-copy after 4c merges.
+-- Re-copied after Day 4c merged: Day 4a's text is still the latest (4c leaves this rule alone).
 create or replace function private.lead_import_untouched(p_batch uuid, p_limit integer) returns setof uuid
 language sql stable set search_path = '' as $$
   select c.id from public.companies c

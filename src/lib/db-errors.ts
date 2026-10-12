@@ -33,6 +33,8 @@ export const INVALID_HINTS = [
   "task_kind",
   "task_due",
   "lead_has_files",
+  "bad_bucket",
+  "timezone",
   "file_type",
   "file_size",
   "file_name",

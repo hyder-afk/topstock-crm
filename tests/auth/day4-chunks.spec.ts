@@ -45,3 +45,37 @@ test("lead page route chunk: at most 60 KB gzip over the app shell", async ({ br
   console.log(`LEAD-CHUNKS ${JSON.stringify({ shellKB: kb(shell), leadPageKB: kb(leadPage), extraKB: kb(extra), extraFiles: extra.length })}`);
   expect(kb(extra)).toBeLessThanOrEqual(60);
 });
+
+// Day 4c (design 8.6): the work queue at most 40 KB gzip over the app shell, the Tasks page at most 35 KB; same method.
+test("queue and tasks route chunks: at most 40 KB and 35 KB gzip over the app shell", async ({ browser, browserName }) => {
+  test.skip(browserName !== "chromium", "one engine is enough for file sizes");
+  const mail = `queue-chunks-${Date.now()}@example.test`;
+  const secret = await createUser(mail, password, true);
+  setRole(mail, "admin");
+  const state = await fullSession(browser, mail, password, secret);
+  const gzipped = (path: string) => {
+    const file = path.match(/\/_next\/(static\/.*\.js)$/);
+    return file ? zlib.gzipSync(fs.readFileSync(`.next/${file[1]}`), { level: 9 }).length : 0;
+  };
+  const scriptsFor = async (url: string) => {
+    const context = await browser.newContext({ storageState: state });
+    const page = await context.newPage();
+    const paths = new Set<string>();
+    page.on("response", (r) => {
+      const path = new URL(r.url()).pathname;
+      if (path.startsWith("/_next/static/") && path.endsWith(".js")) paths.add(path);
+    });
+    await page.goto(url);
+    await appReady(page);
+    await page.waitForTimeout(1500);
+    await context.close();
+    return paths;
+  };
+  const shell = await scriptsFor("/more");
+  const kb = (paths: Iterable<string>) => Math.round([...paths].reduce((sum, p) => sum + gzipped(p), 0) / 102.4) / 10;
+  const queue = [...(await scriptsFor("/leads/queue"))].filter((p) => !shell.has(p));
+  const tasks = [...(await scriptsFor("/tasks"))].filter((p) => !shell.has(p));
+  console.log(`QUEUE-TASKS-CHUNKS ${JSON.stringify({ shellKB: kb(shell), queueExtraKB: kb(queue), queueFiles: queue.length, tasksExtraKB: kb(tasks), tasksFiles: tasks.length })}`);
+  expect.soft(kb(queue)).toBeLessThanOrEqual(40);
+  expect.soft(kb(tasks)).toBeLessThanOrEqual(35);
+});

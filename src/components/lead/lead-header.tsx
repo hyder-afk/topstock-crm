@@ -110,6 +110,16 @@ export const LeadHeader = memo(function LeadHeader({
           />
         </p>
         {facts.length ? <p className="text-sm text-muted-foreground">{facts.join(" · ")}</p> : null}
+        {/* Day 4c: a teammate has this lead on their queue screen right now (their claim's end, in the viewer's zone). */}
+        {lead.worked_by && now && new Date(lead.worked_by.until).getTime() > now.getTime() ? (
+          <p className="inline-flex items-center gap-1.5 text-sm">
+            <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-status-amber" />
+            {t("workedBy", {
+              name: lead.worked_by.first_name || tLeads("noName"),
+              time: format.dateTime(new Date(lead.worked_by.until), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
+            })}
+          </p>
+        ) : null}
       </div>
     </div>
   );

@@ -1,0 +1,242 @@
+# TEMPLATE for the private repository topstock-ops. Never add it to topstock-crm.
+# Haider pastes this file into topstock-ops as .github/workflows/migrate-prod.yml (docs/go-live.md, part C).
+#
+# What it does, by hand only: applies topstock-crm's reviewed migrations (supabase/migrations at one commit on main)
+# to the production project topstock-prod, then checks the result.
+#
+# Why it looks different from topstock-crm's deploy-dev-db.yml:
+# - Supabase account B never has an access token, so there is no `supabase link`, no `config push` and no Management
+#   API. The database is reached with its password through the session pooler (IPv4; GitHub runners have no IPv6).
+#   Auth settings are set by hand in the dashboard (go-live part D); this workflow proves the two that matter most
+#   from the outside, with the publishable key (public by design):
+#     1. sign-ups are closed: a public sign-up attempt must answer `signup_disabled`. It sends a one-letter password,
+#        so even if sign-ups were open the attempt is refused as too weak and no account is created (the schema makes
+#        the first new account an admin, so that matters);
+#     2. the REST API exposes only `public`: asking for the `private` or `graphql_public` schema must answer PostgREST
+#        error PGRST106 ("The schema must be one of the following: public").
+#   Both run before any migration. Part D also has Haider read the exposed schemas in the dashboard.
+# - After the push it checks with SQL that every table in public and private has row level security on and at least
+#   one policy, and runs the Supabase advisors (splinter, via topstock-crm's scripts/db-advisors.sh): any ERROR fails.
+#
+# Secrets (topstock-ops > Settings > Secrets and variables > Actions), pasted by Haider:
+#   PROD_PROJECT_REF          the 20-letter reference of topstock-prod
+#   PROD_DB_PASSWORD          the topstock-prod database password
+#   PROD_DB_POOLER_HOST       the session pooler host from the prod Connect dialog, e.g. aws-0-eu-west-3.pooler.supabase.com
+#   PROD_PUBLISHABLE_KEY      the prod publishable (or legacy anon) key; never the secret / service_role key
+#   TOPSTOCK_CRM_READ_TOKEN   fine-grained GitHub token: only topstock-crm, Contents read-only
+# Nothing here prints a password, a token or a connection string (secrets are masked; the URL is built in memory).
+name: migrate-prod
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Full 40-character commit SHA on topstock-crm main (Claude names it in go-live part A)"
+        required: true
+        type: string
+      confirm:
+        description: "Type the word MIGRATE to confirm"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: prod-database
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check the inputs
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "MIGRATE" ]; then
+            echo "::error::Not confirmed. Type MIGRATE (capital letters) in the confirm box. Nothing was done."
+            exit 1
+          fi
+          if ! [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit_sha must be the full 40-character commit SHA (0-9, a-f). Nothing was done."
+            exit 1
+          fi
+
+      # Read-only token, used for this checkout only (persist-credentials: false leaves no token in .git).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: hyder-afk/topstock-crm
+          ref: main
+          token: ${{ secrets.TOPSTOCK_CRM_READ_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: crm
+
+      - name: Use the chosen commit (it must be on main)
+        working-directory: crm
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          if ! git cat-file -e "${COMMIT_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::Commit $COMMIT_SHA is not in topstock-crm. Nothing was done."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$COMMIT_SHA" HEAD; then
+            echo "::error::Commit $COMMIT_SHA is not on main. Only merged, reviewed code goes to production. Nothing was done."
+            exit 1
+          fi
+          git checkout --quiet --detach "$COMMIT_SHA"
+          {
+            echo "## migrate-prod"
+            echo "Commit: \`$(git log -1 --format=%H)\` ($(git log -1 --format=%cs))"
+            echo
+            echo "Migration files at this commit:"
+            echo
+            for f in supabase/migrations/*.sql; do echo "- $(basename "$f")"; done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Installs the Supabase CLI pinned in topstock-crm's lockfile. No secret is present in this step.
+      - name: Install the Supabase CLI (from the lockfile)
+        working-directory: crm
+        run: npm ci
+
+      - name: Prove sign-ups are closed on prod (stops the job otherwise)
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_PUBLISHABLE_KEY: ${{ secrets.PROD_PUBLISHABLE_KEY }}
+        run: |
+          code=$(curl -sS -o "$RUNNER_TEMP/signup.json" -w '%{http_code}' --max-time 30 -X POST \
+            "https://${PROD_PROJECT_REF}.supabase.co/auth/v1/signup" \
+            -H "apikey: ${PROD_PUBLISHABLE_KEY}" -H "Content-Type: application/json" \
+            --data "{\"email\":\"signup-probe-${GITHUB_RUN_ID}@example.com\",\"password\":\"x\"}") || code="no answer"
+          answer=$(jq -r '.error_code // empty' "$RUNNER_TEMP/signup.json" 2>/dev/null || true)
+          rm -f "$RUNNER_TEMP/signup.json"
+          if [ "$answer" != "signup_disabled" ]; then
+            echo "::error::Prod sign-ups are not proven closed (HTTP $code, answer '${answer:-none}'). Turn OFF 'Allow new users to sign up' (go-live part D). Nothing was migrated."
+            exit 1
+          fi
+          echo "Prod sign-ups closed (signup_disabled)."
+          echo "- Sign-ups closed: yes (public sign-up answered signup_disabled)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prove the prod REST API exposes only the public schema (stops the job otherwise)
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_PUBLISHABLE_KEY: ${{ secrets.PROD_PUBLISHABLE_KEY }}
+          PGHOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+          PGPORT: "5432"
+          PGUSER: postgres.${{ secrets.PROD_PROJECT_REF }}
+          PGPASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        run: |
+          # 1. From the outside: PostgREST must refuse the private and graphql_public schemas with PGRST106.
+          for schema in private graphql_public; do
+            code=$(curl -sS -o "$RUNNER_TEMP/schema.json" -w '%{http_code}' --max-time 30 \
+              "https://${PROD_PROJECT_REF}.supabase.co/rest/v1/profiles?select=id&limit=1" \
+              -H "apikey: ${PROD_PUBLISHABLE_KEY}" -H "Accept-Profile: ${schema}") || code="no answer"
+            answer=$(jq -r '.code // empty' "$RUNNER_TEMP/schema.json" 2>/dev/null || true)
+            rm -f "$RUNNER_TEMP/schema.json"
+            if [ "$answer" != "PGRST106" ]; then
+              echo "::error::Could not prove that the '$schema' schema is hidden from the REST API (HTTP $code, answer '${answer:-none}'). In the prod dashboard set the exposed schemas to public only (go-live part D). Nothing was migrated."
+              exit 1
+            fi
+          done
+          # 2. From the inside: nobody has overridden the exposed schemas on the authenticator role.
+          override=$(psql -X -A -t -v ON_ERROR_STOP=1 -c "select coalesce((select substr(s, length('pgrst.db_schemas=') + 1) from pg_roles r cross join lateral unnest(r.rolconfig) s where r.rolname = 'authenticator' and s like 'pgrst.db\_schemas=%'), '')")
+          override=$(printf '%s' "$override" | tr -d ' ')
+          if [ -n "$override" ] && [ "$override" != "public" ]; then
+            echo "::error::The authenticator role overrides the exposed schemas with '$override'; only public is allowed. Nothing was migrated."
+            exit 1
+          fi
+          echo "Prod REST API exposes only public."
+          echo "- REST API exposes only public: yes (private and graphql_public answered PGRST106)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show which migrations would be applied (dry run)
+        working-directory: crm
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_DB_POOLER_HOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+        run: |
+          # The CLI takes the password only inside --db-url (percent-encoded); the encoded form is masked too.
+          pw=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["PROD_DB_PASSWORD"], safe=""))')
+          echo "::add-mask::$pw"
+          npx supabase db push --dry-run \
+            --db-url "postgresql://postgres.${PROD_PROJECT_REF}:${pw}@${PROD_DB_POOLER_HOST}:5432/postgres?sslmode=require"
+
+      - name: Apply migrations to prod
+        working-directory: crm
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PROD_DB_POOLER_HOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+        run: |
+          pw=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["PROD_DB_PASSWORD"], safe=""))')
+          echo "::add-mask::$pw"
+          npx supabase db push --yes \
+            --db-url "postgresql://postgres.${PROD_PROJECT_REF}:${pw}@${PROD_DB_POOLER_HOST}:5432/postgres?sslmode=require"
+
+      - name: Check every migration file is recorded on prod
+        working-directory: crm
+        env:
+          PGHOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+          PGPORT: "5432"
+          PGUSER: postgres.${{ secrets.PROD_PROJECT_REF }}
+          PGPASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        run: |
+          remote=$(psql -X -A -t -v ON_ERROR_STOP=1 -c "select version from supabase_migrations.schema_migrations order by 1")
+          missing=""
+          for f in supabase/migrations/*.sql; do
+            v=$(basename "$f" | cut -d_ -f1)
+            printf '%s\n' "$remote" | grep -qx "$v" || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::These migrations are not recorded on prod:$missing"
+            exit 1
+          fi
+          echo "- Migrations recorded on prod: $(printf '%s\n' "$remote" | grep -c .)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check row level security on every public and private table
+        env:
+          PGHOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+          PGPORT: "5432"
+          PGUSER: postgres.${{ secrets.PROD_PROJECT_REF }}
+          PGPASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        run: |
+          tables=$(psql -X -A -t -v ON_ERROR_STOP=1 -c "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'private') and c.relkind in ('r', 'p')")
+          if [ "$tables" -lt 10 ]; then
+            echo "::error::Only $tables tables found in public and private; the schema does not look applied."
+            exit 1
+          fi
+          no_rls=$(psql -X -A -t -v ON_ERROR_STOP=1 -c "select format('%I.%I', n.nspname, c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'private') and c.relkind in ('r', 'p') and not c.relrowsecurity order by 1")
+          if [ -n "$no_rls" ]; then
+            echo "::error::Tables without row level security: $(tr '\n' ' ' <<< "$no_rls")"
+            exit 1
+          fi
+          no_policy=$(psql -X -A -t -v ON_ERROR_STOP=1 -c "select format('%I.%I', n.nspname, c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'private') and c.relkind in ('r', 'p') and not exists (select 1 from pg_policy p where p.polrelid = c.oid) order by 1")
+          if [ -n "$no_policy" ]; then
+            echo "::error::Tables with no policy at all: $(tr '\n' ' ' <<< "$no_policy")"
+            exit 1
+          fi
+          echo "- Row level security: on for all $tables tables in public and private, each with at least one policy" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Supabase security and performance advisors (fail on ERROR)
+        working-directory: crm
+        env:
+          PGHOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+          PGPORT: "5432"
+          PGUSER: postgres.${{ secrets.PROD_PROJECT_REF }}
+          PGPASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        # Read-only lints (the same ones the dashboard's Advisors run); connection comes from the PG* variables.
+        run: |
+          bash scripts/db-advisors.sh
+          echo "- Advisors: no ERROR (details in the log; also check Security Advisor in the dashboard, go-live part E)" >> "$GITHUB_STEP_SUMMARY"
