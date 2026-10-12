@@ -41,7 +41,7 @@ export const requestBodySchema = z
     name: cleanText(0, 80),
     idempotencyKey: z.uuid(),
     website: z.string().max(200), // the honeypot: people never see it
-    t: z.int().min(0).max(86_400_000), // milliseconds since the page loaded
+    t: z.int().min(0).max(86_400_000), // milliseconds since the page loaded (the page caps it: requestElapsed)
   })
   .refine((b) => b.lines.length > 0 || [...b.note.trim()].length >= 3, "empty")
   .refine((b) => b.lines.every((l) => (l.productNumber === null) === (l.description !== null)), "line")

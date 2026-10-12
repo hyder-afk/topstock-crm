@@ -58,3 +58,10 @@ export function snapshotFromWire(raw: unknown): ShareSnapshot | null {
     items,
   };
 }
+
+/** The request's `t` (milliseconds since the page loaded, design 8.6): only its 2-second floor matters, so a page left
+ *  open longer than the server's 24-hour bound sends the bound instead of being refused. Never negative. */
+export const MAX_ELAPSED_MS = 86_400_000;
+export function requestElapsed(now: number, loadedAt: number): number {
+  return Math.min(MAX_ELAPSED_MS, Math.max(0, Math.round(now - loadedAt)));
+}

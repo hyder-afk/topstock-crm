@@ -5,7 +5,7 @@ import frMessages from "../../messages/fr.json";
 import { isShareSurface, shareMessages } from "@/i18n/share-messages";
 import { assertSameOrigin, readJsonCapped } from "@/lib/http";
 import { mapShareItem, mapShareItems, mapShareRequest, mapShareView, snapshotToWire } from "@/lib/share/map";
-import { itemFromWire, snapshotFromWire } from "@/lib/share/wire";
+import { itemFromWire, requestElapsed, snapshotFromWire } from "@/lib/share/wire";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { requestBodySchema, viewBodySchema } from "@/lib/share/schema";
 import { defaultLinkLanguage } from "@/lib/share/team";
@@ -81,6 +81,15 @@ test.describe("schemas", () => {
     expect(requestBodySchema.safeParse(body({ lines: [{ productNumber: 4.2, description: null, quantity: 1, unit: "piece" }] })).success).toBe(false);
     const dup = { productNumber: 42, description: null, quantity: 1, unit: "piece" };
     expect(requestBodySchema.safeParse(body({ lines: [dup, dup] })).success).toBe(false);
+  });
+  test("share_request_after_a_day_open: a page left open overnight still sends (the elapsed time is capped, not refused)", () => {
+    const loaded = 1_250.5;
+    const dayAndAnHour = loaded + 25 * 3_600_000;
+    expect(requestElapsed(dayAndAnHour, loaded)).toBe(86_400_000);
+    expect(requestBodySchema.safeParse(body({ t: requestElapsed(dayAndAnHour, loaded) })).success).toBe(true);
+    expect(requestElapsed(loaded + 4_999.6, loaded)).toBe(5_000);
+    expect(requestElapsed(loaded - 10, loaded)).toBe(0); // a clock that ran backwards never sends a negative time
+    expect(requestBodySchema.safeParse(body({ t: 86_400_001 })).success).toBe(false); // the server's bound is unchanged
   });
 });
 

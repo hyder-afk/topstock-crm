@@ -6,7 +6,7 @@ import { Logo } from "@/components/logo";
 import { ShareList } from "@/components/share/share-list";
 import { ItemSheet, ReviewSheet, type BasketLine, type SendState } from "@/components/share/share-request";
 import { Button } from "@/components/ui/button";
-import { snapshotFromWire } from "@/lib/share/wire";
+import { requestElapsed, snapshotFromWire } from "@/lib/share/wire";
 import { tokenFromHash } from "@/lib/share/token";
 import type { ShareItem, ShareSnapshot } from "@/lib/share/schema";
 
@@ -133,7 +133,7 @@ export function SharePage() {
           name,
           idempotencyKey: idemKey.current,
           website,
-          t: Math.round(performance.now() - loadedAt.current),
+          t: requestElapsed(performance.now(), loadedAt.current),
         }),
       });
     } catch {
