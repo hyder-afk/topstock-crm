@@ -12,7 +12,9 @@ same VM at the same time, which is why every first failure was read.
 Heads: the day5a set ran on **8bd6e4b** (rows 1 to 38 and 41 to 53, then numbered 1 to 52), the three rows changed after
 it (37's test was null-unsafe and did not see the mutation; 39 is the two-layer row; 40 is its both-layers row) on
 **3a21018**, the final code head; the earlier sets' re-aimed rows on 8bd6e4b. Nothing in the migration changed between
-8bd6e4b and 3a21018; the tests changed only in the null-safe comparisons of 3a21018.
+8bd6e4b and 3a21018; the tests changed only in the null-safe comparisons of 3a21018. After the runs, 0b9d470 and b8e839f changed
+only `private.pipeline_summary_for` (speed: the lead read for clock-stalled deals only; the aggregate materialized), which
+no mutation row edits; `db-test.sh` passes on b8e839f and every anchor is found once there (`--anchors`).
 
 Run history (recorded, not hidden): the first run (on 4782724) was stopped at row 30: with the keyset mutation (`<=`) the
 paging test looped for ever. The test now bounds its loop (96b3579). A second start stopped at its baseline: the 3-session
