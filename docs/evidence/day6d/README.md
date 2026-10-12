@@ -59,7 +59,7 @@ commit.
 | `bash scripts/db-test.sh` (copy on port 54381, on 1b78186) | exit 0: every suite passed (`rls_attack`, `import_attack`, `import_concurrency`, `activity_attack`, `activity_concurrency`, `outcome_attack`, `outcome_concurrency`, `stock_attack`, `stock_concurrency`, `inventory_attack`, `stock_import_attack`, `stock_import_concurrency`, `sales_attack`, `sales_concurrency`); `advisors: no ERROR-level findings` (WARN `set_user_role` as before; INFO 2 unindexed foreign keys, 10 unused indexes) |
 | `supabase/tests/sales_attack.sql` | 12 sections: catalog and grants, the role matrix (rep on another lead, below minimum, cancel windows), record_sale (holds used first and partly, idempotent, 51 lines, duplicate product, bad values with constant errors), Supplier Stock (no stock change, ship-to country), undo and cancel (holds and lead status put back), holds (extend bounds), requests (team, status changes, note masked in the audit), automations (Restock once per product, never from an import; Arrived task; claims cleared and restored), the table path (direct inserts refused), lead delete with a request task, `lead_delete_blocked_by_stock_history`, `ledger_sums_match_levels` |
 | `supabase/tests/sales_concurrency.sh` | 7 cases (last cartons, both fit, twenty sellers, sale vs hold, crossed lines, Arrived vs sales, expiry vs sale): passed in every db-test run; integrity 0 rows after each |
-| Mutations (`mutations.md`) | day6d: 22 rows, 20 caught, 2 documented two-layer rows, 0 not as listed (final run on 1b78186) |
+| Mutations (`mutations.md`) | day6d: 22 rows, 20 caught, 2 documented two-layer rows, 0 not as listed (final run on 1b78186); re-runs of the earlier rows 6d's redefinitions reach (Day 3b 4, Day 4a 25, Day 6a 30): all as listed |
 | Perf I6 and I8 (`perf.md`, 3 runs) | **I6 1 / 10 / 20 lines: average 8.7–15.8 / 29.5–61.8 / 46.0–59.6 ms (budgets 10 / 25 / 40)**; I8 average 10.8–14.1 ms (15), p95 over in 1 of 3 |
 | `npm run test:unit` | 377 passed |
 | Playwright `tests/auth/sales.spec.ts` (Chromium, shared local stack, build of 1ba0c7d) | 10 passed: keyboard sale and Undo, Supplier Stock, below minimum confirmed, hold then Sell (the hold used), team request answered from the inbox, old sale cancelled behind "Confirm it's you", rep read-only, empty sections and Cmd+K, URL filters, screens |
@@ -105,5 +105,3 @@ refine), PostgreSQL 17 manual (row locks FOR UPDATE / FOR SHARE, partial unique 
 1. **I6 is over budget** (about 2.3 ms a warehouse line through the 6a engine's per-row guard and apply step; perf.md).
    Lever: a set-based ship path. Recommendation: re-time on the dev project first.
 2. I8's p95 brushes 15 ms on a loaded runner (average 11–14 ms).
-3. Earlier days' mutation rows whose functions 6d redefines (Day 3b 18 to 21, Day 4a task guard rows, Day 6a guard and
-   apply rows) are re-run after this commit; their result is added to `mutations.md` when the run ends.
