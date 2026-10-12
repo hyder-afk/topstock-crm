@@ -479,6 +479,25 @@ begin
   end if;
 end $$;
 
+-- The folder check is a fence of its own: a file row of the other org whose path names this org's folder (as a broken
+-- or forged row would) still cannot put bytes there.
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.files (id, org_id, company_id, name, mime, size, uploaded_by, storage_path)
+values ('77777777-0000-0000-0000-0000000000cc', '00000000-0000-0000-0000-0000000000cc', '30000000-0000-0000-0000-0000000000c1',
+        'stray.pdf', 'application/pdf', 10, '00000000-0000-0000-0000-0000000000c1',
+        current_setting('t.org') || '/35000000-0000-0000-0000-0000000000a1/77777777-0000-0000-0000-0000000000cc.pdf');
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000c1', 'aal2', 30); end $$;
+do $$ begin
+  perform pg_temp.expect_error(format($q$select pg_temp.put(%L, 10, 'application/pdf')$q$,
+    current_setting('t.org') || '/35000000-0000-0000-0000-0000000000a1/77777777-0000-0000-0000-0000000000cc.pdf'), '42501');
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+delete from public.files where id = '77777777-0000-0000-0000-0000000000cc';
+set role authenticated;
+
 -- 8. Opening is audited; lists page by keyset; the team's usage (threats 22, 30) -------------------------------------
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30); end $$;
 do $$

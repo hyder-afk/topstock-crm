@@ -5,7 +5,7 @@ section 8.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity and outcome attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|all] [numbers...]  (about 40 s per mutation; default: all
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4d|all] [numbers...]  (about 40 s per mutation; default: all
 sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
 when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
 mutation each way). A row marked SURVIVES is such a layer that no test can see on its own, because the other layer stops
@@ -24,6 +24,7 @@ MIG_3A = ROOT / "supabase/migrations/20261010090000_leads_are_companies.sql"
 MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
+MIG_4D = ROOT / "supabase/migrations/20261014090000_lead_files.sql"
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -684,7 +685,95 @@ MUTATIONS_4B = [
 ]
 
 
-SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B)}
+# Day 4d (design 8.3, rows 1 to 10; row 11 "skip the sniff on open" is app code: docs/evidence/day4d/mutations.md).
+INS_POLICY = ("execute $p$create policy lead_files_insert on storage.objects for insert to authenticated with check (\n"
+              "    bucket_id = 'lead-files' and (select private.has_aal2())\n"
+              "    and (storage.foldername(name))[1] = (select private.current_org_id())::text\n")
+MUTATIONS_4D = [
+    ("Storage insert policy: no organisation folder check",
+     [(INS_POLICY, INS_POLICY.replace("    and (storage.foldername(name))[1] = (select private.current_org_id())::text\n", ""))]),
+    ("Storage insert policy: the file row need not be pending",
+     [("and f.status = 'pending'\n                and f.uploaded_by = (select auth.uid())", "\n                and f.uploaded_by = (select auth.uid())")]),
+    ("Storage: an update policy (overwrite, move)",
+     [("  execute $p$create policy lead_files_delete on storage.objects",
+       "  execute $p$create policy lead_files_update on storage.objects for update to authenticated using (bucket_id = 'lead-files') with check (bucket_id = 'lead-files')$p$;\n  execute $p$create policy lead_files_delete on storage.objects")]),
+    ("Update guard: ready -> deleting without a fresh code",
+     [("  elsif old.status = 'ready' and new.status = 'deleting' then\n    if not (select private.has_recent_aal2(600)) then\n      raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n    end if;\n",
+       "  elsif old.status = 'ready' and new.status = 'deleting' then\n    null;\n")]),
+    ("Update guard: finish without the size and type match",
+     [("                      and private.object_size(o.metadata) = old.size\n                      and private.object_mime(o.metadata) = old.mime) then", ") then")]),
+    ("Insert guard: the space counts declared sizes, not stored bytes",
+     [("  if private.org_storage_bytes(new.org_id) + v_reserved + new.size > private.file_quota_bytes() then",
+       "  if (select coalesce(sum(f.size), 0) from public.files f where f.org_id = new.org_id) + new.size > private.file_quota_bytes() then")]),
+    ("Insert guard: no advisory lock (two uploads take the last space)",
+     [("  perform pg_advisory_xact_lock(hashtextextended('files:' || new.org_id::text, 0));\n", "")]),
+    ("Files foreign key to the lead: cascade (bytes orphaned when a lead goes)",
+     [("references public.companies (id) on delete restrict,", "references public.companies (id) on delete cascade,")]),
+    ("storage_path written by the client (grant, and the guard keeps it)",
+     [("grant insert (company_id, name, mime, size), update (status), delete on public.files to authenticated;",
+       "grant insert (company_id, name, mime, size, storage_path), update (status), delete on public.files to authenticated;"),
+      ("  new.storage_path := new.org_id::text || '/' || new.company_id::text || '/' || new.id::text || '.' || v_ext;\n  if not",
+       "  new.storage_path := coalesce(new.storage_path, new.org_id::text || '/' || new.company_id::text || '/' || new.id::text || '.' || v_ext);\n  if not")]),
+    ("Bucket public",
+     [("  values ('lead-files', 'lead-files', false, 10485760,", "  values ('lead-files', 'lead-files', true, 10485760,"),
+      ("  on conflict (id) do update set public = false,", "  on conflict (id) do update set public = true,")]),
+    # Further protections of this migration, each removed on its own.
+    ("Insert guard: no limit on uploads waiting",
+     [("       where f.uploaded_by = caller and f.status = 'pending' and f.created_at > now() - interval '15 minutes') >= 5 then",
+       "       where f.uploaded_by = caller and f.status = 'pending' and f.created_at > now() - interval '15 minutes') >= 500 then")]),
+    ("Insert guard: no hourly upload limit",
+     [("         and l.table_name = 'files' and l.action = 'insert' and l.actor_id = caller) >= 30 then",
+       "         and l.table_name = 'files' and l.action = 'insert' and l.actor_id = caller) >= 3000 then")]),
+    ("Insert guard: hourly limit counts the rows still there (deleting resets it)",
+     [("  if (select count(*) from public.audit_log l\n       where l.org_id = new.org_id and l.created_at > now() - interval '1 hour'\n         and l.table_name = 'files' and l.action = 'insert' and l.actor_id = caller) >= 30 then",
+       "  if (select count(*) from public.files l\n       where l.created_at > now() - interval '1 hour' and l.uploaded_by = caller) >= 30 then")]),
+    ("Insert guard: waiting uploads' declared sizes not reserved",
+     [("  if private.org_storage_bytes(new.org_id) + v_reserved + new.size > private.file_quota_bytes() then",
+       "  if private.org_storage_bytes(new.org_id) + new.size > private.file_quota_bytes() then")]),
+    ("Insert guard: the client's status kept",
+     [("  new.id := gen_random_uuid();\n  new.status := 'pending';\n", "  new.id := gen_random_uuid();\n")]),
+    ("Insert guard: the client's uploader kept",
+     [("  new.uploaded_by := caller;\n", "")]),
+    ("Insert guard: no constant pre-check on the name (the CHECK puts it in the log)",
+     [("  if not private.file_name_ok(new.name) then\n    raise exception 'this file name cannot be stored' using errcode = '22023', hint = 'file_name';\n  end if;\n  if new.company_id is null",
+       "  if new.company_id is null")]),
+    ("Update guard: other columns may change with the status",
+     [("  if (to_jsonb(new) - keep) is distinct from (to_jsonb(old) - keep) then\n    raise exception 'only the status of a file changes' using errcode = '42501';\n  end if;\n", "")]),
+    ("Update guard: a file may move back",
+     [("  else\n    raise exception 'a file cannot move back' using errcode = '22023', hint = 'state';\n  end if;\n  return new;", "  end if;\n  return new;")]),
+    ("Delete guard: the row goes while its bytes are still stored",
+     [("  if old.status <> 'deleting'\n     or exists (select 1 from storage.objects o where o.bucket_id = 'lead-files' and o.name = old.storage_path) then",
+       "  if old.status <> 'deleting' then")]),
+    ("Who sees a file: the lead's owner sees uploads still pending",
+     [("    or (status in ('ready', 'deleting') and ((select private.is_manager_or_admin())", "    or (status in ('pending', 'ready', 'deleting') and ((select private.is_manager_or_admin())")]),
+    ("Storage delete policy: the file row need not be deleting",
+     [("objects.name and f.status = 'deleting'))$p$;", "objects.name))$p$;")]),
+    ("Storage select policy: no file row needed (any object of the org)",
+     [("    and exists (select 1 from public.files f where f.storage_path = objects.name))$p$;", ")$p$;")]),
+    ("Storage insert policy: no two-factor check",
+     [(INS_POLICY, INS_POLICY.replace("bucket_id = 'lead-files' and (select private.has_aal2())\n", "bucket_id = 'lead-files'\n"))]),
+    ("Storage insert policy: bytes accepted after 15 minutes",
+     [("                and f.uploaded_by = (select auth.uid()) and f.created_at > now() - interval '15 minutes'))$p$;",
+       "                and f.uploaded_by = (select auth.uid())))$p$;")]),
+    ("begin_file_upload: stale uploads not handed back",
+     [("                       and s.created_at <= now() - interval '15 minutes'", "                       and false")]),
+    ("audit_file_access: any organisation",
+     [("   where f.id = p_file and f.org_id = v_org and f.status = 'ready';", "   where f.id = p_file and f.status = 'ready';")]),
+    ("Import undo: a lead with a file counts as untouched",
+     [("     and not exists (select 1 from public.files f where f.company_id = c.id)\n", "")]),
+    ("begin_file_delete: no fresh-code pre-check (no step_up hint from the function)",
+     [("  if v_status = 'ready' and not (select private.has_recent_aal2(600)) then\n    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n", "")], SURVIVES),
+    ("begin_file_delete pre-check and the update guard's step-up both removed (both layers)",
+     [("  if v_status = 'ready' and not (select private.has_recent_aal2(600)) then\n    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n", ""),
+      ("  elsif old.status = 'ready' and new.status = 'deleting' then\n    if not (select private.has_recent_aal2(600)) then\n      raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n    end if;\n",
+       "  elsif old.status = 'ready' and new.status = 'deleting' then\n    null;\n")]),
+    ("file_usage: for everyone",
+     [("  if not (select private.is_manager_or_admin()) then\n    return null;\n  end if;\n  return (select", "  return (select")]),
+]
+
+
+SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
+        "day4d": (MIG_4D, MUTATIONS_4D)}
 
 
 def run_set(name: str, only: set) -> int:
