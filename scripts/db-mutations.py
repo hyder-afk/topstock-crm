@@ -986,6 +986,10 @@ for _set, _rows, _default in (("day3b", MUTATIONS_3B, MIG_3B), ("day4a", MUTATIO
         _rows[_n - 1] = (_title, [(MIG_4C, *_e[-2:]) if (_e[0] if len(_e) == 3 else _default) == MIG_4B else _e
                                   for _e in _edits], *_flags)
 MUTATIONS_4B[4] = (MUTATIONS_4B[4][0], [(MIG_4C, LOG_LOCKS_4C, LOG_LOCKS_4C_REVERSED)])
+# Row 65's text changed in Day 4c: another working number needs a digit (k.phone ~ '[0-9]').
+MUTATIONS_4B[64] = (MUTATIONS_4B[64][0],
+                    [(MIG_4C, "            or exists (select 1 from public.contacts k\n                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null\n                          and not (p_dialled = 'contact' and k.id = p_contact))) then",
+                      "            or false) then")])
 MUTATIONS_4B[46] = (MUTATIONS_4B[46][0],
                     [(MIG_4C, "       and n.key not in ('updated_at', 'last_activity_at', 'next_action_at', 'phone_wrong_at', 'has_contact_phone')",
                       "       and n.key not in ('updated_at', 'last_activity_at', 'has_contact_phone')")])
