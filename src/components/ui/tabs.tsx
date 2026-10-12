@@ -44,6 +44,18 @@ export function TabList<T extends string>({
     return () => cancelAnimationFrame(frame);
   }, [pill, value]);
 
+  // The selected tab is always in view in a strip that scrolls sideways (phones): on load (a deep link to ?tab=files)
+  // and after a change made elsewhere (Details opened from the header). Only the strip scrolls, never the page; read
+  // after paint, in an effect.
+  useEffect(() => {
+    const el = refs.current.get(value);
+    const strip = el?.parentElement;
+    if (!el || !strip || strip.scrollWidth <= strip.clientWidth) return;
+    const left = el.offsetLeft - strip.offsetLeft;
+    if (left < strip.scrollLeft) strip.scrollLeft = Math.max(0, left - 8);
+    else if (left + el.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = left + el.offsetWidth - strip.clientWidth + 8;
+  }, [value]);
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const index = items.findIndex((i) => i.id === value);
     const next =

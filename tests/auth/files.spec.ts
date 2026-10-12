@@ -305,6 +305,11 @@ test("phone_390_files: no sideways scroll, Add file and the row menus are 44 px"
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(box.width).toBeGreaterThanOrEqual(44);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  // A deep link to the Files tab scrolls the tab strip (not the page) so the selected tab is whole on screen.
+  const tab = (await page.getByRole("tab", { name: "Files" }).boundingBox())!;
+  const strip = (await page.getByRole("tablist").boundingBox())!;
+  expect(tab.x).toBeGreaterThanOrEqual(strip.x);
+  expect(tab.x + tab.width).toBeLessThanOrEqual(strip.x + strip.width + 0.5);
   expect(errors).toEqual([]);
   await context.close();
 });

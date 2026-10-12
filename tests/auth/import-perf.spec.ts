@@ -22,7 +22,7 @@ test("a 30,000-row file at 4x CPU slow-down: reading, matching, checking, import
   try {
     execFileSync(process.execPath, [path.join(__dirname, "..", "..", "scripts", "make-fake-leads.mjs"), "--rows", String(rows), "--out", dir]);
     const file = path.join(dir, readdirSync(dir).find((f) => f.endsWith(".csv"))!);
-    sql(`delete from public.companies; delete from public.import_batches;
+    sql(`delete from public.files; delete from public.companies; delete from public.import_batches;
          update public.profiles set last_name = 'Earlier run'
          where last_name = 'Test' and first_name in ('Haider', 'Henri', 'Kais')`);
     const secret = await createUser(email, password, true);
@@ -100,6 +100,6 @@ test("a 30,000-row file at 4x CPU slow-down: reading, matching, checking, import
     await context.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    sql(`delete from public.companies; delete from public.import_batches`);
+    sql(`delete from public.files; delete from public.companies; delete from public.import_batches`);
   }
 });

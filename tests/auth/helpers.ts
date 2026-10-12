@@ -204,10 +204,12 @@ export function setRole(email: string, role: "admin" | "manager" | "rep") {
 }
 
 // Replaces every lead with `count` made-up companies (names from fixed word lists, @example.com emails, +33 6 00
-// numbers), owned in turn by the given test users, with a contact on every third one.
+// numbers), owned in turn by the given test users, with a contact on every third one. File rows go first (since Day 4d
+// a lead with files cannot be deleted; their stored bytes, if any, are left to the throwaway stack).
 export function seedLeads(ownerEmails: string[], count = 120) {
   const owners = ownerEmails.map(emailLiteral).join(", ");
   sql(`
+    delete from public.files;
     delete from public.companies;
     with o as (select array_agg(p.id order by u.email) as ids, min(p.org_id::text)::uuid as org
                from public.profiles p join auth.users u on u.id = p.id where u.email in (${owners})),
