@@ -92,7 +92,7 @@ reported for part 1 (`mutations.md`, `perf.md`), re-run below on this head.
 | Playwright, local auth stack, Chromium, the whole auth suite (e8ce3c9) | **111 passed, 5 skipped** (PERF-only: day4-chunks 2, day4-perf 2, import-perf 1), 32.9 min. One failure, as expected: `journey.spec.ts` "invite, password, two-factor setup" stops at `MAILPIT_URL is not set` (no Mailpit locally; CI has it), and its 4 dependent tests did not run. New: tasks 7, queue 9, queue-multi 1, day4-security +4, screens +4. An earlier whole-suite run on 8d2a3f7 found 3 real failures, fixed in e8ce3c9: the Tasks h1 carried its count (`shell.spec` expects "Tasks"), the palette's new item matched "dark", and the focus after an inline edit (a race); plus the time zone form's second status region on More (found by `shell.spec` re-run). The import spec's failure in that run was this builder running the unit tests at the same time (they empty `test-results`), not the app |
 | Speed, queue (PERF=1, Chromium, 4x CPU) | see the table below |
 | Route chunks (PERF=1) | queue **15 KB** gzip over the app shell (budget 40); Tasks **0 KB** extra by this method (the dock's Tasks link prefetches the route's code on `/more`, so the method cannot separate it; budget 35) |
-| gitleaks (`origin/main..HEAD`) | FILL_GITLEAKS |
+| gitleaks (`origin/main..HEAD`) | 21 commits scanned (through the evidence commit), no leaks found, exit 0 |
 | `npm audit --omit=dev` | found 0 vulnerabilities, exit 0 |
 | Screenshots (`screens/README.md`) | 156 Day 4c shots in the whole-suite run on e8ce3c9 (no console error, no sideways scroll); 52 kept |
 | Apple design audit / Web Interface Guidelines | `apple-design-audit.md`, `web-design-guidelines.md` (findings fixed in 8d2a3f7; unresolved: none) |
