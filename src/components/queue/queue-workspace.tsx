@@ -332,8 +332,8 @@ export function QueueWorkspace({
     q.retry();
   }, [q]);
 
-  // Keys: on the start screen ↩ starts; while working, digits (by position), S, N, C, U and Cmd/Ctrl+Z; with a follow-up
-  // open, ↩ confirms and Esc cancels. Quiet while typing (except ↩/Esc in the follow-up's date and time fields), during
+  // Keys: on the start screen ↩ starts and U takes back the latest outcome; while working, digits (by position), S, N,
+  // C, U and Cmd/Ctrl+Z; with a follow-up open, ↩ confirms and Esc cancels. Quiet while typing (except ↩/Esc in the follow-up's date and time fields), during
   // IME composition and while a dialog is open. The listener is attached once and always runs the latest handler (set
   // before the browser paints), so a key pressed the moment a new card shows acts on that card, never the one before.
   const keyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -347,6 +347,12 @@ export function QueueWorkspace({
         if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && (!target || target === document.body || target.tagName === "MAIN")) {
           event.preventDefault();
           start();
+          return;
+        }
+        // Right after Done for now the toast still offers Undo (U): U (or Cmd/Ctrl+Z) takes that outcome back here too.
+        if (!isTyping(target) && queueKeyFor(event)?.kind === "undo" && q.canUndo()) {
+          event.preventDefault();
+          q.undo();
         }
         return;
       }

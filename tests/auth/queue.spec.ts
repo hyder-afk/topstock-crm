@@ -531,6 +531,31 @@ test("restart_while_in_flight: Done for now then Start at once while a save is o
   await context.close();
 });
 
+test("undo_on_start_screen: U on the start screen right after Done for now takes back the outcome its toast offers", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Back Alpha", "Back Bravo", "Back Charlie"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  const first = await current(page);
+  await page.keyboard.press("Digit1");
+  await expect.poll(() => outcomes(leadId(adminEmail, first))).toBe("no_answer");
+  await expect(toast(page)).toContainText("Undo (U)");
+  await page.getByRole("button", { name: "Done for now" }).click();
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(toast(page)).toContainText("Undo (U)");
+  // Before: the start screen returned before reading U, so the outcome stayed while the toast offered Undo (U).
+  await page.keyboard.press("u");
+  await expect(heading(page)).toHaveText(first, { timeout: 10_000 });
+  await expect(heading(page)).toBeFocused();
+  await expect.poll(() => outcomes(leadId(adminEmail, first))).toBe("");
+  expect(holder(leadId(adminEmail, first))).toBe(userId(adminEmail));
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
+});
+
 test("undo_latest_outcome: U right after a key takes back that outcome (not the one before), and its lead's heading has the focus", async ({ browser }) => {
   test.setTimeout(180_000);
   fresh(adminEmail);
