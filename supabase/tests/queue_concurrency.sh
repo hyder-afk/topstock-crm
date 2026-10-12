@@ -23,6 +23,9 @@
 #     (the claim guard's per-person lock makes the second tab wait and then see the first tab's claims).
 #  9. second_look: a lead a teammate claims, calls and lets go while this session's claim waits (its candidates read
 #     before) is let go again instead of served (claim_next_lead looks at the lead again after winning the claim).
+# 10. lock_order_contact_then_lead: a teammate's transaction holds contact C (a name change), then changes the lead; a
+#     wrong number on C waits for C before it takes the lead, so neither deadlocks (Day 4b's mutation reversing
+#     log_activity's lock order is caught here).
 # Usage: queue_concurrency.sh "<libpq connection string>" (after queue_attack.sql). Used by scripts/db-test.sh and the
 # CI "rls" job. Fixtures are made by the superuser connection; the probes run as the admins through the API role.
 set -euo pipefail
@@ -253,6 +256,30 @@ got=$(cat "$TMPDIR_QC/second.out")
 [ "$got" = "$l9x" ] || fail "second_look: the queue served '$got' (expected only X; L was just called by a teammate)"
 got=$(as_owner "select count(*) from private.queue_claims where company_id = '$l9l';")
 [ "$got" = "0" ] || fail "second_look: L kept a claim"
+
+# 10. Lock order contact, then lead, with the contact trigger in place --------------------------------------------------
+# A teammate's transaction takes contact C (a name change: the contact trigger does not fire), then changes the lead. A
+# wrong number on C must wait for C before it takes the lead; if it took the lead first, the teammate would wait for the
+# lead while the call waits for C (a deadlock). Day 4b's case 2 used a number change, which now takes the lead at once
+# through the contact trigger, so it no longer tells the two orders apart.
+lead10=$(new_lead 'Race lock order' cold null "'+33 1 99 00 51 01'")
+c10=$(as_owner "insert into public.contacts (org_id, company_id, first_name, phone)
+                select org_id, id, 'Elio', '+33 6 39 98 51 01' from public.companies where id = '$lead10' returning id;")
+as_user "$W2" "begin;
+update public.contacts set first_name = 'Elio2' where id = '$c10';
+select pg_sleep(1.5) \g /dev/null
+update public.companies set name = 'Race lock order renamed' where id = '$lead10';
+commit;" > /dev/null 2> "$TMPDIR_QC/order-edit.err" & pa=$!
+sleep 0.4
+as_user "$W1" "select public.log_activity('$lead10', 'call', 'wrong_number', null, '$c10', 'contact', null, null,
+               'Find the right number') \g /dev/null" > /dev/null 2> "$TMPDIR_QC/order-call.err" & pb=$!
+ra=0; wait $pa || ra=$?
+rb=0; wait $pb || rb=$?
+[ $ra = 0 ] && [ $rb = 0 ] || fail "lock_order_contact_then_lead: edit exit $ra, call exit $rb: \
+$(cat "$TMPDIR_QC/order-edit.err" "$TMPDIR_QC/order-call.err")"
+got=$(as_owner "select c.name || ' ' || (k.phone_wrong_at is not null)::text from public.companies c
+                  join public.contacts k on k.id = '$c10' where c.id = '$lead10';")
+[ "$got" = "Race lock order renamed true" ] || fail "lock_order_contact_then_lead: '$got'"
 
 as_owner "delete from private.queue_claims;" > /dev/null
 echo "queue_concurrency: all checks passed"
