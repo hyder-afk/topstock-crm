@@ -63,8 +63,8 @@ export function ValueRow({
 /** A count tile on the Check screen: a big number in DM Mono and its label. */
 export function Tile({ label, value, tone }: { label: string; value: string; tone?: "red" | "amber" }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-lg bg-card p-4">
-      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+    <div role="group" aria-label={label} className="flex min-w-0 flex-col gap-1 rounded-lg bg-background p-4">
+      <span aria-hidden="true" className="flex items-center gap-2 text-sm text-muted-foreground">
         {tone ? <span aria-hidden="true" className={cn("size-1.5 rounded-full", tone === "red" ? "bg-status-red" : "bg-status-amber")} /> : null}
         {label}
       </span>

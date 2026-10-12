@@ -1571,7 +1571,7 @@
       "cost_kept_sold_out": "{count, plural, one {{formatted} ligne épuisée garde son coût par pièce} other {{formatted} lignes épuisées gardent leur coût par pièce}}",
       "price_missing": "{count, plural, one {{formatted} ligne n’a pas de prix (les clients voient « Prix sur demande »)} other {{formatted} lignes n’ont pas de prix (les clients voient « Prix sur demande »)}}",
       "loose_pieces": "{count, plural, one {{formatted} ligne n’est pas un nombre entier de cartons} other {{formatted} lignes ne sont pas un nombre entier de cartons}}",
-      "prices_differ": "{count, plural, one {{formatted} produit a des prix différents en entrepôt et en transit} other {{formatted} produits ont des prix différents en entrepôt et en transit}}",
+      "prices_differ": "{count, plural, one {{formatted} ligne a un prix différent de l’autre emplacement du même produit} other {{formatted} lignes ont des prix différents entre entrepôt et transit}}",
       "carton_kept": "{count, plural, one {{formatted} produit garde ses pièces par carton} other {{formatted} produits gardent leurs pièces par carton}}",
       "restored": "{count, plural, one {{formatted} produit archivé revient} other {{formatted} produits archivés reviennent}}"
     },

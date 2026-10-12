@@ -1571,7 +1571,7 @@
       "cost_kept_sold_out": "{count, plural, one {{formatted} sold-out row keeps its cost per piece} other {{formatted} sold-out rows keep their cost per piece}}",
       "price_missing": "{count, plural, one {{formatted} row has no price (clients see “Price on request”)} other {{formatted} rows have no price (clients see “Price on request”)}}",
       "loose_pieces": "{count, plural, one {{formatted} row isn’t a whole number of cartons} other {{formatted} rows aren’t a whole number of cartons}}",
-      "prices_differ": "{count, plural, one {{formatted} product has different warehouse and transit prices} other {{formatted} products have different warehouse and transit prices}}",
+      "prices_differ": "{count, plural, one {{formatted} row has a price that differs from the same product’s other place} other {{formatted} rows have prices that differ between warehouse and transit}}",
       "carton_kept": "{count, plural, one {{formatted} product keeps its pieces per carton} other {{formatted} products keep their pieces per carton}}",
       "restored": "{count, plural, one {{formatted} archived product comes back} other {{formatted} archived products come back}}"
     },

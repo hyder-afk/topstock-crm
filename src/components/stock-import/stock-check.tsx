@@ -275,7 +275,7 @@ function PiecesLine({ label, before, after }: { label: string; before: number; a
   const t = useTranslations("StockImport.check");
   const format = useFormatter();
   return (
-    <div className="flex items-baseline justify-between gap-3 rounded-md bg-card px-4 py-3">
+    <div className="flex items-baseline justify-between gap-3 rounded-md bg-background px-4 py-3">
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="font-mono tabular-nums">
         {t("beforeAfter", { before: format.number(before), after: format.number(after) })}
