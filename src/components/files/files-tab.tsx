@@ -250,6 +250,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
           type="file"
           multiple
           accept={ACCEPT}
+          aria-label={t("choose")}
           aria-describedby={limitsId}
           className="sr-only"
           tabIndex={-1}
