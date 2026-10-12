@@ -47,6 +47,20 @@ test("sniff_docm_renamed_docx and xlsm renamed xlsx: macros (vbaProject.bin) are
   expect(sniff(W, makeZip([{ name: "vbaProject.bin" }, ...DOCX]))).toBe(false);
 });
 
+test("sniff_zip_count_understated: a count one short of the directory cannot hide vbaProject.bin as the last entry", () => {
+  // The directory holds 4 entries (its size covers all 4); the end record says 3. A walk by count alone would stop
+  // before word/vbaProject.bin and pass the file; readers that walk by the directory's size see the macros.
+  const hidden = makeZip([...DOCX, { name: "word/vbaProject.bin" }], { countOverride: DOCX.length });
+  expect(zipEntryNames(hidden.length, hidden)).toBeNull();
+  expect(sniff(W, hidden)).toBe(false);
+  // The same short count with no macro part is refused too (the count and the size must agree).
+  const short = makeZip([...DOCX, { name: "docProps/app.xml" }], { countOverride: DOCX.length });
+  expect(sniff(W, short)).toBe(false);
+  // The two count fields of the end record must match.
+  expect(sniff(W, makeZip(DOCX, { diskCountOverride: DOCX.length - 1 }))).toBe(false);
+  expect(sniff(W, makeZip(DOCX, { diskCountOverride: DOCX.length }))).toBe(true);
+});
+
 test("sniff_truncated_zip and broken directories give false, never an exception", () => {
   const zip = makeZip(DOCX);
   expect(sniff(W, zip.subarray(0, zip.length - 10))).toBe(false); // end record cut

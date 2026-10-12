@@ -1,7 +1,7 @@
 // A minimal "stored" (uncompressed) zip writer for the file-sniff tests: local headers, central directory, end record.
 // Enough to build Word and Excel look-alikes with or without macros (vbaProject.bin). CRCs are left 0: the sniffer
 // never decompresses or checks them.
-export function makeZip(entries: { name: string; data?: string }[], opts: { comment?: string; countOverride?: number } = {}) {
+export function makeZip(entries: { name: string; data?: string }[], opts: { comment?: string; countOverride?: number; diskCountOverride?: number } = {}) {
   const enc = new TextEncoder();
   const locals: Uint8Array[] = [];
   const centrals: Uint8Array[] = [];
@@ -37,7 +37,7 @@ export function makeZip(entries: { name: string; data?: string }[], opts: { comm
   const eocd = new Uint8Array(22 + comment.length);
   const ev = new DataView(eocd.buffer);
   ev.setUint32(0, 0x06054b50, true);
-  ev.setUint16(8, opts.countOverride ?? entries.length, true);
+  ev.setUint16(8, opts.diskCountOverride ?? opts.countOverride ?? entries.length, true);
   ev.setUint16(10, opts.countOverride ?? entries.length, true);
   ev.setUint32(12, cdSize, true);
   ev.setUint32(16, offset, true);

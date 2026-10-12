@@ -8,7 +8,8 @@ import type { FileMime } from "@/lib/files/types";
 //  - PNG: the 8-byte signature. JPEG: FF D8 FF.
 //  - Word / Excel: a zip ("PK\3\4") whose central directory (found from the end-of-directory record) lists
 //    "[Content_Types].xml" and "word/document.xml" (Word) or "xl/workbook.xml" (Excel), has at most 10,000 entries, and
-//    has no "vbaProject.bin" (macros) anywhere.
+//    has no "vbaProject.bin" (macros) anywhere. The entry count and the directory size must agree (the walk ends exactly
+//    at the directory's end, and the two count fields match), so an under-stated count cannot hide a last entry.
 
 /** Bytes to read from the start of a file, and from its end for Word and Excel (enough for 10,000 directory entries). */
 export const HEAD_BYTES = 8192;
@@ -54,10 +55,12 @@ export function zipEntryNames(size: number, tail: Uint8Array): string[] | null {
   }
   if (eocd < 0) return null;
   const count = u16(tail, eocd + 10);
+  const countOnDisk = u16(tail, eocd + 8);
   const cdSize = u32(tail, eocd + 12);
   const cdOffset = u32(tail, eocd + 16);
   // Zip64 markers, a split archive, or more entries than any Office file has: refused.
-  if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff || u16(tail, eocd + 4) !== 0 || count > MAX_ZIP_ENTRIES) return null;
+  if (count === 0xffff || cdSize === 0xffffffff || cdOffset === 0xffffffff || u16(tail, eocd + 4) !== 0 || u16(tail, eocd + 6) !== 0 ||
+      countOnDisk !== count || count > MAX_ZIP_ENTRIES) return null;
   if (cdOffset + cdSize > tailStart + eocd) return null;
   let at = cdOffset - tailStart;
   if (at < 0) return null; // the directory starts before the bytes we have
@@ -74,6 +77,9 @@ export function zipEntryNames(size: number, tail: Uint8Array): string[] | null {
     names.push(decoder.decode(tail.subarray(at + 46, at + 46 + nameLen)));
     at = next;
   }
+  // Every byte of the directory read: a count lower than the entries the directory holds is refused (zip readers that
+  // walk by the directory's size would see the entries a short walk skips).
+  if (at !== end) return null;
   return names;
 }
 
