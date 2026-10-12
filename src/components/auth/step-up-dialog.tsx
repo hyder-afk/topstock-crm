@@ -16,7 +16,7 @@ type StepUpError = Extract<StepUpResult, { ok: false }>["error"];
 // adjustments, exports and deletes later), a fresh authenticator code is asked for when the last one is older than
 // the window allows. The server says how many seconds the current code stays fresh; the browser only counts time
 // elapsed since then (its own clock may be wrong).
-export function useStepUp(initialSecondsLeft: number) {
+export function useStepUp(initialSecondsLeft: number, bodyKey: "body" | "bodyDelete" = "body") {
   const [open, setOpen] = useState(false);
   const freshUntil = useRef(0);
   const waiting = useRef<((ok: boolean) => void) | null>(null);
@@ -78,17 +78,21 @@ export function useStepUp(initialSecondsLeft: number) {
     else fallback.current?.()?.focus();
   }, []);
 
-  const dialog = <StepUpDialog open={open} onDone={(s) => finish(s)} onCancel={() => finish(null)} onRestoreFocus={restoreFocus} />;
+  const dialog = (
+    <StepUpDialog open={open} bodyKey={bodyKey} onDone={(s) => finish(s)} onCancel={() => finish(null)} onRestoreFocus={restoreFocus} />
+  );
   return { ensureFresh, requireFresh, dialog };
 }
 
 function StepUpDialog({
   open,
+  bodyKey,
   onDone,
   onCancel,
   onRestoreFocus,
 }: {
   open: boolean;
+  bodyKey: "body" | "bodyDelete";
   onDone: (secondsLeft: number) => void;
   onCancel: () => void;
   onRestoreFocus: () => void;
@@ -164,7 +168,7 @@ function StepUpDialog({
         >
           <div className="flex flex-col gap-2">
             <DialogTitle className="text-xl font-bold tracking-[-0.03em] text-balance">{t("title")}</DialogTitle>
-            <DialogDescription className="text-muted-foreground">{t("body")}</DialogDescription>
+            <DialogDescription className="text-muted-foreground">{t(bodyKey)}</DialogDescription>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor={id}>{t("codeLabel")}</Label>

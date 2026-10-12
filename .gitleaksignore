@@ -1,3 +1,7 @@
 # False positive (reviewed 9 Oct 2026): a pinned Go pseudo-version ("v1.11.1-0.2026…-ce9a8eee0cc0") in a variable named
 # AUTH_VERSION matched generic-api-key. The variable is now GOTRUE_PIN; this line only covers the old commit in history.
 e13ea2e0d4d9e1eee71e7ec2865df0db8686aa1d:scripts/local-auth/start.sh:generic-api-key:10
+# False positive (reviewed 11 Oct 2026): in a test's JSON literal, a time zone name (America, then Chicago) sat right after
+# a field named call_zone_key and matched generic-api-key. The test now compares the fields one by one; this line only
+# covers the old commit in history.
+3ddd2a2d8c0aa2024d24c005bcaabee7461921cb:supabase/tests/outcome_attack.sql:generic-api-key:336

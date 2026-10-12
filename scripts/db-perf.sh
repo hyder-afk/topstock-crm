@@ -1,11 +1,11 @@
 #!/bin/bash
 # Leads list speed at Release 1 size: throwaway PostgreSQL 16 + auth shim + migrations + 30k fake leads, then timings
 # and query plans of the list and count functions as a signed-in rep (supabase/tests/perf_leads.sql), then 300k
-# activities and 15k tasks with the Day 4 timeline timings (supabase/tests/perf_day4.sql), then the lead import at 30k
-# and 50k rows as an admin, with those activities and tasks in place (supabase/tests/perf_import.sql). Day 6a adds the
-# stock engine timings (supabase/tests/perf_stock.sql: 5,000 products, 200,000 ledger rows, 5,000 holds) before the
-# import, so the import's undo runs with holds in place, and the stock concurrency timings (stock_concurrency.sh perf)
-# at the end. Local only.
+# activities and 15k tasks with the Day 4 timeline, lead page and outcome timings (supabase/tests/perf_day4.sql), then
+# the lead import at 30k and 50k rows as an admin, with those activities and tasks in place (supabase/tests/perf_import.sql).
+# Day 6a adds the stock engine timings (supabase/tests/perf_stock.sql: 5,000 products, 200,000 ledger rows, 5,000 holds)
+# before the import, so the import's undo runs with holds in place, and the stock concurrency timings
+# (stock_concurrency.sh perf) at the end. Local only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin

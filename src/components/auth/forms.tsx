@@ -16,6 +16,7 @@ import {
   type FormState,
 } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
+import { clearDrafts } from "@/lib/drafts";
 import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,6 +84,8 @@ function CodeField({ invalid, describedBy, label }: { invalid?: boolean; describ
 
 export function LoginForm() {
   const t = useTranslations("Auth");
+  // Signed out (or the session ended): unsent lead notes kept in this browser go (Day 4b drafts).
+  useEffect(() => clearDrafts(), []);
   const errorText = useErrorText();
   const [state, action, pending] = useActionState<FormState, FormData>(signIn, undefined);
   const msg = useId();

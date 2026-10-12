@@ -1216,6 +1216,19 @@ begin
 end $$;
 
 -- 11. Deleting an entry needs a fresh code, and only the author, a manager or an admin (threat 8) --------------------
+-- Since Day 4b the author may also delete their own entry from the last 2 minutes without a code when it has no undo
+-- record (outcome_attack.sql tests that branch). These two entries are made 10 minutes older first (superuser, no
+-- claims, the server-time trigger off for the one statement), so this section still tests the code rule on its own.
+reset role;
+do $$
+begin
+  perform set_config('request.jwt.claims', '', false);
+  alter table public.activities disable trigger set_activity_time;
+  update public.activities set created_at = created_at - interval '10 minutes'
+   where id in (current_setting('t.b_note')::uuid, current_setting('t.d_note')::uuid);
+  alter table public.activities enable trigger set_activity_time;
+end $$;
+set role authenticated;
 do $$
 declare
   n int;

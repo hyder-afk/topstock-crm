@@ -38,3 +38,7 @@ next-env.d.ts
 
 # Large generated perf files (scripts/make-fake-leads.mjs --rows N --out DIR) are never committed.
 leads-*-perf.csv
+
+# Python bytecode (scripts/db-mutations.py)
+__pycache__/
+*.pyc

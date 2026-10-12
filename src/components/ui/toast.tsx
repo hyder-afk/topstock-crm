@@ -4,28 +4,32 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 
-type Toast = { id: number; message: string; action?: { label: string; run: () => void } };
-type ToastApi = { show: (message: string, action?: Toast["action"]) => void };
+type Toast = { id: number; message: string; action?: { label: string; run: () => void }; duration: number };
+type ToastOptions = { duration?: number };
+type ToastApi = { show: (message: string, action?: Toast["action"], options?: ToastOptions) => void };
 
 const ToastContext = createContext<ToastApi>({ show: () => {} });
 export const useToast = () => useContext(ToastContext);
 
-// One message at a time, above the dock, announced politely. Stays 6 s (longer while hovered or focused) so there
-// is time to press Undo.
+// One message at a time, above the dock, announced politely. Stays 6 s by default (a logged call's Undo: 10 s; longer
+// while hovered or focused) so there is time to press Undo.
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const t = useTranslations("Common");
   const [toast, setToast] = useState<Toast | null>(null);
   const [paused, setPaused] = useState(false);
   const seq = useRef(0);
+  // Where the focus was before it entered the toast: an action pressed from the keyboard unmounts the toast with its
+  // focused button, so the focus goes back there instead of to the top of the page.
+  const returnTo = useRef<HTMLElement | null>(null);
 
-  const show = useCallback<ToastApi["show"]>((message, action) => {
+  const show = useCallback<ToastApi["show"]>((message, action, options) => {
     seq.current += 1;
-    setToast({ id: seq.current, message, action });
+    setToast({ id: seq.current, message, action, duration: options?.duration ?? 6000 });
   }, []);
 
   useEffect(() => {
     if (!toast || paused) return;
-    const timer = window.setTimeout(() => setToast((cur) => (cur?.id === toast.id ? null : cur)), 6000);
+    const timer = window.setTimeout(() => setToast((cur) => (cur?.id === toast.id ? null : cur)), toast.duration);
     return () => window.clearTimeout(timer);
   }, [toast, paused]);
 
@@ -43,7 +47,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={toast.id}
             onMouseEnter={() => setPaused(true)}
             onMouseLeave={() => setPaused(false)}
-            onFocus={() => setPaused(true)}
+            onFocus={(e) => {
+              setPaused(true);
+              const from = e.relatedTarget;
+              if (from instanceof HTMLElement && !e.currentTarget.contains(from)) returnTo.current = from;
+            }}
             onBlur={() => setPaused(false)}
             className="animate-page pointer-events-auto flex max-w-[min(560px,100%)] items-center gap-2 rounded-lg bg-primary py-2 pr-2 pl-4 text-sm text-primary-foreground shadow-[0_12px_32px_rgb(14_14_16/0.24)]"
           >
@@ -51,9 +59,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             {toast.action ? (
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  const fromKeyboard = e.currentTarget.matches(":focus-visible");
                   toast.action?.run();
                   setToast(null);
+                  const back = returnTo.current;
+                  returnTo.current = null;
+                  if (fromKeyboard && back?.isConnected) requestAnimationFrame(() => back.focus({ preventScroll: true }));
                 }}
                 className="min-h-11 rounded-md px-3 font-bold underline-offset-4 transition-transform duration-150 hover:underline active:scale-[0.97] sm:min-h-9"
               >

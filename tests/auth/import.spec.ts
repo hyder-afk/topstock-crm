@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, sql, totp } from "./helpers";
+import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // Lead import (Day 3b): an admin imports the fake sample files end to end (choose, match, check, import, undo), the
 // problems file, a check that fails part way (thrown away, choices kept), a paused import resumed, a checked import
@@ -72,6 +72,10 @@ function watchErrors(page: Page) {
 }
 
 async function openImport(page: Page) {
+  trackRequests(page);
+  // A page that already shows the import may have a Past-imports refresh (a server action POST to /leads/import) in
+  // flight; let it finish before navigating over it (Day 3b flake, docs/log.md 11 Oct).
+  await settled(page);
   await page.goto("/leads/import");
   await expect(page.locator("main h1")).toHaveText("Import leads");
   await expect(page.getByRole("heading", { name: "Choose your file" })).toBeVisible();

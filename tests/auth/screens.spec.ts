@@ -48,7 +48,9 @@ async function shoot(
   name: string,
   act?: (page: Page) => Promise<void>,
   combos: readonly { locale: string; scheme: "light" | "dark"; widths: readonly number[] }[] = matrix,
-  before?: () => void,
+  before?: (page: Page) => void | Promise<void>,
+  // fullPage false: the viewport only, so layers fixed to the screen (the call panel, sheets) show where they sit.
+  { fullPage = true }: { fullPage?: boolean } = {},
 ) {
   for (const { locale, scheme, widths } of combos) {
     for (const width of widths) {
@@ -62,14 +64,14 @@ async function shoot(
       const errors: string[] = [];
       page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
       page.on("pageerror", (e) => errors.push(e.message));
-      before?.();
+      await before?.(page);
       await page.goto(path);
       // The right page (no unexpected redirect), then the real screen, not the loading skeleton (which has no heading).
       await expect(page).toHaveURL((url) => url.pathname === new URL(path, "http://localhost:3100").pathname);
       await expect(page.locator("main h1").first()).toBeVisible();
       if (act) await act(page);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-      await page.screenshot({ path: `${dir}/${name}-${locale}-${scheme}-${width}.png`, fullPage: true });
+      await page.screenshot({ path: `${dir}/${name}-${locale}-${scheme}-${width}.png`, fullPage });
       expect(errors, `${name} ${locale} ${scheme} ${width}`).toEqual([]);
       await context.close();
     }
@@ -162,6 +164,186 @@ test("leads: list with a lead open, add a lead, filters", async ({ browser }) =>
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.waitForTimeout(250);
   });
+});
+
+// The lead page (Day 4b): every width in both themes and both languages for the main view; the timeline, the call panel
+// with the outcome pad, Details, "Until when?" and a Do not contact lead on the usual matrix. A made-up lead with
+// contacts (one number marked wrong), one entry of each kind, an open follow-up task and a next call date.
+const fullMatrix = [
+  { locale: "en", scheme: "light", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "en", scheme: "dark", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "fr", scheme: "light", widths: [390, 768, 1024, 1280, 1440, 1728] },
+  { locale: "fr", scheme: "dark", widths: [390, 768, 1024, 1280, 1440, 1728] },
+] as const;
+
+test("lead page: summary, timeline, call panel, details, until when, do not contact, calling hours", async ({ browser }) => {
+  test.setTimeout(1_500_000);
+  const me = sql(`select id from auth.users where email = '${withFactor}'`);
+  const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country)
+                    select org_id, 'Maison Verdane', id, 'warm', '04 78 12 34 56', 'achats@verdane.example.com', 'Lyon', 'FR'
+                    from public.profiles where id = '${me}' returning id`);
+  sql(`insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
+       select org_id, id, 'Amélie', 'Laurent', 'Head buyer', 'amelie@verdane.example.com', '06 12 34 56 78' from public.companies where id = '${lead}';
+       insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
+       select org_id, id, 'Karim', 'Benali', 'Owner', null, '06 98 76 54 32' from public.companies where id = '${lead}';
+       update public.contacts set phone_wrong_at = now() - interval '2 days' where first_name = 'Karim' and company_id = '${lead}';
+       insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${me}', v.type, v.outcome, v.body, now() - v.ago
+       from public.companies c, (values
+         ('call', 'no_answer', null, interval '3 days 2 hours'),
+         ('email', 'sent', 'Subject: Spring price list' || chr(10) || chr(10) || 'Bonjour Amélie, voici les prix du lot denim grade A.', interval '2 days 5 hours'),
+         ('whatsapp', 'sent', 'Photos of the denim lot sent.', interval '1 day 6 hours'),
+         ('call', 'interested', 'Wants 300 pieces of denim jackets, grade A. Call back with the container date.', interval '1 day 2 hours'),
+         ('meeting', 'held', 'Visited the showroom in Lyon. Next: samples.', interval '5 hours'),
+         ('note', null, 'Prefers WhatsApp in the morning. Pays by transfer, 30 days.', interval '20 minutes')
+       ) as v (type, outcome, body, ago) where c.id = '${lead}';
+       insert into public.tasks (org_id, company_id, title, kind, due_date, assignee_id)
+       select org_id, id, 'Follow up with Maison Verdane', 'call', (now() at time zone 'Europe/Paris')::date + 1, '${me}'
+       from public.companies where id = '${lead}';
+       update public.companies set next_action_at = now() + interval '1 day 2 hours' where id = '${lead}';`);
+  const dnc = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country)
+                   select org_id, 'Comptoir Silence', id, 'do_not_contact', '01 23 45 67 89', 'contact@silence.example.com', 'Paris', 'FR'
+                   from public.profiles where id = '${me}' returning id`);
+  // Timeline rows use content-visibility: auto (design D13), which skips painting rows far outside the viewport; a
+  // full-page shot captures them, so they are painted for the shot only.
+  const ready = async (page: Page) => {
+    await appReady(page);
+    await page.addStyleTag({ content: "li[style*='content-visibility'] { content-visibility: visible !important; }" });
+    await page.waitForTimeout(300);
+  };
+  await shoot(browser, "full", `/leads/${lead}`, "lead", async (page) => {
+    await ready(page);
+    await expect(page.getByRole("tabpanel").getByRole("article").first()).toBeVisible();
+  }, fullMatrix);
+  await shoot(browser, "full", `/leads/${lead}?tab=timeline`, "lead-timeline", async (page) => {
+    await ready(page);
+    await expect(page.getByRole("tabpanel").getByRole("article")).toHaveCount(6);
+  });
+  await shoot(browser, "full", `/leads/${lead}`, "lead-call", async (page) => {
+    await ready(page);
+    // Start the call from the Call action without leaving the page (tel: has no handler in a test browser).
+    await page.evaluate(() => {
+      const a = document.querySelector<HTMLAnchorElement>("main a[href^='tel:']");
+      a?.addEventListener("click", (e) => e.preventDefault(), { once: true });
+      a?.click();
+    });
+    const panel = page.getByRole("region", { name: /^(Calling|Appel vers)/ });
+    await panel.getByRole("button", { name: /^(End call|Raccrocher)$/ }).click();
+    await page.keyboard.press("Digit5");
+    await expect(panel.locator('[data-outcome="interested"]')).toHaveAttribute("aria-pressed", "true");
+    await page.waitForTimeout(500);
+  });
+  await shoot(browser, "full", `/leads/${lead}?tab=details`, "lead-details", async (page) => {
+    await ready(page);
+  });
+  await shoot(browser, "full", `/leads/${lead}`, "lead-until", async (page) => {
+    await ready(page);
+    await page.getByRole("button", { name: /^(Status|Statut)/ }).click();
+    await page.getByRole("menuitemradio", { name: /^(Cool off|En pause)$/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(400);
+    // Viewport shots: a full-page capture of a page taller than the screen paints an open dialog half transparent
+    // (a capture artefact; the dialog is opaque on screen).
+  }, matrix, undefined, { fullPage: false });
+  // Review round (Day 4b findings 12, 13, 18, 22 and the call panel's second Call): Do not contact at 768 too, where only
+  // "Add a note" can log; its sheet offers Note, Call and Meeting (no Email or WhatsApp).
+  const dncMatrix = [
+    { locale: "en", scheme: "light", widths: [390, 768, 1440] },
+    { locale: "fr", scheme: "dark", widths: [390, 768, 1440] },
+  ] as const;
+  await shoot(browser, "full", `/leads/${dnc}`, "lead-dnc", async (page) => {
+    await ready(page);
+    await expect(page.getByRole("note")).toBeVisible();
+  }, dncMatrix);
+  await shoot(browser, "full", `/leads/${dnc}`, "lead-dnc-note", async (page) => {
+    await ready(page);
+    await page.getByRole("button", { name: /^(Add a note|Ajouter une note)$/ }).click();
+    const sheet = page.getByRole("dialog", { name: /^(Log activity|Noter une activité)$/ });
+    await expect(sheet.getByRole("group", { name: /^(Kind of entry|Type d’entrée)$/ }).getByRole("button")).toHaveCount(3);
+    await expect(sheet.getByRole("button", { name: /^(Email|E-mail|WhatsApp)$/ })).toHaveCount(0);
+    await page.waitForTimeout(400); // phone sheets rise in 320 ms
+  }, [
+    { locale: "en", scheme: "light", widths: [390, 768] },
+    { locale: "fr", scheme: "dark", widths: [390, 768] },
+  ], undefined, { fullPage: false });
+  // A second Call while the first call's outcome step is open: the first keeps its outcome and the second waits, named
+  // in the panel's status line. Viewport shots, so the phone sheet sits at the bottom where it is on a phone.
+  await shoot(browser, "full", `/leads/${lead}`, "lead-call-queued", async (page) => {
+    await ready(page);
+    await page.evaluate(() => {
+      const links = [...document.querySelectorAll<HTMLAnchorElement>("main a[href^='tel:']")].filter((a) => a.getClientRects().length > 0);
+      const first = links[0];
+      first?.addEventListener("click", (e) => e.preventDefault(), { once: true });
+      first?.click();
+    });
+    const panel = page.getByRole("region", { name: /^(Calling|Appel vers)/ });
+    await panel.getByRole("button", { name: /^(End call|Raccrocher)$/ }).click();
+    await page.keyboard.press("Digit2");
+    await page.evaluate(() => {
+      const links = [...document.querySelectorAll<HTMLAnchorElement>("main a[href^='tel:']")];
+      const other = links.find((a) => a.getClientRects().length > 0 && a.getAttribute("href") !== links[0]?.getAttribute("href"));
+      other?.addEventListener("click", (e) => e.preventDefault(), { once: true });
+      other?.click();
+    });
+    await expect(panel.getByRole("status").first()).toHaveText(/^(Finish logging this call first|Finissez d’abord de noter cet appel)/);
+    await page.waitForTimeout(500);
+  }, lightMatrix, undefined, { fullPage: false });
+  // Calling hours that open another day, clock fixed to Saturday 10 Oct 2026 12:00 UTC (14:00 in Lyon, closed until
+  // Monday 09:00): French "ouvre lun. à 09:00", English "opens Mon 09:00". A lead with no entries, so no time on the page
+  // is later than the fixed clock.
+  const hours = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+                     select org_id, 'Mercerie du Samedi', id, 'warm', '04 72 00 11 22', 'Lyon', 'FR'
+                     from public.profiles where id = '${me}' returning id`);
+  await shoot(browser, "full", `/leads/${hours}`, "lead-hours", async (page) => {
+    await ready(page);
+    await expect(page.getByText(/(ouvre lun\. à 09:00|opens Mon 09:00) \((dans|in) /)).toBeVisible();
+  }, [
+    { locale: "fr", scheme: "light", widths: [390, 1440] },
+    { locale: "fr", scheme: "dark", widths: [390, 1440] },
+    { locale: "en", scheme: "light", widths: [1440] },
+  ], (page) => page.clock.setFixedTime(new Date("2026-10-10T12:00:00Z")));
+});
+
+// The lead page's route skeleton (loading.tsx) at 1024, where the actions sit under the header, and 1280, where they sit
+// beside it (finding 18: the skeleton matches the page block for block). Opened from the leads preview with O; the page's
+// own data request is held back while the shot is taken (prefetches pass), then let through.
+test("lead page: route skeleton at 1024 and 1280", async ({ browser }) => {
+  const id = sql(`select id from public.companies where name = 'Maison Verdane' order by created_at desc limit 1`);
+  for (const { locale, scheme } of [
+    { locale: "en", scheme: "light" },
+    { locale: "fr", scheme: "dark" },
+  ] as const) {
+    for (const width of [1024, 1280]) {
+      const context = await browser.newContext({ storageState: states.full, viewport: { width, height: 900 }, colorScheme: scheme });
+      await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(`/leads?lead=${id}`);
+      await appReady(page);
+      await expect(page.locator("aside h2")).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await page.route(new RegExp(`/leads/${id}(\\?|$)`), async (route) => {
+        const headers = route.request().headers();
+        if (headers.rsc && !headers["next-router-prefetch"]) await held;
+        await route.continue();
+      });
+      await page.keyboard.press("o");
+      await expect(page).toHaveURL(new RegExp(`/leads/${id}$`));
+      await expect(page.locator("main [aria-busy=true]")).toBeVisible();
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `${dir}/lead-skeleton-${locale}-${scheme}-${width}.png` });
+      release();
+      await expect(page.locator("main h1").first()).toBeVisible();
+      await appReady(page);
+      expect(errors, `lead-skeleton ${locale} ${scheme} ${width}`).toEqual([]);
+      await context.close();
+    }
+  }
 });
 
 test("command menu and shortcuts list", async ({ browser }) => {

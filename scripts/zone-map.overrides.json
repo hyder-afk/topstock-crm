@@ -1,0 +1,57 @@
+{
+  "$comment": [
+    "Reviewed choices for scripts/make-zone-map.mjs (Day 4 design section 5.1). Read with zone.tab: a country whose zones",
+    "all keep the same UTC offsets is called on its first zone.tab zone (or on 'main' below). A country whose zones differ",
+    "needs a 'span' (called only while both ends are in office hours, until someone picks the lead's zone) or a 'main' zone",
+    "(called on that zone's hours); the script stops when one has neither. 'choices' is the closed list of zones a person",
+    "may pick for a lead in a country with several (by default one zone per distinct offset, the main zone first). A list",
+    "here also keeps to long-standing zone names that every PostgreSQL and browser has (CL: Punta_Arenas, not the 2025",
+    "Coyhaique). Span ends are written east first; the script checks the order. 'noZone': places with no one to call (Antarctica, the US",
+    "minor islands): no calling zone, so such a lead is called on the default zone (Europe/Paris), like a lead with no",
+    "country."
+  ],
+  "spans": {
+    "US": ["America/New_York", "America/Los_Angeles"],
+    "CA": ["America/Halifax", "America/Vancouver"],
+    "AU": ["Australia/Sydney", "Australia/Perth"],
+    "MX": ["America/Mexico_City", "America/Tijuana"],
+    "BR": ["America/Sao_Paulo", "America/Manaus"],
+    "ID": ["Asia/Jayapura", "Asia/Jakarta"]
+  },
+  "main": {
+    "CD": "Africa/Kinshasa",
+    "CL": "America/Santiago",
+    "CN": "Asia/Shanghai",
+    "DE": "Europe/Berlin",
+    "EC": "America/Guayaquil",
+    "ES": "Europe/Madrid",
+    "FM": "Pacific/Pohnpei",
+    "GL": "America/Nuuk",
+    "KI": "Pacific/Tarawa",
+    "KZ": "Asia/Almaty",
+    "MN": "Asia/Ulaanbaatar",
+    "NZ": "Pacific/Auckland",
+    "PF": "Pacific/Tahiti",
+    "PG": "Pacific/Port_Moresby",
+    "PT": "Europe/Lisbon",
+    "RU": "Europe/Moscow",
+    "UA": "Europe/Kyiv",
+    "UZ": "Asia/Tashkent"
+  },
+  "choices": {
+    "US": ["America/New_York", "America/Chicago", "America/Denver", "America/Phoenix", "America/Los_Angeles",
+           "America/Anchorage", "America/Adak", "Pacific/Honolulu"],
+    "CA": ["America/St_Johns", "America/Halifax", "America/Toronto", "America/Winnipeg", "America/Regina",
+           "America/Edmonton", "America/Vancouver", "America/Whitehorse"],
+    "AU": ["Australia/Sydney", "Australia/Brisbane", "Australia/Adelaide", "Australia/Darwin", "Australia/Perth",
+           "Australia/Lord_Howe", "Australia/Eucla"],
+    "MX": ["America/Mexico_City", "America/Cancun", "America/Matamoros", "America/Ciudad_Juarez", "America/Mazatlan",
+           "America/Tijuana"],
+    "BR": ["America/Noronha", "America/Sao_Paulo", "America/Manaus", "America/Rio_Branco"],
+    "ID": ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura"],
+    "CL": ["America/Santiago", "America/Punta_Arenas", "Pacific/Easter"],
+    "RU": ["Europe/Kaliningrad", "Europe/Moscow", "Europe/Samara", "Asia/Yekaterinburg", "Asia/Omsk",
+           "Asia/Novosibirsk", "Asia/Irkutsk", "Asia/Yakutsk", "Asia/Vladivostok", "Asia/Magadan", "Asia/Kamchatka"]
+  },
+  "noZone": ["AQ", "UM"]
+}

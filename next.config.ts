@@ -27,5 +27,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+// Messages are compiled at build time (next-intl's precompile, experimental in 4.14): the lead page's first draw parsed
+// its ICU messages in the browser, about 30 ms at 4x CPU (design 8.6). t.raw is not used anywhere (it is not supported).
+const withNextIntl = createNextIntlPlugin({
+  requestConfig: "./src/i18n/request.ts",
+  experimental: { messages: { path: "./messages", format: "json", locales: "infer", precompile: true } },
+});
 export default withNextIntl(nextConfig);
