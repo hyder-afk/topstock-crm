@@ -308,6 +308,9 @@ test("delete_needs_fresh_code (the database asks for the code), stuck delete sho
   } else {
     // No storage-api here: the bytes cannot be removed, so the row stays "deleting" and says so, with Retry.
     await expect(panel.getByText("Couldn’t finish deleting")).toBeVisible();
+    // The delete failed after the code (bytes not removed): the row's menu is gone, so the focus goes to its Retry,
+    // never to the page (verifier 4d round 3 finding 1).
+    await expect(panel.getByRole("button", { name: `Retry deleting ${name}` })).toBeFocused();
     // Retry names its file and keeps the focus through a retry that fails again (aria-disabled while busy, never
     // disabled, so the focus does not drop to the page; verifier 4d round 2 finding 11).
     const retry = panel.getByRole("button", { name: `Retry deleting ${name}` });
@@ -320,6 +323,66 @@ test("delete_needs_fresh_code (the database asks for the code), stuck delete sho
     await expect(retry).not.toHaveAttribute("aria-disabled", "true");
   }
   expect(errors.filter((e) => !/storage\/v1|Failed to load resource/.test(e))).toEqual([]);
+  await context.close();
+});
+
+test("delete dialog focus: Escape, Cancel, a failed delete and a cancelled code give it back to the row's Actions, never the page (round 3 finding 1)", async ({ browser }) => {
+  const name = `Focus retour ${run}.pdf`;
+  const id = seedFile(lead, name, { by: adminEmail });
+  // A session of its own, signed in with a code just now (no "Confirm it's you" before the failed delete below), whose
+  // refresh token ageStepUp can use later (the shared admin state's was used by the test above).
+  const state = await fullSession(browser, adminEmail, password, adminSecret);
+  const { context, page, errors } = await open(browser, state);
+  let failDelete = false;
+  await page.route(
+    (url) => url.pathname === `/leads/${lead}`,
+    async (route) => (failDelete && route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort("failed") : route.fallback()),
+  );
+  await gotoFiles(page, lead);
+  const panel = filesPanel(page);
+  const actions = panel.getByRole("button", { name: `Actions for ${name}` });
+  const confirm = page.getByRole("dialog", { name: "Delete this file?" });
+  const chooseDelete = async () => {
+    await actions.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(page.getByRole("menuitem", { name: "Delete" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(confirm.getByRole("button", { name: "Cancel" })).toBeFocused();
+  };
+  // Escape.
+  await chooseDelete();
+  await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
+  await expect(actions).toBeFocused();
+  // Cancel.
+  await chooseDelete();
+  await page.keyboard.press("Enter");
+  await expect(confirm).toHaveCount(0);
+  await expect(actions).toBeFocused();
+  // Delete, and the call fails (connection lost): a toast, the file kept, the focus on its Actions.
+  await chooseDelete();
+  failDelete = true;
+  await confirm.getByRole("button", { name: "Delete" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Couldn’t finish deleting. Try again.")).toBeVisible();
+  await expect(actions).toBeFocused();
+  failDelete = false;
+  expect(sql(`select status from public.files where id = '${id}'`)).toBe("ready");
+  // A code older than 10 minutes: Delete asks for a new one; cancelling it gives the focus back to the row too.
+  await ageStepUp(context, 700);
+  await gotoFiles(page, lead);
+  await chooseDelete();
+  await confirm.getByRole("button", { name: "Delete" }).focus();
+  await page.keyboard.press("Enter");
+  const stepUp = page.getByRole("dialog", { name: "Confirm it’s you" });
+  await expect(stepUp.getByLabel("6-digit code")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(stepUp).toHaveCount(0);
+  await expect(actions).toBeFocused();
+  expect(sql(`select status from public.files where id = '${id}'`)).toBe("ready");
+  expect(errors.filter((e) => !/Failed to fetch|Failed to load resource|net::ERR_FAILED/.test(e))).toEqual([]);
   await context.close();
 });
 
