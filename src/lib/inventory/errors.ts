@@ -55,6 +55,11 @@ export const STOCK_HINTS = [
   "request_status",
   "request_mismatch",
   "document",
+  "label",
+  "expiry",
+  "revoked",
+  "sharing",
+  "bounds",
 ] as const;
 export type StockHint = (typeof STOCK_HINTS)[number];
 

@@ -11,6 +11,13 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
+const shareHeaders = [
+  { key: "Referrer-Policy", value: "no-referrer" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  { key: "Cache-Control", value: "no-store" },
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
@@ -23,7 +30,11 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // The client stock link (design 8.6): the last matching entry wins, so these replace the Referrer-Policy above.
+      ...["/s/:path*", "/s", "/api/share/:path*"].map((source) => ({ source, headers: shareHeaders })),
+    ];
   },
 };
 

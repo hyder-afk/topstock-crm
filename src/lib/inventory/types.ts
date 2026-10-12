@@ -149,6 +149,8 @@ export type InventorySettings = {
   warehouse_name: string;
   transit_name: string;
   can_edit: boolean;
+  /** 6e: the client link kill switch. */
+  sharing_enabled: boolean;
 };
 
 /** The levels a stock RPC returns after a change (post_stock_movement). */

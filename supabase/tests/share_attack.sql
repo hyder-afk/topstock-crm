@@ -753,8 +753,8 @@ begin
   perform pg_temp.expect_error('select token_hash from private.share_links', '42501');
   perform pg_temp.expect_error('select * from private.share_links', '42501');
   -- share_link_client_token_hash_ignored: a client cannot even name the column.
-  perform pg_temp.expect_error($q$insert into private.share_links (company_id, language, token_hash, token_hint)
-    values ('5e000000-0000-0000-0000-0000000000a0', 'en', sha256('x'), 'xxxx')$q$, '42501');
+  perform pg_temp.expect_error($q$insert into private.share_links (company_id, language, token_hash)
+    values ('5e000000-0000-0000-0000-0000000000a0', 'en', sha256('x'))$q$, '42501');
   perform pg_temp.expect_error($q$insert into private.share_links (company_id, language, created_by)
     values ('5e000000-0000-0000-0000-0000000000a0', 'en', '00000000-0000-0000-0000-0000000000b1')$q$, '42501');
   -- share_link_counters_not_writable
@@ -790,6 +790,23 @@ begin
   if not exists (select 1 from public.audit_log a where a.table_name = 'share_links' and a.action = 'insert') then
     raise exception 'FAIL: link creation is not audited';
   end if;
+end $$;
+
+-- The guard makes the token even for a row inserted past the grants (a maintenance session acting for an admin): a
+-- planted hash is replaced.
+do $$
+declare
+  v_id uuid;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  insert into private.share_links (company_id, language, token_hash, token_hint, expires_at)
+  values ('5e000000-0000-0000-0000-0000000000f1', 'en', sha256(convert_to('planted', 'UTF8')), 'xxxx', now() + interval '2 days')
+  returning id into v_id;
+  if (select token_hash = sha256(convert_to('planted', 'UTF8')) or token_hint = 'xxxx' from private.share_links where id = v_id) then
+    raise exception 'FAIL: share_link_client_token_hash_ignored (the guard kept a planted hash)';
+  end if;
+  delete from private.share_links where id = v_id;
+  perform set_config('request.jwt.claims', '', false);
 end $$;
 
 -- 9. Team rules: create_link_needs_editor_and_fresh_code, revoke_is_permanent, expiry_bounds_and_extension_needs_code,

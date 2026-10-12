@@ -5,7 +5,7 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|day6c|day6d|all] [numbers...]  (about 40 s per mutation,
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|day6c|day6d|day6e|all] [numbers...]  (about 40 s per mutation,
 70 s once the Day 6a stock tests run; default: all
 sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
 when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
@@ -30,11 +30,13 @@ MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
 MIG_6A = ROOT / "supabase/migrations/20261016090000_stock_engine.sql"
 MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
 MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
+MIG_6E = ROOT / "supabase/migrations/20261020090000_client_share.sql"
 # Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
 # "untouched" rule; Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
-# Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 4a).
+# Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 4a); Day 6e the
+# request guards (6d), the settings guard (6a), the settings read (6b) and the untouched rule again.
 # An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
-REDEFINERS = [MIG_6A, MIG_6C, MIG_6D]
+REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E]
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -979,9 +981,100 @@ MUTATIONS_6D = [
 ]
 
 
+MUTATIONS_6E = [
+    ("share_reader may read the minimum price [design 37]",
+     [("grant select (id, org_id, number, name, category, pieces_per_carton, price_max, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;",
+       "grant select (id, org_id, number, name, category, pieces_per_carton, price_max, price_min, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;")]),
+    ("share_items sends the minimum price in place of the max (and share_reader may read it) [design 38]",
+     [("    from (select p.id, p.number, p.name, p.category, p.price_max, p.pieces_per_carton as ppc,",
+       "    from (select p.id, p.number, p.name, p.category, p.price_min as price_max, p.pieces_per_carton as ppc,"),
+      ("grant select (id, org_id, number, name, category, pieces_per_carton, price_max, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;",
+       "grant select (id, org_id, number, name, category, pieces_per_carton, price_max, price_min, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;")]),
+    ("share_view compares the plain token instead of its hash [design 39]",
+     [("    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null and l.expires_at > now();\n  if not found then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  perform set_config('topstock.share_link', v_link.id::text, true);\n  perform set_config('topstock.share_org', v_link.org_id::text, true);\n  select s.sharing_enabled into v_on from private.inventory_settings s where s.org_id = v_link.org_id;\n  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view')",
+       "    from private.share_links l\n   where l.token_hash = convert_to(p_token, 'UTF8') and l.revoked_at is null and l.expires_at > now();\n  if not found then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  perform set_config('topstock.share_link', v_link.id::text, true);\n  perform set_config('topstock.share_org', v_link.org_id::text, true);\n  select s.sharing_enabled into v_on from private.inventory_settings s where s.org_id = v_link.org_id;\n  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view')")]),
+    ("share_view works for a revoked link [design 40]",
+     [("  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null and l.expires_at > now();",
+       "  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.expires_at > now();")]),
+    ("share_view works for an expired link [design 40]",
+     [("  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null and l.expires_at > now();",
+       "  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null;")]),
+    ("share_view ignores the kill switch [design 40]",
+     [("  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view') then",
+       "  if false then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view') then")]),
+    ("share_request ignores the kill switch [design 40]",
+     [("  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not v_link.allow_requests then",
+       "  if false then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not v_link.allow_requests then")]),
+    ("share_view without its rate limit [design 41]",
+     [("  if not private.share_take(v_link.id, 'view') then", "  if false then")]),
+    ("share_request without its rate limits [design 41]",
+     [("  if not private.share_take(v_link.id, 'request') or not private.share_take(v_link.org_id, 'request') then",
+       "  if false then")]),
+    ("share_take writes a count when it refuses [design 42]",
+     [("                     or (r.span = 'd' and r.bucket = b_d and r.n >= lim_d))) then\n    return false;",
+       "                     or (r.span = 'd' and r.bucket = b_d and r.n >= lim_d))) then\n    update private.share_rate r set n = r.n + 1 where r.scope_id = p_scope and r.kind = p_kind;\n    return false;")]),
+    ("share_items lists sold-out products [design 43]",
+     [("           where p.org_id = p_org and p.archived_at is null and p.share_visible\n             and (coalesce(w.on_hand - w.reserved, 0) > 0\n                  or (p_with_transit and coalesce(t.on_hand - t.reserved, 0) > 0))\n",
+       "           where p.org_id = p_org and p.archived_at is null and p.share_visible\n")]),
+    ("share_items cuts at 2,000 before the in-stock filter [design 44]",
+     [("           where p.org_id = p_org and p.archived_at is null and p.share_visible\n             and (coalesce(w.on_hand - w.reserved, 0) > 0\n                  or (p_with_transit and coalesce(t.on_hand - t.reserved, 0) > 0))\n",
+       "           where p.org_id = p_org and p.archived_at is null and p.share_visible\n"),
+      ("           limit 2000) i\n$$;", "           limit 2000) i\n   where i.wh > 0 or i.tr > 0\n$$;")]),
+    ("authenticated may call the two anon functions [design 45]",
+     [("grant execute on function public.share_view(text, text), public.share_request(text, jsonb) to anon;",
+       "grant execute on function public.share_view(text, text), public.share_request(text, jsonb) to anon, authenticated;")]),
+    ("share_view made STABLE (a GET could call it) [design 46]",
+     [("create function public.share_view(p_token text, p_known_version text default null) returns jsonb\nlanguage plpgsql volatile security definer",
+       "create function public.share_view(p_token text, p_known_version text default null) returns jsonb\nlanguage plpgsql stable security definer")]),
+    ("The link guard keeps a token_hash the client sent [design 47]",
+     [("    new.token_hash := sha256(convert_to(v_token, 'UTF8'));\n    new.token_hint := right(v_token, 4);",
+       "    new.token_hash := coalesce(new.token_hash, sha256(convert_to(v_token, 'UTF8')));\n    new.token_hint := coalesce(new.token_hint, right(v_token, 4));")]),
+    ("authenticated may insert token_hash (the guard still replaces it)",
+     [("      insert (company_id, label, language, show_in_transit, allow_requests, expires_at),\n      update (label, language, show_in_transit, allow_requests, expires_at, revoked_at)\n  on private.share_links to authenticated;",
+       "      insert (company_id, label, language, show_in_transit, allow_requests, expires_at, token_hash),\n      update (label, language, show_in_transit, allow_requests, expires_at, revoked_at)\n  on private.share_links to authenticated;")]),
+    ("A link without a fresh code",
+     [("  if tg_op = 'INSERT' then\n    if not private.has_recent_aal2(600) then\n      raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';\n    end if;\n    v_token",
+       "  if tg_op = 'INSERT' then\n    v_token"),
+      ("  if not private.has_recent_aal2(600) then\n    raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';\n  end if;\n  if not exists (select 1 from public.companies c where c.id = p_company) then",
+       "  if not exists (select 1 from public.companies c where c.id = p_company) then")]),
+    ("A revoked link may be brought back",
+     [("  if old.revoked_at is not null then\n    raise exception 'this link is revoked' using errcode = '22023', hint = 'revoked';\n  end if;\n", "")]),
+    ("A rep may make a link for any lead (insert policy without the editor check)",
+     [("  and exists (select 1 from public.companies c\n               where c.id = share_links.company_id and c.org_id = share_links.org_id\n                 and ((select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()))));",
+       "  and exists (select 1 from public.companies c\n               where c.id = share_links.company_id and c.org_id = share_links.org_id));")]),
+    ("No cap on active links a lead",
+     [("       where l.company_id = new.company_id and l.revoked_at is null and l.expires_at > now()) > 3",
+       "       where l.company_id = new.company_id and l.revoked_at is null and l.expires_at > now()) > 300")]),
+    ("A manager may switch sharing on (guard)",
+     [("    if new.sharing_enabled and not (private.is_admin() and private.has_recent_aal2(600)) then",
+       "    if new.sharing_enabled and not (private.is_manager_or_admin() and private.has_recent_aal2(600)) then")]),
+    ("share_reader's links policy without the token hash (any link readable)",
+     [("create policy share_links_reader on private.share_links for select to share_reader\n  using (token_hash = (select private.share_token_hash()));",
+       "create policy share_links_reader on private.share_links for select to share_reader\n  using (true);")]),
+    ("share_reader reads every organisation's products (policy without the org)",
+     [("create policy products_reader on public.products for select to share_reader\n  using (org_id = (select private.share_org()));",
+       "create policy products_reader on public.products for select to share_reader\n  using (true);")]),
+    ("A client request is not checked against the visible products",
+     [("  if exists (select 1 from jsonb_array_elements(p_payload -> 'lines') e\n              where e ->> 'product_id' is not null\n                and not exists (select 1 from jsonb_array_elements(v_items) i where i ->> 0 = e ->> 'product_id')) then\n    return '{\"status\":\"invalid\"}'::jsonb;\n  end if;\n", ""),
+      ("    if not found or (current_user = 'share_reader' and (p.archived_at is not null or not p.share_visible)) then",
+       "    if not found then")]),
+    ("A client request retried with the same key is written twice",
+     [("  if exists (select 1 from private.stock_requests r where r.share_link_id = v_link.id and r.idempotency_key = v_key) then\n    return jsonb_build_object('status', 'received', 'signature', v_link.signature);\n  end if;\n", ""),
+      ("create unique index stock_requests_idem_idx on private.stock_requests (share_link_id, idempotency_key)\n  where share_link_id is not null;", "")]),
+    ("No limit on new requests a link",
+     [("  if v_n >= 10 then\n    return '{\"status\":\"too_many_open\"}'::jsonb;", "  if v_n >= 1000 then\n    return '{\"status\":\"too_many_open\"}'::jsonb;")]),
+    ("The audit keeps the token hash",
+     [("  hidden constant text[] := array['token_hash', 'open_count', 'last_opened_at', 'request_count', 'last_request_at',\n                                  'updated_at'];",
+       "  hidden constant text[] := array['open_count', 'last_opened_at', 'request_count', 'last_request_at',\n                                  'updated_at'];")]),
+    ("A client request opens no task",
+     [("  perform private.insert_system_task(new.org_id, v_assignee, 'request', null, new.company_id, null, new.id);\n", "")]),
+    ("The import undo misses client links (a lead with a link counts as untouched)",
+     [("     and not exists (select 1 from private.share_links s where s.company_id = c.id)\n", "")]),
+]
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
         "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
-        "day6d": (MIG_6D, MUTATIONS_6D)}
+        "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E)}
 
 
 def redefinitions(text: str) -> list:

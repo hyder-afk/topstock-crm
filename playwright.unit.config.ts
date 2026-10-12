@@ -10,4 +10,6 @@ export default defineConfig({
   retries: 0,
   timeout: 60_000,
   reporter: process.env.CI ? "github" : "list",
+  // Its own output folder: the default (test-results) would wipe the e2e screenshots kept there between runs.
+  outputDir: "test-results/unit",
 });
