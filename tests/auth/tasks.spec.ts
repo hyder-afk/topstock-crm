@@ -174,8 +174,7 @@ test("karachi_today_boundary: Today and Tomorrow follow the profile's zone, not 
   await expect(row(page, "Karachi early call")).toContainText("Tomorrow 02:00");
   await tab(page, /^Today/).click();
   await expect(row(page, "Karachi all-day")).toContainText("Today");
-  // Back to Paris (the More page's time zone form): the same timed task is 23:00 Paris time on Karachi's date, so it is
-  // Paris's today, unless Paris is still on the day before (19:00–22:00 UTC in summer, when Karachi has moved on).
+  // Back to Paris (the More page's time zone form).
   await settled(page);
   await page.goto("/more");
   await appReady(page);
@@ -184,11 +183,24 @@ test("karachi_today_boundary: Today and Tomorrow follow the profile's zone, not 
   await page.getByRole("button", { name: "Save time zone" }).click();
   await expect(page.getByText("Time zone saved.")).toBeVisible();
   expect(sql(`select timezone from public.profiles where id = '${userId(adminEmail)}'`)).toBe("Europe/Paris");
-  const parisIsKarachisDay = todayIn("Europe/Paris") === todayIn("Asia/Karachi");
-  await openTasks(page, parisIsKarachisDay ? "" : "?tab=upcoming");
-  await expect(row(page, "Karachi early call")).toContainText(parisIsKarachisDay ? "Today 23:00" : "Tomorrow 23:00");
-  // The database refuses a zone it does not know (the action answers "invalid", nothing changes).
+  // A zone nobody knows is refused (a made-up option added to the list in the page): an error, and nothing changes.
+  await zone.evaluate((el) => {
+    const option = document.createElement("option");
+    option.value = "Mars/Olympus_Mons";
+    option.textContent = "Mars";
+    el.appendChild(option);
+  });
+  await zone.selectOption("Mars/Olympus_Mons");
+  await page.getByRole("button", { name: "Save time zone" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "time zone" })).toBeVisible();
   expect(sql(`select timezone from public.profiles where id = '${userId(adminEmail)}'`)).toBe("Europe/Paris");
+  // The same timed task in Paris: its time and day there worked out by the database (22:00 or 23:00 depending on
+  // daylight saving; Paris's today, or tomorrow while Paris is still on the day before Karachi's).
+  const parisTime = sql(`select to_char(timestamptz '${at}' at time zone 'Europe/Paris', 'HH24:MI')`);
+  const parisDays = sql(`select (timestamptz '${at}' at time zone 'Europe/Paris')::date - (now() at time zone 'Europe/Paris')::date`);
+  expect(["0", "1"]).toContain(parisDays);
+  await openTasks(page, parisDays === "0" ? "" : "?tab=upcoming");
+  await expect(row(page, "Karachi early call")).toContainText(`${parisDays === "0" ? "Today" : "Tomorrow"} ${parisTime}`);
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -302,5 +314,30 @@ test("keyboard_only: T, Enter, J/K, X, E, D, Backspace and Enter to the lead, th
     await expect(page.locator("main h1")).toHaveText("Comptoir Clavier");
   }
   expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("phone_lead_link_target: on a phone, a task's lead link is a 44 px tap target without making the row taller", async ({ browser }) => {
+  const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, country)
+                    select org_id, 'Tap Target Textiles', id, 'cold', '+33 6 00 00 00 44', 'FR' from public.profiles
+                    where id = '${userId(adminEmail)}' returning id`);
+  makeTask(adminEmail, `Phone tap task ${run}`, { date: todayIn("Europe/Paris") }, { company: lead });
+  const { context, page, errors } = await signedInPage(browser, adminState, { width: 390, baseURL: baseURL() });
+  await openTasks(page);
+  const link = row(page, `Phone tap task ${run}`).locator("a[data-task-lead]");
+  await expect(link).toBeVisible();
+  const box = await link.boundingBox();
+  if (!box) throw new Error("no lead link box");
+  // The link stays 24 px in the line (the row and its skeleton keep their height) ...
+  expect(box.height).toBeLessThanOrEqual(28);
+  // ... and a tap up to 10 px above or below it still lands on it: 44 px in all.
+  const hits = await page.evaluate(
+    ({ x, top, bottom }) =>
+      [top - 9, bottom + 9].map((y) => !!document.elementFromPoint(x, y)?.closest("a[data-task-lead]")),
+    { x: box.x + Math.min(box.width / 2, 20), top: box.y, bottom: box.y + box.height },
+  );
+  expect(hits).toEqual([true, true]);
+  expect(errors).toEqual([]);
+  await settled(page);
   await context.close();
 });

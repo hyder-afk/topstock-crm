@@ -151,7 +151,9 @@ export const TaskRow = memo(function TaskRow({
                 <Link
                   href={`/leads/${task.company_id}`}
                   data-task-lead
-                  className="inline-flex min-h-6 max-w-full items-center gap-1 text-foreground underline-offset-4 hover:underline"
+                  // 24 px tall in the line; on phones the tap area reaches 44 px (10 px above and below, over text only),
+                  // so the row keeps its height and matches its skeleton.
+                  className="relative inline-flex min-h-6 max-w-full items-center gap-1 text-foreground underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-2.5 max-sm:before:content-['']"
                 >
                   <Building2 aria-hidden="true" strokeWidth={1.75} className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate">{task.company_name}</span>
