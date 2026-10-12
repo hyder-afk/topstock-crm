@@ -1104,8 +1104,10 @@ begin
     select c.lead_status, c.next_action_at into v_lead from public.companies c where c.id = v_deal.company_id for update;
     v_lead_editable := found;
   end if;
-  select d.company_id, d.version, d.status, s.key as stage into v_deal
-    from public.deals d join public.pipeline_stages s on s.id = d.stage_id where d.id = p_id for no key update of d;
+  -- (No join here: under READ COMMITTED a row changed by a concurrent move is re-checked on its new version against the
+  -- joined stage row read before the wait, which would drop it. The key is read after the lock.)
+  select d.company_id, d.version, d.status, private.stage_key(d.stage_id) as stage into v_deal
+    from public.deals d where d.id = p_id for no key update;
   if not found then
     raise exception 'deal not found' using errcode = 'P0002';
   end if;

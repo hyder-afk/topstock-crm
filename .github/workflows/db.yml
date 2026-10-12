@@ -1,11 +1,14 @@
 # Database checks on every PR: apply all migrations to the real Supabase Postgres (local, throwaway, no keys),
 # run the two-user RLS attack test, the lead import attack test and its two-session test, the activity and task
 # hardening attack test and its two-session test, the lead page attack and concurrency tests, the work queue attack and
-# concurrency tests, the Supabase advisors (splinter) and lint the SQL functions.
+# concurrency tests, the deals attack test and its two- and three-session test (Day 5a), the Supabase advisors
+# (splinter) and lint the SQL functions. On pull
+# requests, first check that every migration the PR adds sorts after main's newest (Day 5 D35: deploy-dev-db pushes
+# without --include-all).
 name: db
 on:
   pull_request:
-    paths: ["supabase/**", ".github/workflows/db.yml", "package.json", "package-lock.json"]
+    paths: ["supabase/**", ".github/workflows/db.yml", "scripts/check-migration-order.sh", "package.json", "package-lock.json"]
   push:
     branches: [main]
     paths: ["supabase/**"]
@@ -19,6 +22,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0  # the migration order check compares with the base branch
+      - name: Migration order (new migrations sort after the base branch's newest, D35)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/check-migration-order.sh "origin/$BASE_REF"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -44,6 +53,10 @@ jobs:
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/queue_attack.sql
       - name: Work queue under concurrency (three sessions)
         run: bash supabase/tests/queue_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Deals attack test (Day 5a pipeline database)
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/deals_attack.sql
+      - name: Deals under concurrency (two and three sessions)
+        run: bash supabase/tests/deal_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions

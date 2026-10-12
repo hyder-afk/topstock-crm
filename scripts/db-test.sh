@@ -26,4 +26,6 @@ $PSQL -f "$ROOT/supabase/tests/outcome_attack.sql"
 bash "$ROOT/supabase/tests/outcome_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 $PSQL -f "$ROOT/supabase/tests/queue_attack.sql"
 bash "$ROOT/supabase/tests/queue_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/deals_attack.sql"
+bash "$ROOT/supabase/tests/deal_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p 54329 -U postgres -d postgres
