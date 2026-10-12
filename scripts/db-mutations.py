@@ -49,6 +49,8 @@ TASK_GUARD_5A = Region(MIG_5A, "create or replace function private.task_guard()"
 AUDIT_ROW_5A = Region(MIG_5A, "create or replace function private.audit_row()")
 DEAL_GUARD = Region(MIG_5A, "create function private.deal_guard()")
 DEAL_HISTORY = Region(MIG_5A, "create function private.deal_history()")
+OPEN_FLOOD = Region(MIG_5A, "create function private.deal_open_flood()")
+MOVE_FLOOD = Region(MIG_5A, "create function private.deal_move_flood()")
 CANDIDATE = Region(MIG_5A, "create function private.deal_undo_candidate(")
 MOVE_DEAL = Region(MIG_5A, "create function public.move_deal(")
 OPEN_DEAL = Region(MIG_5A, "create function public.open_deal(")
@@ -794,10 +796,10 @@ MUTATIONS_5A = [
        "         set lead_status = v_move.prev_lead_status,"),
       (MOVE_DEAL, "       where c.id = v_deal.company_id\n         and (c.lead_status = v_move.new_lead_status\n              or (v_move.new_next_action_at is distinct from v_move.prev_next_action_at\n                  and c.next_action_at is not distinct from v_move.new_next_action_at));",
        "       where c.id = v_deal.company_id;")]),
-    ("Guard: no open flood guard",
-     [(DEAL_GUARD, "                               limit 30) recent) >= 30 then", "                               limit 30) recent) >= 30 and false then")]),
-    ("Guard: no stage-change flood guard",
-     [(DEAL_GUARD, "                               limit 120) recent) >= 120 then", "                               limit 120) recent) >= 120 and false then")]),
+    ("Guard: no open flood guard (since verifier round 2 the statement-level recount answers the same rate_limited)",
+     [(DEAL_GUARD, "                               limit 30) recent) >= 30 then", "                               limit 30) recent) >= 30 and false then")], SURVIVES),
+    ("Guard: no stage-change flood guard (since verifier round 2 the statement-level recount answers the same rate_limited)",
+     [(DEAL_GUARD, "                               limit 120) recent) >= 120 then", "                               limit 120) recent) >= 120 and false then")], SURVIVES),
     ("Deals: request id index not unique",
      [("create unique index deals_creator_request_idx", "create index deals_creator_request_idx")]),
     ("Column keyset: <= instead of < (a deal repeated across pages)",
@@ -877,9 +879,9 @@ MUTATIONS_5A = [
        "        raise exception 'unknown way of shipping' using errcode = '22023', hint = 'fulfilment';\n      end if;\n      v_block := null;")]),
     ("delete_deal: no Day 6 block check",
      [(DELETE_DEAL, "  v_block := private.deal_closing_blocked(p_id);", "  v_block := null;")]),
-    ("Guard: the open flood guard counts live deals only (open and delete in turn is not counted)",
+    ("Guard: the open flood guard counts live deals only (since verifier round 2 the statement-level recount counts the open records)",
      [(DEAL_GUARD, "    if (select count(*) from (select 1 from private.deal_opens o\n                               where o.user_id = caller and o.created_at > now() - interval '1 hour'",
-       "    if (select count(*) from (select 1 from public.deals o\n                               where o.created_by = caller and o.created_at > now() - interval '1 hour'")]),
+       "    if (select count(*) from (select 1 from public.deals o\n                               where o.created_by = caller and o.created_at > now() - interval '1 hour'")], SURVIVES),
     ("History trigger: no open record written",
      [(DEAL_HISTORY, "      insert into private.deal_opens (user_id) values ((select auth.uid()));\n", "")]),
     ("Open records: insert granted to clients",
@@ -897,6 +899,27 @@ MUTATIONS_5A = [
     ("delete_deal: the creator's window ignores the call's undo record (a refused delete answers P0002)",
      [(DELETE_DEAL, "                      and (v_deal.source_activity_id is null  -- the policy's undo-record condition (verifier finding 8)\n                           or not exists (select 1 from private.activity_undo u\n                                           where u.activity_id = v_deal.source_activity_id));",
        ";")]),
+    # Verifier round 2 (one statement with many rows: the limits are counted again after the statement)
+    ("Open flood: no statement-level recount (a bulk insert passes the 30-an-hour limit)",
+     [(OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
+    ("Open flood: the statement-level recount allows 31 an hour",
+     [(OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 32) recent) > 31 then")]),
+    ("Stage flood: no statement-level recount (a bulk PATCH passes the 120-a-minute limit)",
+     [(MOVE_FLOOD, "                             limit 121) recent) > 120 then", "                             limit 121) recent) > 120 and false then")]),
+    ("Stage flood: the statement-level recount is INVOKER (history on a deal handed on is not counted)",
+     [(MOVE_FLOOD, "language plpgsql security definer set search_path = '' as $$", "language plpgsql security invoker set search_path = '' as $$")]),
+    ("Stage flood: the statement-level recount runs for edits that change no stage",
+     [(MOVE_FLOOD, "\n     or not exists (select 1 from new_deals n join old_deals o on o.id = n.id where n.stage_id is distinct from o.stage_id) then", " then")]),
+    ("Open flood: no guard and no statement-level recount (both layers of row 27)",
+     [(DEAL_GUARD, "                               limit 30) recent) >= 30 then", "                               limit 30) recent) >= 30 and false then"),
+      (OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
+    ("Stage flood: no guard and no statement-level recount (both layers of row 28)",
+     [(DEAL_GUARD, "                               limit 120) recent) >= 120 then", "                               limit 120) recent) >= 120 and false then"),
+      (MOVE_FLOOD, "                             limit 121) recent) > 120 then", "                             limit 121) recent) > 120 and false then")]),
+    ("Open flood: the guard counts live deals only, and no statement-level recount (both layers of row 58)",
+     [(DEAL_GUARD, "    if (select count(*) from (select 1 from private.deal_opens o\n                               where o.user_id = caller and o.created_at > now() - interval '1 hour'",
+       "    if (select count(*) from (select 1 from public.deals o\n                               where o.created_by = caller and o.created_at > now() - interval '1 hour'"),
+      (OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
 ]
 
 
