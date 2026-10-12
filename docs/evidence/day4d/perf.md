@@ -29,6 +29,24 @@ Design 8.6, row P11: `begin_file_upload` / `finish_file_upload` with stand-in ob
 
 All within budget.
 
+## Verifier round 2 (12 Oct 2026, head 90c35b0)
+
+The stale-upload clean-up moved out of `begin_file_upload` into its own RPC, `take_stale_uploads` (finding 4), called
+just before it. The round now times the two calls separately (`perf_files.sql`), same method and seed, the same
+reduced copy of `db-perf.sh` on port 54371:
+
+| Run | `take_stale_uploads` | `begin_file_upload` | `finish_file_upload` | Budget |
+|---|---|---|---|---|
+| 1 | 0.42 ms | 6.95 ms | 3.25 ms | 10 ms each |
+| 2 | 0.54 ms | 7.60 ms | 3.73 ms | 10 ms each |
+| 3 | 0.45 ms | 7.76 ms | 4.07 ms | 10 ms each |
+
+All within budget. A first attempt that timed both calls together, while other worktrees ran browser tests on the same
+machine (load average about 4), gave 8.2 to 10.7 ms for the pair; it was rerun with separate timings once the machine
+was quieter. Round-6 plan of `take_stale_uploads`: the update over the caller's pending rows (0.4 ms, none to take).
+`finish_file_upload` now also records the object's version: the same index probe on `(bucket_id, name)`.
+`open_file` (now joined to `storage.objects`) is not in P11.
+
 ## What changed to get there
 
 The first measurement (three runs) was **22.0 to 29.2 ms** for `begin_file_upload` (finish 3.5 to 4.7 ms). The plans

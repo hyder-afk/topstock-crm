@@ -19,7 +19,8 @@ files; the places that redefine a merged definition are listed under "Rebase poi
   counted from the audit log so deleting does not reset it) and anything past the team's 800 MiB, counted from the real
   stored bytes plus the declared sizes of uploads still waiting for their bytes (`quota`). `file_guard_update` (INVOKER):
   only the status changes; pending to ready needs the stored object's real size and type to equal the declared
-  (`object_mismatch`); ready to deleting needs a code from the last 10 minutes (`step_up`); nothing moves back.
+  (`object_mismatch`) and records that object's `version` in `files.object_version` (no client grant; verifier round 2);
+  ready to deleting needs a code from the last 10 minutes (`step_up`); nothing moves back.
   `file_guard_delete` (INVOKER): only a `deleting` row whose bytes are gone.
 - Policies (D11, as today): the uploader sees their files in every state; once ready, the lead's owner, managers and
   admins too; anyone in the organisation may add to any lead; update and delete for the uploader, lead owner, managers
@@ -28,17 +29,20 @@ files; the places that redefine a merged definition are listed under "Rebase poi
   checking the organisation's folder and the matching file row (read under the caller's own RLS). Created only when the
   storage schema exists (spike S1); `files_attack.sql` fails loudly otherwise.
 - `audit_log.action` gains `file_access` (`private.audit_file_access`, private, ready files of the caller's
-  organisation only); the import "untouched" rule keeps leads with a file; `config.toml`: S3 protocol off.
-- RPCs (SECURITY INVOKER, static SQL, revoked from anon): `begin_file_upload` (cleans up the caller's uploads left
-  pending over 15 minutes and hands back their ids and paths), `get_pending_upload`, `finish_file_upload`,
-  `abort_file_upload`, `list_lead_files` (keyset), `open_file` (writes the audit row), `begin_file_delete`,
+  organisation only); the import "untouched" rule keeps leads with a file of any state and any uploader
+  (`private.lead_has_files`, DEFINER, own organisation only; verifier round 2); `config.toml`: S3 protocol off.
+- RPCs (SECURITY INVOKER, static SQL, revoked from anon): `take_stale_uploads` (the caller's uploads left pending over
+  15 minutes become `deleting`; their ids and paths come back for clean-up; its own call before `begin_file_upload`
+  since verifier round 2), `begin_file_upload`, `get_pending_upload`, `finish_file_upload`,
+  `abort_file_upload`, `list_lead_files` (keyset), `open_file` (only while the stored object is the one checked at
+  finish: same version, size and type; writes the audit row), `begin_file_delete`,
   `finish_file_delete`, `file_usage` (managers and admins).
 - Local runners: `supabase/tests/storage_shim.sql` (the storage tables with RLS on, Supabase's grants, the unique
   `(bucket_id, name)` index, `storage.foldername`), included by `shim.sql` and applied by `scripts/local-auth/start.sh`.
 
 **Tests** — `supabase/tests/files_attack.sql` (threats 1, 2, 7, 8, 20 to 25, 30, 31) and `files_concurrency.sh`
 (`quota_race`, `pending_race`), in `scripts/db-test.sh` and `db.yml` (storage-api on); `rls_attack.sql` and
-`import_attack.sql` fixtures moved to the new shape; 31 Day 4d mutation rows; P11 in `supabase/tests/perf_files.sql`.
+`import_attack.sql` fixtures moved to the new shape; 44 Day 4d mutation rows (31 before verifier round 2); P11 in `supabase/tests/perf_files.sql`.
 
 **App**
 
@@ -108,6 +112,34 @@ the Day 6a checkout, nothing of 6a's running), restarted for this worktree, rele
 | gitleaks (`origin/main..HEAD`) | no leaks found, exit 0 |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
 | WebKit e2e, Semgrep, storage-api e2e and spikes S1 to S5 | CI only |
+
+## Verifier round 2 (12 Oct 2026): findings 1 to 6 (database and security) fixed
+
+Findings from `day4d-findings.json` (n = 1 to 6; the skeptic confirmed each). Code commits: a919f7c (finding 2),
+ac9a895 (database and SQL tests: 1, 3, 4, 5, 6), f8c0cdc (CI e2e for 1, local seed objects), 90c35b0 (mutation rows).
+
+| # | Finding | What changed | How it was checked |
+|---|---|---|---|
+| 1 | Should fix: a signed upload link made with `x-upsert: true` while the file is pending can overwrite it after it is ready (storage-api writes it as its own superuser; nothing noticed) | **Bound to the exact object**: `files.object_version` (server-set by `file_guard_update` at pending to ready from `storage.objects.version`; no client grant; the insert guard clears it; the update guard refuses a change). `open_file` joins `storage.objects` and answers "not found" (the route's `/files/unavailable`, no audit row) unless the version, the size and the type are still those checked at finish, or when the object is gone. storage-api writes a new random version for every upload (`uploader.ts` `prepareUpload`: `randomUUID()`), so an upsert overwrite always changes it. **Exposure**: refusing upsert at sign time is not possible by policy (the sign-time probe is `INSERT ... ON CONFLICT DO UPDATE` on a path with no object yet, which an INSERT policy passes; the skeptic showed this on a throwaway cluster), and a trigger or grant change on `storage.objects` is a change to the storage schema, which Supabase says to treat as read-only (docs "The Storage Schema"); so the overwrite still lands, but the file can no longer be opened, by anyone. The app itself never asks for upsert (`x-upsert: false`) | `files_attack` 2 `object_version_bound_at_finish`; 3 (a client cannot set it: grant, insert guard, update guard alone); **8b** `open_file_object_changed_refused`: same size and type with a new version, other size, other type, each refused for the uploader and an admin, no `file_access` row; put back, it opens for both; object deleted, refused. CI e2e `signed_upsert_overwrite_after_ready_refused` (real storage-api: link signed with `x-upsert: true` while pending, genuine PDF sent through it and finished, opens; other bytes of the same size sent to the link; then `/files/unavailable`, or, if storage-api refused the overwrite, the version is unchanged and it still opens). Mutation rows 32 to 36 |
+| 2 | Nit (security): the macro check walked only as many zip entries as the end record claimed | `zipEntryNames` refuses a directory whose walk does not end exactly at its end (`at === end`), a split-disk count field, and a disk entry count that differs from the total | Unit `sniff_zip_count_understated` (4 entries, count says 3, `word/vbaProject.bin` last): **fails on the old `sniff.ts` (1 failed, 7 passed), passes now**; hand mutation M15 |
+| 3 | Should fix: import undo failed (23503, the chunk rolled back) when another user had a pending upload on an imported lead (the admin's RLS hides it) | `private.lead_import_untouched` calls `private.lead_has_files(c.id)` (DEFINER, `search_path = ''`, own organisation only, revoked from public and anon). The lead is kept, as for any lead with a file. `rollback_lead_import` already locks the candidates first, so an upload begun during the undo waits or is seen by the second statement | `files_attack` 12 `import_undo_keeps_lead_with_others_pending_file`: rep g1 begins an upload on lead Three; the admin cannot see it; preview `{tagged 3, removable 1, kept 2}`; the undo succeeds (no exception) and keeps One and Three; another organisation's admin gets `false` from the helper. Mutation rows 37, 38 |
+| 4 | Should fix: the stale-upload sweep ran in `begin_file_upload`'s transaction, so a quota refusal (caused by the stale bytes) undid it | New RPC `take_stale_uploads()` (INVOKER, two-factor, the caller's own rows over 15 minutes, at most 20). `beginUpload` calls it, removes the bytes and rows (`clearDeleting`), then calls `begin_file_upload`, which no longer sweeps. A row left `deleting` is listed to its uploader and admins with Retry | `files_attack` 5 (begin no longer sweeps; another person gets nothing; the caller gets the row once) and 11 `stale_sweep_survives_refusal`: an abandoned 9 MiB upload fills the space, 4 MiB refused; `take_stale_uploads` hands it back; a second refusal leaves it `deleting`; bytes removed and row finished, 4 MiB fits. Mutation row 26 |
+| 5 | Nit: the anon and aal1 read probes ran before any object existed, and with a rep who could see nothing anyway | The probes moved to section **6b**, after two ready files with objects exist: anon reads 0 objects; the admin at aal2 sees both files and objects (control), at aal1 0 objects, 0 file rows, and `open_file` 42501 | Mutation rows 39 (files `require_mfa` reads opened: caught), 40 (the select policy's two-factor check made always true: documented two-layer row, the files row it needs stays hidden at aal1), 41 (both: caught by the objects probe) |
+| 6 | Nit: three limit clauses had no test or mutation | `files_attack` 11: `old_pending_not_counted` (5 direct pending rows of h1 aged 16 minutes do not block a new upload), `stored_upload_counted_once` (9 MiB declared and stored, 2 MiB still fits), `old_reservation_expires` (another person's 10 MiB upload begun 16 minutes ago with no bytes reserves nothing) | Mutation rows 42, 43, 44, each removing one clause: caught |
+
+Check results on **90c35b0** (the last code commit), 12 Oct 2026:
+
+| Check | Result |
+|---|---|
+| `db-test.sh` (a copy on port 54371) | all 9 suites pass; advisors 0 ERROR; WARN `set_user_role` (accepted since Day 1); INFO `unindexed_foreign_keys` 2, `unused_index` 3 (was 2: `files_pending_idx` is no longer chosen on the small test tables now that the sweep is its own query; P11's 5,000-file plans use their own indexes); exit 0. The committed head before this round, run the same way: same suites, `unused_index` 2 |
+| Mutations (`mutations.md`) | Day 4d **42 of 44 caught, 2 documented two-layer rows (29, 40), 0 not as listed**; Day 3b rows 18 to 21 and Day 4a row 10 caught; every anchor of the four sets found once; run in a throwaway worktree under the scratchpad on port 54372, removed after |
+| Hand mutation M15 (app code) | the old `sniff.ts` restored: `file-sniff.spec.ts` 1 failed, 7 passed; restored |
+| Perf P11 (`perf.md`) | 3 runs: `take_stale_uploads` 0.42 / 0.54 / 0.45 ms, `begin_file_upload` 6.95 / 7.60 / 7.76 ms, `finish_file_upload` 3.25 / 3.73 / 4.07 ms (budget 10 ms each) |
+| `npm run test:unit` | 349 passed |
+| `npm run lint` / `npm run typecheck` | exit 0 (pre-commit hook on every commit; the 2 existing React Compiler warnings) |
+| E2E local, Chromium | `files.spec.ts` 7 passed, 5 skipped (CI only, including the new upsert test); `files-spikes.spec.ts` 4 skipped (CI only); `files-screens.spec.ts` 2 passed; `import.spec.ts` 11 passed (undo through the UI). Shared stack idle (no auth Playwright run; it served the Day 6a checkout), restarted for this worktree |
+| gitleaks, `npm audit --omit=dev` | gitleaks (`origin/main..HEAD`): no leaks found, exit 0; `npm audit --omit=dev`: found 0 vulnerabilities |
+| WebKit, Semgrep, storage-api e2e (including `signed_upsert_overwrite_after_ready_refused`) and the spikes | CI only |
 
 ## Check results (first round)
 
@@ -181,6 +213,12 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 15. A long name is cut at the end of its stem, the extension kept (`cleanFileName`), not in the middle.
 16. Verifier round 1: `finishUpload` answers `unavailable` (not `type_mismatch`) when the stored bytes cannot be read,
     and leaves the pending row; `failureToUpload` lives in `src/lib/files/upload.ts` (unit-tested).
+17. Verifier round 2: the stale-upload clean-up is its own RPC, `take_stale_uploads()`, which `beginUpload` calls (and
+    clears) before `begin_file_upload`; `begin_file_upload` returns `{id, path}` only (deviation 2's `stale` moved).
+18. Verifier round 2: `files.object_version` (not in the design) binds a ready row to the stored object it was checked
+    against; `open_file` joins `storage.objects` and refuses a changed version, size or type, or a missing object.
+19. Verifier round 2: `private.lead_has_files(uuid)` is a third DEFINER function (yes/no for a lead of the caller's
+    organisation), so import undo sees other people's pending uploads.
 
 ## Rebase points (4c not merged)
 
@@ -205,6 +243,10 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 
 ## Open risks
 
+- **Signed upsert overwrite (verifier round 2 finding 1)**: an overwrite through a signed upload link still lands in
+  Storage (no policy sees it); the file then answers "unavailable" to everyone, with no audit row and no sign in the
+  list. A narrow race remains: an overwrite between `open_file`'s check and the browser fetching the 60-second link is
+  served. Only the uploader can make such a link, only within 15 minutes of starting, and it lasts 2 hours.
 - **Storage-dependent paths are unproven until CI runs them**: the real upload (XHR to storage-api with the user's token),
   the check on open against real signed links, link expiry, real deletes, and the spike recordings. Built so each spike's
   fallback holds either way; the spike tests fail only where the code would break.
