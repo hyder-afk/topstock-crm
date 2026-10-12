@@ -29,6 +29,14 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     { keys: ["U"], label: t("undoLast") },
     { keys: [mod, "↩"], label: t("saveEntry") },
   ];
+  // Day 6b: Inventory.
+  const inventoryRows: { keys: string[]; label: string }[] = [
+    { keys: ["/"], label: t("stockSearch") },
+    { keys: ["J", "K"], label: t("stockRows") },
+    { keys: ["A"], label: t("stockArrived") },
+    { keys: ["E"], label: t("stockEdit") },
+    { keys: ["Esc"], label: t("stockClose") },
+  ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* A read-only list: focus starts on the panel, not on the close button (WAI-ARIA dialog pattern). Tab reaches
@@ -64,6 +72,19 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
         <h3 className="mt-5 text-sm font-bold text-muted-foreground">{t("leadPage")}</h3>
         <dl className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
           {leadRows.map((r) => (
+            <div key={r.label} className="contents">
+              <dt className="flex gap-1">
+                {r.keys.map((k) => (
+                  <Kbd key={k}>{k}</Kbd>
+                ))}
+              </dt>
+              <dd>{r.label}</dd>
+            </div>
+          ))}
+        </dl>
+        <h3 className="mt-5 text-sm font-bold text-muted-foreground">{t("inventory")}</h3>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+          {inventoryRows.map((r) => (
             <div key={r.label} className="contents">
               <dt className="flex gap-1">
                 {r.keys.map((k) => (

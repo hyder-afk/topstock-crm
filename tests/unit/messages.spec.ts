@@ -25,6 +25,8 @@ const namespaces = [
   "Errors",
   "Leads",
   "Shortcuts",
+  "Inventory",
+  "InventorySettings",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

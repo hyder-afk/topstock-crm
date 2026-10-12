@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { Keyboard, Languages, LogOut, Monitor, Moon, Search, Sun, Upload, type LucideIcon } from "lucide-react";
+import { History, Keyboard, Languages, LogOut, Monitor, Moon, Search, Settings, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -80,16 +80,30 @@ export function CommandPalette({
               ))}
             </Group>
 
-            {isAdmin ? (
-              <Group heading={t("actions")}>
-                <Item
-                  value="import leads csv spreadsheet importer prospects"
-                  icon={Upload}
-                  label={t("importLeads")}
-                  onSelect={() => run(() => router.push("/leads/import"))}
-                />
-              </Group>
-            ) : null}
+            <Group heading={t("actions")}>
+              <Item
+                value="stock movements inventory log history mouvements"
+                icon={History}
+                label={t("stockMovements")}
+                onSelect={() => run(() => router.push("/inventory?tab=movements"))}
+              />
+              {isAdmin ? (
+                <>
+                  <Item
+                    value="import leads csv spreadsheet importer prospects"
+                    icon={Upload}
+                    label={t("importLeads")}
+                    onSelect={() => run(() => router.push("/leads/import"))}
+                  />
+                  <Item
+                    value="inventory settings warehouse hold days restock reglages stock"
+                    icon={Settings}
+                    label={t("inventorySettings")}
+                    onSelect={() => run(() => router.push("/inventory/settings"))}
+                  />
+                </>
+              ) : null}
+            </Group>
 
             <Group heading={t("appearance")}>
               <Item value="theme light" icon={Sun} label={t("themeLight")} onSelect={() => run(() => setTheme("light"))} />
