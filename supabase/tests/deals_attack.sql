@@ -189,12 +189,23 @@ begin
      or has_table_privilege('anon', 'private.deal_moves', 'SELECT') then
     raise exception 'FAIL: private.deal_moves protections';
   end if;
+  -- Open records (threat 22): own rows readable, no client writes, restrictive require_mfa.
+  if not (select relrowsecurity from pg_class where oid = 'private.deal_opens'::regclass)
+     or (select array_agg(policyname::text order by policyname) from pg_policies
+          where schemaname = 'private' and tablename = 'deal_opens') is distinct from array['deal_opens_own', 'require_mfa']
+     or not has_table_privilege('authenticated', 'private.deal_opens', 'SELECT')
+     or has_table_privilege('authenticated', 'private.deal_opens', 'INSERT')
+     or has_table_privilege('authenticated', 'private.deal_opens', 'UPDATE')
+     or has_table_privilege('authenticated', 'private.deal_opens', 'DELETE')
+     or has_table_privilege('anon', 'private.deal_opens', 'SELECT') then
+    raise exception 'FAIL: private.deal_opens protections';
+  end if;
   if (select array_agg(policyname::text order by policyname) from pg_policies
        where schemaname = 'public' and tablename = 'deals')
      is distinct from array['deals_delete', 'deals_insert', 'deals_select', 'deals_update', 'require_mfa']
      or (select array_agg(policyname::text order by policyname) from pg_policies
           where schemaname = 'public' and tablename = 'deal_stage_history') is distinct from array['deal_history_select', 'require_mfa']
-     or exists (select 1 from pg_policies where tablename in ('deals', 'deal_stage_history', 'deal_moves')
+     or exists (select 1 from pg_policies where tablename in ('deals', 'deal_stage_history', 'deal_moves', 'deal_opens')
                 and policyname = 'require_mfa' and permissive <> 'RESTRICTIVE') then
     raise exception 'FAIL: deal policies (restrictive require_mfa on every Day 5a table)';
   end if;
@@ -333,7 +344,8 @@ begin
          '00000000-0000-0000-0000-0000000005a1' from public.companies c where c.id = lead returning id into deal;
   perform pg_temp.act('00000000-0000-0000-0000-0000000005a1', 'aal1', null);
   if (select count(*) from public.deals) <> 0 or (select count(*) from public.deal_stage_history) <> 0
-     or (select count(*) from public.pipeline_stages) <> 0 or (select count(*) from private.deal_moves) <> 0 then
+     or (select count(*) from public.pipeline_stages) <> 0 or (select count(*) from private.deal_moves) <> 0
+     or (select count(*) from private.deal_opens) <> 0 then
     raise exception 'FAIL: day5_aal1_blocked (tables)';
   end if;
   perform pg_temp.expect_error(format('select public.open_deal(%L)', lead), '42501');
@@ -972,7 +984,8 @@ begin
   delete from public.deals where id = deal;
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'FAIL: deal_direct_delete_refused_while_activity_undo_record'; end if;
-  perform pg_temp.expect_error(format('select public.delete_deal(%L)', deal), 'P0002');
+  -- delete_deal answers like the policy (no code: step_up), not "deal not found".
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', deal), '42501', 'step_up');
   delete from private.activity_undo where activity_id = (call ->> 'activity_id')::uuid;  -- what undo_activity does first
   perform public.delete_deal(deal);
   if exists (select 1 from public.deals where id = deal) then
@@ -1429,11 +1442,19 @@ begin
   if exists (select 1 from public.audit_log where table_name = 'deal_stage_history') then
     raise exception 'FAIL: stage history should not be audited';
   end if;
-  -- open_deal_rate_limited: 30 deals opened in the last hour (made as the superuser for r2), the 31st is refused.
-  insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, created_at)
-  select c.org_id, lead, (select id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'lead'), r2, r2,
-         now() - interval '30 minutes' from public.companies c, generate_series(1, 30) where c.id = lead;
+  -- open_deal_rate_limited: 30 opens in the last hour (r2's open records, made as the superuser), the 31st is refused;
+  -- records older than an hour do not count, and the next open removes them.
+  insert into private.deal_opens (user_id, created_at)
+  select r2, now() - interval '30 minutes' from generate_series(1, 29);
+  insert into private.deal_opens (user_id, created_at)
+  select r2, now() - interval '2 hours' from generate_series(1, 5);
   update public.companies set owner_id = r2 where id = lead;
+  perform pg_temp.act(r2);
+  perform pg_temp.open(lead, 'The 30th');  -- 29 recent + this one
+  perform pg_temp.su();
+  if (select count(*) from private.deal_opens where user_id = r2) <> 30 then
+    raise exception 'FAIL: an open should remove its author''s open records older than an hour';
+  end if;
   perform pg_temp.act(r2);
   perform pg_temp.expect_error(format('select public.open_deal(%L)', lead), '22023', 'rate_limited');
   -- move_rate_limited: 120 stage changes in the last minute.
@@ -1470,6 +1491,152 @@ begin
     raise exception 'FAIL: a contact delete should empty the deal''s link and move its version';
   end if;
   perform pg_temp.invariants('referential');
+  raise exception 'undo' using errcode = 'TS001';
+exception when sqlstate 'TS001' then perform pg_temp.su();
+end $$;
+
+-- 13. The Day 6 seam with a stub that blocks (threat 30; section 10): every call site refuses while stock records hold
+-- the deal. The superuser swaps the stub for one returning 'order' inside this block, which is rolled back (the null
+-- stub comes back). A win that keeps the shipping, a move between open stages and a title change are not blocked.
+do $$
+declare
+  r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  lead uuid := pg_temp.new_lead(r1, 'warm');
+  d_reopen uuid;   -- won over 120 s ago: reopening it
+  d_undo uuid;     -- won just now: undoing the win
+  d_ship uuid;     -- open, shipping from stock: changing the shipping (patch, update_deal, a win that changes it)
+  d_keep uuid;     -- open, shipping from stock: a win that keeps it
+  d_del uuid;      -- just opened: the creator's delete
+  d_del2 uuid;     -- moved: an admin's delete with a fresh code
+  win jsonb;
+  v integer;
+begin
+  perform pg_temp.act(r1);
+  d_reopen := pg_temp.open(lead, 'Seam reopen');
+  perform pg_temp.mv(d_reopen, 'won', 500, 'from_stock');
+  d_undo := pg_temp.open(lead, 'Seam undo');
+  win := pg_temp.mv(d_undo, 'won', 600, 'direct_from_source');
+  d_ship := pg_temp.open(lead, 'Seam shipping');
+  perform public.update_deal(d_ship, 0, '{fulfilment}', p_fulfilment => 'from_stock');
+  d_keep := pg_temp.open(lead, 'Seam keep');
+  perform public.update_deal(d_keep, 0, '{fulfilment}', p_fulfilment => 'from_stock');
+  d_del := pg_temp.open(lead, 'Seam delete');
+  d_del2 := pg_temp.open(lead, 'Seam delete 2');
+  perform pg_temp.mv(d_del2, 'qualified');
+  perform pg_temp.su();
+  perform pg_temp.age_history(d_reopen, 300);
+  create or replace function private.deal_closing_blocked(p_deal uuid) returns text
+  language sql stable set search_path = '' as $f$
+    select 'order'::text where p_deal is not null
+  $f$;
+  if private.deal_closing_blocked(gen_random_uuid()) is distinct from 'order' then
+    raise exception 'FAIL: the blocking stub was not swapped in';
+  end if;
+  -- closing_blocked_on_reopen: reopening a won deal, with a fresh code, by the owner and by an admin.
+  perform pg_temp.act(r1, 'aal2', 30);
+  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L)', d_reopen, 'negotiations'), '42501', 'blocked_order');
+  perform pg_temp.act(admin, 'aal2', 30);
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'lead', d_reopen), '42501', 'blocked_order');
+  -- closing_blocked_on_undo_win: the Undo button and the drag back, both inside the window.
+  perform pg_temp.act(r1, 'aal2', 30);
+  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, undo_of => %s)', d_undo, 'lead', win ->> 'history_id'), '42501', 'blocked_order');
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'lead', d_undo), '42501', 'blocked_order');
+  -- closing_blocked_on_fulfilment_change: update_deal, a direct patch, and a win that switches the shipping.
+  perform pg_temp.expect_error(format('select public.update_deal(%L, 1, %L, p_fulfilment => %L)', d_ship, '{fulfilment}', 'direct_from_source'), '42501', 'blocked_order');
+  perform pg_temp.expect_error(format('select public.update_deal(%L, 1, %L, p_fulfilment => null)', d_ship, '{fulfilment}'), '42501', 'blocked_order');
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'direct_from_source', d_ship), '42501', 'blocked_order');
+  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, 700, %L)', d_ship, 'won', 'direct_from_source'), '42501', 'blocked_order');
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L), value = 700, fulfilment = %L where id = %L', 'won', 'direct_from_source', d_ship), '42501', 'blocked_order');
+  -- closing_blocked_on_delete: the creator's window and an admin with a fresh code.
+  perform pg_temp.act(r1, 'aal2', null);
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', d_del), '42501', 'blocked_order');
+  perform pg_temp.act(admin, 'aal2', 30);
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', d_del2), '42501', 'blocked_order');
+  -- Not blocked: a move between open stages, a title change, a win that keeps (or first sets) the shipping.
+  perform pg_temp.act(r1, 'aal2', 30);
+  perform pg_temp.mv(d_ship, 'qualified');
+  v := (select version from public.deals where id = d_ship);
+  perform public.update_deal(d_ship, v, '{title}', 'Seam renamed');
+  if (pg_temp.mv(d_keep, 'won', 800) -> 'deal' ->> 'status') <> 'won'
+     or (select fulfilment from public.deals where id = d_keep) <> 'from_stock' then
+    raise exception 'FAIL: a win that keeps the shipping should not be blocked';
+  end if;
+  perform pg_temp.su();
+  if pg_temp.key(d_reopen) <> 'won' or pg_temp.key(d_undo) <> 'won' or not exists (select 1 from public.deals where id = d_del)
+     or not exists (select 1 from public.deals where id = d_del2)
+     or (select fulfilment from public.deals where id = d_ship) <> 'from_stock' then
+    raise exception 'FAIL: a blocked change was written';
+  end if;
+  perform pg_temp.invariants('the blocking seam');
+  raise exception 'undo' using errcode = 'TS001';
+exception when sqlstate 'TS001' then perform pg_temp.su();
+end $$;
+do $$ begin
+  if private.deal_closing_blocked(gen_random_uuid()) is not null then
+    raise exception 'FAIL: the null stub should be back after the rolled-back block';
+  end if;
+end $$;
+
+-- 14. Verifier round 1: a deal keeps an owner, a repeated Undo is a replay, opens that were deleted still count -------
+do $$
+declare
+  r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  lead uuid := pg_temp.new_lead(r1, 'warm');
+  deal uuid;
+  r jsonb;
+  u jsonb;
+  u2 jsonb;
+  req uuid := gen_random_uuid();
+  n integer;
+  i integer;
+begin
+  -- deal_owner_never_emptied (G11): neither update_deal nor a direct patch empties the owner, for an admin either.
+  perform pg_temp.act(r1);
+  deal := pg_temp.open(lead, 'Owned');
+  perform pg_temp.act(admin);
+  perform pg_temp.expect_error(format('select public.update_deal(%L, 0, %L, p_owner => null)', deal, '{owner_id}'), '22023', 'owner_required');
+  perform pg_temp.expect_error(format('update public.deals set owner_id = null where id = %L', deal), '22023', 'owner_required');
+  r := public.update_deal(deal, 0, '{owner_id}', p_owner => admin);  -- a new owner is fine
+  if (select owner_id from public.deals where id = deal) is distinct from admin then
+    raise exception 'FAIL: an admin hands a deal to someone %', r;
+  end if;
+  -- undo_replay_returns_stored: the same Undo request twice answers the stored undo, and writes nothing more.
+  r := pg_temp.mv(deal, 'qualified');
+  u := public.move_deal(deal, 'lead', (r -> 'deal' ->> 'version')::int, p_undo_of => (r ->> 'history_id')::bigint,
+                        p_request_id => req);
+  n := (select count(*) from public.deal_stage_history where deal_id = deal);
+  u2 := public.move_deal(deal, 'lead', (r -> 'deal' ->> 'version')::int, p_undo_of => (r ->> 'history_id')::bigint,
+                         p_request_id => req);
+  if not (u ->> 'undone')::boolean or u2 ->> 'result' <> 'moved' or not (u2 ->> 'replayed')::boolean
+     or not (u2 ->> 'undone')::boolean or u2 ->> 'history_id' <> u ->> 'history_id'
+     or (select count(*) from public.deal_stage_history where deal_id = deal) <> n or pg_temp.key(deal) <> 'lead' then
+    raise exception 'FAIL: undo_replay_returns_stored % / %', u, u2;
+  end if;
+  -- open_deal_rate_counts_deleted_opens (threat 22): 30 opens deleted in the creator's window still count; the 31st
+  -- open is refused, through the RPC and a direct insert.
+  perform pg_temp.act(r1, 'aal2', null);
+  for i in 1 .. 29 loop
+    perform public.delete_deal(pg_temp.open(lead, 'Flood ' || i));
+  end loop;
+  perform pg_temp.su();
+  if (select count(*) from public.deals where created_by = r1 and created_at > now() - interval '1 hour') <> 1 then
+    raise exception 'FAIL: the flood deals should be gone (only "Owned" stays)';
+  end if;
+  perform pg_temp.act(r1, 'aal2', null);
+  perform pg_temp.expect_error(format('select public.open_deal(%L)', lead), '22023', 'rate_limited');
+  perform pg_temp.expect_error(format('insert into public.deals (company_id) values (%L)', lead), '22023', 'rate_limited');
+  -- Another person's opens do not count against r1's limit (own rows only), and r1 cannot read or write them.
+  perform pg_temp.act(admin);
+  perform pg_temp.open(lead, 'Admin opens');
+  if exists (select 1 from private.deal_opens where user_id <> admin) then
+    raise exception 'FAIL: deal_opens_own_rows_only (another person''s opens are visible)';
+  end if;
+  perform pg_temp.expect_error(format('insert into private.deal_opens (user_id) values (%L)', admin), '42501');
+  perform pg_temp.expect_error('delete from private.deal_opens', '42501');
+  perform pg_temp.su();
+  perform pg_temp.invariants('verifier round 1');
   raise exception 'undo' using errcode = 'TS001';
 exception when sqlstate 'TS001' then perform pg_temp.su();
 end $$;

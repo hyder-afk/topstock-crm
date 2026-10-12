@@ -21,6 +21,8 @@
 #     conflict, or "unchanged" when a colleague just moved the deal to that stage, are results); history
 #     rows = successful moves + 20 opens; versions strictly increase; status follows the stage. With "p10" as the second
 #     argument only this case runs, timed (perf P10: p95 per move, on the perf seed's database).
+# 10. fresh_session_move_with_request_id: a move that does not touch the lead, sent with a request id, as the first
+#     move_deal call of a new connection (Lead -> Qualified, back, and a reopen of a won deal) answers "moved".
 # Usage: deal_concurrency.sh "<libpq connection string>" [p10]  (after deals_attack.sql). Used by scripts/db-test.sh, the
 # CI "rls" job and (p10) scripts/db-perf.sh. Fixtures are made by the superuser; the probes run through the API role.
 set -euo pipefail
@@ -177,6 +179,25 @@ out_del=$(psql "$CONN" -X -q -A -t -c "set lock_timeout = '500ms'; begin; delete
 wait $pa || fail "move_not_blocked_by_activity_fk: the entry session failed"
 [ "$out" = "moved updated " ] || fail "move_not_blocked_by_activity_fk: '$out'"
 case "$out_del" in *"lock timeout"*) ;; *) fail "move_not_blocked_by_activity_fk: a delete should wait for the key lock ('$out_del')";; esac
+
+# 10. fresh_session_move_with_request_id: a move that does not touch the lead, with a request id (5b always sends one),
+#     as the first move_deal call of a new connection (a pooled PostgREST connection starts like this). Each as_user is a
+#     new session. Lead -> Qualified, Qualified -> Lead, and reopening a won deal into Qualified (with a fresh code).
+lead=$(new_lead 'Concurrency fresh session')
+deal=$(new_deal "$lead" 'Fresh session')
+out=$(as_user "$R1" "select public.move_deal('$deal', 'qualified', 0, p_request_id => gen_random_uuid()) ->> 'result';") \
+  || fail "fresh_session_move_with_request_id: Lead -> Qualified failed"
+[ "$out" = "moved" ] || fail "fresh_session_move_with_request_id: Lead -> Qualified '$out'"
+as_owner "update public.deal_stage_history set created_at = created_at - interval '300 seconds' where deal_id = '$deal';" > /dev/null
+out=$(as_user "$R1" "select public.move_deal('$deal', 'lead', 1, p_request_id => gen_random_uuid()) ->> 'result';") \
+  || fail "fresh_session_move_with_request_id: Qualified -> Lead failed"
+[ "$out" = "moved" ] || fail "fresh_session_move_with_request_id: Qualified -> Lead '$out'"
+as_user "$R1" "select public.move_deal('$deal', 'won', 2, 300, 'from_stock') \g /dev/null" > /dev/null
+as_owner "update public.deal_stage_history set created_at = created_at - interval '300 seconds' where deal_id = '$deal';" > /dev/null
+out=$(as_user "$R1" "select public.move_deal('$deal', 'qualified', 3, p_request_id => gen_random_uuid()) ->> 'result';") \
+  || fail "fresh_session_move_with_request_id: reopening Won -> Qualified failed"
+[ "$out" = "moved" ] && [ "$(stage "$deal")" = "qualified" ] \
+  || fail "fresh_session_move_with_request_id: reopening '$out', stage $(stage "$deal")"
 fi
 
 # 9. history_chain_consistent: 3 sessions x 100 random moves over 20 deals ----------------------------------------------

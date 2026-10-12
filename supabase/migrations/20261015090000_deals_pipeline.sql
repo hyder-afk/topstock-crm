@@ -105,9 +105,9 @@ alter table public.deals
   add constraint deals_closed_at_matches check ((status = 'open') = (closed_at is null)),
   add constraint deals_version_nonneg check (version >= 0),
   add constraint deals_title_safe check (title is null or (char_length(title) between 1 and 120
-       and title !~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]')),
+       and title !~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]')),
   add constraint deals_note_safe check (lost_note is null or (char_length(lost_note) between 1 and 500
-       and lost_note !~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]'));
+       and lost_note !~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]'));
 -- G8: a deleted deal keeps its tasks (the link becomes empty; task_guard below lets that through).
 alter table public.tasks
   drop constraint tasks_deal_id_fkey,
@@ -211,7 +211,7 @@ begin
   if check_title then
     new.title := btrim(new.title);
     if new.title is null or char_length(new.title) not between 1 and 300
-       or new.title ~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]' then
+       or new.title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]' then
       raise exception 'a task title needs 1 to 300 characters, without control characters'
         using errcode = '22023', hint = 'task_title';
     end if;
@@ -299,6 +299,24 @@ language sql stable set search_path = '' as $$
   select null::text where p_deal is not null
 $$;
 
+-- Open records for the open flood guard (threat 22): one row per deal a signed-in person opens, written only by the
+-- DEFINER history trigger, never removed by a deal delete; each new open removes the caller's rows older than an hour.
+-- Own rows readable (the INVOKER guard counts them, and 5b's log_activity can check the rate before an open); no client
+-- writes. No lead text, no deal link (a deleted deal still counts).
+create table private.deal_opens (
+  id bigint generated always as identity primary key,
+  user_id uuid not null,
+  created_at timestamptz not null default now()
+);
+create index deal_opens_user_idx on private.deal_opens (user_id, created_at);
+alter table private.deal_opens enable row level security;
+create policy require_mfa on private.deal_opens as restrictive to authenticated
+  using ((select private.has_aal2())) with check ((select private.has_aal2()));
+create policy deal_opens_own on private.deal_opens for select to authenticated
+  using (user_id = (select auth.uid()));
+revoke all on private.deal_opens from public, anon, authenticated;
+grant select on private.deal_opens to authenticated;                                 -- no insert, update or delete
+
 -- The deal guard (INVOKER; trigger guard_deal BEFORE INSERT OR UPDATE ON deals). The name sorts after
 -- enforce_org_and_owner (org set, owner rule run) and before set_updated_at. Sessions with no signed-in user (fixtures,
 -- the perf seed, maintenance) are left alone, as Day 3a's and 4a's triggers do. Every raise is a constant message and
@@ -347,7 +365,7 @@ begin
     -- 3. Pre-checks (constant messages before the CHECKs).
     new.title := nullif(btrim(new.title), '');
     if new.title is not null and (char_length(new.title) > 120
-                                  or new.title ~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]') then
+                                  or new.title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]') then
       raise exception 'a deal title needs 1 to 120 characters, without control characters'
         using errcode = '22023', hint = 'deal_title';
     end if;
@@ -371,9 +389,10 @@ begin
       raise exception 'a deal can only come from your own call on this lead, just logged'
         using errcode = '42501', hint = 'source';
     end if;
-    -- 5. Flood guard: at most 30 deals an hour per person (one short range read on deals_created_by_idx).
-    if (select count(*) from (select 1 from public.deals d
-                               where d.created_by = caller and d.created_at > now() - interval '1 hour'
+    -- 5. Flood guard: at most 30 deals an hour per person, counted from the caller's open records (private.deal_opens),
+    -- which a delete does not remove: opening and deleting in turn still counts (threat 22; verifier finding 4).
+    if (select count(*) from (select 1 from private.deal_opens o
+                               where o.user_id = caller and o.created_at > now() - interval '1 hour'
                                limit 30) recent) >= 30 then
       raise exception 'too many deals opened in an hour' using errcode = '22023', hint = 'rate_limited';
     end if;
@@ -402,6 +421,10 @@ begin
   if changed && array['company_id', 'created_by', 'created_at', 'source_activity_id', 'request_id', 'currency', 'id'] then
     raise exception 'this part of a deal cannot change' using errcode = '42501', hint = 'not_editable';
   end if;
+  -- A deal always has an owner (G11): only the referential path above (a person deleted) may empty it.
+  if new.owner_id is null and old.owner_id is not null then
+    raise exception 'a deal needs an owner' using errcode = '22023', hint = 'owner_required';
+  end if;
   -- 4. The server's columns start from the stored row and are worked out below.
   new.status := old.status;
   new.closed_at := old.closed_at;
@@ -428,7 +451,7 @@ begin
       new.lost_reason := old.lost_reason;
       new.lost_note := old.lost_note;
       new.status := case v_to when 'won' then 'won' when 'lost' then 'lost' else 'open' end;
-      if v_from = 'won' then
+      if v_from = 'won' or new.fulfilment is distinct from old.fulfilment then
         v_block := private.deal_closing_blocked(new.id);
         if v_block is not null then
           raise exception 'this deal is held by stock records' using errcode = '42501', hint = 'blocked_' || v_block;
@@ -459,6 +482,14 @@ begin
         if new.fulfilment not in ('from_stock', 'direct_from_source') then
           raise exception 'unknown way of shipping' using errcode = '22023', hint = 'fulfilment';
         end if;
+        -- A win that changes the shipping is a shipping change: Day 6's stock records can block it (section 10;
+        -- verifier finding 2). A win that keeps the shipping chosen while open is never blocked.
+        if new.fulfilment is distinct from old.fulfilment then
+          v_block := private.deal_closing_blocked(new.id);
+          if v_block is not null then
+            raise exception 'this deal is held by stock records' using errcode = '42501', hint = 'blocked_' || v_block;
+          end if;
+        end if;
         new.status := 'won';
         new.closed_at := now();
       elsif v_to = 'lost' then
@@ -471,7 +502,7 @@ begin
           raise exception 'the reason "other" needs a note' using errcode = '22023', hint = 'lost_note_required';
         end if;
         if new.lost_note is not null and (char_length(new.lost_note) > 500
-             or new.lost_note ~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]') then
+             or new.lost_note ~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]') then
           raise exception 'a note needs 1 to 500 characters, without control characters'
             using errcode = '22023', hint = 'lost_note';
         end if;
@@ -530,7 +561,7 @@ begin
   if new.title is distinct from old.title then
     new.title := nullif(btrim(new.title), '');
     if new.title is not null and (char_length(new.title) > 120
-                                  or new.title ~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]') then
+                                  or new.title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]') then
       raise exception 'a deal title needs 1 to 120 characters, without control characters'
         using errcode = '22023', hint = 'deal_title';
     end if;
@@ -563,6 +594,10 @@ begin
                                            version_after)
     values (new.org_id, new.id, (select auth.uid()), 'open', null, private.stage_key(new.stage_id), new.value,
             new.version);
+    if (select auth.uid()) is not null then  -- the open flood guard's record (maintenance sessions have none)
+      insert into private.deal_opens (user_id) values ((select auth.uid()));
+      delete from private.deal_opens o where o.user_id = (select auth.uid()) and o.created_at < now() - interval '1 hour';
+    end if;
     return null;
   end if;
   v_from := private.stage_key(old.stage_id);
@@ -951,7 +986,7 @@ begin
   end if;
   -- 1. Validate before any write (the guard checks again).
   if v_title is not null and (char_length(v_title) > 120
-                              or v_title ~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]') then
+                              or v_title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]') then
     raise exception 'a deal title needs 1 to 120 characters, without control characters'
       using errcode = '22023', hint = 'deal_title';
   end if;
@@ -1046,7 +1081,8 @@ declare
   v_h0 bigint;
   v_h bigint;
   v_touch boolean;
-  v_lead record;
+  v_lead_status text;               -- scalars, not a record: a record field read on a path that never filled it fails
+  v_lead_next timestamptz;          -- when the statement is first planned on a new connection (verifier finding 1)
   v_lead_editable boolean := false;
   v_history bigint;
   v_move private.deal_moves%rowtype;
@@ -1082,7 +1118,7 @@ begin
     raise exception 'a lost deal needs a reason from the list' using errcode = '22023', hint = 'lost_reason_required';
   end if;
   if char_length(btrim(p_lost_note, E' \t\n')) > 500
-     or p_lost_note ~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]' then
+     or p_lost_note ~ '[\u0001-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]' then
     raise exception 'a note needs 1 to 500 characters, without control characters' using errcode = '22023', hint = 'lost_note';
   end if;
   -- 2. A replay answers the stored outcome and writes nothing.
@@ -1110,7 +1146,8 @@ begin
                   then exists (select 1 from private.deal_moves m where m.history_id = v_h0 and m.prev_lead_status is not null)
                   else p_stage in ('negotiations', 'won', 'lost') or v_from = 'lost' end;
   if v_touch then
-    select c.lead_status, c.next_action_at into v_lead from public.companies c where c.id = v_deal.company_id for update;
+    select c.lead_status, c.next_action_at into v_lead_status, v_lead_next
+      from public.companies c where c.id = v_deal.company_id for update;
     v_lead_editable := found;
   end if;
   -- (No join here: under READ COMMITTED a row changed by a concurrent move is re-checked on its new version against the
@@ -1180,30 +1217,38 @@ begin
       v_before := v_move.new_lead_status;
       v_after := (select c.lead_status from public.companies c where c.id = v_deal.company_id);
     end if;
+    -- The undo's own record when it has a request id, so a double-submitted Undo is answered as a replay (5.2 step 2;
+    -- verifier finding 6). Undo rows are never undo candidates, so this record is only read for replays.
+    if p_request_id is not null then
+      insert into private.deal_moves (history_id, org_id, user_id, deal_id, company_id, request_id, prev_lead_status,
+                                      new_lead_status)
+      values (v_history, (select private.current_org_id()), caller, p_id, v_deal.company_id, p_request_id, v_before,
+              v_after);
+    end if;
   else
     -- The lead follows its deal (5.4), for lead editors only; Do not contact and Disqualified are never touched.
     if v_lead_editable then
-      v_status := v_lead.lead_status;
-      v_next := v_lead.next_action_at;
-      if p_stage = 'negotiations' and v_lead.lead_status in ('cold', 'warm', 'cool_off') then
+      v_status := v_lead_status;
+      v_next := v_lead_next;
+      if p_stage = 'negotiations' and v_lead_status in ('cold', 'warm', 'cool_off') then
         v_status := 'negotiation';
-      elsif p_stage = 'won' and v_lead.lead_status in ('cold', 'warm', 'negotiation', 'cool_off') then
+      elsif p_stage = 'won' and v_lead_status in ('cold', 'warm', 'negotiation', 'cool_off') then
         v_status := 'customer';
-      elsif p_stage = 'lost' and v_lead.lead_status in ('warm', 'negotiation')
+      elsif p_stage = 'lost' and v_lead_status in ('warm', 'negotiation')
             and not exists (select 1 from public.deals x
                              where x.company_id = v_deal.company_id and x.id <> p_id and x.status = 'open') then
         v_status := 'cool_off';
         v_next := now() + interval '90 days';
         v_set_next := true;
-      elsif v_from = 'lost' and p_stage in ('lead', 'qualified') and v_lead.lead_status = 'cool_off' then
+      elsif v_from = 'lost' and p_stage in ('lead', 'qualified') and v_lead_status = 'cool_off' then
         v_status := 'warm';
       end if;
-      if v_status is distinct from v_lead.lead_status or v_set_next then
+      if v_status is distinct from v_lead_status or v_set_next then
         update public.companies c
            set lead_status = v_status, next_action_at = case when v_set_next then v_next else c.next_action_at end
          where c.id = v_deal.company_id
         returning c.next_action_at into v_next;
-        v_before := v_lead.lead_status;
+        v_before := v_lead_status;
         v_after := v_status;
       end if;
     end if;
@@ -1211,7 +1256,7 @@ begin
       insert into private.deal_moves (history_id, org_id, user_id, deal_id, company_id, request_id, prev_lead_status,
                                       new_lead_status, prev_next_action_at, new_next_action_at)
       values (v_history, (select private.current_org_id()), caller, p_id, v_deal.company_id, p_request_id,
-              v_before, v_after, case when v_after is not null then v_lead.next_action_at end,
+              v_before, v_after, case when v_after is not null then v_lead_next end,
               case when v_after is not null then v_next end);
     end if;
   end if;
@@ -1251,7 +1296,7 @@ begin
     raise exception 'the deal''s version is needed' using errcode = '22023', hint = 'fields';
   end if;
   if 'title' = any (p_fields) and v_title is not null
-     and (char_length(v_title) > 120 or v_title ~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]') then
+     and (char_length(v_title) > 120 or v_title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]') then
     raise exception 'a deal title needs 1 to 120 characters, without control characters'
       using errcode = '22023', hint = 'deal_title';
   end if;
@@ -1266,6 +1311,9 @@ begin
   if 'expected_close' = any (p_fields)
      and p_expected_close not between (now() - interval '1 year')::date and (now() + interval '3 years')::date then
     raise exception 'the expected close date is out of range' using errcode = '22023', hint = 'bounds';
+  end if;
+  if 'owner_id' = any (p_fields) and p_owner is null then
+    raise exception 'a deal needs an owner' using errcode = '22023', hint = 'owner_required';
   end if;
   select d.version, d.company_id into v_deal from public.deals d where d.id = p_id for no key update;
   if not found then
@@ -1313,7 +1361,10 @@ begin
     raise exception 'deal not found' using errcode = 'P0002';
   end if;
   v_creator_window := v_deal.created_by = caller and v_deal.version = 0
-                      and v_deal.created_at > now() - interval '120 seconds';
+                      and v_deal.created_at > now() - interval '120 seconds'
+                      and (v_deal.source_activity_id is null  -- the policy's undo-record condition (verifier finding 8)
+                           or not exists (select 1 from private.activity_undo u
+                                           where u.activity_id = v_deal.source_activity_id));
   if not v_creator_window then
     if not (select private.has_recent_aal2(600)) then
       raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';
