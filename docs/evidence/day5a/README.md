@@ -85,7 +85,7 @@ commits change `docs/` only), 12 Oct 2026, 06:30 UTC. Rows re-run in round 1 say
 | `npm run lint` (acc2cf3) | exit 0: 0 errors, the 2 existing React Compiler warnings |
 | `npm run typecheck` (acc2cf3) | exit 0 |
 | `npm run test:unit` | 347 passed (321 before, `sql-guc.spec.ts`'s 8, `sql-bidi.spec.ts`'s 18) |
-| gitleaks (`origin/main..HEAD`, on 25d2278) | 19 commits scanned (incl. the design commit 5c3e4c3), no leaks found, exit 0 |
+| gitleaks (`origin/main..HEAD`, on 7ab09ce) | 24 commits scanned (incl. the design commit 5c3e4c3), no leaks found, exit 0 |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
 | Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
 | `/security-review` | not run in this step (the lead builder runs it on the PR head in the advisor loop); the threat table is re-checked in `security-review.md` |
@@ -117,6 +117,7 @@ commits change `docs/` only), 12 Oct 2026, 06:30 UTC. Rows re-run in round 1 say
 - 581297e Day 5a evidence: mutations.md notes the two speed commits after the runs
 - 3c67877 Day 5a verifier round 1: move_deal on a new connection, the block check on a win that changes shipping, opens counted after delete, undo replay, owner kept, delete answer, bidi escapes
 - acc2cf3 Day 5a mutations: rows 54 to 65 for the verifier round 1 fixes; row 53 caught by the blocking-stub tests (no longer a two-layer row); lead coupling rows follow the scalar lead fields
+- 7ab09ce Day 5a evidence, verifier round 1: README fix table and deviations 15 to 17, threat rows 13/15/20/22/30, mutations (65 rows: 61 caught, 4 documented), perf re-measure interleaved with b8e839f, log rows
 
 ## Spikes (design 2.4; full results in `docs/log.md`, scripts in `spikes/`)
 
