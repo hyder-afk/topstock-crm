@@ -767,7 +767,8 @@ $$;
 -- One page of a column, as ids in order (design 5.6): one static statement per path (owner or org x open newest first,
 -- open oldest first, closed newest first). The cursor defaults to the far end, so the index condition is always there.
 -- p_cutoff is 'infinity' unless only stalled deals are asked for (then it is the stall limit's start: a necessary
--- condition on the stage clock, kept as an index range, plus the lead's last activity). p_since bounds closed deals
+-- condition on the stage clock, kept as an index range, plus the lead's last activity, read only then: with a custom
+-- plan "p_cutoff = 'infinity'" folds to true and the lead is never looked up). p_since bounds closed deals
 -- (the Won column's 30 days); '-infinity' for "See all". p_owner null means the whole org.
 create function private.stage_deal_ids(p_owner uuid, p_stage uuid, p_closed text, p_oldest boolean,
                                        p_cutoff timestamptz, p_since timestamptz, p_after_at timestamptz,
@@ -797,42 +798,50 @@ begin
        limit p_limit) x;
   elsif p_owner is not null and not p_oldest then
     select coalesce(array_agg(x.id order by x.stage_entered_at desc, x.id desc), '{}') into v_ids from (
-      select d.id, d.stage_entered_at from public.deals d join public.companies c on c.id = d.company_id
+      select d.id, d.stage_entered_at from public.deals d
        where d.status = 'open' and d.owner_id = p_owner and d.stage_id = p_stage
          and (d.stage_entered_at, d.id) < (coalesce(p_after_at, 'infinity'::timestamptz),
                                            coalesce(p_after_id, 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid))
          and d.stage_entered_at < p_cutoff
-         and (p_cutoff = 'infinity'::timestamptz or coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff)
+         and (p_cutoff = 'infinity'::timestamptz
+              or exists (select 1 from public.companies c
+                          where c.id = d.company_id and coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff))
        order by d.stage_entered_at desc, d.id desc
        limit p_limit) x;
   elsif p_owner is not null then
     select coalesce(array_agg(x.id order by x.stage_entered_at, x.id), '{}') into v_ids from (
-      select d.id, d.stage_entered_at from public.deals d join public.companies c on c.id = d.company_id
+      select d.id, d.stage_entered_at from public.deals d
        where d.status = 'open' and d.owner_id = p_owner and d.stage_id = p_stage
          and (d.stage_entered_at, d.id) > (coalesce(p_after_at, '-infinity'::timestamptz),
                                            coalesce(p_after_id, '00000000-0000-0000-0000-000000000000'::uuid))
          and d.stage_entered_at < p_cutoff
-         and (p_cutoff = 'infinity'::timestamptz or coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff)
+         and (p_cutoff = 'infinity'::timestamptz
+              or exists (select 1 from public.companies c
+                          where c.id = d.company_id and coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff))
        order by d.stage_entered_at, d.id
        limit p_limit) x;
   elsif not p_oldest then
     select coalesce(array_agg(x.id order by x.stage_entered_at desc, x.id desc), '{}') into v_ids from (
-      select d.id, d.stage_entered_at from public.deals d join public.companies c on c.id = d.company_id
+      select d.id, d.stage_entered_at from public.deals d
        where d.status = 'open' and d.org_id = v_org and d.stage_id = p_stage
          and (d.stage_entered_at, d.id) < (coalesce(p_after_at, 'infinity'::timestamptz),
                                            coalesce(p_after_id, 'ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid))
          and d.stage_entered_at < p_cutoff
-         and (p_cutoff = 'infinity'::timestamptz or coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff)
+         and (p_cutoff = 'infinity'::timestamptz
+              or exists (select 1 from public.companies c
+                          where c.id = d.company_id and coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff))
        order by d.stage_entered_at desc, d.id desc
        limit p_limit) x;
   else
     select coalesce(array_agg(x.id order by x.stage_entered_at, x.id), '{}') into v_ids from (
-      select d.id, d.stage_entered_at from public.deals d join public.companies c on c.id = d.company_id
+      select d.id, d.stage_entered_at from public.deals d
        where d.status = 'open' and d.org_id = v_org and d.stage_id = p_stage
          and (d.stage_entered_at, d.id) > (coalesce(p_after_at, '-infinity'::timestamptz),
                                            coalesce(p_after_id, '00000000-0000-0000-0000-000000000000'::uuid))
          and d.stage_entered_at < p_cutoff
-         and (p_cutoff = 'infinity'::timestamptz or coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff)
+         and (p_cutoff = 'infinity'::timestamptz
+              or exists (select 1 from public.companies c
+                          where c.id = d.company_id and coalesce(c.last_activity_at, '-infinity'::timestamptz) < p_cutoff))
        order by d.stage_entered_at, d.id
        limit p_limit) x;
   end if;
@@ -1540,9 +1549,12 @@ declare
   v_owner uuid;
   v_summary jsonb;
   v_stages jsonb := '[]'::jsonb;
+  v_all uuid[] := '{}';
+  v_more jsonb := '{}'::jsonb;
   v_cards jsonb;
-  v_ids uuid[];
+  v_col jsonb;
   v_next jsonb;
+  v_ids uuid[];
   s record;
 begin
   if (select auth.uid()) is null or not (select private.has_aal2()) then
@@ -1553,25 +1565,32 @@ begin
   end if;
   v_owner := private.deal_scope_owner(p_scope, p_owner, false);
   v_summary := private.pipeline_summary_for(v_owner);
-  for s in select st.id, st.key, st.stall_days from public.pipeline_stages st
+  -- One index walk per column (one more row than shown tells whether a next page exists), then every card in one call.
+  for s in select st.id, st.key from public.pipeline_stages st
             where st.org_id = (select private.current_org_id()) and st.key in ('lead', 'qualified', 'negotiations', 'won')
             order by st.position loop
     v_ids := private.stage_deal_ids(v_owner, s.id, case when s.key = 'won' then 'won' end, false, 'infinity'::timestamptz,
                                     case when s.key = 'won' then now() - interval '30 days'
                                          else '-infinity'::timestamptz end,
                                     null, null, p_per_stage + 1);
-    select coalesce(jsonb_agg(to_jsonb(c) - 'ordinality' order by c.ordinality), '[]'::jsonb) into v_cards
-      from private.deal_cards(v_ids[1:p_per_stage]) with ordinality as c;
-    v_next := case when cardinality(v_ids) > p_per_stage then
-                (select jsonb_build_object('after_at', case when s.key = 'won' then d.closed_at else d.stage_entered_at end,
-                                           'after_id', d.id)
-                   from public.deals d where d.id = v_ids[p_per_stage]) end;
+    v_all := v_all || v_ids[1:p_per_stage];
+    v_more := v_more || jsonb_build_object(s.key, cardinality(v_ids) > p_per_stage);
+  end loop;
+  select coalesce(jsonb_object_agg(x.stage, x.cards), '{}'::jsonb) into v_cards
+    from (select c.stage, jsonb_agg(to_jsonb(c) - 'ordinality' order by c.ordinality) as cards
+            from private.deal_cards(v_all) with ordinality as c
+           group by c.stage) x;
+  for s in select k.key from unnest(array['lead', 'qualified', 'negotiations', 'won']) as k (key) loop
+    v_col := coalesce(v_cards -> s.key, '[]'::jsonb);
+    v_next := case when (v_more ->> s.key)::boolean then  -- the last card shown is where the next page starts
+                jsonb_build_object('after_at', v_col -> -1 -> case when s.key = 'won' then 'closed_at' else 'stage_entered_at' end,
+                                   'after_id', v_col -> -1 -> 'id') end;
     if s.key = 'won' then
-      v_summary := jsonb_set(v_summary, '{won}', (v_summary -> 'won') || jsonb_build_object('cards', v_cards, 'next', v_next));
+      v_summary := jsonb_set(v_summary, '{won}', (v_summary -> 'won') || jsonb_build_object('cards', v_col, 'next', v_next));
     else
       v_stages := v_stages || jsonb_build_array(
         coalesce((select e from jsonb_array_elements(v_summary -> 'stages') e where e ->> 'key' = s.key),
-                 jsonb_build_object('key', s.key)) || jsonb_build_object('cards', v_cards, 'next', v_next));
+                 jsonb_build_object('key', s.key)) || jsonb_build_object('cards', v_col, 'next', v_next));
     end if;
   end loop;
   return jsonb_set(v_summary, '{stages}', v_stages);
