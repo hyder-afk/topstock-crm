@@ -1472,13 +1472,9 @@ declare
   v_lost jsonb;
 begin
   if p_owner is not null then
-    select jsonb_agg(jsonb_build_object('key', s.key, 'stall_days', s.stall_days, 'count', coalesce(x.n, 0),
-                                        'value', coalesce(x.total, 0)::numeric(16, 2)::text,
-                                        'no_value', coalesce(x.no_value, 0), 'stalled', coalesce(x.stalled, 0))
-                     order by s.position)
-      into v_stages
-      from public.pipeline_stages s
-      left join (select d.stage_id, count(*) as n, sum(d.value) as total,
+    -- (Materialized: computed once, not once per stage row of the outer join.)
+    with x as materialized (
+      select d.stage_id, count(*) as n, sum(d.value) as total,
                         count(*) filter (where d.value is null) as no_value,
                         -- stalled: the stage clock first; the lead is read only for those (AND stops early)
                         count(*) filter (where d.stage_entered_at < now() - make_interval(hours => 24 * st.stall_days)
@@ -1488,7 +1484,14 @@ begin
                    from public.deals d
                    join public.pipeline_stages st on st.id = d.stage_id
                   where d.status = 'open' and d.owner_id = p_owner
-                  group by d.stage_id) x on x.stage_id = s.id
+                  group by d.stage_id)
+    select jsonb_agg(jsonb_build_object('key', s.key, 'stall_days', s.stall_days, 'count', coalesce(x.n, 0),
+                                        'value', coalesce(x.total, 0)::numeric(16, 2)::text,
+                                        'no_value', coalesce(x.no_value, 0), 'stalled', coalesce(x.stalled, 0))
+                     order by s.position)
+      into v_stages
+      from public.pipeline_stages s
+      left join x on x.stage_id = s.id
      where s.org_id = v_org and s.key in ('lead', 'qualified', 'negotiations');
     select jsonb_build_object('count', count(*), 'value', coalesce(sum(d.value), 0)::numeric(16, 2)::text) into v_won
       from public.deals d
@@ -1502,13 +1505,9 @@ begin
                and d.closed_at >= now() - interval '30 days'
              group by d.lost_reason) r;
   else
-    select jsonb_agg(jsonb_build_object('key', s.key, 'stall_days', s.stall_days, 'count', coalesce(x.n, 0),
-                                        'value', coalesce(x.total, 0)::numeric(16, 2)::text,
-                                        'no_value', coalesce(x.no_value, 0), 'stalled', coalesce(x.stalled, 0))
-                     order by s.position)
-      into v_stages
-      from public.pipeline_stages s
-      left join (select d.stage_id, count(*) as n, sum(d.value) as total,
+    -- (Materialized: computed once, not once per stage row of the outer join.)
+    with x as materialized (
+      select d.stage_id, count(*) as n, sum(d.value) as total,
                         count(*) filter (where d.value is null) as no_value,
                         -- stalled: the stage clock first; the lead is read only for those (AND stops early)
                         count(*) filter (where d.stage_entered_at < now() - make_interval(hours => 24 * st.stall_days)
@@ -1518,7 +1517,14 @@ begin
                    from public.deals d
                    join public.pipeline_stages st on st.id = d.stage_id
                   where d.status = 'open' and d.org_id = v_org
-                  group by d.stage_id) x on x.stage_id = s.id
+                  group by d.stage_id)
+    select jsonb_agg(jsonb_build_object('key', s.key, 'stall_days', s.stall_days, 'count', coalesce(x.n, 0),
+                                        'value', coalesce(x.total, 0)::numeric(16, 2)::text,
+                                        'no_value', coalesce(x.no_value, 0), 'stalled', coalesce(x.stalled, 0))
+                     order by s.position)
+      into v_stages
+      from public.pipeline_stages s
+      left join x on x.stage_id = s.id
      where s.org_id = v_org and s.key in ('lead', 'qualified', 'negotiations');
     select jsonb_build_object('count', count(*), 'value', coalesce(sum(d.value), 0)::numeric(16, 2)::text) into v_won
       from public.deals d
