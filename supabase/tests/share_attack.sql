@@ -885,6 +885,41 @@ begin
   perform pg_temp.expect_error($q$update private.share_links set expires_at = now() + interval '400 days' where revoked_at is null$q$, '22023', 'expiry');
 end $$;
 reset role;
+-- extend_counts_against_the_cap: an expired link brought back by Extend is an active link like any other, so a lead
+-- with 3 active links cannot get a 4th that way (the cap trigger runs on a new expiry too).
+do $$
+begin
+  perform set_config('request.jwt.claims', '', false);
+  insert into public.companies (id, org_id, name, owner_id) select '5e000000-0000-0000-0000-0000000000d1', o.id,
+    'SH Caps extend', '00000000-0000-0000-0000-00000000000a' from public.orgs o where o.name = 'TopStock Wholesale';
+end $$;
+set role authenticated;
+do $$
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform set_config('t.caps_old', public.create_share_link('5e000000-0000-0000-0000-0000000000d1', 'en') ->> 'id', false);
+end $$;
+reset role;
+do $$
+begin
+  perform set_config('request.jwt.claims', '', false);   -- the owner ages the link (fixture; the guard lets postgres)
+  update private.share_links set expires_at = now() - interval '1 day' where id = current_setting('t.caps_old')::uuid;
+end $$;
+set role authenticated;
+do $$
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform public.create_share_link('5e000000-0000-0000-0000-0000000000d1', 'en');
+  perform public.create_share_link('5e000000-0000-0000-0000-0000000000d1', 'en');
+  perform public.create_share_link('5e000000-0000-0000-0000-0000000000d1', 'en');
+  perform pg_temp.expect_error(format($q$select public.extend_share_link(%L, 30)$q$, current_setting('t.caps_old')), '22023', 'too_many_links');
+  -- Extending one of the 3 active links stays allowed (3 is the cap, not past it).
+  perform public.extend_share_link((select l.id from public.list_share_links('5e000000-0000-0000-0000-0000000000d1') l limit 1), 30);
+  if (select count(*) from public.list_share_links('5e000000-0000-0000-0000-0000000000d1')) <> 3 then
+    raise exception 'FAIL: extend_counts_against_the_cap';
+  end if;
+end $$;
+reset role;
 do $$
 declare
   l record;

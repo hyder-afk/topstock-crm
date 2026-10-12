@@ -1071,6 +1071,11 @@ MUTATIONS_6E = [
      [("  perform private.insert_system_task(new.org_id, v_assignee, 'request', null, new.company_id, null, new.id);\n", "")]),
     ("The import undo misses client links (a lead with a link counts as untouched)",
      [("     and not exists (select 1 from private.share_links s where s.company_id = c.id)\n", "")]),
+    ("The link caps count without the organisation's lock (two creates at once pass the cap)",
+     [("  perform pg_advisory_xact_lock(hashtextextended('topstock.share_link_caps:' || new.org_id::text, 0));\n", "")]),
+    ("The link caps run on a new link only (Extend brings an expired link back past the cap)",
+     [("create trigger share_link_caps after insert or update of expires_at on private.share_links",
+       "create trigger share_link_caps after insert on private.share_links")]),
 ]
 
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),

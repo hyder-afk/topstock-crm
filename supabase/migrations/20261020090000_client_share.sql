@@ -213,9 +213,13 @@ create trigger share_link_guard before insert or update on private.share_links
   for each row execute function private.share_link_guard();
 
 -- The caps (definer, trigger only: a rep's insert must count links it cannot see): 3 active links a lead, 200 an org.
+-- Counted after a link is made or its expiry moves (Extend can bring an expired link back), one organisation at a
+-- time: the transaction lock is held to commit, and the count that follows it sees every link committed before, so
+-- two teammates making links at the same moment cannot pass a cap.
 create function private.share_link_caps() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
+  perform pg_advisory_xact_lock(hashtextextended('topstock.share_link_caps:' || new.org_id::text, 0));
   if (select count(*) from private.share_links l
        where l.company_id = new.company_id and l.revoked_at is null and l.expires_at > now()) > 3
      or (select count(*) from private.share_links l
@@ -225,7 +229,7 @@ begin
   return null;
 end;
 $$;
-create trigger share_link_caps after insert on private.share_links
+create trigger share_link_caps after insert or update of expires_at on private.share_links
   for each row execute function private.share_link_caps();
 
 -- The audit of links: token_hash hidden; the counters are no diff (an open or a request alone writes no audit row).

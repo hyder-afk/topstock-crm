@@ -7,6 +7,8 @@
 #     design accepts (never more than 8), every other answer "slow_down", 1 open task.
 #  3. share_view_parallel_counters: 40 parallel views on a fresh link: at most 30 + the overshoot answered "ok", the rest
 #     "slow_down", open_count 1 (one open a 5-minute window), no deadlock.
+#  4. share_link_cap_parallel_creates: a lead with 2 active links; one teammate's link is made and held uncommitted
+#     while another makes one: the second waits, then is refused (too_many_links); 3 active links, never 4.
 # Usage: share_concurrency.sh "<libpq connection string>". Used by scripts/db-test.sh and the CI "db" job. Its fixtures
 # (an admin, leads named "SHC …", one product) are its own.
 set -euo pipefail
@@ -51,7 +53,7 @@ as_owner "
 insert into auth.users (id, email) values ('$ADMIN', 'shc-admin@test.invalid') on conflict do nothing;
 update public.profiles set role = 'admin' where id = '$ADMIN';
 insert into public.companies (org_id, name, owner_id)
-select p.org_id, 'SHC Lead ' || g, p.id from public.profiles p, generate_series(1, 3) g where p.id = '$ADMIN';
+select p.org_id, 'SHC Lead ' || g, p.id from public.profiles p, generate_series(1, 4) g where p.id = '$ADMIN';
 update private.inventory_settings s set sharing_enabled = true
   from public.profiles p where p.id = '$ADMIN' and s.org_id = p.org_id;" >/dev/null
 as_user "$ADMIN" "select public.create_product(p_name => 'SHC Bag', p_pieces_per_carton => 10, p_price_max => 2,
@@ -96,4 +98,28 @@ slow=$(cat "$WORKDIR"/v*.out | grep -c '^slow_down$' || true)
 opens=$(as_owner "select l.open_count from private.share_links l join public.companies c on c.id = l.company_id
                    where c.name = 'SHC Lead 3';")
 [ "$opens" = "1" ] || fail "share_view_parallel_counters: open_count $opens"
+# 4. share_link_cap_parallel_creates ---------------------------------------------------------------------------------------
+link 'SHC Lead 4' >/dev/null
+link 'SHC Lead 4' >/dev/null
+now=$(date +%s)
+( psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 >"$WORKDIR/c1.out" 2>&1 <<SQL || true
+begin;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"$ADMIN","role":"authenticated","aal":"aal2","amr":[{"method":"totp","timestamp":$now}]}', true) \g /dev/null
+select public.create_share_link((select id from public.companies where name = 'SHC Lead 4'), 'en') ->> 'id' \g /dev/null
+select pg_sleep(2);
+commit;
+select 'held-committed';
+SQL
+) &
+held=$!
+sleep 0.7
+second=$(link 'SHC Lead 4' 2>&1 || true)
+wait "$held"
+active=$(as_owner "select count(*) from private.share_links l join public.companies c on c.id = l.company_id
+                    where c.name = 'SHC Lead 4' and l.revoked_at is null and l.expires_at > now();")
+grep -q 'held-committed' "$WORKDIR/c1.out" || fail "share_link_cap_parallel_creates: the held link failed: $(cat "$WORKDIR/c1.out")"
+echo "$second" | grep -q 'too many active links' || fail "share_link_cap_parallel_creates: the second create answered: $second"
+[ "$active" = "3" ] || fail "share_link_cap_parallel_creates: $active active links on one lead (cap 3)"
+
 echo "share_concurrency: all checks passed ($ok of 40 parallel views answered, the rest slowed down)"
