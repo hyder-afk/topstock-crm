@@ -75,7 +75,7 @@ const panel = (page: Page) => page.getByRole("tabpanel");
 
 /** Picks a product in a combobox: types a few letters, waits for the option, Enter. */
 async function pickProduct(page: Page, scope: ReturnType<Page["getByRole"]>, name: string) {
-  const boxes = scope.getByRole("combobox", { name: "Product" });
+  const boxes = scope.getByRole("combobox", { name: /^(Product|Produit)$/ });
   const before = await boxes.count();
   const box = boxes.last();
   await box.fill(name);
@@ -262,7 +262,7 @@ test("cancel_old_sale_needs_code", async ({ browser }) => {
   await ageStepUp(context, 700);
   await gotoInventory(page, `?tab=sales&company=${leadId}`);
   await expect(panel(page).getByRole("button", { name: new RegExp(`Show sales of every lead \\(now ${leadName}\\)`) })).toBeVisible();
-  await panel(page).getByRole("button", { name: new RegExp(`^No\\. ${number} `) }).click();
+  await panel(page).getByRole("button", { name: new RegExp(`^No\\.\\s${number}\\s`) }).click();
   await panel(page).getByRole("button", { name: "Cancel sale" }).click();
   const dialog = page.getByRole("dialog", { name: `Cancel sale ${number}` });
   await dialog.getByLabel("Reason").fill("Client a annulé la commande");
@@ -311,6 +311,24 @@ test("empty_sections_and_palette_record_sale", async ({ browser }) => {
   await context.close();
 });
 
+test("sales_and_requests_filters_in_the_url", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoInventory(page, "?tab=sales");
+  await panel(page).getByRole("radio", { name: "Supplier Stock" }).click();
+  await expect(page).toHaveURL(/tab=sales&type=direct_from_source/);
+  await page.reload();
+  await appReady(page);
+  await expect(panel(page).getByRole("radio", { name: "Supplier Stock" })).toHaveAttribute("aria-checked", "true");
+  await expect(panel(page).getByText("Supplier Stock").first()).toBeVisible();
+  await page.getByRole("tab", { name: /Requests/ }).click();
+  await expect(page).not.toHaveURL(/type=/);
+  await panel(page).getByRole("radio", { name: "Done" }).click();
+  await expect(page).toHaveURL(/tab=requests&status=done/);
+  await expect(panel(page).getByRole("button", { name: new RegExp(leadName) }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 // Evidence screenshots (CLAUDE.md: 390, 768, 1024, 1280, 1440, 1728; light and dark; EN and FR): the lead's Stock tab
 // and the Sales tab at every width; the sale, hold and request sheets and the Requests tab at 390 and 1440.
 test("screens", async ({ browser }) => {
@@ -343,7 +361,7 @@ test("screens", async ({ browser }) => {
             [fr ? "Réserver du stock" : "Hold stock", "hold-sheet"],
             [fr ? "Noter une demande" : "Log a request", "request-sheet"],
           ] as const) {
-            await panel(page).getByRole("button", { name: button, exact: true }).click();
+            await panel(page).getByRole("button", { name: button, exact: true }).first().click();
             const dialog = page.getByRole("dialog").last();
             await expect(dialog).toBeVisible();
             if (shot === "sale-sheet") await pickProduct(page, dialog, apron);

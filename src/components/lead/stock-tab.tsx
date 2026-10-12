@@ -283,9 +283,9 @@ function Bought({ data, leadId }: { data: LeadStock; leadId: string }) {
           <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg bg-card">
             {data.sales.map((s) => (
               <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 sm:px-4">
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-auto sm:flex-1">
                   <span className={cn("flex min-w-0 items-center gap-2", s.status === "cancelled" && "text-muted-foreground line-through")}>
-                    <span className="font-mono text-sm">{t("number", { number: s.number })}</span>
+                    <span className="shrink-0 font-mono text-sm whitespace-nowrap">{t("number", { number: s.number })}</span>
                     <span className="truncate text-sm" dir="auto">
                       {s.items ?? ""}
                     </span>
@@ -297,7 +297,7 @@ function Bought({ data, leadId }: { data: LeadStock; leadId: string }) {
                   </span>
                 </span>
                 <SaleTypeBadge fulfilment={s.fulfilment} />
-                <span className={cn("shrink-0 font-mono", s.status === "cancelled" && "text-muted-foreground line-through")}>{eur(s.total)}</span>
+                <span className={cn("ms-auto shrink-0 font-mono sm:ms-0", s.status === "cancelled" && "text-muted-foreground line-through")}>{eur(s.total)}</span>
               </li>
             ))}
           </ul>

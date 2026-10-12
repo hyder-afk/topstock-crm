@@ -1336,6 +1336,7 @@
     },
     "importSheet": "Importer une feuille",
     "recordSale": "Enregistrer une vente",
+    "recordSaleShort": "Vendre",
     "newRequests": "{count, plural, one {# nouvelle demande} other {# nouvelles demandes}}"
   },
   "InventorySettings": {
@@ -1764,7 +1765,7 @@
       "bought": "Achats",
       "boughtEmpty": "Aucune vente à ce prospect pour l’instant.",
       "boughtTotal": "{total} sur {count, plural, one {# vente} other {# ventes}}",
-      "number": "N° {number}",
+      "number": "N° {number}",
       "by": "par {name}",
       "cancelled": "Annulée",
       "showAll": "Voir toutes les ventes"
@@ -1778,7 +1779,7 @@
       "all": "Toutes",
       "clearLead": "Voir les ventes de tous les prospects (actuellement {lead})",
       "oneLead": "Un prospect",
-      "number": "N° {number}",
+      "number": "N° {number}",
       "by": "par {name}",
       "deal": "affaire",
       "cancelled": "Annulée",

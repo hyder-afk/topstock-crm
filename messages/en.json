@@ -1336,6 +1336,7 @@
     },
     "importSheet": "Import sheet",
     "recordSale": "Record sale",
+    "recordSaleShort": "Sell",
     "newRequests": "{count, plural, one {# new request} other {# new requests}}"
   },
   "InventorySettings": {
@@ -1764,7 +1765,7 @@
       "bought": "Bought",
       "boughtEmpty": "No sales to this lead yet.",
       "boughtTotal": "{total} over {count, plural, one {# sale} other {# sales}}",
-      "number": "No. {number}",
+      "number": "No. {number}",
       "by": "by {name}",
       "cancelled": "Cancelled",
       "showAll": "Show all sales"
@@ -1778,7 +1779,7 @@
       "all": "All",
       "clearLead": "Show sales of every lead (now {lead})",
       "oneLead": "One lead",
-      "number": "No. {number}",
+      "number": "No. {number}",
       "by": "by {name}",
       "deal": "deal",
       "cancelled": "Cancelled",

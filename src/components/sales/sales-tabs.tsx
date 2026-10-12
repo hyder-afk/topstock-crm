@@ -57,16 +57,19 @@ export function SalesList({
   stepUp,
   company,
   onClearCompany,
+  type,
+  onType,
 }: {
   canManage: boolean;
   stepUp: StepUp;
   company: string | null;
   onClearCompany: () => void;
+  type: "all" | Fulfilment;
+  onType: (type: "all" | Fulfilment) => void;
 }) {
   const t = useTranslations("Sales.list");
   const tf = useTranslations("Sales.fulfilment");
   const ti = useTranslations("Inventory");
-  const [type, setType] = useState<"all" | Fulfilment>("all");
   const query = useSales({ company: company ?? undefined, fulfilment: type === "all" ? undefined : type });
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.rows) ?? [], [query.data]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -93,7 +96,7 @@ export function SalesList({
         <Chips
           label={t("typeFilter")}
           value={type}
-          onChange={setType}
+          onChange={onType}
           options={[
             { id: "all", label: t("all") },
             { id: "from_stock", label: tf("from_stock") },
@@ -133,9 +136,10 @@ function SaleItem({ sale, open, onToggle, canManage, stepUp }: { sale: SaleRow; 
         onClick={onToggle}
         className="flex min-h-[64px] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left hover:bg-muted/50 sm:flex-nowrap sm:px-4"
       >
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {/* Phones: the sale on its own line, the type and the total under it (the lead's name keeps its room). */}
+        <span className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-auto sm:flex-1">
           <span className={cn("flex min-w-0 items-center gap-2", cancelled && "text-muted-foreground line-through")}>
-            <span className="shrink-0 font-mono text-sm">{t("number", { number: sale.number })}</span>
+            <span className="shrink-0 font-mono text-sm whitespace-nowrap">{t("number", { number: sale.number })}</span>
             <span className="truncate font-bold" dir="auto" translate="no">
               {sale.company_name}
             </span>
@@ -151,7 +155,9 @@ function SaleItem({ sale, open, onToggle, canManage, stepUp }: { sale: SaleRow; 
           </span>
         </span>
         <SaleTypeBadge fulfilment={sale.fulfilment} />
-        <span className={cn("shrink-0 font-mono", cancelled && "text-muted-foreground line-through")}>{format.number(Number(sale.total), { style: "currency", currency: "EUR" })}</span>
+        <span className={cn("ms-auto shrink-0 font-mono sm:ms-0", cancelled && "text-muted-foreground line-through")}>
+          {format.number(Number(sale.total), { style: "currency", currency: "EUR" })}
+        </span>
         <ChevronDown aria-hidden="true" strokeWidth={1.75} className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
       </button>
       {open ? (
@@ -362,10 +368,17 @@ function CancelSaleDialog({
 
 // Requests (design 10.1 and 6.8): Open (new and in progress), Done, Declined, All. A row opens the lines with live
 // availability now and the actions: Record sale (prefilled), In progress, Done, Decline.
-export function RequestsList({ onRecordSale }: { onRecordSale: (lead: SaleLead, prefill: SalePrefill) => void }) {
+export function RequestsList({
+  onRecordSale,
+  status,
+  onStatus,
+}: {
+  onRecordSale: (lead: SaleLead, prefill: SalePrefill) => void;
+  status: "open" | "done" | "declined" | "all";
+  onStatus: (status: "open" | "done" | "declined" | "all") => void;
+}) {
   const t = useTranslations("Sales.requests");
   const ti = useTranslations("Inventory");
-  const [status, setStatus] = useState<"open" | "done" | "declined" | "all">("open");
   const query = useRequests(status);
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.rows) ?? [], [query.data]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -389,7 +402,7 @@ export function RequestsList({ onRecordSale }: { onRecordSale: (lead: SaleLead, 
       <Chips
         label={t("statusFilter")}
         value={status}
-        onChange={setStatus}
+        onChange={onStatus}
         options={[
           { id: "open", label: t("open") },
           { id: "done", label: t("done") },

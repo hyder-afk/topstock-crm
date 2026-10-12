@@ -33,7 +33,19 @@ import type { StockPage, StockSummary } from "@/lib/inventory/types";
 import { cn } from "@/lib/utils";
 
 type Member = { id: string; first_name: string | null; last_name: string | null };
-type UiState = { tab: InventoryTab; filters: StockFilters; product: string | null; movementsProduct: string | null; company: string | null };
+type SaleType = "all" | "from_stock" | "direct_from_source";
+type RequestFilter = "open" | "done" | "declined" | "all";
+type UiState = {
+  tab: InventoryTab;
+  filters: StockFilters;
+  product: string | null;
+  movementsProduct: string | null;
+  company: string | null;
+  saleType: SaleType;
+  requestStatus: RequestFilter;
+};
+const saleTypes: readonly string[] = ["from_stock", "direct_from_source"];
+const requestFilters: readonly string[] = ["done", "declined", "all"];
 const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function stateFrom(params: URLSearchParams): UiState {
@@ -47,6 +59,10 @@ function stateFrom(params: URLSearchParams): UiState {
     product: tab === "movements" ? null : ok,
     movementsProduct: tab === "movements" ? ok : null,
     company: company && uuidLike.test(company) ? company : null,
+    // The Sales type and the Requests status chips live in the URL too (a shared link opens the same list).
+    saleType: tab === "sales" && saleTypes.includes(params.get("type") ?? "") ? (params.get("type") as SaleType) : "all",
+    requestStatus:
+      tab === "requests" && requestFilters.includes(params.get("status") ?? "") ? (params.get("status") as RequestFilter) : "open",
   };
 }
 function urlFor(s: UiState) {
@@ -55,6 +71,8 @@ function urlFor(s: UiState) {
   const product = s.tab === "movements" ? s.movementsProduct : s.product;
   if (product) p.set("product", product);
   if (s.tab === "sales" && s.company) p.set("company", s.company);
+  if (s.tab === "sales" && s.saleType !== "all") p.set("type", s.saleType);
+  if (s.tab === "requests" && s.requestStatus !== "open") p.set("status", s.requestStatus);
   const qs = p.toString();
   return `/inventory${qs ? `?${qs}` : ""}`;
 }
@@ -295,9 +313,10 @@ export function InventoryWorkspace({
               <span className="hidden sm:inline">{t("newProduct")}</span>
             </Button>
           ) : null}
-          <Button variant="brand" onClick={() => openSale(null, null)}>
+          <Button variant="brand" onClick={() => openSale(null, null)} aria-label={t("recordSale")} className="whitespace-nowrap">
             <Receipt aria-hidden="true" strokeWidth={1.75} className="size-4" />
-            {t("recordSale")}
+            <span className="sm:hidden">{t("recordSaleShort")}</span>
+            <span className="hidden sm:inline">{t("recordSale")}</span>
           </Button>
         </div>
       </div>
@@ -323,11 +342,15 @@ export function InventoryWorkspace({
             </TabPanel>
           ) : ui.tab === "sales" ? (
             <TabPanel idBase="inventory" id="sales" className="flex min-w-0 flex-col gap-3">
-              <SalesList canManage={canManage} stepUp={stepUp} company={ui.company} onClearCompany={() => navigate({ ...ui, company: null }, "replace")} />
+              <SalesList canManage={canManage} stepUp={stepUp} company={ui.company}
+                onClearCompany={() => navigate({ ...ui, company: null }, "replace")}
+                type={ui.saleType}
+                onType={(saleType) => navigate({ ...ui, saleType }, "replace")}
+              />
             </TabPanel>
           ) : ui.tab === "requests" ? (
             <TabPanel idBase="inventory" id="requests" className="flex min-w-0 flex-col gap-3">
-              <RequestsList onRecordSale={openSale} />
+              <RequestsList onRecordSale={openSale} status={ui.requestStatus} onStatus={(requestStatus) => navigate({ ...ui, requestStatus }, "replace")} />
             </TabPanel>
           ) : (
             <TabPanel idBase="inventory" id="movements" className="flex min-w-0 flex-col gap-3">
