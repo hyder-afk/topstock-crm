@@ -504,6 +504,33 @@ test("stop_while_in_flight: Done for now while a save or Start is on its way lea
   await context.close();
 });
 
+test("restart_while_in_flight: Done for now then Start at once while a save is on its way: the lead on screen stays held", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Restart Alpha", "Restart Bravo", "Restart Charlie", "Restart Delta", "Restart Echo"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  // The save (which also claims the next card) is slow; Done for now and Start again are pressed before it lands. Its
+  // answer belongs to the old session; the new session's Start may get that same lead back as its card.
+  await slow(page, (u) => u.pathname === "/api/queue/outcome", 1500);
+  const first = await current(page);
+  await page.keyboard.press("Digit1");
+  await page.getByRole("button", { name: "Done for now" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await expect.poll(() => outcomes(leadId(adminEmail, first)), { timeout: 10_000 }).toBe("no_answer");
+  // Every job on the chain has run (the old answer's release included).
+  await page.waitForTimeout(4000);
+  const shown = await current(page);
+  // Before: the old answer's release ran after the new Start and let go of the lead now on screen (held by nobody).
+  expect(holder(leadId(adminEmail, shown))).toBe(userId(adminEmail));
+  expect(errors).toEqual([]);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await settled(page);
+  await context.close();
+});
+
 test("undo_latest_outcome: U right after a key takes back that outcome (not the one before), and its lead's heading has the focus", async ({ browser }) => {
   test.setTimeout(180_000);
   fresh(adminEmail);

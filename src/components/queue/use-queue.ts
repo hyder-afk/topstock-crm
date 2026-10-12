@@ -178,9 +178,15 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       if (!answer) return false;
       if (session !== sessionRef.current) {
         // An answer for an earlier session (Done for now, or the claims ended, while it was on its way): the screen
-        // stays as it is, and the leads it claimed are let go (the kept ones go with that session's own release).
-        const ids = answer.cards.map((c) => c.id).filter((id) => !cardsRef.current.some((c) => c.id === id));
-        if (ids.length) void enqueue(async () => void (await safe(releaseClaims({ ids: ids.slice(0, 3) }))));
+        // stays as it is, and the leads it claimed are let go (the kept ones go with that session's own release). The
+        // ids are worked out when the release runs, not now: a Start queued meanwhile may have got one of these leads
+        // back as its card, and that one stays held.
+        const claimed = answer.cards.map((c) => c.id);
+        if (claimed.length)
+          void enqueue(async () => {
+            const ids = claimed.filter((id) => !cardsRef.current.some((c) => c.id === id));
+            if (ids.length) await safe(releaseClaims({ ids: ids.slice(0, 3) }));
+          });
         return false;
       }
       const now = Date.now();
