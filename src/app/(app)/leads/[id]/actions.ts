@@ -52,6 +52,10 @@ export async function logActivity(input: unknown): Promise<ActionResult<LoggedAc
     p_task_title: taskTitle,
     p_request_id: v.requestId,
     p_from_queue: false,
+    p_deal: v.dealId ?? null,
+    p_open_deal: !!v.openDeal,
+    p_deal_title: v.openDeal?.title ?? null,
+    p_deal_value: v.openDeal?.value ?? null,
   });
   if (error) return toActionFailure(error);
   return { ok: true, data: data as LoggedActivity };
