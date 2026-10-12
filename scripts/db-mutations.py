@@ -5,7 +5,7 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|all] [numbers...]  (about 40 s per mutation,
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|day6c|all] [numbers...]  (about 40 s per mutation,
 70 s once the Day 6a stock tests run; default: all
 sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
 when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
@@ -14,7 +14,9 @@ the same thing: it must stay NOT CAUGHT, and the row removing both layers must b
 An edit is (old, new) on the set's own migration, or (path, old, new) on another one. A mutation edits the definition
 that is live after every migration: Day 4a redefines the import "untouched" rule (so Day 3b's mutations of it edit the
 Day 4a migration), and Day 4b redefines the audit trigger, the activity and task delete policies and the insert lock
-(so the Day 3b and Day 4a mutations of those edit the Day 4b migration).
+(so the Day 3b and Day 4a mutations of those edit the Day 4b migration). Day 6a and Day 6c redefine more of them (the
+"untouched" rule; the batch guard; the stock guard, apply step and nightly job): an edit whose text sits in such a later
+redefinition is made there too, automatically (REDEFINERS, mirrored_edits).
 """
 import pathlib
 import subprocess
@@ -26,6 +28,11 @@ MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
 MIG_6A = ROOT / "supabase/migrations/20261016090000_stock_engine.sql"
+MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
+# Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
+# "untouched" rule; Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a).
+# An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
+REDEFINERS = [MIG_6A, MIG_6C]
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -75,7 +82,8 @@ MUTATIONS_3B = [
     ("Batch guard trigger dropped",
      [("create trigger import_batch_guard before insert or update on public.import_batches\n  for each row execute function private.import_batch_guard();", "")]),
     ("One import at a time: index not unique",
-     [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
+     [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx"),
+      (MIG_6C, "create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
     ("Undo: leads with an activity count as untouched",
      [(MIG_4A, "     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
     ("Undo: leads with a contact count as untouched",
@@ -867,8 +875,61 @@ MUTATIONS_6A = [
 ]
 
 
+MUTATIONS_6C = [
+    # Design section 11.3, 6c mutations 17 to 25 (tagged [design N]). 26 (REVENTE mismatch rejects instead of warning)
+    # lives in the browser rules (src/lib/stock-import/rules.ts): the unit tests carry it, not this script.
+    ("The commit applies the delta seen at the check instead of the sheet's target [design 17]",
+     [("        v_d := g.sheet_wh - (lw.on_hand + v_t);\n", "        v_d := g.sheet_wh - (g.wh_at_check + v_t);\n"),
+      ("        v_d := g.sheet_tr - (lt.on_hand - v_t);\n", "        v_d := g.sheet_tr - (g.tr_at_check - v_t);\n")]),
+    ("The commit does not re-read moved in the CRM under the lock (uses the check's value) [design 18]",
+     [("    if (lw.crm_moved or lt.crm_moved) and not g.use_sheet then\n", "    if g.moved_at_check and not g.use_sheet then\n")]),
+    ("A place the sheet leaves out keeps its stock instead of going to 0 [design 19]",
+     [("coalesce(m.q_wh, 0) as sheet_wh, coalesce(m.q_tr, 0) as sheet_tr,",
+       "coalesce(m.q_wh, m.wh_on) as sheet_wh, coalesce(m.q_tr, m.tr_on) as sheet_tr,")]),
+    ("The undo plan ignores last_onhand_batch_id (reverses stock moved or re-imported since) [design 20]",
+     [("      if lv.last_onhand_batch_id is distinct from p_batch then\n        v_qty := case",
+       "      if false then\n        v_qty := case")]),
+    ("The undo deletes the products the import created instead of archiving them [design 21]",
+     [("      update public.products pr set archived_at = now() where pr.id = c.product_id and pr.archived_at is null;\n",
+       "      delete from public.products pr where pr.id = c.product_id;\n")]),
+    ("The batch guard keeps the stock working rows when an import closes [design 22]",
+     [("    delete from private.stock_import_staging s where s.batch_id = n.id;\n", "    null;\n")]),
+    ("No stock marker check in the batch guard (a lead RPC or a direct PATCH moves a stock batch) [design 23]",
+     [("  if current_setting('topstock.stock_batch_op', true) is distinct from n.id::text then\n    raise exception",
+       "  if false then\n    raise exception")]),
+    ("One writer per organisation again instead of per organisation and kind [design 24]",
+     [("create unique index import_batches_one_writer_idx on public.import_batches (org_id, kind)",
+       "create unique index import_batches_one_writer_idx on public.import_batches (org_id)")]),
+    ("The lock helper lets any admin lock a committing import (no uploader check) [design 25]",
+     [("  if not ((b.status = 'committing' and b.uploaded_by = (select auth.uid()))\n",
+       "  if not ((b.status = 'committing')\n")]),
+]
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
-        "day6a": (MIG_6A, MUTATIONS_6A)}
+        "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C)}
+
+
+def redefinitions(text: str) -> list:
+    """The bodies of the functions a migration creates or replaces (header to the closing $$;)."""
+    bodies, at = [], text.find("create or replace function")
+    while at != -1:
+        end = text.find("\n$$;", at)
+        bodies.append(text[at:end])
+        at = text.find("create or replace function", end)
+    return bodies
+
+
+def mirrored_edits(path, old: str, new: str) -> list:
+    """The same edit in every later migration whose redefinition of a function holds the text (once)."""
+    out = []
+    for later in REDEFINERS:
+        if later.name <= path.name:
+            continue
+        text = later.read_text()
+        if any(old in body for body in redefinitions(text)):
+            out.append((later, old, new))
+    return out
 
 
 def run_set(name: str, only: set) -> int:
@@ -882,8 +943,12 @@ def run_set(name: str, only: set) -> int:
             continue
         files = {}
         applied = True
+        expanded = []
         for edit in edits:
             path, old, new = edit if len(edit) == 3 else (default, *edit)
+            expanded.append((path, old, new))
+            expanded += [m for m in mirrored_edits(path, old, new) if m not in edits]
+        for path, old, new in expanded:
             files.setdefault(path, path.read_text())
             text = files[path]
             if text.count(old) != 1:
