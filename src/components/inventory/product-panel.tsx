@@ -215,10 +215,11 @@ function SellHoldActions({ onSheet }: { onSheet: (kind: "sale" | "hold") => void
   const action = "min-h-11 justify-start gap-2 px-3 text-sm sm:min-h-10";
   return (
     <div className="grid grid-cols-2 gap-2">
-      <Button variant="neutral" className={action} aria-keyshortcuts="S" onClick={() => onSheet("sale")}>
+      {/* Quiet: the page's Record sale is the red one in the header, and Arrived stays the panel's filled action. */}
+      <Button variant="quiet" className={action} aria-keyshortcuts="S" onClick={() => onSheet("sale")}>
         <Receipt aria-hidden="true" strokeWidth={1.75} className="size-4" />
         <span className="flex-1 text-left">{t("recordSale")}</span>
-        <Kbd aria-hidden="true" className="hidden border-transparent bg-transparent text-current opacity-70 lg:inline-grid">S</Kbd>
+        <Kbd aria-hidden="true" className="hidden lg:inline-grid">S</Kbd>
       </Button>
       <Button variant="quiet" className={action} aria-keyshortcuts="R" onClick={() => onSheet("hold")}>
         <Hand aria-hidden="true" strokeWidth={1.75} className="size-4" />
