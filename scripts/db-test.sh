@@ -28,4 +28,5 @@ $PSQL -f "$ROOT/supabase/tests/stock_attack.sql"
 bash "$ROOT/supabase/tests/stock_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 $PSQL -f "$ROOT/supabase/tests/inventory_attack.sql"
 $PSQL -f "$ROOT/supabase/tests/stock_import_attack.sql"
+bash "$ROOT/supabase/tests/stock_import_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p 54329 -U postgres -d postgres

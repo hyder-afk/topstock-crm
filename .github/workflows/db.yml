@@ -49,6 +49,8 @@ jobs:
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/inventory_attack.sql
       - name: Stock sheet import attack test (Day 6c)
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/stock_import_attack.sql
+      - name: Stock sheet import under concurrency (Day 6c)
+        run: bash supabase/tests/stock_import_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions
