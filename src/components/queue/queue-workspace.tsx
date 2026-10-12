@@ -188,7 +188,12 @@ export function QueueWorkspace({
     advanced.current = false;
     const active = document.activeElement;
     if (active && active !== document.body && isTyping(active)) return;
-    requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: false }));
+    // The heading takes the focus on the next frame unless the person moved it meanwhile (N pressed as the card
+    // appeared: the note keeps it, so the rest of the typing never turns into keys).
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      if (now === active || !now || now === document.body || !now.isConnected) headingRef.current?.focus({ preventScroll: false });
+    });
   }, [currentId, q.phase]);
   // Back on the start screen (Done for now, Back to start, the claims ended): Start has the focus, so ↩ starts again.
   // The empty state: its heading has the focus (the card or the title that held it is gone or says less).
