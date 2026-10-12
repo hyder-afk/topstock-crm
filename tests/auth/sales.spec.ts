@@ -132,7 +132,7 @@ test("record_sale_keyboard_then_undo", async ({ browser }) => {
   await expect(sheet.getByLabel("Quantity")).toBeFocused();
   await sheet.getByLabel("Quantity").fill("48");
   await expect(sheet.getByLabel("Price per piece")).toHaveValue("4");
-  await page.keyboard.press("Control+Enter");
+  await page.keyboard.press("ControlOrMeta+Enter");
   await expect(toast(page)).toContainText(/Sale \d+ recorded · 1 product · €192\.00/);
   expect(onHand(apron)).toBe("912");
   await expect(panel(page).getByRole("region", { name: "Bought" }).getByText("€192.00").first()).toBeVisible();
@@ -294,7 +294,7 @@ test("empty_sections_and_palette_record_sale", async ({ browser }) => {
   await expect(panel(page).getByText("No requests from this client yet. Share your stock to get some.")).toBeVisible();
   await expect(panel(page).getByText("No stock held for this lead.")).toBeVisible();
   await expect(panel(page).getByText("No sales to this lead yet.")).toBeVisible();
-  await page.keyboard.press("Control+k");
+  await page.keyboard.press("ControlOrMeta+k");
   await page.getByRole("combobox").first().fill("Record sale");
   await page.keyboard.press("Enter");
   const sheet = page.getByRole("dialog", { name: "Record sale" });
