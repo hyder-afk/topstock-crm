@@ -17,7 +17,8 @@
 -- DEFINER code is trigger-only and revoked; every CHECK that user input can reach has a pre-check with a constant
 -- message first; clients get column grants only.
 -- Error hints added here (SQLSTATE 22023 unless noted): busy (a fourth live claim), timezone (a profile zone the
--- database does not know), bad_bucket; 42501 scope (a queue or task scope reserved to managers and admins).
+-- database does not know), bad_bucket; 42501 scope (a queue or task scope reserved to managers and admins). Reused:
+-- bounds, bad_cursor, task_title, task_due, 42501 step_up and not_editable (a claim's fields other than its end).
 --
 -- The leakproof rule (queue and task queries). Under row level security PostgreSQL may use only leakproof operators as
 -- index conditions (any other condition must wait until the policy has filtered the row). The queue therefore filters
