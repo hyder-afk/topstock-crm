@@ -325,7 +325,9 @@ export function TasksWorkspace({
   } else {
     body = (
       <>
-        <ul ref={listRef} aria-label={t("listLabel", { tab: t(`tabs.${tab}`) })} className="flex flex-col">
+        {/* Keyed by scope and tab: another list is a new list, so its rows show without fading in (AnimatePresence's
+            initial={false} applies again); only a task added to the list on screen fades in (design 7.8). */}
+        <ul key={`${scope}:${tab}`} ref={listRef} aria-label={t("listLabel", { tab: t(`tabs.${tab}`) })} className="flex flex-col">
           <AnimatePresence initial={false}>
             {rows.map((task) => (
               <TaskRow

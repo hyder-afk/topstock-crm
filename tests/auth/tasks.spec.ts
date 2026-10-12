@@ -427,3 +427,83 @@ test("enter_on_task_without_lead: Enter on a task's check never ticks it (X or S
   expect(errors).toEqual([]);
   await context.close();
 });
+
+/** Watches the tab panel's rows for 700 ms: the most any row containing `text` was lowered, its lowest opacity, and
+ * whether rows containing `old` were still in the panel at the same time. */
+function watchRows(page: Page, text: string, old: string) {
+  return page.evaluate(
+    ([want, before]) =>
+      new Promise<{ maxY: number; minOp: number; seen: boolean; mixed: boolean }>((resolve) => {
+        let maxY = 0;
+        let minOp = 1;
+        let seen = false;
+        let mixed = false;
+        const t0 = performance.now();
+        const tick = () => {
+          const lis = [...document.querySelectorAll<HTMLElement>("[role=tabpanel] li[data-task-id]")];
+          const fresh = lis.filter((li) => li.textContent?.includes(want));
+          if (fresh.length && lis.some((li) => li.textContent?.includes(before))) mixed = true;
+          for (const li of fresh) {
+            seen = true;
+            const cs = getComputedStyle(li);
+            const m = new DOMMatrixReadOnly(cs.transform === "none" ? undefined : cs.transform);
+            maxY = Math.max(maxY, Math.abs(m.m42));
+            minOp = Math.min(minOp, parseFloat(cs.opacity));
+          }
+          if (performance.now() - t0 < 700) requestAnimationFrame(tick);
+          else resolve({ maxY, minOp, seen, mixed });
+        };
+        requestAnimationFrame(tick);
+      }),
+    [text, old] as const,
+  );
+}
+
+test("switch_without_motion: rows already in a cached tab or scope do not fade in or rise when it is shown again", async ({ browser }) => {
+  // Team shows the whole org (earlier runs' people too): their tasks of this test are put away first.
+  sql(`update public.tasks set cancelled_at = now() where (assignee_id in ('${userId(adminEmail)}', '${userId(repEmail)}') or title like 'Switch %') and done_at is null and cancelled_at is null`);
+  for (const t of ["Switch today one", "Switch today two"]) makeTask(adminEmail, t, { date: todayIn("Europe/Paris") });
+  for (const [t, d] of [["Switch late one", -2], ["Switch late two", -3], ["Switch late three", -4]] as const) makeTask(adminEmail, t, { date: dayIn("Europe/Paris", d) });
+  const teamOnly = `Switch team only ${run}`;
+  makeTask(repEmail, teamOnly, { date: todayIn("Europe/Paris") });
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openTasks(page);
+  await expect(row(page, "Switch today one")).toBeVisible();
+  // Visit Overdue and come back: both tabs are cached now.
+  await tab(page, /^Overdue/).click();
+  await expect(row(page, "Switch late one")).toBeVisible();
+  await tab(page, /^Today/).click();
+  await expect(row(page, "Switch today one")).toBeVisible();
+  await page.waitForTimeout(800);
+  // Before: the list stayed mounted, so every Overdue row faded in and rose while the Today rows faded out beside them.
+  let watch = watchRows(page, "Switch late", "Switch today");
+  await tab(page, /^Overdue/).click();
+  let s = await watch;
+  expect(s.seen).toBe(true);
+  expect(s.maxY).toBeLessThan(0.5);
+  expect(s.minOp).toBeGreaterThan(0.99);
+  expect(s.mixed).toBe(false);
+  // The same for the scope: Today in Team, back to Mine, then Team again.
+  await tab(page, /^Today/).click();
+  await page.getByRole("button", { name: "Team", exact: true }).click();
+  await expect(row(page, teamOnly)).toBeVisible();
+  await page.getByRole("button", { name: "Mine", exact: true }).click();
+  await expect(row(page, teamOnly)).toHaveCount(0);
+  await page.waitForTimeout(800);
+  watch = watchRows(page, teamOnly, "Switch today");
+  await page.getByRole("button", { name: "Team", exact: true }).click();
+  s = await watch;
+  expect(s.seen).toBe(true);
+  expect(s.maxY).toBeLessThan(0.5);
+  expect(s.minOp).toBeGreaterThan(0.99);
+  // A task added now still fades in (design 7.8).
+  const input = page.getByRole("textbox", { name: "New task" });
+  await input.fill("Switch added now");
+  watch = watchRows(page, "Switch added now", "nothing-old");
+  await input.press("Enter");
+  s = await watch;
+  expect(s.seen).toBe(true);
+  expect(s.minOp).toBeLessThan(0.99);
+  expect(errors).toEqual([]);
+  await context.close();
+});
