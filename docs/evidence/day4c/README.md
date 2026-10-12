@@ -107,8 +107,8 @@ queue tests failed, then passed with it).
    focus Start; the empty state's heading (`tabIndex -1`) takes the focus; while cards load after a loss the title
    holds it. Test: e2e `focus_never_drops_to_body` (Start with the pointer, Done for now, the empty state, Back to the
    start).
-3. **Speed budgets (design 8.6).** Not met; measured again and two changes tried (below, "Queue speed"); **Haider is
-   asked to decide** (Open risks, "Question for Haider").
+3. **Speed budgets (design 8.6).** Not met; measured again and two changes tried (below, "Queue speed"). **Answered
+   by Haider, 12 Oct:** accepted for now, revisited in the Day 7 polish (Open risks).
 4. **Daylight-saving time bomb.** `tests/auth/tasks.spec.ts` karachi_today_boundary: the Paris time and day of the
    task are worked out by the database (`to_char(... at time zone 'Europe/Paris', 'HH24:MI')` and the day difference),
    so it reads 22:00 after 25 Oct and 23:00 before.
@@ -153,9 +153,9 @@ e2e ran on the isolated copy: README deviation 12):
 
 ## Review round 3 (12 Oct 2026): the verifier's round 2 and the 24 confirmed review findings
 
-The verifier's round 2 said NOT READY with two new should-fix items and a nit (the speed-budget question stays with
-Haider, Open risks). The review's 24 confirmed findings (`day4c-findings.json`; 9 and 14 are the same focus issue, 10
-and 17 the same lead-picker issue) were fixed alongside. Each behavioural fix has a test that fails without it: the
+The verifier's round 2 said NOT READY with two new should-fix items and a nit (the speed-budget question stayed with
+Haider; answered 12 Oct, Open risks). The review's 24 confirmed findings (`day4c-findings.json`; 9 and 14 are the
+same focus issue, 10 and 17 the same lead-picker issue) were fixed alongside. Each behavioural fix has a test that fails without it: the
 database ones through mutation rows 88 to 92 (`mutations.md`), the unit ones by running them on the old files, the e2e
 ones by building the app with this round's app files taken back to 7b3fa92 (the new toast hook kept, so the tests can
 find the toast) and running the new tests on it.
@@ -199,6 +199,28 @@ find the toast) and running the new tests on it.
 | Screenshots | `screens.spec.ts` "app shell", "tasks page", "work queue", "route skeletons": 4 passed, exit 0 (a first run failed on the French Confirm name, "Confirmer", fixed in 4615c89); 54 kept shots replaced, 16 added (`screens/README.md`) |
 | gitleaks / `npm audit --omit=dev` | gitleaks `origin/main..HEAD` on 2aea16d: 39 commits scanned, no leaks found, exit 0; gitleaks `dir` on `docs/evidence/day4c` and `docs/log.md` before the evidence commit: no leaks, exit 0 / `npm audit --omit=dev`: found 0 vulnerabilities, exit 0 |
 | Not run here | WebKit, Semgrep, `journey.spec.ts` (CI); `day4-perf` and `day4-chunks` (PERF=1 only; the perf spec's toast hook changed to `data-toast`) |
+
+## Review round 4 (12 Oct 2026): the verifier's round 3 (N1 to N3)
+
+The verifier's round 3 said NOT READY with three new should-fix items, all fixed as it suggested. Each new e2e test
+was first run on a build of the code without its fix (e17316d plus the new tests) and failed there; the N2 test, which
+did not run in that first pass (serial mode after the N1 failure), was run alone on the same build and failed.
+
+| Finding | What changed | How it was checked |
+|---|---|---|
+| N1 (Done for now, then Start at once while a save is on its way: the lead on screen held by nobody) | `use-queue.ts` `take()`: for an earlier session's answer, the ids to let go are worked out inside the release job when it runs (leaving out the cards then on screen), not when the answer arrives; a Start queued meanwhile that got one of those leads back keeps it held (f2ce134) | e2e `restart_while_in_flight` (probe P1 steps: slow outcome, 1, Done for now, Start, then the shown lead's claim holder is checked in the database); without the fix: holder `""` instead of the user |
+| N2 (U did nothing on the start screen while the toast offered "Undo (U)"; rest of finding 5) | `queue-workspace.tsx`: the start phase handles U and Cmd/Ctrl+Z (not while typing) when `q.canUndo()`; `undo()` already brings the queue back from the start screen (67b2162) | e2e `undo_on_start_screen` (1, Done for now, U: the lead's heading is back and focused, its outcome is gone, the lead is held); without the fix: no card came back |
+| N3 (every switch to a cached tab or scope animated all its rows) | `tasks-workspace.tsx`: the `<ul>` is keyed by `${scope}:${tab}`, so another list mounts fresh and AnimatePresence's `initial={false}` applies again; a task added to the list on screen still fades in (71523fe) | e2e `switch_without_motion` (rows of a cached Overdue tab and of the Team scope: no rise, full opacity, no old rows beside them; a newly added task still fades in); without the fix: rows rose 133.7 px |
+
+**Review round 4 checks** (on 71523fe):
+
+| Check | Result |
+|---|---|
+| `npm run lint` / `npm run typecheck` | exit 0 (the 2 existing TanStack Virtual warnings) / exit 0 |
+| `npm run test:unit` | 345 passed, exit 0 |
+| E2E Chromium, shared local stack (restarted for this worktree, Next on 3100) | `tasks.spec.ts` + `queue.spec.ts` + `queue-multi.spec.ts`: **33 passed, exit 0** (12 + 20 + 1; 3 new). A first run had 1 failure (`switch_without_motion` matched an earlier run's Team task by title; the title now carries the run id) |
+| Without the fixes (e17316d app code, rebuilt) | `restart_while_in_flight` failed (holder `""`), `switch_without_motion` failed (133.7 px); `undo_on_start_screen` run alone failed (no card came back) |
+| Not run here | db-test (no database change), WebKit, Semgrep, `journey.spec.ts` (CI) |
 
 ## Check results
 
@@ -288,12 +310,14 @@ VM with the `psql`-per-call REST stand-in.
 
 ## Open risks
 
-- **Queue speed budgets missed: Haider decides** (table above). The longest task during an advance is 58–112 ms at 4x
+- **Queue speed budgets missed: accepted by Haider for now, revisit in Day 7 polish.** Haider, 12 Oct: queue speed
+  misses accepted for now (longest task during an advance 58-112 ms vs 50; loading card on fast key bursts); revisit
+  in Day 7 polish. Details (table above): The longest task during an advance is 58–112 ms at 4x
   CPU (budget 50); the 10-key burst shows the loading card on 9 keys of 10 (budget 1); key to saved is 396–521 ms
   (recorded only; the D3 switch it feeds is applied). At human pace (a call between keys) the reserve card is always
   ready and the next card paints in about 90 ms.
 
-  **Question for Haider:** "The work queue misses two of its speed targets on our slowed-down test machine: a key
+  **Question for Haider (answered 12 Oct: accept for now, revisit in Day 7 polish):** "The work queue misses two of its speed targets on our slowed-down test machine: a key
   press can keep the screen busy for up to about a tenth of a second (target: a twentieth), and if you press keys as
   fast as cards appear, a short loading card shows on most of them, because the next lead is fetched while you work.
   At normal pace, one call between keys, you will not see either. Do you accept this for now and let me look again in
