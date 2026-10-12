@@ -1954,7 +1954,6 @@
     "copyAgain": "Copy again",
     "copyFailed": "Couldn't copy. Select the link and copy it.",
     "linkLabel": "Client link",
-    "emailSubject": "Our live stock",
     "row": "Made by {name} · {date}",
     "rowNoName": "Made on {date}",
     "opened": "Opened {when}",
@@ -1983,5 +1982,16 @@
     "options": "Link options",
     "readOnly": "Only {owner}, a manager or an admin can share stock with this lead.",
     "retry": "Try again"
+  },
+  "ShareText": {
+    "message": "Hello, here is our live stock with prices per piece:\n{link}\nTap an item to ask for it. {who}",
+    "signature": "{firstName}, TopStock Wholesale",
+    "company": "TopStock Wholesale",
+    "emailSubject": "Our live stock",
+    "listHead": "Our stock available now (prices per piece, excl. VAT):",
+    "line": "• {name}: {price} · {pieces} pcs",
+    "perPiece": "{price}/pc",
+    "priceOnRequest": "price on request",
+    "more": "… and more items."
   }
 }

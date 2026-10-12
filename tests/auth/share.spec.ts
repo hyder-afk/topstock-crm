@@ -164,7 +164,13 @@ test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
   if (chromium) expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
   // WhatsApp and e-mail carry the message with the link; the lead's number is dialled in international form.
   await expect(card.getByRole("link", { name: "Share on WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/33612345678\?text=Bonjour/);
-  await expect(card.getByRole("link", { name: "Email" })).toHaveAttribute("href", /^mailto:\?subject=/);
+  // The client-facing words follow the link's language (French here, in an English interface), and the link ends its
+  // line: no full stop a chat app could glue to it.
+  const body = `Bonjour, voici notre stock en direct avec les prix à la pièce\u202f:\n${link}\nTouchez un article pour le demander. Henri, TopStock Wholesale`;
+  await expect(card.getByRole("link", { name: "Email" })).toHaveAttribute(
+    "href",
+    `mailto:?subject=${encodeURIComponent("Notre stock en direct")}&body=${encodeURIComponent(body)}`,
+  );
   // Only the hash is kept: after a reload the address is gone, the link is listed by its last 4 characters.
   await page.reload();
   await appReady(page);

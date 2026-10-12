@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
-import { useFormatter, useLocale, useTranslations } from "next-intl";
+import { useId, useMemo, useRef, useState } from "react";
+import { useFormatter, useLocale, useMessages, useTranslations } from "next-intl";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Mail, MessageCircle } from "lucide-react";
 import { createShareLink, extendShareLink, revokeShareLink } from "@/app/(app)/inventory/share/actions";
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } fro
 import { useToast } from "@/components/ui/toast";
 import type { ShareItem } from "@/lib/share/schema";
 import { defaultLinkLanguage, type MadeLink, type ShareLinkList, type ShareLinkRow } from "@/lib/share/team";
-import { linkMessage, mailtoHref, stockListText, whatsappTextHref } from "@/lib/share/text";
+import { linkMessage, mailtoHref, shareText, stockListText, whatsappTextHref, type ShareLang, type ShareText } from "@/lib/share/text";
 import { cn } from "@/lib/utils";
 
 // The lead's client link card (design 10.4 and 8.3), first on the Stock tab. No link yet: Share on WhatsApp (neutral)
@@ -37,6 +37,14 @@ export function useShareLinks(company: string | null) {
 
 const EXPIRY = [30, 90, 365] as const;
 
+/** The client-facing words in a link's language (request config: ShareTextByLanguage), else the interface's. */
+function useShareText(lang: ShareLang): ShareText {
+  const messages = useMessages() as Record<string, unknown>;
+  const byLanguage = messages.ShareTextByLanguage as Partial<Record<ShareLang, Record<string, unknown>>> | undefined;
+  const words = byLanguage?.[lang] ?? (messages.ShareText as Record<string, unknown> | undefined) ?? {};
+  return useMemo(() => shareText(lang, words), [lang, words]);
+}
+
 export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { lead: ShareLead; canEdit: boolean; ownerFirstName: string | null; me: string | null; stepUp: StepUp }) {
   const t = useTranslations("ShareLinks");
   const format = useFormatter();
@@ -57,7 +65,9 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
   const [textOpen, setTextOpen] = useState(false);
   const linkInput = useRef<HTMLInputElement>(null);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["share-links"] });
-  const message = (url: string) => linkMessage(url, me, language);
+  // A made link's message is in that link's language, also when the picker changed since.
+  const wordsFor = { en: useShareText("en"), fr: useShareText("fr") };
+  const message = (link: MadeLink) => linkMessage(link.url, me, wordsFor[link.language]);
 
   const make = async (then: "whatsapp" | "copy" | "none", replace = false) => {
     if (busy) return;
@@ -82,7 +92,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
     refresh();
     if (win) {
       win.opener = null;
-      win.location.href = whatsappTextHref(linkMessage(res.data.url, me, res.data.language), lead.phone, lead.country);
+      win.location.href = whatsappTextHref(message(res.data), lead.phone, lead.country);
     }
     if (then === "copy") await copy(res.data.url);
     else toast.show(t("made"));
@@ -205,7 +215,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
               <p className="text-xs text-muted-foreground">{t("made")}</p>
               <div className="flex flex-wrap gap-2">
                 <a
-                  href={whatsappTextHref(message(made.url), lead.phone, lead.country)}
+                  href={whatsappTextHref(message(made), lead.phone, lead.country)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 font-bold text-primary-foreground"
@@ -218,7 +228,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
                   {t("copyAgain")}
                 </Button>
                 <a
-                  href={mailtoHref(t("emailSubject"), message(made.url), lead.email)}
+                  href={mailtoHref(wordsFor[made.language].t("emailSubject"), message(made), lead.email)}
                   className="inline-flex min-h-11 items-center gap-2 rounded-md bg-muted px-4 font-bold text-foreground"
                 >
                   <Mail aria-hidden="true" strokeWidth={1.75} className="size-4" />
@@ -305,7 +315,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
       <Button variant="link" className={cn("self-start")} onClick={() => setTextOpen(true)}>
         {t("sendText")}
       </Button>
-      <StockTextDialog open={textOpen} onOpenChange={setTextOpen} lead={lead} language={language} link={made?.url ?? null} me={me} />
+      <StockTextDialog open={textOpen} onOpenChange={setTextOpen} lead={lead} language={made?.language ?? language} link={made?.url ?? null} me={me} />
     </section>
   );
 }
@@ -335,7 +345,8 @@ function StockTextDialog({
     staleTime: 30_000,
   });
   const items = preview.data?.items ?? [];
-  const text = preview.data ? stockListText(items, language, { link, firstName: me }) : "";
+  const words = useShareText(language);
+  const text = preview.data ? stockListText(items, words, { link, firstName: me }) : "";
   const hasStock = items.some((i) => i.warehouse > 0);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

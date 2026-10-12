@@ -2,14 +2,14 @@ import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import enMessages from "../../messages/en.json";
 import frMessages from "../../messages/fr.json";
-import { isShareSurface, shareMessages } from "@/i18n/share-messages";
+import { isShareSurface, shareMessages, withShareTexts } from "@/i18n/share-messages";
 import { assertSameOrigin, readJsonCapped } from "@/lib/http";
 import { mapShareItem, mapShareItems, mapShareRequest, mapShareView, snapshotToWire } from "@/lib/share/map";
 import { itemFromWire, requestElapsed, snapshotFromWire } from "@/lib/share/wire";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { requestBodySchema, viewBodySchema } from "@/lib/share/schema";
 import { defaultLinkLanguage } from "@/lib/share/team";
-import { linkMessage, mailtoHref, piecePrice, stockListText, whatsappTextHref } from "@/lib/share/text";
+import { linkMessage, mailtoHref, piecePrice, shareText, stockListText, whatsappTextHref } from "@/lib/share/text";
 import { shareUrl, tokenFromHash, TOKEN_RE } from "@/lib/share/token";
 
 // Day 6e pure rules (design 11.4): the token, the public routes' schemas (in and out), the positional map, the IP
@@ -197,10 +197,12 @@ test.describe("messages", () => {
 });
 
 test.describe("stock list text", () => {
+  const FR = shareText("fr", frMessages.ShareText);
+  const EN = shareText("en", enMessages.ShareText);
   const item = (n: number, warehouse = 4200) => mapShareItem([n + 1, `T-shirt coton ${n}`, "Textile", "2.5", 24, warehouse, 0, null])!;
   test("30 in-stock items at most, French typography, the link at the end", () => {
     const items = [item(0, 0), ...Array.from({ length: 40 }, (_, i) => item(i + 1))];
-    const text = stockListText(items, "fr", { link: "https://crm.example/s/fr#" + TOKEN, firstName: "Henri" });
+    const text = stockListText(items, FR, { link: "https://crm.example/s/fr#" + TOKEN, firstName: "Henri" });
     expect(text.split("\n").filter((l) => l.startsWith("•"))).toHaveLength(30);
     expect(text).toContain("• T-shirt coton 1 : 2,50 €/pc · 4 200 pcs");
     expect(text).not.toContain("T-shirt coton 0 :");
@@ -210,18 +212,37 @@ test.describe("stock list text", () => {
   });
   test("cut to 3,500 characters with the link kept", () => {
     const long = Array.from({ length: 30 }, (_, i) => mapShareItem([i + 1, "N".repeat(190), null, "1", 1, 5, 0, null])!);
-    const text = stockListText(long, "en", { link: "https://x.example/s/en#" + TOKEN });
+    const text = stockListText(long, EN, { link: "https://x.example/s/en#" + TOKEN });
     expect(text.length).toBeLessThanOrEqual(3500);
     expect(text).toContain("#" + TOKEN);
   });
   test("wa.me and mailto encode every part; prices per piece with 2 to 4 decimals", () => {
-    const msg = linkMessage("https://x.example/s/en#" + TOKEN, null, "en");
+    const msg = linkMessage("https://x.example/s/en#" + TOKEN, null, EN);
     expect(whatsappTextHref(msg, "06 12 34 56 78", "FR")).toBe(`https://wa.me/33612345678?text=${encodeURIComponent(msg)}`);
     expect(whatsappTextHref("a&b", null, null)).toBe("https://wa.me/?text=a%26b");
     expect(mailtoHref("Stock & prices", "a b", "x@y.fr")).toBe("mailto:x%40y.fr?subject=Stock%20%26%20prices&body=a%20b");
     expect(mailtoHref("s", "b", "not an email")).toBe("mailto:?subject=s&body=b");
     expect(piecePrice("2.5", "en")).toBe("€2.50");
     expect(piecePrice("0.1234", "fr")).toBe("0,1234 €");
+  });
+  test("share_link_message_from_messages: the words come from ShareText in the link's language, the link alone on its line", () => {
+    const link = "https://x.example/s/fr#" + TOKEN;
+    const fr = linkMessage(link, "Henri", FR);
+    expect(fr).toBe(`Bonjour, voici notre stock en direct avec les prix à la pièce\u202f:\n${link}\nTouchez un article pour le demander. Henri, TopStock Wholesale`);
+    expect(linkMessage(link, null, EN)).toBe(`Hello, here is our live stock with prices per piece:\n${link}\nTap an item to ask for it. TopStock Wholesale`);
+    // Whatever a chat app takes as the link's end, the token read back is the token sent.
+    for (const m of [fr, linkMessage(link, null, EN)]) {
+      const glued = m.slice(m.indexOf("#")).split(/\s/)[0];
+      expect(glued).toBe("#" + TOKEN);
+      expect(tokenFromHash(glued)).toBe(TOKEN);
+    }
+    expect(FR.t("emailSubject")).toBe(frMessages.ShareText.emailSubject);
+    expect(stockListText([mapShareItem([1, "Sac", null, null, 1, 5, 0, null])!], EN)).toBe("Our stock available now (prices per piece, excl. VAT):\n• Sac: price on request · 5 pcs");
+    // Both languages' words reach the team app, whatever its own language; the client page's subset stays without them.
+    const merged = withShareTexts(frMessages as Record<string, unknown>, enMessages as Record<string, unknown>, frMessages as Record<string, unknown>);
+    expect(merged.ShareTextByLanguage).toEqual({ en: enMessages.ShareText, fr: frMessages.ShareText });
+    expect(merged.Inventory).toBe(frMessages.Inventory);
+    expect(Object.keys(shareMessages(merged))).not.toContain("ShareTextByLanguage");
   });
   test("a new link's language follows the lead's country", () => {
     expect(defaultLinkLanguage("BE", "en")).toBe("fr");

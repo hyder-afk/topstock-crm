@@ -1954,7 +1954,6 @@
     "copyAgain": "Copier à nouveau",
     "copyFailed": "Copie impossible. Sélectionnez le lien et copiez-le.",
     "linkLabel": "Lien client",
-    "emailSubject": "Notre stock en direct",
     "row": "Créé par {name} · {date}",
     "rowNoName": "Créé le {date}",
     "opened": "Ouvert {when}",
@@ -1983,5 +1982,16 @@
     "options": "Options du lien",
     "readOnly": "Seuls {owner}, un manager ou un admin peuvent partager le stock avec ce prospect.",
     "retry": "Réessayer"
+  },
+  "ShareText": {
+    "message": "Bonjour, voici notre stock en direct avec les prix à la pièce :\n{link}\nTouchez un article pour le demander. {who}",
+    "signature": "{firstName}, TopStock Wholesale",
+    "company": "TopStock Wholesale",
+    "emailSubject": "Notre stock en direct",
+    "listHead": "Notre stock disponible (prix HT à la pièce) :",
+    "line": "• {name} : {price} · {pieces} pcs",
+    "perPiece": "{price}/pc",
+    "priceOnRequest": "prix sur demande",
+    "more": "… et d’autres articles."
   }
 }
