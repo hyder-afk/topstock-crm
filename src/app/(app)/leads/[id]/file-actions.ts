@@ -23,19 +23,22 @@ async function clearDeleting(supabase: Supabase, items: { id?: string; path: str
   }
 }
 
-/** Starts an upload: the name cleaned (no invisible or bidi characters, at most 180, the type's extension), the row
- *  made pending, and the caller's abandoned uploads (over 15 minutes) cleaned up. Returns where to send the bytes. */
+/** Starts an upload: the caller's abandoned uploads (over 15 minutes) cleaned up first, then the name cleaned (no
+ *  invisible or bidi characters, at most 180, the type's extension) and the row made pending. Returns where to send the
+ *  bytes. The clean-up is its own call, before the new row: a refusal of the new row (space full, limits) cannot undo
+ *  it, and the abandoned bytes no longer count when the space is judged (verifier 4d round 2 finding 4). */
 export async function beginUpload(input: unknown): Promise<ActionResult<{ id: string; path: string; name: string }>> {
   const parsed = beginUploadInput.safeParse(input);
   if (!parsed.success) return invalid("file_type");
   const v = parsed.data;
   const name = cleanFileName(v.name, v.mime);
   const { supabase } = await requireSession();
+  const stale = await supabase.rpc("take_stale_uploads");
+  // Quiet: rows it marked "deleting" are listed with Retry if their bytes cannot be removed now.
+  if (!stale.error && Array.isArray(stale.data)) await clearDeleting(supabase, stale.data as { id: string; path: string }[]);
   const { data, error } = await supabase.rpc("begin_file_upload", { p_company: v.leadId, p_name: name, p_mime: v.mime, p_size: v.size });
   if (error) return toActionFailure(error);
-  const r = data as { id: string; path: string; stale: { id: string; path: string }[] };
-  await clearDeleting(supabase, r.stale); // the caller's abandoned uploads, already marked "deleting"
-
+  const r = data as { id: string; path: string };
   return { ok: true, data: { id: r.id, path: r.path, name } };
 }
 

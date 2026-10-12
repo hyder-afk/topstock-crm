@@ -3,8 +3,9 @@
 -- (30,015 leads) on the same throwaway database (scripts/db-perf.sh). Locally storage.objects is
 -- supabase/tests/storage_shim.sql's stand-in, with the real schema's unique (bucket_id, name) index.
 --  Seed: 5,000 ready files with their objects (1,000 on one lead, 4,000 over 400 leads), inserted with triggers off.
---  P11:  one round = begin_file_upload (stale clean-up, pre-checks, the insert guard's limits and the team-space sum
---        under the advisory lock), the bytes (not timed), finish_file_upload (the update guard's object match); rolled
+--  P11:  one round = take_stale_uploads (the stale clean-up, its own call since verifier 4d round 2 finding 4), then
+--        begin_file_upload (pre-checks, the insert guard's limits and the team-space sum under the advisory lock), the
+--        bytes (not timed), finish_file_upload (the update guard's object match), each timed on its own; rolled
 --        back, so the hourly limit and the space never fill. 10 rounds to settle the plans, then the average of 5;
 --        round 6 logs every inner statement's plan (auto_explain), the generic-plan check.
 \set ON_ERROR_STOP 1
@@ -28,16 +29,20 @@ select set_config('perf.lead', (select id::text from perf_file_leads where n = 1
 select 'files seeded: ' || count(*) || ' ready, ' || pg_size_pretty(sum(size)::bigint) || ' declared; objects: '
        || (select count(*) from storage.objects) from public.files;
 
--- One upload round, rolled back; the two times (ms) come back in perf.begin and perf.finish.
+-- One upload round, rolled back; the three times (ms) come back in perf.take, perf.begin and perf.finish.
 create function pg_temp.upload_round(lead uuid) returns void
 language plpgsql as $$
 declare
   t0 timestamptz;
   r jsonb;
+  ms_take numeric;
   ms_begin numeric;
   ms_finish numeric;
 begin
   begin
+    t0 := clock_timestamp();
+    perform public.take_stale_uploads();
+    ms_take := extract(epoch from clock_timestamp() - t0) * 1000;
     t0 := clock_timestamp();
     r := public.begin_file_upload(lead, 'Devis printemps.pdf', 'application/pdf', 250000);
     ms_begin := extract(epoch from clock_timestamp() - t0) * 1000;
@@ -49,6 +54,7 @@ begin
     raise exception 'undo' using errcode = 'TS001';
   exception when sqlstate 'TS001' then null;
   end;
+  perform set_config('perf.take', ms_take::text, false);
   perform set_config('perf.begin', ms_begin::text, false);
   perform set_config('perf.finish', ms_finish::text, false);
 end;
@@ -75,16 +81,19 @@ set role authenticated;
 \echo '=== P11 timings: average of 5 warm rounds after 10, milliseconds (budget 10 ms each) ==='
 do $$
 declare
+  t numeric := 0;
   b numeric := 0;
   f numeric := 0;
 begin
   for r in 1..15 loop
     perform pg_temp.upload_round(current_setting('perf.lead')::uuid);
     if r > 10 then
+      t := t + current_setting('perf.take')::numeric;
       b := b + current_setting('perf.begin')::numeric;
       f := f + current_setting('perf.finish')::numeric;
     end if;
   end loop;
+  raise notice 'P11 take_stale_uploads : % ms', round(t / 5, 2);
   raise notice 'P11 begin_file_upload  : % ms', round(b / 5, 2);
   raise notice 'P11 finish_file_upload : % ms', round(f / 5, 2);
 end $$;

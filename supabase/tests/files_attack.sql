@@ -49,11 +49,12 @@ begin
 end;
 $$;
 
--- The bytes of an upload, as storage-api stores them, inserted as the current role and claims.
+-- The bytes of an upload, as storage-api stores them (a new version for every upload), inserted as the current role and
+-- claims.
 create function pg_temp.put(p_path text, p_size bigint, p_mime text) returns void
 language sql as $$
-  insert into storage.objects (bucket_id, name, owner, metadata)
-  values ('lead-files', p_path, (select auth.uid()), jsonb_build_object('size', p_size, 'mimetype', p_mime))
+  insert into storage.objects (bucket_id, name, owner, metadata, version)
+  values ('lead-files', p_path, (select auth.uid()), jsonb_build_object('size', p_size, 'mimetype', p_mime), gen_random_uuid()::text)
 $$;
 
 -- A whole upload (begin, bytes, finish) as the current person; returns the file id.
@@ -136,21 +137,24 @@ begin
      is distinct from array['audit_row', 'enforce_org_and_owner', 'file_guard_delete', 'file_guard_insert', 'file_guard_update', 'set_updated_at'] then
     raise exception 'FAIL: files triggers';
   end if;
-  -- Clients can call none of the guards or the space sum; the insert guard and the audit helper are the only definers.
+  -- Clients can call none of the guards or the space sum; the insert guard, the audit helper and import undo's "lead has
+  -- files" check are the only definers.
   if has_function_privilege('authenticated', 'private.file_guard_insert()', 'execute')
      or has_function_privilege('authenticated', 'private.file_guard_update()', 'execute')
      or has_function_privilege('authenticated', 'private.org_storage_bytes(uuid)', 'execute')
      or has_function_privilege('anon', 'public.begin_file_upload(uuid, text, text, integer)', 'execute')
-     or has_function_privilege('anon', 'public.open_file(uuid)', 'execute') then
+     or has_function_privilege('anon', 'public.open_file(uuid)', 'execute')
+     or has_function_privilege('anon', 'public.take_stale_uploads()', 'execute')
+     or has_function_privilege('anon', 'private.lead_has_files(uuid)', 'execute') then
     raise exception 'FAIL: function privileges';
   end if;
   if (select array_agg(p.proname::text order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
        where p.prosecdef and n.nspname in ('public', 'private') and (p.proname like '%file%' or p.proname like '%object%' or p.proname = 'org_storage_bytes'))
-     is distinct from array['audit_file_access', 'file_guard_insert'] then
+     is distinct from array['audit_file_access', 'file_guard_insert', 'lead_has_files'] then
     raise exception 'FAIL: unexpected SECURITY DEFINER file functions';
   end if;
   if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname = 'public' and p.proname in ('begin_file_upload', 'get_pending_upload', 'finish_file_upload',
+              where n.nspname = 'public' and p.proname in ('take_stale_uploads', 'begin_file_upload', 'get_pending_upload', 'finish_file_upload',
                 'abort_file_upload', 'list_lead_files', 'open_file', 'begin_file_delete', 'finish_file_delete', 'file_usage')
                 and (p.prosecdef or not coalesce(p.proconfig @> array['search_path=""'], false))) then
     raise exception 'FAIL: a file RPC is SECURITY DEFINER or lacks search_path = ''''';
@@ -180,25 +184,23 @@ begin
   perform set_config('t.org', main_org::text, false);
 end $$;
 
--- 1. anon and a session without two-factor (aal1) see nothing and store nothing (threat 1) ---------------------------
+-- 1. anon and a session without two-factor (aal1) call nothing and store nothing (threat 1; what they read is probed in
+--    section 6b, once ready files and their objects exist) ---------------------------------------------------------
 set role anon;
 do $$ begin perform set_config('request.jwt.claims', '{"role":"anon"}', false); end $$;
 do $$ begin
   perform pg_temp.expect_error('select count(*) from public.files', '42501');
   perform pg_temp.expect_error($q$select public.begin_file_upload('35000000-0000-0000-0000-0000000000a1', 'x.pdf', 'application/pdf', 10)$q$, '42501');
-  if exists (select 1 from storage.objects) then raise exception 'FAIL: anon reads stored objects'; end if;
 end $$;
 reset role;
 set role authenticated;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f4', 'aal1'); end $$;
 do $$ begin
-  if (select count(*) from public.files) <> 0 then raise exception 'FAIL: day4_aal1_blocked: aal1 reads files'; end if;
   perform pg_temp.expect_error($q$select public.begin_file_upload('35000000-0000-0000-0000-0000000000a1', 'x.pdf', 'application/pdf', 10)$q$, '42501');
   perform pg_temp.expect_error($q$select * from public.list_lead_files('35000000-0000-0000-0000-0000000000a1')$q$, '42501');
   perform pg_temp.expect_error($q$select public.open_file('70000000-0000-0000-0000-0000000000a1')$q$, '42501');
   perform pg_temp.expect_error('select public.file_usage()', '42501');
   perform pg_temp.expect_error($q$insert into public.files (company_id, name, mime, size) values ('35000000-0000-0000-0000-0000000000a1', 'x.pdf', 'application/pdf', 10)$q$, '42501');
-  if exists (select 1 from storage.objects) then raise exception 'FAIL: aal1 reads stored objects'; end if;
   perform pg_temp.expect_error(format($q$select pg_temp.put(%L, 10, 'application/pdf')$q$,
     current_setting('t.org') || '/35000000-0000-0000-0000-0000000000a1/' || gen_random_uuid() || '.pdf'), '42501');
 end $$;
@@ -213,11 +215,12 @@ begin
   r := public.begin_file_upload('35000000-0000-0000-0000-0000000000a1', 'Devis n°12 — été 🧾.pdf', 'application/pdf', 1200);
   -- file_path_server_built: org/lead/<new id>.pdf, from ids and the type only.
   if r ->> 'path' is distinct from current_setting('t.org') || '/35000000-0000-0000-0000-0000000000a1/' || (r ->> 'id') || '.pdf'
-     or r -> 'stale' is distinct from '[]'::jsonb then
+     or (select array_agg(k order by k) from jsonb_object_keys(r) k) is distinct from array['id', 'path'] then
     raise exception 'FAIL: file_path_server_built: %', r;
   end if;
   select * into f from public.files where id = (r ->> 'id')::uuid;
   if f.status <> 'pending' or f.uploaded_by <> '00000000-0000-0000-0000-0000000000f4' or f.ready_at is not null
+     or f.object_version is not null
      or f.org_id::text <> current_setting('t.org') or f.name <> 'Devis n°12 — été 🧾.pdf' then
     raise exception 'FAIL: a new file row: %', row_to_json(f);
   end if;
@@ -235,6 +238,12 @@ begin
   if r -> 'done' ->> 'name' is distinct from 'Devis n°12 — été 🧾.pdf' or (r -> 'done' ->> 'ready_at') is null
      or (select status from public.files where id = (r ->> 'id')::uuid) <> 'ready' then
     raise exception 'FAIL: finish_file_upload: %', r;
+  end if;
+  -- object_version_bound_at_finish: the row records the version of the object it was checked against.
+  if (select x.object_version from public.files x where x.id = (r ->> 'id')::uuid) is distinct from
+     (select o.version from storage.objects o where o.bucket_id = 'lead-files' and o.name = r ->> 'path')
+     or (select x.object_version from public.files x where x.id = (r ->> 'id')::uuid) is null then
+    raise exception 'FAIL: object_version_bound_at_finish';
   end if;
   perform pg_temp.expect_error(format('select public.finish_file_upload(%L)', r ->> 'id'), 'P0002');
   perform pg_temp.expect_error(format('select public.get_pending_upload(%L)', r ->> 'id'), 'P0002');
@@ -261,7 +270,8 @@ begin
     format($q$update public.files set size = 1 where id = %L$q$, current_setting('t.f1')),
     format($q$update public.files set storage_path = 'x' where id = %L$q$, current_setting('t.f1')),
     format($q$update public.files set company_id = '35000000-0000-0000-0000-0000000000a2' where id = %L$q$, current_setting('t.f1')),
-    format($q$update public.files set ready_at = now() where id = %L$q$, current_setting('t.f1'))
+    format($q$update public.files set ready_at = now() where id = %L$q$, current_setting('t.f1')),
+    format($q$update public.files set object_version = 'forged' where id = %L$q$, current_setting('t.f1'))
   ] loop
     perform pg_temp.expect_error(attempt, '42501');
   end loop;
@@ -276,11 +286,11 @@ declare
   f record;
 begin
   begin
-    insert into public.files (id, company_id, name, mime, size, storage_path, status, ready_at, uploaded_by, created_at)
+    insert into public.files (id, company_id, name, mime, size, storage_path, status, ready_at, uploaded_by, created_at, object_version)
     values ('77777777-0000-0000-0000-000000000001', '35000000-0000-0000-0000-0000000000a1', 'forged.pdf', 'application/pdf', 10,
-            'forged/path.pdf', 'ready', now(), '00000000-0000-0000-0000-0000000000b1', now() - interval '1 year')
+            'forged/path.pdf', 'ready', now(), '00000000-0000-0000-0000-0000000000b1', now() - interval '1 year', 'forged')
     returning * into f;
-    if f.id = '77777777-0000-0000-0000-000000000001' or f.status <> 'pending' or f.ready_at is not null
+    if f.id = '77777777-0000-0000-0000-000000000001' or f.status <> 'pending' or f.ready_at is not null or f.object_version is not null
        or f.uploaded_by <> '00000000-0000-0000-0000-00000000000a' or f.created_at < now() - interval '1 minute'
        or f.storage_path <> current_setting('t.org') || '/35000000-0000-0000-0000-0000000000a1/' || f.id || '.pdf' then
       raise exception 'FAIL: day4_server_columns_not_writable (guard kept %)', row_to_json(f);
@@ -293,6 +303,8 @@ begin
   perform pg_temp.expect_error(format($q$update public.files set name = 'x.pdf' where id = %L$q$, current_setting('t.f1')), '42501');
   perform pg_temp.expect_error(format($q$update public.files set company_id = '35000000-0000-0000-0000-0000000000a2' where id = %L$q$, current_setting('t.f1')), '42501');
   perform pg_temp.expect_error(format($q$update public.files set uploaded_by = '00000000-0000-0000-0000-0000000000b1' where id = %L$q$, current_setting('t.f1')), '42501');
+  -- The recorded object version is the server's: not even the guard alone lets it change (with or without the status).
+  perform pg_temp.expect_error(format($q$update public.files set object_version = 'forged' where id = %L$q$, current_setting('t.f1')), '42501');
   perform pg_temp.expect_error(format($q$update public.files set status = 'pending' where id = %L$q$, current_setting('t.f1')), '22023', 'state');
   perform pg_temp.expect_error(format($q$delete from public.files where id = %L$q$, current_setting('t.f1')), '22023', 'state');
 end $$;
@@ -386,15 +398,41 @@ do $$
 declare r jsonb;
 begin
   perform pg_temp.expect_error(format($q$select pg_temp.put(%L, 10, 'application/pdf')$q$, current_setting('t.late_path')), '42501');
-  -- The next begin marks it "deleting" and hands its path back for clean-up.
+  -- begin_file_upload no longer touches it (the clean-up is take_stale_uploads, its own transaction: finding 4).
   r := public.begin_file_upload('35000000-0000-0000-0000-0000000000a1', 'next.pdf', 'application/pdf', 10);
-  if r -> 'stale' is distinct from jsonb_build_array(jsonb_build_object('id', current_setting('t.late'), 'path', current_setting('t.late_path')))
-     or (select status from public.files where id = current_setting('t.late')::uuid) <> 'deleting' then
-    raise exception 'FAIL: stale uploads handed back: %', r;
+  if (select status from public.files where id = current_setting('t.late')::uuid) <> 'pending' then
+    raise exception 'FAIL: begin_file_upload swept stale uploads in its own transaction';
   end if;
-  perform public.finish_file_delete(current_setting('t.late')::uuid);
   perform public.abort_file_upload((r ->> 'id')::uuid);
   perform public.finish_file_delete((r ->> 'id')::uuid);
+end $$;
+-- take_stale_uploads takes only the caller's own: b1 gets nothing, g1's upload stays pending.
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30); end $$;
+do $$ begin
+  if public.take_stale_uploads() is distinct from '[]'::jsonb
+     or (select count(*) from public.files where id = current_setting('t.late')::uuid) <> 0 then  -- b1 cannot see it at all
+    raise exception 'FAIL: take_stale_uploads took another person''s upload';
+  end if;
+end $$;
+reset role;
+do $$ begin
+  if (select status from public.files where id = current_setting('t.late')::uuid) <> 'pending' then
+    raise exception 'FAIL: take_stale_uploads moved another person''s upload';
+  end if;
+end $$;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f4', 'aal2', 30); end $$;
+do $$
+declare v jsonb;
+begin
+  -- stale_upload_handed_back: marked "deleting", its id and path returned for clean-up; a second call returns nothing.
+  v := public.take_stale_uploads();
+  if v is distinct from jsonb_build_array(jsonb_build_object('id', current_setting('t.late'), 'path', current_setting('t.late_path')))
+     or (select status from public.files where id = current_setting('t.late')::uuid) <> 'deleting' then
+    raise exception 'FAIL: stale uploads handed back: %', v;
+  end if;
+  if public.take_stale_uploads() is distinct from '[]'::jsonb then raise exception 'FAIL: take_stale_uploads twice'; end if;
+  perform public.finish_file_delete(current_setting('t.late')::uuid);
 end $$;
 
 -- 6. Who sees a file (D11, as today) ---------------------------------------------------------------------------------
@@ -451,6 +489,38 @@ do $$ begin
   perform pg_temp.expect_error(format('select public.begin_file_delete(%L)', current_setting('t.f2')), 'P0002');
   perform pg_temp.expect_error(format('select public.finish_file_delete(%L)', current_setting('t.f2')), 'P0002');
   if public.file_usage() is not null then raise exception 'FAIL: file_usage is for managers and admins'; end if;
+end $$;
+
+-- 6b. Reads by anon and by a session without two-factor, now that ready files and their objects exist (threat 1;
+--     verifier 4d round 2 finding 5: the same probes in section 1 ran on an empty table). The admin, who otherwise sees
+--     every ready file and its object (the control first), sees none of them at aal1.
+reset role;
+set role anon;
+do $$ begin perform set_config('request.jwt.claims', '{"role":"anon"}', false); end $$;
+do $$ begin
+  if (select count(*) from storage.objects where bucket_id = 'lead-files') <> 0 then raise exception 'FAIL: anon reads stored objects'; end if;
+  perform pg_temp.expect_error('select count(*) from public.files', '42501');
+end $$;
+reset role;
+do $$ begin
+  if (select count(*) from storage.objects where bucket_id = 'lead-files' and name in (current_setting('t.f1_path'), current_setting('t.f2_path'))) <> 2
+     or (select count(*) from public.files where id in (current_setting('t.f1')::uuid, current_setting('t.f2')::uuid) and status = 'ready') <> 2 then
+    raise exception 'FAIL: 6b needs two ready files with their objects';
+  end if;
+end $$;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30); end $$;
+do $$ begin
+  if (select count(*) from storage.objects where name in (current_setting('t.f1_path'), current_setting('t.f2_path'))) <> 2
+     or (select count(*) from public.files where id in (current_setting('t.f1')::uuid, current_setting('t.f2')::uuid)) <> 2 then
+    raise exception 'FAIL: 6b control: the admin at aal2 should see both ready files and their objects';
+  end if;
+end $$;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal1'); end $$;
+do $$ begin
+  if (select count(*) from storage.objects) <> 0 then raise exception 'FAIL: day4_aal1_blocked: aal1 reads stored objects'; end if;
+  if (select count(*) from public.files) <> 0 then raise exception 'FAIL: day4_aal1_blocked: aal1 reads files'; end if;
+  perform pg_temp.expect_error(format('select public.open_file(%L)', current_setting('t.f1')), '42501');
 end $$;
 
 -- 7. Another organisation (threat 2) ---------------------------------------------------------------------------------
@@ -548,6 +618,72 @@ do $$ begin
   if (select count(*) from public.audit_log where action = 'file_access' and record_id = current_setting('t.f2')) <> 1 then
     raise exception 'FAIL: audit_file_access wrote for another org or an aal1 session';
   end if;
+end $$;
+
+-- 8b. A ready file opens only while its object is the one checked at finish (verifier 4d round 2 finding 1). storage-api
+--     writes an overwrite through a signed upload link made with upsert as its own superuser (no policy sees it) with a
+--     new version and new metadata; here the superuser does the same to the row. Then open_file answers "not found"
+--     (the route's "unavailable") and writes no audit row.
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f4', 'aal2', 30); end $$;
+do $$
+declare v uuid;
+begin
+  v := pg_temp.upload('35000000-0000-0000-0000-0000000000a2', 'bound.pdf', 2000);
+  perform set_config('t.fb', v::text, false);
+  perform set_config('t.fb_path', (select storage_path from public.files where id = v), false);
+  perform public.open_file(v);  -- the object as checked at finish: opens
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+do $$ begin perform set_config('t.fb_version', (select version from storage.objects where name = current_setting('t.fb_path')), false); end $$;
+-- open_file through the API role, as the uploader and as an admin: refused (P0002) or opened. Back to the superuser after.
+create function pg_temp.open_as_both(p_refused boolean) returns void
+language plpgsql as $$
+declare
+  who text;
+begin
+  set role authenticated;
+  foreach who in array array['00000000-0000-0000-0000-0000000000f4', '00000000-0000-0000-0000-00000000000a'] loop
+    perform pg_temp.as_user(who, 'aal2', 30);
+    if p_refused then
+      perform pg_temp.expect_error(format('select public.open_file(%L)', current_setting('t.fb')), 'P0002');
+    else
+      perform public.open_file(current_setting('t.fb')::uuid);
+    end if;
+  end loop;
+  reset role;
+  perform set_config('request.jwt.claims', '', false);
+end;
+$$;
+do $$
+declare
+  c record;
+  n_audit bigint := (select count(*) from public.audit_log where action = 'file_access' and record_id = current_setting('t.fb'));
+begin
+  for c in select * from (values
+      ('same size and type, other bytes (new version)', gen_random_uuid()::text, 2000::bigint, 'application/pdf'),
+      ('other size, same version', current_setting('t.fb_version'), 2001::bigint, 'application/pdf'),
+      ('other type, same version', current_setting('t.fb_version'), 2000::bigint, 'image/png')) v (what, ver, sz, mt) loop
+    update storage.objects set version = c.ver, metadata = jsonb_build_object('size', c.sz, 'mimetype', c.mt)
+     where name = current_setting('t.fb_path');
+    begin
+      perform pg_temp.open_as_both(true);
+    exception when others then
+      raise exception 'FAIL: open_file_object_changed_refused (%): %', c.what, sqlerrm;
+    end;
+  end loop;
+  if (select count(*) from public.audit_log where action = 'file_access' and record_id = current_setting('t.fb')) <> n_audit then
+    raise exception 'FAIL: a refused open wrote a file_access row';
+  end if;
+  -- Put back as checked at finish: opens again for both (the refusals above came from the change, nothing else).
+  update storage.objects set version = current_setting('t.fb_version'), metadata = '{"size": 2000, "mimetype": "application/pdf"}'
+   where name = current_setting('t.fb_path');
+  perform pg_temp.open_as_both(false);
+  -- The object gone (a ready row left behind): not found either.
+  delete from storage.objects where name = current_setting('t.fb_path');
+  perform pg_temp.open_as_both(true);
+  delete from public.files where id = current_setting('t.fb')::uuid;
 end $$;
 
 -- 9. Deleting needs a fresh code, then the bytes go, then the row (threat 8: file_delete_stale_code_denied) ----------
@@ -652,8 +788,38 @@ begin
     perform public.abort_file_upload(ids[i]);
     perform public.finish_file_delete(ids[i]);
   end loop;
-  -- thirty_first_upload_refused: 5 begun so far this hour (deleted rows still count); 25 more, then the 31st is refused.
-  for i in 1..25 loop
+end $$;
+-- old_pending_not_counted (verifier 4d round 2 finding 6): five uploads of h1 left pending for over 15 minutes (direct
+-- rows: begin_file_upload no longer sweeps, and a direct insert never did) do not count towards the 5 waiting.
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.files (org_id, company_id, name, mime, size, uploaded_by, created_at)
+select current_setting('t.org')::uuid, '35000000-0000-0000-0000-0000000000a2', 'old' || i || '.pdf', 'application/pdf', 10,
+       '00000000-0000-0000-0000-0000000000f5', now() - interval '16 minutes'
+  from generate_series(1, 5) i;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f5', 'aal2', 30); end $$;
+do $$
+declare
+  ids uuid[] := array[null::uuid];
+  i int;
+begin
+  ids[1] := (public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'p6 later.pdf', 'application/pdf', 10) ->> 'id')::uuid;
+  perform public.abort_file_upload(ids[1]);
+  perform public.finish_file_delete(ids[1]);
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+delete from public.files where uploaded_by = '00000000-0000-0000-0000-0000000000f5' and name like 'old_.pdf' and status = 'pending';
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f5', 'aal2', 30); end $$;
+do $$
+declare
+  ids uuid[] := array[null::uuid];
+  i int;
+begin
+  -- thirty_first_upload_refused: 6 begun so far this hour (deleted rows still count); 24 more, then the 31st is refused.
+  for i in 1..24 loop
     ids[1] := (public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'r' || i || '.pdf', 'application/pdf', 10) ->> 'id')::uuid;
     perform public.abort_file_upload(ids[1]);
     perform public.finish_file_delete(ids[1]);
@@ -695,6 +861,82 @@ begin
   small := public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'ten.pdf', 'application/pdf', 10485760);
   perform public.abort_file_upload((small ->> 'id')::uuid);
   perform public.finish_file_delete((small ->> 'id')::uuid);
+  -- stored_upload_counted_once (verifier 4d round 2 finding 6): an honest waiting upload, 9 MiB declared and stored, is
+  -- counted once (its stored bytes), not also as a reservation: 2 MiB fits (9 + 2 <= 12; counted twice, 20 > 12).
+  big := public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'honest.pdf', 'application/pdf', 9437184);
+  perform pg_temp.put(big ->> 'path', 9437184, 'application/pdf');
+  small := public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'two.pdf', 'application/pdf', 2097152);
+  perform public.abort_file_upload((small ->> 'id')::uuid);
+  perform public.finish_file_delete((small ->> 'id')::uuid);
+  perform public.abort_file_upload((big ->> 'id')::uuid);
+  delete from storage.objects where name = big ->> 'path';
+  perform public.finish_file_delete((big ->> 'id')::uuid);
+end $$;
+-- old_reservation_expires (finding 6): another person's upload begun over 15 minutes ago that never stored its bytes
+-- reserves nothing (only that person could clean it up): with 10 MiB of it waiting, 10 MiB still fits (10 <= 12).
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.files (id, org_id, company_id, name, mime, size, uploaded_by, created_at)
+values ('77777777-0000-0000-0000-0000000000e1', current_setting('t.org')::uuid, '35000000-0000-0000-0000-0000000000a2', 'gone quiet.pdf',
+        'application/pdf', 10485760, '00000000-0000-0000-0000-0000000000f4', now() - interval '16 minutes');
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
+do $$
+declare small jsonb;
+begin
+  small := public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'ten again.pdf', 'application/pdf', 10485760);
+  perform public.abort_file_upload((small ->> 'id')::uuid);
+  perform public.finish_file_delete((small ->> 'id')::uuid);
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+delete from public.files where id = '77777777-0000-0000-0000-0000000000e1';
+-- stale_sweep_survives_refusal (verifier 4d round 2 finding 4): d1's abandoned upload (9 MiB stored, begun 16 minutes
+-- ago) fills the space, so a 4 MiB upload is refused (9 + 4 > 12). The clean-up is its own call: it hands the upload
+-- back and marks it "deleting" whatever the next begin answers; once its bytes are removed, 4 MiB fits.
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
+do $$
+declare r jsonb;
+begin
+  r := public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'abandoned.pdf', 'application/pdf', 9437184);
+  perform pg_temp.put(r ->> 'path', 9437184, 'application/pdf');
+  perform set_config('t.ab', r ->> 'id', false);
+  perform set_config('t.ab_path', r ->> 'path', false);
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+update public.files set created_at = now() - interval '16 minutes' where id = current_setting('t.ab')::uuid;
+set role authenticated;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
+do $$ begin
+  perform pg_temp.expect_error($q$select public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'four.pdf', 'application/pdf', 4194304)$q$, '22023', 'quota');
+  if (select status from public.files where id = current_setting('t.ab')::uuid) <> 'pending' then
+    raise exception 'FAIL: begin_file_upload changed the abandoned upload';
+  end if;
+end $$;
+do $$ begin
+  if public.take_stale_uploads() is distinct from jsonb_build_array(jsonb_build_object('id', current_setting('t.ab'), 'path', current_setting('t.ab_path'))) then
+    raise exception 'FAIL: stale_sweep_survives_refusal: the abandoned upload was not handed back';
+  end if;
+end $$;
+do $$ begin
+  -- Still refused while the bytes are there (the space reads real stored bytes) ...
+  perform pg_temp.expect_error($q$select public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'four.pdf', 'application/pdf', 4194304)$q$, '22023', 'quota');
+end $$;
+do $$
+declare r jsonb;
+begin
+  -- ... and that refusal did not undo the clean-up (it committed in its own call).
+  if (select status from public.files where id = current_setting('t.ab')::uuid) <> 'deleting' then
+    raise exception 'FAIL: stale_sweep_survives_refusal: the abandoned upload is no longer "deleting"';
+  end if;
+  -- The app's clean-up: remove the bytes, then the row; then 4 MiB fits.
+  delete from storage.objects where name = current_setting('t.ab_path');
+  perform public.finish_file_delete(current_setting('t.ab')::uuid);
+  r := public.begin_file_upload('35000000-0000-0000-0000-0000000000a2', 'four.pdf', 'application/pdf', 4194304);
+  perform public.abort_file_upload((r ->> 'id')::uuid);
+  perform public.finish_file_delete((r ->> 'id')::uuid);
 end $$;
 reset role;
 create or replace function private.file_quota_bytes() returns bigint language sql stable set search_path = '' as $$
@@ -712,19 +954,46 @@ begin
   -- lead_with_files_delete_refused_23503 (the app words it "Delete this lead's files first").
   perform pg_temp.expect_error($q$delete from public.companies where id = '35000000-0000-0000-0000-0000000000a1'$q$, '23503');
   -- import_undo_keeps_lead_with_file
-  batch := public.create_lead_import('day4d-file.csv', null, 2, 3);
+  batch := public.create_lead_import('day4d-file.csv', null, 3, 4);
   perform public.stage_lead_import_rows(batch, '[{"row_no": 2, "name": "Day4d Import One", "lead_status": "cold"},
-                                                 {"row_no": 3, "name": "Day4d Import Two", "lead_status": "cold"}]');
+                                                 {"row_no": 3, "name": "Day4d Import Two", "lead_status": "cold"},
+                                                 {"row_no": 4, "name": "Day4d Import Three", "lead_status": "cold"}]');
   perform public.validate_lead_import(batch);
   r := public.commit_lead_import(batch);
   if r ->> 'status' is distinct from 'imported' then raise exception 'FAIL: import %', r; end if;
+  perform set_config('t.batch', batch::text, false);
+  perform set_config('t.three', (select id::text from public.companies where import_batch_id = batch and name = 'Day4d Import Three'), false);
   perform public.begin_file_upload((select id from public.companies where import_batch_id = batch and name = 'Day4d Import One'),
                                    'quote.pdf', 'application/pdf', 10);
+end $$;
+-- import_undo_keeps_lead_with_others_pending_file (verifier 4d round 2 finding 3): rep g1 begins an upload on lead
+-- Three and never finishes it. The admin cannot see that pending row, yet the undo keeps the lead (no raw 23503).
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000f4', 'aal2', 30); end $$;
+do $$ begin perform public.begin_file_upload(current_setting('t.three')::uuid, 'brouillon.pdf', 'application/pdf', 10); end $$;
+-- Another organisation's admin learns nothing about it through the helper.
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000c1', 'aal2', 30); end $$;
+do $$ begin
+  if private.lead_has_files(current_setting('t.three')::uuid) then raise exception 'FAIL: lead_has_files answers for another organisation'; end if;
+end $$;
+do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30); end $$;
+do $$
+declare
+  batch uuid := current_setting('t.batch')::uuid;
+  r jsonb;
+begin
+  if exists (select 1 from public.files where company_id = current_setting('t.three')::uuid) then
+    raise exception 'FAIL: the admin should not see another person''s pending upload (the case under test)';
+  end if;
   r := public.preview_lead_import_rollback(batch);
-  if r is distinct from '{"tagged": 2, "removable": 1, "kept": 1}'::jsonb then raise exception 'FAIL: undo preview with a file %', r; end if;
-  r := public.rollback_lead_import(batch);
+  if r is distinct from '{"tagged": 3, "removable": 1, "kept": 2}'::jsonb then raise exception 'FAIL: undo preview with files %', r; end if;
+  begin
+    r := public.rollback_lead_import(batch);
+  exception when others then
+    raise exception 'FAIL: import_undo_keeps_lead_with_others_pending_file: % %', sqlstate, sqlerrm;
+  end;
   if r ->> 'status' is distinct from 'rolled_back'
      or not exists (select 1 from public.companies where import_batch_id = batch and name = 'Day4d Import One')
+     or not exists (select 1 from public.companies where import_batch_id = batch and name = 'Day4d Import Three')
      or exists (select 1 from public.companies where import_batch_id = batch and name = 'Day4d Import Two') then
     raise exception 'FAIL: import_undo_keeps_lead_with_file: %', r;
   end if;

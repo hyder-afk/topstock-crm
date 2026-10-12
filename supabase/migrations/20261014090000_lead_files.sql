@@ -13,10 +13,15 @@
 --    stored bytes (not from what the browser declares), under a lock so two uploads cannot both take the last space;
 --  - a private bucket with three exact policies (read, add, remove; no update, so no overwrite, upsert or move); each
 --    checks the organisation folder AND the matching file row, so the file rules above decide;
+--  - a ready file is bound to the exact stored object it was checked against (the object's version, size and type,
+--    recorded at finish in a column no client can write); opening refuses a file whose object changed since. A signed
+--    upload link made with upsert while the file was pending is written by storage-api as its own superuser, so no
+--    policy sees that overwrite (verifier 4d round 2 finding 1): the open is where it is caught;
 --  - opening a file is audited ("file_access").
 -- House rules (design section 3): search_path = '' everywhere; the RPCs are SECURITY INVOKER with static SQL; DEFINER
--- only for the insert guard (it must see the whole team's usage), which is trigger-only and revoked, and for the one
--- private audit helper; constant-message pre-checks before every CHECK user input can reach; column grants only.
+-- only for the insert guard (it must see the whole team's usage), which is trigger-only and revoked, for the one private
+-- audit helper, and for the private "lead has files" check of import undo (it must see other people's pending uploads);
+-- constant-message pre-checks before every CHECK user input can reach; column grants only.
 -- Storage (spike S1): every reference to storage.* sits in plpgsql (checked when it runs, not when it is created), and
 -- the bucket row and its policies are created only when the storage schema is there (it is on Supabase and in CI with
 -- storage-api; supabase/tests/shim.sql provides a stand-in for the local test runners). files_attack.sql fails loudly
@@ -90,6 +95,9 @@ alter table public.files
     '[\u0001-\u001F\u007F-\u009F؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿￹-￻\U000E0000-\U000E007F/\\"]'),
   add column status text not null default 'pending' constraint files_status_check check (status in ('pending', 'ready', 'deleting')),
   add column ready_at timestamptz,
+  -- storage.objects.version of the object checked at finish (server-set by the update guard; no client grant). storage-api
+  -- writes a new version for every upload, so an overwrite through a signed upsert link changes it.
+  add column object_version text,
   add constraint files_ready_has_time check (status <> 'ready' or ready_at is not null);
 alter table public.files drop constraint files_size_check, add constraint files_size_check check (size between 1 and 10485760);
 alter table public.files add constraint files_path_shape check (storage_path ~
@@ -99,7 +107,7 @@ create index files_company_ready_idx on public.files (company_id, created_at des
 create index files_pending_idx on public.files (uploaded_by, created_at) where status = 'pending';
 create index files_org_pending_idx on public.files (org_id, created_at) where status = 'pending';
 
--- Clients name only these columns. The id, path, status on insert, uploader, org and times are the server's.
+-- Clients name only these columns. The id, path, status on insert, uploader, org, times and object version are the server's.
 revoke insert, update, delete on public.files from authenticated;
 grant insert (company_id, name, mime, size), update (status), delete on public.files to authenticated;
 
@@ -140,6 +148,7 @@ begin
   new.id := gen_random_uuid();
   new.status := 'pending';
   new.ready_at := null;
+  new.object_version := null;
   new.uploaded_by := caller;
   new.created_at := now();
   new.updated_at := now();
@@ -188,7 +197,8 @@ create trigger file_guard_insert before insert on public.files
   for each row execute function private.file_guard_insert();
 
 -- BEFORE UPDATE (INVOKER). Only the status changes, and only by these moves:
---   pending -> ready     the uploader, once the stored object's real size and type are the declared ones;
+--   pending -> ready     the uploader, once the stored object's real size and type are the declared ones (its version is
+--                        recorded: open_file serves only that object);
 --   pending -> deleting  the uploader (an abandoned or cancelled upload);
 --   ready -> deleting    whoever may change the row (row level security: uploader, lead owner, manager, admin) with an
 --                        authenticator code from the last 10 minutes (step-up, design F3; spike S2's fallback).
@@ -196,7 +206,8 @@ create function private.file_guard_update() returns trigger
 language plpgsql set search_path = '' as $$
 declare
   caller constant uuid := (select auth.uid());
-  keep constant text[] := array['status', 'ready_at', 'updated_at'];
+  keep constant text[] := array['status', 'ready_at', 'updated_at'];   -- object_version is set below, never sent
+  v_version text;
 begin
   if caller is null then
     return new;
@@ -212,13 +223,15 @@ begin
     if old.uploaded_by is distinct from caller then
       raise exception 'only the uploader finishes an upload' using errcode = '42501';
     end if;
-    if not exists (select 1 from storage.objects o
-                    where o.bucket_id = 'lead-files' and o.name = old.storage_path
-                      and private.object_size(o.metadata) = old.size
-                      and private.object_mime(o.metadata) = old.mime) then
+    select o.version into v_version from storage.objects o
+     where o.bucket_id = 'lead-files' and o.name = old.storage_path
+       and private.object_size(o.metadata) = old.size
+       and private.object_mime(o.metadata) = old.mime;
+    if not found then
       raise exception 'the stored file is not the one declared' using errcode = '22023', hint = 'object_mismatch';
     end if;
     new.ready_at := now();
+    new.object_version := v_version;
   elsif old.status = 'pending' and new.status = 'deleting' then
     if old.uploaded_by is distinct from caller then
       raise exception 'only the uploader cancels an upload' using errcode = '42501';
@@ -277,7 +290,8 @@ create policy files_delete on public.files for delete to authenticated using (
   or exists (select 1 from public.companies c where c.id = files.company_id and c.owner_id = (select auth.uid()))));
 
 -- ===========================================================================
--- Part 4. The bucket and its policies (no UPDATE policy: no overwrite, upsert or move)
+-- Part 4. The bucket and its policies (no UPDATE policy: no overwrite, upsert or move by the caller's own calls; a signed
+-- upload link made with upsert is written by storage-api as superuser, so open_file checks the object's version instead)
 -- ===========================================================================
 -- Each policy checks the organisation folder (a second, independent fence) and the matching file row, read under the
 -- caller's own row level security, so the file rules above decide. Reading also serves storage-api's RETURNING after an
@@ -334,7 +348,19 @@ begin
 end;
 $$;
 
--- Import undo: a lead with a file has been worked on, so an undo keeps it (and its bytes). Day 4a's definition plus files.
+-- Does a lead of the caller's organisation have a file in any state, whoever uploaded it? DEFINER: import undo runs as the
+-- admin, whose row level security hides other people's pending uploads, and the delete would then hit the files foreign
+-- key (on delete restrict) and fail the whole chunk (verifier 4d round 2 finding 3). Returns a yes or no only; private
+-- (no API endpoint); signed-in callers only.
+create function private.lead_has_files(p_company uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.files f
+                  where f.company_id = p_company and f.org_id = (select private.current_org_id()))
+$$;
+
+-- Import undo: a lead with a file (any state, anyone's) has been worked on, so an undo keeps it (and its bytes). Day 4a's
+-- definition plus files. rollback_lead_import locks the candidates first, so an upload begun meanwhile waits for the
+-- undo (its foreign key check needs a share lock) or is seen by the second statement and keeps its lead.
 -- REBASE: re-copy after 4c merges.
 create or replace function private.lead_import_untouched(p_batch uuid, p_limit integer) returns setof uuid
 language sql stable set search_path = '' as $$
@@ -344,7 +370,7 @@ language sql stable set search_path = '' as $$
      and not exists (select 1 from public.contacts k where k.company_id = c.id)
      and not exists (select 1 from public.deals d where d.company_id = c.id)
      and not exists (select 1 from public.tasks t where t.company_id = c.id)
-     and not exists (select 1 from public.files f where f.company_id = c.id)
+     and not private.lead_has_files(c.id)
    order by c.id
    limit p_limit
 $$;
@@ -352,12 +378,35 @@ $$;
 -- ===========================================================================
 -- Part 6. RPCs (SECURITY INVOKER, static SQL; design 4.3)
 -- ===========================================================================
--- Start an upload: first the caller's own uploads left pending for over 15 minutes become "deleting" (their ids and paths
--- come back for clean-up: remove the object, then finish_file_delete), then the new row. Returns {id, path, stale}.
-create function public.begin_file_upload(p_company uuid, p_name text, p_mime text, p_size integer) returns jsonb
+-- The caller's own uploads left pending for over 15 minutes (at most 20) become "deleting"; their ids and paths come back
+-- for clean-up (remove the object, then finish_file_delete). Its own call, so its own transaction: called before
+-- begin_file_upload, a refusal there (space full, too many waiting, hourly limit) cannot undo it, and the stale bytes,
+-- which count against the team's space, are freed before the space is judged (verifier 4d round 2 finding 4). Rows
+-- left "deleting" are listed to their uploader and admins with Retry.
+create function public.take_stale_uploads() returns jsonb
 language plpgsql volatile set search_path = '' as $$
 declare
   v_stale jsonb;
+begin
+  if (select auth.uid()) is null or not (select private.has_aal2()) then
+    raise exception 'two-factor sign-in required' using errcode = '42501';
+  end if;
+  with stale as (
+    update public.files f set status = 'deleting'
+     where f.id in (select s.id from public.files s
+                     where s.uploaded_by = (select auth.uid()) and s.status = 'pending'
+                       and s.created_at <= now() - interval '15 minutes'
+                     order by s.created_at limit 20)
+    returning f.id, f.storage_path)
+  select coalesce(jsonb_agg(jsonb_build_object('id', id, 'path', storage_path)), '[]'::jsonb) into v_stale from stale;
+  return v_stale;
+end;
+$$;
+
+-- Start an upload: the new pending row. Returns {id, path}. (Call take_stale_uploads first: see above.)
+create function public.begin_file_upload(p_company uuid, p_name text, p_mime text, p_size integer) returns jsonb
+language plpgsql volatile set search_path = '' as $$
+declare
   v_id uuid;
   v_path text;
 begin
@@ -376,17 +425,9 @@ begin
   if not exists (select 1 from public.companies c where c.id = p_company) then
     raise exception 'lead not found' using errcode = 'P0002';
   end if;
-  with stale as (
-    update public.files f set status = 'deleting'
-     where f.id in (select s.id from public.files s
-                     where s.uploaded_by = (select auth.uid()) and s.status = 'pending'
-                       and s.created_at <= now() - interval '15 minutes'
-                     order by s.created_at limit 20)
-    returning f.id, f.storage_path)
-  select coalesce(jsonb_agg(jsonb_build_object('id', id, 'path', storage_path)), '[]'::jsonb) into v_stale from stale;
   insert into public.files (company_id, name, mime, size) values (p_company, p_name, p_mime, p_size)
   returning id, storage_path into v_id, v_path;
-  return jsonb_build_object('id', v_id, 'path', v_path, 'stale', v_stale);
+  return jsonb_build_object('id', v_id, 'path', v_path);
 end;
 $$;
 
@@ -489,8 +530,11 @@ begin
 end;
 $$;
 
--- Open a ready file the caller can see: {path, name, mime, size}; writes the file_access audit row. The server then checks
--- the stored bytes again (every open) and answers with a 60-second link.
+-- Open a ready file the caller can see: {path, name, mime, size}; writes the file_access audit row. Only while its stored
+-- object is still the one checked at finish (same version, size and type; finding 1 of verifier 4d round 2): an object
+-- rewritten since, for example through a signed upload link made with upsert while the file was pending, or one that is
+-- gone, answers "file not found" (the route's "unavailable"). The server then checks the stored bytes again (every open)
+-- and answers with a 60-second link.
 create function public.open_file(p_id uuid) returns jsonb
 language plpgsql volatile set search_path = '' as $$
 declare
@@ -501,7 +545,11 @@ begin
   end if;
   select jsonb_build_object('path', f.storage_path, 'name', f.name, 'mime', f.mime, 'size', f.size) into r
     from public.files f
-   where f.id = p_id and f.status = 'ready';
+    join storage.objects o on o.bucket_id = 'lead-files' and o.name = f.storage_path
+   where f.id = p_id and f.status = 'ready'
+     and o.version is not distinct from f.object_version
+     and private.object_size(o.metadata) = f.size
+     and private.object_mime(o.metadata) = f.mime;
   if r is null then
     raise exception 'file not found' using errcode = 'P0002';
   end if;
@@ -580,16 +628,17 @@ revoke all on function private.file_guard_insert(), private.file_guard_update(),
   private.org_storage_bytes(uuid) from public, anon, authenticated;
 revoke all on function private.file_ext(text), private.file_name_ok(text), private.file_quota_bytes(),
   private.object_size_key(), private.object_mime_key(), private.object_size(jsonb), private.object_mime(jsonb),
-  private.audit_file_access(uuid) from public, anon;
+  private.audit_file_access(uuid), private.lead_has_files(uuid) from public, anon;
 grant execute on function private.file_ext(text), private.file_name_ok(text), private.file_quota_bytes(),
   private.object_size_key(), private.object_mime_key(), private.object_size(jsonb), private.object_mime(jsonb),
-  private.audit_file_access(uuid) to authenticated;
+  private.audit_file_access(uuid), private.lead_has_files(uuid) to authenticated;
 
 do $$
 declare
   f text;
 begin
   foreach f in array array[
+    'public.take_stale_uploads()',
     'public.begin_file_upload(uuid, text, text, integer)',
     'public.get_pending_upload(uuid)',
     'public.finish_file_upload(uuid)',
