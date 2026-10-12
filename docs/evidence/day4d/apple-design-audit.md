@@ -64,6 +64,7 @@ missed. The upload shots (`files-uploading-*`, `files-checking-*`, `files-failed
 | 16 | The name link was 24 px tall on phones; the EN "Retry" about 36 px wide, with no press feedback | Phones: the link's `::after` covers the line (icon, name, meta), the menu sits above it; the line tints on press. Retry: 44 by 44 minimum, scale 0.97 on press | `files-list-*-390`, e2e `phone_390_files` |
 | 17 | A file dropped just outside the zone opened in the tab, leaving the lead page | While the tab is shown, `dragover` and `drop` on the window are cancelled outside the zone (cursor shows "not allowed"); removed while another tab is shown | e2e `hidden tab` (dispatched drag events) |
 | 18 | Outcomes while the tab was hidden were silent | A final outcome while hidden also shows as the app's toast (outside the hidden boundary); the line waits for the tab | e2e `hidden tab` |
+| 19 | Closing the Delete dialog dropped the focus to the page (verifier round 3, finding 1) | The dialog closes back onto the row's Actions (Retry once stuck deleting, the heading when the row is gone): spatial consistency, the focus returns where the action started | e2e `delete dialog focus` |
 
 Also seen in the shots: Try again sits before Dismiss on a failed line, in bold text-style (not a second filled button),
 so the line keeps one quiet control group; "Checking the file…" keeps the full bar, so the change of state is the label,

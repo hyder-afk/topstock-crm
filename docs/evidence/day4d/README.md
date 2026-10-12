@@ -176,6 +176,29 @@ was also run against the previous `files-tab.tsx` (rebuilt): each fails there (n
 | gitleaks (`origin/main..HEAD`), `npm audit --omit=dev` | no leaks found, exit 0; found 0 vulnerabilities |
 | WebKit, Semgrep, storage-api e2e | CI only. In CI the new upload tests run the same way (the Storage request is answered or held by the test, so no object is stored and the check after upload fails as here) |
 
+## Verifier round 3 (12 Oct 2026): NOT READY on 742bb40, both findings fixed
+
+Code commits: 27c0c1b (finding 2), d88a50d (finding 1, Files tab), 307f764 (finding 1, e2e). Each behaviour fix has a
+test that failed first and passes now.
+
+| # | Finding | What changed | How it was checked |
+|---|---|---|---|
+| 1 | Should fix: closing the Delete dialog dropped the focus to `<body>` (Escape, Cancel, a cancelled code, a failed delete): Radix returned it to the menu item that opened the dialog, which no longer exists | The file whose Delete was chosen is remembered (`returnTo`). `DialogContent`'s `onCloseAutoFocus` prevents Radix's default and focuses that row's own button (Actions, or Retry once stuck deleting; both carry `data-file-actions`) or the heading when the row is no longer listed, only when nothing has the focus (so "Confirm it's you", opened in the same render, keeps it). `ensureFresh` gets the same target as its fallback, so a cancelled code returns there too. After a failed delete and its refetch, the focus goes to what the row has now (Actions, Retry, or the heading). A successful delete still moves it to the heading | New e2e `delete dialog focus` (keyboard only, a session of its own): Escape, then Cancel, each `toBeFocused` on the row's Actions; a delete whose server action is aborted shows the toast, keeps the file and the focus on Actions; with a code older than 10 minutes, Escape in "Confirm it's you" returns to Actions. `delete_needs_fresh_code`: after the code, the failed delete (no storage-api here, the row stuck deleting) focuses the row's Retry. **Previous `files-tab.tsx` (rebuilt): both fail** (Actions not focused after Escape, line 358; Retry not focused, line 313); pass now |
+| 2 | Nit: any refused `beginUpload` input answered `invalid("file_type")`, so a name over 400 characters was told "Only PDF, PNG, JPG, Word or Excel files" | `beginUploadHint` (`src/lib/files/types.ts`) names the failing field as the database's own hints: `name` -> `file_name` (shown as unavailable), `size` -> `file_size`, `mime` -> `file_type`, `leadId` -> `file_lead`, anything else no hint. The Files tab sends the cleaned name (`cleanFileName`, at most 180 characters, the extension kept; the server cleans it again), so a real file with a very long name is not refused at all | Unit `beginUploadHint` (a 446-character name, an empty name, a too-big size, an SVG type, a bad lead id, an unknown field; the cleaned long name passes `beginUploadInput`): **fails before the change** (no such function), passes now |
+
+### Checks on 307f764
+
+| Check | Result |
+|---|---|
+| `npm run test:unit` | 354 passed (new: `beginUploadHint`) |
+| `npm run lint` / `npm run typecheck` | exit 0 (pre-commit hook on each commit, and run again; the 2 existing React Compiler warnings) |
+| `db-test.sh` (a copy on port 54371) | all 9 suites pass; advisors 0 ERROR (WARN `set_user_role` accepted; INFO `unindexed_foreign_keys` 2, `unused_index` 3); exit 0. No migration change in this round, so no mutation row is affected and mutations were not re-run (last run: verifier round 2, matches `mutations.md`) |
+| E2E local, Chromium | `files.spec.ts` + `files-spikes.spec.ts` **12 passed, 9 skipped** (Storage and spike cases, CI only); `lead-page.spec.ts` 26 passed (with the fix, before the new test's session change). The shared stack was idle, restarted for this worktree (the build ran inside a script named as a Playwright session, and every run first checked the gateway still served this worktree) and left running idle |
+| New e2e against the previous `files-tab.tsx` (rebuilt) | `delete dialog focus` and `delete_needs_fresh_code` (Retry focused): each fails |
+| gitleaks (`origin/main..HEAD`), `npm audit --omit=dev` | no leaks found, exit 0; found 0 vulnerabilities |
+| Screenshots, Apple and WIG audits | No visual change (focus only, and the name sent to the server): no shots re-taken; WIG row 13 and Apple row 19 added |
+| WebKit, Semgrep, storage-api e2e | CI only (`files.spec.ts` is in the WebKit `testMatch`) |
+
 ## Check results (first round)
 
 Code checks on **6a08a49** (the last code commit; the commits after it are docs), 12 Oct 2026. Local auth stack
@@ -219,6 +242,10 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 - next-intl (`/amannn/next-intl`): `useFormatter().number(value, options)` takes `Intl.NumberFormatOptions`, used with
   `style: "percent"` for the progress bar's `aria-valuetext` ("40%" in English, "40 %" with a narrow no-break space in
   French).
+- Radix Primitives (`/websites/radix-ui_primitives`): `Dialog.Content`'s `onCloseAutoFocus` (called when the focus
+  would return to the trigger on close; `event.preventDefault()` to place it yourself), for the Delete dialog (verifier
+  round 3 finding 1).
+- Zod 4 (installed typings): `safeParse(...).error.issues[n].path`, read by `beginUploadHint` (round 3 finding 2).
 - Installed `@supabase/storage-js` typings and source: `createSignedUploadUrl` (`POST /object/upload/sign/{bucket}/{path}`,
   answers `{ url }` with a token) and `uploadToSignedUrl` (`PUT` to that URL), for spike S5.
 
@@ -267,6 +294,8 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
     shows (design 7.6 did not specify the line's surface).
 22. Verifier round 2 (finding 16): on phones the whole file line opens the file (the name link stretched over it);
     on desktop only the name is the link, as designed.
+23. Verifier round 3 (finding 2): the browser sends the cleaned name (`cleanFileName`), not the raw one; design 5.7 has
+    only the server clean it. The server still cleans it again and the database still checks it.
 
 ## Rebase points (4c not merged)
 

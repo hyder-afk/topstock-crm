@@ -21,6 +21,7 @@ Skill `web-design-guidelines`, rules fetched from the pinned commit
 | 10 | Error messages say what to do (finding 9) | A file the browser could not read was called fake ("isn't a real Word file") | Its own reason, "Couldn't read this file. Choose it again." / "Impossible de lire ce fichier. Choisissez-le à nouveau." |
 | 11 | Loading and error states for every list (finding 10) | A failed older page showed nothing; no loading cue | Inline error with Try again (`isFetchNextPageError`) and two skeleton rows while the page loads |
 | 12 | Drag and drop must not navigate (finding 17) | A file dropped outside the zone replaced the page | Window `dragover`/`drop` cancelled outside the zone while the tab is shown |
+| 13 | Focus never to `<body>` (verifier round 3, finding 1) | Closing the Delete dialog (Escape, Cancel, a cancelled code, a failed delete) returned the focus to the menu item that opened it, which was gone | `onCloseAutoFocus` returns it to the row's Actions (or its Retry once stuck deleting, or the heading when the row is gone); e2e `delete dialog focus` |
 
 ## Checked and passing
 
@@ -30,7 +31,7 @@ Skill `web-design-guidelines`, rules fetched from the pinned commit
   (finding 15); the list is labelled by the heading; the drop zone
   has a real button (dropping is an extra), so nothing is pointer-only.
 - Focus: dismissing a refused upload or a finished upload moves the focus to Choose files (never to `<body>`); a line
-  changing state keeps the focus on the line or its new button; a delete moves it to the tab's heading; the step-up dialog returns it where it was (existing hook); menus return it to their
+  changing state keeps the focus on the line or its new button; a delete moves it to the tab's heading, and closing the Delete dialog without deleting returns it to the row's Actions (Retry once stuck deleting); the step-up dialog returns it where it was (existing hook); menus return it to their
   trigger (Radix).
 - Destructive action: delete asks for confirmation, then a fresh code (step-up).
 - Links: rows are plain `<a>` to `/api/files/<id>` (Cmd-click and middle-click work; no prefetch on hover); new tabs
