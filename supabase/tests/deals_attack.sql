@@ -234,6 +234,23 @@ begin
      or (select prosecdef from pg_proc where oid = 'private.deal_guard()'::regprocedure) then
     raise exception 'FAIL: deal_history_not_callable / the guard must be INVOKER';
   end if;
+  -- The statement-level flood triggers (verifier round 2): DEFINER (they count every row of the caller's, visible or
+  -- not), search_path '', trigger-only and revoked from everyone; AFTER ... FOR EACH STATEMENT with transition tables.
+  foreach code in array array['private.deal_open_flood()', 'private.deal_move_flood()'] loop
+    if has_function_privilege('authenticated', code::regprocedure, 'EXECUTE')
+       or has_function_privilege('anon', code::regprocedure, 'EXECUTE')
+       or has_function_privilege('public', code::regprocedure, 'EXECUTE')
+       or not (select prosecdef from pg_proc where oid = code::regprocedure)
+       or not ((select proconfig from pg_proc where oid = code::regprocedure) @> array['search_path=""']) then
+      raise exception 'FAIL: flood trigger function % must be DEFINER, search_path empty, revoked from everyone', code;
+    end if;
+  end loop;
+  if (select array_agg(tgname::text order by tgname) from pg_trigger
+       where tgrelid = 'public.deals'::regclass and not tgisinternal
+         and tgtype & 1 = 0 and tgtype & 2 = 0 and tgnewtable = 'new_deals')  -- statement level, AFTER, new rows
+     is distinct from array['flood_deal_move', 'flood_deal_open'] then
+    raise exception 'FAIL: the flood triggers must be AFTER ... FOR EACH STATEMENT with the new rows';
+  end if;
   foreach code in array array['private.stage_id(text)', 'private.stage_key(uuid)',
       'private.deal_undo_candidate(uuid,text,text,integer)', 'private.deal_closing_blocked(uuid)',
       'private.deal_cards(uuid[])', 'private.deal_card(uuid)', 'private.deal_value_ok(numeric)',
@@ -251,8 +268,8 @@ begin
   -- insert and on a stage change (WHEN, never UPDATE OF status).
   if (select array_agg(tgname::text order by tgname) from pg_trigger
        where tgrelid = 'public.deals'::regclass and not tgisinternal)
-     is distinct from array['audit_row', 'enforce_org_and_owner', 'guard_deal', 'history_deal', 'history_deal_stage',
-                            'set_updated_at'] then
+     is distinct from array['audit_row', 'enforce_org_and_owner', 'flood_deal_move', 'flood_deal_open', 'guard_deal',
+                            'history_deal', 'history_deal_stage', 'set_updated_at'] then
     raise exception 'FAIL: the triggers on deals changed';
   end if;
   -- Constraints the design names (G2, G5 to G7, S6), the tasks FK (G8) and the lead FK.
@@ -1637,6 +1654,98 @@ begin
   perform pg_temp.expect_error('delete from private.deal_opens', '42501');
   perform pg_temp.su();
   perform pg_temp.invariants('verifier round 1');
+  raise exception 'undo' using errcode = 'TS001';
+exception when sqlstate 'TS001' then perform pg_temp.su();
+end $$;
+
+-- 15. Verifier round 2: one statement with many rows cannot pass the flood guards (threat 22; N1, N2) ----------------
+-- The guard counts before each row, but the open records and history rows are written by the AFTER row trigger at the
+-- end of the statement; the statement-level triggers count again after it.
+do $$
+declare
+  r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
+  r2 constant uuid := '00000000-0000-0000-0000-0000000005a2';
+  lead uuid := pg_temp.new_lead(r1, 'warm');
+  lead2 uuid := pg_temp.new_lead(r2, 'warm');
+  own uuid;
+  other uuid;
+  one uuid;
+  n integer;
+begin
+  -- stage_flood_counts_hidden_history: 120 of r1's stage changes on a deal r1 can no longer see (handed to r2) still
+  -- count. The guard (INVOKER) sees none of them; the statement check (DEFINER) refuses the next move.
+  insert into public.deals (org_id, company_id, owner_id, stage_id)
+  select c.org_id, lead, r1, s.id from public.companies c join public.pipeline_stages s on s.org_id = c.org_id and s.key = 'lead'
+   where c.id = lead returning id into own;
+  insert into public.deals (org_id, company_id, owner_id, stage_id)
+  select c.org_id, lead2, r2, s.id from public.companies c join public.pipeline_stages s on s.org_id = c.org_id and s.key = 'lead'
+   where c.id = lead2 returning id into other;
+  insert into public.deal_stage_history (org_id, deal_id, actor_id, kind, from_stage, to_stage, version_after, created_at)
+  select org_id, other, r1, 'move', 'lead', 'lead', 0, now() - interval '10 seconds'
+    from public.deals d, generate_series(1, 120) where d.id = other;
+  perform pg_temp.act(r1);
+  if exists (select 1 from public.deal_stage_history where actor_id = r1) then
+    raise exception 'FAIL: the hidden history should be invisible to r1 (the scenario needs it)';
+  end if;
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'qualified', own), '22023', 'rate_limited');
+  perform pg_temp.su();
+  delete from public.deal_stage_history where actor_id = r1 and deal_id = other;
+
+  -- bulk_insert_over_open_limit_refused: one INSERT of 31 rows, and the PostgREST bulk-POST shape (100 rows through
+  -- json_populate_recordset), are refused whole: no deal, no open record, no history row is left.
+  perform pg_temp.act(r1);
+  perform pg_temp.expect_error(format('insert into public.deals (company_id) select %L::uuid from generate_series(1, 31)', lead), '22023', 'rate_limited');
+  perform pg_temp.expect_error(format(
+    'insert into public.deals (company_id, title) select company_id, title from json_populate_recordset(null::public.deals, %L)',
+    (select json_agg(json_build_object('company_id', lead, 'title', 'Bulk ' || g)) from generate_series(1, 100) g)), '22023', 'rate_limited');
+  perform pg_temp.su();
+  if exists (select 1 from public.deals where created_by = r1) or exists (select 1 from private.deal_opens where user_id = r1)
+     or exists (select 1 from public.deal_stage_history where actor_id = r1) then
+    raise exception 'FAIL: bulk_insert_over_open_limit_refused (a refused bulk insert left rows)';
+  end if;
+  -- bulk_insert_at_open_limit_ok: 30 rows in one INSERT are the limit itself; the next open is refused (guard and RPC).
+  perform pg_temp.act(r1);
+  insert into public.deals (company_id, title) select lead, 'Bulk ' || g from generate_series(1, 30) g;
+  perform pg_temp.expect_error(format('insert into public.deals (company_id) values (%L)', lead), '22023', 'rate_limited');
+  perform pg_temp.expect_error(format('select public.open_deal(%L)', lead), '22023', 'rate_limited');
+  perform pg_temp.su();
+  if (select count(*) from public.deals where created_by = r1) <> 30 or (select count(*) from private.deal_opens where user_id = r1) <> 30 then
+    raise exception 'FAIL: bulk_insert_at_open_limit_ok';
+  end if;
+
+  -- bulk_patch_over_move_limit_refused: one PATCH moving 150 of r2's deals is refused whole (no move, no history row).
+  insert into public.deals (org_id, company_id, owner_id, stage_id)
+  select c.org_id, lead2, r2, s.id from public.companies c join public.pipeline_stages s on s.org_id = c.org_id and s.key = 'lead',
+         generate_series(1, 149) where c.id = lead2;
+  perform pg_temp.act(r2);
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where company_id = %L', 'qualified', lead2), '22023', 'rate_limited');
+  perform pg_temp.su();
+  if (select count(*) from public.deals d join public.pipeline_stages s on s.id = d.stage_id
+       where d.company_id = lead2 and s.key <> 'lead') <> 0
+     or exists (select 1 from public.deal_stage_history where actor_id = r2) then
+    raise exception 'FAIL: bulk_patch_over_move_limit_refused (a refused bulk move left rows)';
+  end if;
+  -- bulk_patch_at_move_limit_ok: 120 moves in one PATCH are the limit itself; the next move is refused.
+  perform pg_temp.act(r2);
+  update public.deals set stage_id = private.stage_id('qualified')
+   where id in (select id from public.deals where company_id = lead2 order by id limit 120);
+  select id into one from public.deals d where d.company_id = lead2 and d.stage_id = private.stage_id('lead') limit 1;
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'qualified', one), '22023', 'rate_limited');
+  -- stage_flood_ignores_other_edits: past the limit (one more change made by r2 elsewhere, 121), a statement that
+  -- changes no stage is not refused; a move still is.
+  perform pg_temp.su();
+  insert into public.deal_stage_history (org_id, deal_id, actor_id, kind, from_stage, to_stage, version_after, created_at)
+  select org_id, other, r2, 'move', 'lead', 'lead', 0, now() - interval '5 seconds' from public.deals where id = other;
+  perform pg_temp.act(r2);
+  update public.deals set title = 'Renamed' where company_id = lead2;
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'qualified', one), '22023', 'rate_limited');
+  perform pg_temp.su();
+  if (select count(*) from public.deals d where d.company_id = lead2 and d.title = 'Renamed') <> 150
+     or (select count(*) from public.deal_stage_history where actor_id = r2) <> 121 then
+    raise exception 'FAIL: bulk_patch_at_move_limit_ok / stage_flood_ignores_other_edits';
+  end if;
+  delete from public.deal_stage_history where actor_id = r2 and deal_id = other and from_stage = to_stage;  -- the made-up row
+  perform pg_temp.invariants('verifier round 2');
   raise exception 'undo' using errcode = 'TS001';
 exception when sqlstate 'TS001' then perform pg_temp.su();
 end $$;

@@ -621,6 +621,47 @@ create trigger history_deal after insert on public.deals
 create trigger history_deal_stage after update of stage_id on public.deals
   for each row when (old.stage_id is distinct from new.stage_id) execute function private.deal_history();
 
+-- Flood guards for one statement with many rows (threat 22; verifier round 2, N1 and N2). The guard counts open records
+-- and history rows before each row, but both are written by the AFTER row trigger above, which PostgreSQL runs at the
+-- end of the statement: inside one multi-row INSERT or UPDATE (a PostgREST bulk POST or a filtered PATCH) every row's
+-- guard sees the count from before the statement. These statement-level AFTER triggers run after the statement's AFTER
+-- row triggers, count again and refuse the whole statement when it went over the limit. DEFINER (trigger-only, revoked
+-- from everyone): they count all of the caller's own rows, whatever the caller can still see (a history row on a deal
+-- since handed to a colleague counts too). Sessions with no signed-in user are left alone, as the guard does.
+create function private.deal_open_flood() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (select auth.uid()) is null or not exists (select 1 from new_deals) then
+    return null;
+  end if;
+  if (select count(*) from (select 1 from private.deal_opens o
+                             where o.user_id = (select auth.uid()) and o.created_at > now() - interval '1 hour'
+                             limit 31) recent) > 30 then
+    raise exception 'too many deals opened in an hour' using errcode = '22023', hint = 'rate_limited';
+  end if;
+  return null;
+end;
+$$;
+create function private.deal_move_flood() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (select auth.uid()) is null
+     or not exists (select 1 from new_deals n join old_deals o on o.id = n.id where n.stage_id is distinct from o.stage_id) then
+    return null;
+  end if;
+  if (select count(*) from (select 1 from public.deal_stage_history h
+                             where h.actor_id = (select auth.uid()) and h.created_at > now() - interval '60 seconds'
+                             limit 121) recent) > 120 then
+    raise exception 'too many stage changes in a minute' using errcode = '22023', hint = 'rate_limited';
+  end if;
+  return null;
+end;
+$$;
+create trigger flood_deal_open after insert on public.deals
+  referencing new table as new_deals for each statement execute function private.deal_open_flood();
+create trigger flood_deal_move after update on public.deals
+  referencing old table as old_deals new table as new_deals for each statement execute function private.deal_move_flood();
+
 -- Move records (replaces a custom-setting marker and a request-id setting): what an RPC open or move did to the lead,
 -- for the compare-and-restore on undo, and its request id, for replays. Private schema: no API endpoint. Not audited
 -- (no lead text). Every write RPC deletes the caller's rows older than 10 minutes. A direct PATCH writes no row: it
@@ -1689,7 +1730,8 @@ $$;
 -- Function privileges: trigger functions are never callable; the helpers the RPCs use are callable by signed-in people
 -- (private has no API endpoint); every RPC is revoked from public and anon and granted to authenticated.
 -- ===========================================================================
-revoke all on function private.deal_guard(), private.deal_history() from public, anon, authenticated;
+revoke all on function private.deal_guard(), private.deal_history(), private.deal_open_flood(),
+  private.deal_move_flood() from public, anon, authenticated;
 revoke all on function private.stage_id(text), private.stage_key(uuid),
   private.deal_undo_candidate(uuid, text, text, integer), private.deal_closing_blocked(uuid),
   private.deal_cards(uuid[]), private.deal_card(uuid),
