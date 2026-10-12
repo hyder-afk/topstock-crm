@@ -48,8 +48,10 @@ files; the places that redefine a merged definition are listed under "Rebase poi
   XHR upload with real progress, the person's own token, no upsert), `stored-bytes.ts` (reads the stored bytes back for
   the sniff, with or without Range: spike S3), `stored.ts` (server-only: signed links pinned to our Supabase origin),
   `types.ts`, `files-server.ts`.
-- Actions `src/app/(app)/leads/[id]/file-actions.ts`: `beginUpload`, `finishUpload` (the bytes sniffed; a mismatch is
-  removed and answers `type_mismatch`), `abortUpload`, `deleteFile` (step-up; when the bytes cannot be removed the row
+- Actions `src/app/(app)/leads/[id]/file-actions.ts`: `beginUpload`, `finishUpload` (the bytes sniffed; only bytes
+  read in full and refused are removed and answer `type_mismatch`; a read that fails (no link, Storage error, the 3 s
+  budget, a body cut short) answers `unavailable` and leaves the row pending for Cancel or the 15-minute clean-up:
+  `afterUploadCheck` in `stored-bytes.ts`), `abortUpload`, `deleteFile` (step-up; when the bytes cannot be removed the row
   stays `deleting`).
 - Routes: `GET /api/files/[id]?disposition=` (Sec-Fetch-Site, `open_file`, **the check on every open**, a 60-second
   link, 303 with `no-store` and `no-referrer`, else 303 to `/files/unavailable`), `GET /api/leads/[id]/files`;
@@ -73,12 +75,41 @@ No Docker here, so no storage-api: each spike's safe fallback is built, and CI r
 | S2 | Does storage-api pass `amr` to Storage policies? | Step-up for delete enforced in `file_guard_update` and `begin_file_delete` (database); Storage policies use only `has_aal2` and the `deleting` row | `tests/auth/files-spikes.spec.ts` S2 (probe buckets readable with `has_aal2` / `has_recent_aal2`); e2e `delete_needs_fresh_code` |
 | S3 | Do signed links honour Range? | `stored-bytes.ts` reads 206 ranges or a 200 whole body the same way (unit-tested both ways) | files-spikes S3 (status and bytes of a ranged request) |
 | S4 | Metadata key names; written before the insert check? | Key names only in `private.object_size_key()`/`object_mime_key()`; the ready check runs at finish | files-spikes S4 (keys, the helpers' reading, a probe bucket whose insert policy needs `metadata ? 'size'`) |
+| S5 (verifier finding 8) | Is the insert policy checked again when bytes reach a signed upload link, or only when the link is made? | Nothing to build: stray bytes this way are accepted residual risk 7 (they count against the team's space, read from real stored bytes) | files-spikes S5 (a link made for a pending upload, the upload cancelled, then bytes sent to the link: status and whether an object was stored). Recorded only; TUS uploads not probed |
 
 Results land in the CI artifact `storage-spikes` (`test-results/spikes/day4d.json`) and the S1 job summary. The spike
 tests fail only where the built code would break (S2: `has_aal2` must work in Storage policies, or no upload could;
 S4: the helpers must read the real keys).
 
-## Check results
+## Verifier round 1 (12 Oct 2026): NOT READY, every finding fixed
+
+| # | Finding | What changed | How it was checked |
+|---|---|---|---|
+| 1 | Medium: every failed read of the stored bytes was treated as a fake file (upload deleted, "isn't a real Word file") | `readAndSniff` returns `reason: "unreadable"` (no link, Storage error, timeout, body or tail cut short) or `"mismatch"` (bytes read in full, refused by `sniffFile`); `afterUploadCheck` turns it into finish / discard / keep pending; `finishUpload` deletes only on `mismatch` and otherwise answers `unavailable`, leaving the row pending (Cancel or the 15-minute clean-up). The open route is unchanged (any failure is `/files/unavailable`) | Unit tests written first and seen failing (3 of 11), then passing: a stream that times out mid-read, a fetch that times out, 503, 400, a whole body cut short, a short tail, and `afterUploadCheck` on a timed-out read (`keep_pending`). Hand mutations M12, M13 (`mutations.md`) |
+| 2 | Medium: `rep_cannot_open_others_file` could not fail (no bytes, so every open ends on `/files/unavailable`) | Locally the test now reads the `file_access` audit row that `open_file` writes only when the caller may open the file: 0 after the rep's request, 1 after the admin's (the control). CI twin with real bytes: the admin uploads through the API, gets a 303 to the Storage origin; the rep gets `/files/unavailable` | Local e2e passes; with a permissive `select` policy added on `files` the local test **fails** (`Expected "0", Received "1"`), policy dropped after. CI twin: CI only |
+| 3 | Medium: `deleted_file_url_404` named but not written; no test deleted the bytes of a real upload | The CI test now takes a fresh link, checks the object exists, deletes the file through the tab with a fresh code (step-up dialog), then checks the row and the `storage.objects` row are gone, `/api/files/<id>` answers `/files/unavailable`, and the earlier link answers 4xx | CI only (needs storage-api); lint, typecheck |
+| 4 | Low: `/security-review` not run | Run in this session (`security-review.md`): the command again collected the primary checkout's diff, so its prompt was applied to this worktree's diff on e38d97a | No high-confidence finding. Still to run on the PR head (no PR in this workflow) |
+| 5 | Low: S1 wording missed the "old storage tables" case | "Open risks" now lists the three cases; case (c) makes `supabase start` fail outright | Read against the migration's `to_regclass` guard and insert |
+| 6 | Low: progress `aria-valuetext` was a hand-built "`n` %" | `format.number(progress, { style: "percent", maximumFractionDigits: 0 })` | Typecheck; CI e2e asserts `aria-valuetext` matches `^\d{1,3}%$` or "Checking the file…" in English |
+| 7 | Low: hints `file_name` / `file_lead` showed the type message | `failureToUpload` (moved to `src/lib/files/upload.ts`): `file_type` -> type, `file_size` -> too big, any other `invalid` -> unavailable | Unit test first failing, then passing; hand mutation M14 |
+| 8 | Info: signed upload links may skip the 15-minute check | Spike S5 in `files-spikes.spec.ts` records it in CI (accepted residual risk 7) | CI only |
+
+Check results on **e38d97a** (the last code commit), 12 Oct 2026. Shared local auth stack taken while idle (it served
+the Day 6a checkout, nothing of 6a's running), restarted for this worktree, released after the run.
+
+| Check | Result |
+|---|---|
+| `db-test.sh` (a copy on port 54395) | all 9 suites pass; advisors 0 ERROR (WARN `set_user_role` accepted; INFO unchanged); exit 0. No migration change in this round, so no `db-mutations.py` row is affected |
+| Hand mutations (app code) | M11 (design row 11 re-run: skip the sniff) 6 of 8 `file-stored` tests fail; M12 (unreadable reported as mismatch) 4 fail; M13 (discard on every failure) 1 fails; M14 (old hint mapping) 1 `file-upload` test fails; all restored |
+| `npm run lint` | exit 0: 0 errors, the 2 existing React Compiler warnings (files this branch does not touch) |
+| `npm run typecheck` | exit 0 |
+| `npm run test:unit` | 347 passed |
+| E2E local, Chromium | `files.spec.ts`, `files-spikes.spec.ts`, `files-screens.spec.ts`: **9 passed, 8 skipped** (storage-api cases and spikes: CI only) |
+| gitleaks (`origin/main..HEAD`) | no leaks found, exit 0 |
+| `npm audit --omit=dev` | found 0 vulnerabilities |
+| WebKit e2e, Semgrep, storage-api e2e and spikes S1 to S5 | CI only |
+
+## Check results (first round)
 
 Code checks on **6a08a49** (the last code commit; the commits after it are docs), 12 Oct 2026. Local auth stack
 restarted for this worktree (the shared stack was idle; it served the Day 6a worktree before).
@@ -94,7 +125,7 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 | E2E local, Chromium, `files.spec.ts` | **7 passed, 3 skipped** (the storage-api cases: CI only) |
 | E2E local, Chromium, regression | `lead-page`, `day4-security`, `leads`, `import`, `shell`: **72 passed**; `screens.spec.ts --grep "lead page"`: 2 passed (the lead page shots and the route skeleton at 1024/1280 with the sixth tab) |
 | Screenshots (`files-screens.spec.ts`) | 42 shots in `screens/`: the list at 390, 768, 1024, 1280, 1440, 1728 × light/dark × EN/FR (24), plus empty, refused uploads, delete confirmation (390, 1440, EN light / FR dark), menu (1440), unavailable page; no console error, no sideways scroll |
-| `/security-review` (`security-review.md`) | done by hand on this worktree's diff (the command reads the session's other checkout): no high-confidence findings; to run again on the PR head |
+| `/security-review` (`security-review.md`) | done by hand on this worktree's diff (the command reads the session's other checkout): no high-confidence findings; run again in verifier round 1 (see above) |
 | Apple design audit / Web Interface Guidelines | `apple-design-audit.md`, `web-design-guidelines.md`: findings fixed (focus ring on the heading, one control for the file input, one accessible name per file, no-break spaces, refusal next steps, the tab strip scroll, byte sizes); unresolved: none |
 | gitleaks (`origin/main..HEAD`) | no leaks found, exit 0 (re-run after the docs commit: see the final line of `docs/log.md`) |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
@@ -112,6 +143,11 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 - Next.js 16.2 (`/vercel/next.js/v16.2.9`): route handlers with `params` promises, `NextResponse.redirect` (status and
   headers), `notFound` in route handlers.
 - MDN (known): `XMLHttpRequest.upload.onprogress`, `Sec-Fetch-Site`.
+- next-intl (`/amannn/next-intl`): `useFormatter().number(value, options)` takes `Intl.NumberFormatOptions`, used with
+  `style: "percent"` for the progress bar's `aria-valuetext` ("40%" in English, "40 %" with a narrow no-break space in
+  French).
+- Installed `@supabase/storage-js` typings and source: `createSignedUploadUrl` (`POST /object/upload/sign/{bucket}/{path}`,
+  answers `{ url }` with a token) and `uploadToSignedUrl` (`PUT` to that URL), for spike S5.
 
 ## Deviations from the design
 
@@ -140,6 +176,11 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
     cannot be deleted (23503), and the specs share one stack.
 13. The open route's `Referrer-Policy: no-referrer` is also set in `next.config.ts` for `/api/files/*`: the site-wide
     header from the config overrode the route's own (found by the e2e).
+14. Design 5.7's `upload-zone.tsx` is folded into `src/components/files/files-tab.tsx` (the drop zone shares the
+    tab's upload state; a separate file would only pass that state through).
+15. A long name is cut at the end of its stem, the extension kept (`cleanFileName`), not in the middle.
+16. Verifier round 1: `finishUpload` answers `unavailable` (not `type_mismatch`) when the stored bytes cannot be read,
+    and leaves the pending row; `failureToUpload` lives in `src/lib/files/upload.ts` (unit-tested).
 
 ## Rebase points (4c not merged)
 
@@ -154,13 +195,13 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 
 ## Not done here
 
-- Storage-dependent e2e (real upload, open with the check, dead links, real delete, accented download) and the spike
-  recordings: CI only (`E2E_STORAGE=1`), logged waiver (design 8.5).
+- Storage-dependent e2e (real upload, open with the check, dead links, `deleted_file_url_404` with a real delete, the
+  rep refused a real stored file, accented download) and the spike recordings S2 to S5: CI only (`E2E_STORAGE=1`), logged waiver (design 8.5).
 - WebKit (`files.spec.ts` is in its `testMatch`) and Semgrep: CI only.
 - Read-only MCP pre-check of dev (0 file rows) and `config push` of the S3 change: not available in this workflow
   (no MCP, no remote database); the migration refuses to run on a database with file rows, and Haider checks Storage >
   S3 Connection after deploy.
-- Advisor loop, PR, merge: after this workflow.
+- `/security-review` on the PR head, advisor loop, PR, merge: after this workflow.
 
 ## Open risks
 
@@ -170,9 +211,15 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 - **Direct inserts into the real `storage.objects`** (as `authenticated`, in `files_attack.sql` in CI): storage-api
   does the same insert as that role, so the grants exist; newer storage versions add triggers (prefixes) on that table,
   which `files_attack.sql` will exercise for the first time in CI.
-- **Storage migrations before ours in CI (S1)**: if the CLI applied our migration before storage-api's own, the bucket and
-  policies would be missing (`NOTICE` in the migration) and `files_attack.sql` fails visibly; the fallback then is the
-  bucket in `config.toml` and the policies in a later migration.
+- **Storage migrations before ours in CI (S1)**: what happens depends on what the database image holds when our
+  migration runs. (a) No storage tables at all: the bucket and policies are skipped with a `NOTICE` and
+  `files_attack.sql` fails visibly. (b) Storage fully migrated (Supabase itself, and CI if the CLI waits for
+  storage-api): everything is created. (c) Unverified, and the likeliest early-start case: the Postgres image's own
+  init already creates `storage.buckets` and `storage.objects` in an older shape, without `file_size_limit` and
+  `allowed_mime_types` (storage-api's migrations add them). Then `to_regclass` passes, the bucket insert at
+  `20261014090000_lead_files.sql:288` raises "column does not exist", and `supabase start` fails outright in both CI
+  jobs (loud, not silent). The fallback for (a) and (c) is the same: the bucket in `config.toml` and the policies in a
+  later migration. The `db.yml` step "Spike S1" records the bucket columns the migrations met.
 - **The hourly upload count reads the audit log** by organisation and time; after a 30,000-lead import in the same hour
   it scans that hour's audit rows (1.1 ms after the 30k seed). A partial index on file inserts is the fix if needed.
 - **`config push` of `[storage.s3_protocol] enabled = false`** to dev is not verified here (no remote access); Haider

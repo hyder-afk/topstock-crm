@@ -4,7 +4,40 @@ Scope: `origin/main..day4d-local` (the Day 4d migration, storage stand-in, attac
 libraries, actions and routes, the Files tab, the CI changes). Design section 6, rows 1, 2, 7, 8, 20 to 28, 30, 31;
 the residual risks in design section 6 (items 1, 2, 5 and 7 concern files).
 
-## `/security-review`
+## `/security-review`, verifier round 1 (head e38d97a, 12 Oct 2026)
+
+The command was invoked in this session (Skill `security-review`, asked for this worktree's branch). Its automatic
+context again came from the session's primary checkout (`/home/user/topstock-crm`, branch `claude/busy-darwin-xech8m`,
+6 documentation files), not from this worktree. Its prompt (categories, hard exclusions, precedents, the ">80%
+confident" bar, confidence 8 or more to report) was therefore applied to `git diff origin/main...HEAD` of
+`/home/user/topstock-crm-4d` on e38d97a: 52 non-doc files, the migration, actions, routes, libraries, Files tab, CI and
+config. This session has no sub-task tool, so the false-positive filter step ran inline on each candidate.
+
+Candidates considered and dropped (all below confidence 8):
+
+- `finishUpload` now keeps an unchecked pending row when its bytes cannot be read (verifier finding 1). Not exploitable:
+  a pending object is readable only by its uploader (`lead_files_select` follows `files_select`), it never becomes
+  ready without `finish_file_upload`, and every open sniffs the bytes again. The uploader could already store any bytes
+  by calling Storage directly (accepted residual risk 5).
+- Signed upload links (`createSignedUploadUrl`) may outlive the 15-minute pending check (verifier finding 8): needs an
+  aal2 insider, gives only stray bytes in the caller's own organisation's folder, counted against the team space.
+  Accepted residual risk 7; spike S5 records it in CI.
+- `private.audit_file_access` is DEFINER and granted to `authenticated`: private schema, no API endpoint; writes only
+  for a ready file of the caller's organisation (accepted residual risk 3 and 5 of the design).
+- Inline PDF and images open on the Supabase Storage origin, never the app's; types are limited by the bucket and
+  sniffed on every open.
+- The download name in the signed link comes from `files.name`, which cannot hold control characters, quotes, slashes
+  or bidi characters (CHECK and pre-check); storage-api encodes it.
+- The spikes and e2e specs interpolate values into SQL: test-only files with values the tests made (hard exclusion 11).
+
+**Result: no vulnerability at confidence 8 or more.** Final report of the command, verbatim:
+
+> No high-confidence security vulnerabilities were found in the changes on `day4d-local` against `origin/main`
+> (head e38d97a).
+
+The command still has to run on the PR head once the PR exists, where its automatic diff is this branch.
+
+## `/security-review` (first round)
 
 The `/security-review` command in this session reads the session's primary checkout (`/home/user/topstock-crm`, another
 branch), not this worktree, so its automatic diff was not this work. The same review (its categories, exclusions and

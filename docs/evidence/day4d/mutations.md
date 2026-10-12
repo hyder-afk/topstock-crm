@@ -81,3 +81,19 @@ alone. Row 30 removes both layers and is caught. This is the S2 fallback: the st
 calling `sniffFile` → `tests/unit/file-stored.spec.ts` **4 of 5 failed** (the HTML-as-PDF and macro cases with Range
 honoured and ignored); restored, 5 passed. Removing the `checkStoredFile` call from `GET /api/files/[id]` itself is
 caught only by the CI e2e `direct_api_html_as_pdf_refused_at_open` (needs storage-api): recorded as CI-proved.
+
+## Verifier round 1 (12 Oct 2026): app-code rows by hand, on e38d97a
+
+No migration changed in this round, so no `scripts/db-mutations.py` row is affected. The changed app code was mutated
+by hand (each edit made, the unit file run, the file restored with `git checkout`):
+
+| Row | Mutation | Tests run | Result |
+|---|---|---|---|
+| M11 (design row 11, re-run) | `readAndSniff` answers ok without `sniffFile` deciding (`true \|\| sniffFile(...)`) | `tests/unit/file-stored.spec.ts` | **caught**: 6 failed, 2 passed |
+| M12 | every unreadable read reported as `reason: "mismatch"` (the old behaviour: a slow read deletes the upload) | `tests/unit/file-stored.spec.ts` | **caught**: 4 failed, 4 passed |
+| M13 | `afterUploadCheck` discards on every failure | `tests/unit/file-stored.spec.ts` | **caught**: 1 failed, 7 passed |
+| M14 | `failureToUpload` back to "any `invalid` that is not `file_size` is a type error" | `tests/unit/file-upload.spec.ts` | **caught**: 1 failed, 3 passed |
+
+The local e2e `rep_cannot_open_others_file` was also run against a permissive `select` policy on `files`
+(`using (true)`, added and dropped by hand on the local stack): **caught** (`Expected "0", Received "1"` on the
+`file_access` audit count). Before this round the same test passed whatever the policies said.
