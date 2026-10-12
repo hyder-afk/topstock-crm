@@ -6,7 +6,7 @@ export const STOCK_FILTERS = ["all", "in_warehouse", "in_transit", "low", "sold_
 export type StockFilter = (typeof STOCK_FILTERS)[number];
 export const STOCK_SORTS = ["name", "available", "updated"] as const;
 export type StockSort = (typeof STOCK_SORTS)[number];
-export const INVENTORY_TABS = ["stock", "arriving", "reserved", "movements"] as const;
+export const INVENTORY_TABS = ["stock", "arriving", "reserved", "movements", "sales", "requests"] as const;
 export type InventoryTab = (typeof INVENTORY_TABS)[number];
 
 /** Rows per page from list_stock (design 10.1: server keyset pages of 100). */

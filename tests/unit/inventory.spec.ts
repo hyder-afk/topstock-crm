@@ -105,7 +105,7 @@ test.describe("filters in the URL", () => {
     expect(stockFiltersToParams(f).toString()).toBe("q=jute&filter=low&category=Bags&sort=available");
     expect(stockFiltersToParams({ filter: "all", sort: "name" }).toString()).toBe("");
     expect(parseTab("movements")).toBe("movements");
-    expect(parseTab("sales")).toBe("stock");
+    expect(parseTab("orders")).toBe("stock");
   });
   test("movement filters", () => {
     expect(movementParams.safeParse({ kinds: "ship,return" }).success).toBe(true);

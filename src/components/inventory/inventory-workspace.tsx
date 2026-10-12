@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileUp, Package, Plus, Settings } from "lucide-react";
+import { FileUp, Package, Plus, Receipt, Settings } from "lucide-react";
 import { useStepUp } from "@/components/auth/step-up-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -17,6 +17,9 @@ import { StockTable, StockTableSkeleton } from "@/components/inventory/stock-tab
 import { StockToolbar } from "@/components/inventory/stock-toolbar";
 import { ArrivingList, ListState, MovementsList, ReservedList } from "@/components/inventory/tab-lists";
 import { prefetchProduct, useProduct, useStock, useSummary } from "@/components/inventory/use-inventory";
+import { RecordSaleSheet, type SaleLead, type SalePrefill } from "@/components/sales/record-sale-sheet";
+import { RequestsList, SalesList } from "@/components/sales/sales-tabs";
+import { useAlerts } from "@/components/sales/use-sales";
 import {
   INVENTORY_TABS,
   parseStockFilters,
@@ -30,20 +33,28 @@ import type { StockPage, StockSummary } from "@/lib/inventory/types";
 import { cn } from "@/lib/utils";
 
 type Member = { id: string; first_name: string | null; last_name: string | null };
-type UiState = { tab: InventoryTab; filters: StockFilters; product: string | null; movementsProduct: string | null };
+type UiState = { tab: InventoryTab; filters: StockFilters; product: string | null; movementsProduct: string | null; company: string | null };
 const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function stateFrom(params: URLSearchParams): UiState {
   const tab = parseTab(params.get("tab"));
   const product = params.get("product");
   const ok = product && uuidLike.test(product) ? product : null;
-  return { tab, filters: parseStockFilters(params), product: tab === "movements" ? null : ok, movementsProduct: tab === "movements" ? ok : null };
+  const company = tab === "sales" ? params.get("company") : null;
+  return {
+    tab,
+    filters: parseStockFilters(params),
+    product: tab === "movements" ? null : ok,
+    movementsProduct: tab === "movements" ? ok : null,
+    company: company && uuidLike.test(company) ? company : null,
+  };
 }
 function urlFor(s: UiState) {
   const p = stockFiltersToParams(s.filters);
   if (s.tab !== "stock") p.set("tab", s.tab);
   const product = s.tab === "movements" ? s.movementsProduct : s.product;
   if (product) p.set("product", product);
+  if (s.tab === "sales" && s.company) p.set("company", s.company);
   const qs = p.toString();
   return `/inventory${qs ? `?${qs}` : ""}`;
 }
@@ -69,7 +80,7 @@ function useWidthClass(): "xl" | "lg" | "sm" {
 }
 
 // The Inventory page (design 10.1): header (Import for admins in 6c, New product for managers and admins, Settings for
-// admins), the KPI row, the tabs Stock · Arriving · Reserved · Movements (Sales and Requests come with 6d), and the
+// admins, Record sale in red from 6d), the KPI row, the tabs Stock · Arriving · Reserved · Movements · Sales · Requests, and the
 // product panel: beside the list from 1280 px, as a right-hand sheet from 1024 px, a full page below that. The URL keeps
 // the tab, the filters and the open product (shareable, Back works).
 export function InventoryWorkspace({
@@ -170,7 +181,26 @@ export function InventoryWorkspace({
   }, [ui.product, width, closeProduct]);
 
   const setFilters = useCallback((filters: StockFilters) => navigate({ ...ui, filters }, "replace"), [navigate, ui]);
-  const setTab = useCallback((tab: InventoryTab) => navigate({ ...ui, tab, movementsProduct: tab === "movements" ? ui.movementsProduct : null }, "replace"), [navigate, ui]);
+  const setTab = useCallback(
+    (tab: InventoryTab) => navigate({ ...ui, tab, movementsProduct: tab === "movements" ? ui.movementsProduct : null, company: tab === "sales" ? ui.company : null }, "replace"),
+    [navigate, ui],
+  );
+  // Record sale (design 10.1: the red primary of this page): from the header, a request, or Cmd+K ("?record=1").
+  const [sale, setSale] = useState<{ open: boolean; lead: SaleLead | null; prefill: SalePrefill | null; key: number }>({ open: false, lead: null, prefill: null, key: 0 });
+  const openSale = useCallback((lead: SaleLead | null, prefill: SalePrefill | null) => setSale((s) => ({ open: true, lead, prefill, key: s.key + 1 })), []);
+  const wantsRecord = searchParams.get("record") === "1";
+  const [recordSeen, setRecordSeen] = useState(false);
+  if (wantsRecord !== recordSeen) {
+    setRecordSeen(wantsRecord);
+    if (wantsRecord) setSale((x) => ({ open: true, lead: null, prefill: null, key: x.key + 1 }));
+  }
+  useEffect(() => {
+    if (!wantsRecord) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("record");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+  }, [wantsRecord]);
+  const alerts = useAlerts();
   const movementsProduct = useProduct(ui.movementsProduct);
 
   const s = summary.data;
@@ -221,7 +251,14 @@ export function InventoryWorkspace({
   const tabs = INVENTORY_TABS.map((id) => ({
     id,
     label:
-      id === "arriving" && s && s.arriving > 0 ? (
+      id === "requests" && alerts.data && alerts.data.requests_new > 0 ? (
+        <span className="inline-flex items-center gap-1.5">
+          {t(`tabs.${id}`)}
+          <span className="rounded-full bg-muted px-1.5 font-mono text-xs text-foreground" aria-label={t("newRequests", { count: alerts.data.requests_new })}>
+            {fmtPieces(locale, alerts.data.requests_new)}
+          </span>
+        </span>
+      ) : id === "arriving" && s && s.arriving > 0 ? (
         <span className="inline-flex items-center gap-1.5">
           {t(`tabs.${id}`)}
           <span className="font-mono text-xs text-muted-foreground">{fmtPieces(locale, s.arriving)}</span>
@@ -253,11 +290,15 @@ export function InventoryWorkspace({
             </Link>
           ) : null}
           {canManage ? (
-            <Button variant="neutral" onClick={() => setAdding(true)}>
+            <Button variant="quiet" onClick={() => setAdding(true)} aria-label={t("newProduct")}>
               <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
-              {t("newProduct")}
+              <span className="hidden sm:inline">{t("newProduct")}</span>
             </Button>
           ) : null}
+          <Button variant="brand" onClick={() => openSale(null, null)}>
+            <Receipt aria-hidden="true" strokeWidth={1.75} className="size-4" />
+            {t("recordSale")}
+          </Button>
         </div>
       </div>
 
@@ -279,6 +320,14 @@ export function InventoryWorkspace({
           ) : ui.tab === "reserved" ? (
             <TabPanel idBase="inventory" id="reserved" className="flex min-w-0 flex-col gap-3">
               <ReservedList me={me} canManage={canManage} onOpen={openProduct} />
+            </TabPanel>
+          ) : ui.tab === "sales" ? (
+            <TabPanel idBase="inventory" id="sales" className="flex min-w-0 flex-col gap-3">
+              <SalesList canManage={canManage} stepUp={stepUp} company={ui.company} onClearCompany={() => navigate({ ...ui, company: null }, "replace")} />
+            </TabPanel>
+          ) : ui.tab === "requests" ? (
+            <TabPanel idBase="inventory" id="requests" className="flex min-w-0 flex-col gap-3">
+              <RequestsList onRecordSale={openSale} />
             </TabPanel>
           ) : (
             <TabPanel idBase="inventory" id="movements" className="flex min-w-0 flex-col gap-3">
@@ -313,6 +362,14 @@ export function InventoryWorkspace({
       {canManage ? (
         <ProductFormDialog open={adding} onOpenChange={setAdding} product={null} stepUp={stepUp} onCreated={(id) => openProduct(id)} />
       ) : null}
+      <RecordSaleSheet
+        key={sale.key}
+        open={sale.open}
+        onOpenChange={(open) => setSale((x) => ({ ...x, open }))}
+        lead={sale.lead}
+        prefill={sale.prefill}
+        canSellBelowMin={canManage}
+      />
       {stepUpHook.dialog}
     </div>
   );

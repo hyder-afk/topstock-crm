@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { History, Keyboard, Languages, LogOut, Monitor, Moon, Search, Settings, Sun, Upload, type LucideIcon } from "lucide-react";
+import { History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Receipt, Search, Settings, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -86,6 +86,18 @@ export function CommandPalette({
                 icon={History}
                 label={t("stockMovements")}
                 onSelect={() => run(() => router.push("/inventory?tab=movements"))}
+              />
+              <Item
+                value="record sale sell order vente enregistrer vendre"
+                icon={Receipt}
+                label={t("recordSale")}
+                onSelect={() => run(() => router.push("/inventory?tab=sales&record=1"))}
+              />
+              <Item
+                value="stock requests client wants demandes de stock"
+                icon={Inbox}
+                label={t("stockRequests")}
+                onSelect={() => run(() => router.push("/inventory?tab=requests"))}
               />
               {isAdmin ? (
                 <>

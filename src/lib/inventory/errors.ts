@@ -46,6 +46,15 @@ export const STOCK_HINTS = [
   "duplicate_line",
   "lines",
   "too_many_links",
+  "undo_window",
+  "sale_state",
+  "cancel_reason",
+  "fulfilment",
+  "country",
+  "description",
+  "request_status",
+  "request_mismatch",
+  "document",
 ] as const;
 export type StockHint = (typeof STOCK_HINTS)[number];
 
@@ -57,7 +66,10 @@ const shortHints = new Set(["insufficient_stock", "over_reservation", "reserved_
 export function stockError(error: { code?: string | null; hint?: string | null } | null | undefined): StockFailure {
   const code = error?.code ?? "";
   const hint = error?.hint ?? "";
-  if (code === "42501") return { ok: false, error: hint === "step_up" ? "step_up" : "forbidden" };
+  if (code === "42501") {
+    if (hint === "step_up") return { ok: false, error: "step_up" };
+    return hint === "below_min" ? { ok: false, error: "forbidden", hint: "below_min" } : { ok: false, error: "forbidden" };
+  }
   if (code === "P0002") return { ok: false, error: "not_found" };
   if (code === "55P03") return { ok: false, error: "busy" };
   if (code === "57014") return { ok: false, error: "timeout" };

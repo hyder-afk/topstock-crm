@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronLeft, ChevronRight, Handshake, Package } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Handshake } from "lucide-react";
 import { useStepUp } from "@/components/auth/step-up-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { TabList, TabPanel, panelId } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/shell/empty-state";
+import { LeadStockTab } from "@/components/lead/stock-tab";
 import { Composer, type ComposerMode } from "@/components/activity/composer";
 import { EntryList, Timeline } from "@/components/activity/timeline";
 import { fetchTimeline, timelineKey, useTimeline } from "@/components/activity/use-activities";
@@ -348,7 +349,7 @@ export function LeadPage({
           </Activity>
           <Activity mode={tab === "stock" ? "visible" : "hidden"}>
             <TabPanel idBase={`lead-${id}`} id="stock" className="flex min-w-0 flex-col gap-4">
-              <EmptyState icon={Package} title={t("stockTitle")} body={t("stockEmpty")} />
+              <LeadStockTab lead={{ id, name: lead.name }} me={me.id} role={me.role} active={tab === "stock"} />
             </TabPanel>
           </Activity>
           <Activity mode={tab === "details" ? "visible" : "hidden"}>

@@ -14,12 +14,12 @@ export default async function Loading() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className={`h-9 w-40 sm:h-10 ${bar}`} />
         <div className="flex items-center gap-2">
-          <div className={`h-11 w-28 rounded-md ${bar}`} />
+          <div className={`h-11 w-11 rounded-md sm:w-28 ${bar}`} />
           <div className={`h-11 w-36 rounded-md ${bar}`} />
         </div>
       </div>
       <KpiSkeleton />
-      <div className={`h-[52px] w-full max-w-[420px] rounded-md sm:h-11 ${bar}`} />
+      <div className={`h-[52px] w-full max-w-[640px] rounded-md sm:h-11 ${bar}`} />
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           <div className={`h-11 min-w-0 flex-[1_1_220px] rounded-md sm:h-10 ${bar}`} />
