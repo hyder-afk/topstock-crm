@@ -1022,11 +1022,11 @@
     "noteSheet": "Note sur l’appel",
     "noteDone": "OK",
     "skip": "Passer",
-    "keysHint": "1–7 et 0 notent le résultat · S passer · N note · C appeler · U annuler",
+    "keysHint": "1–7 et 0 notent le résultat · S passer · N note · C appeler · U annuler",
     "stats": "Cette session : {calls, plural, one {# appel} other {# appels}} · {talks, plural, one {# échange} other {# échanges}}",
     "confirm": "Confirmer",
     "cancel": "Annuler",
-    "confirmKeys": "↩ confirme · Échap annule",
+    "confirmKeys": "↩ confirme · Échap annule",
     "needTime": "Un rendez-vous demande une date et une heure.",
     "dncChanged": "{name} a été marqué Ne plus contacter entre-temps. Seuls 7 et Passer fonctionnent sur cette fiche.",
     "lostClaim": "Un collègue s’en occupe déjà. Voici le suivant.",
@@ -1147,7 +1147,8 @@
     "showMore": "Afficher plus",
     "loadingMore": "Chargement…",
     "dncLead": "Ne souhaite plus être contacté",
-    "keysHint": "T nouvelle tâche · J/K se déplacer · X terminer · E modifier · D écarter · ⌫ supprimer · ↩ ouvrir le prospect",
+    "keysHint": "T nouvelle tâche · J/K se déplacer · X terminer · E modifier · D écarter · ⌫ supprimer · ↩ ouvrir le prospect",
+    "dueCount": "{count, plural, one {# tâche pour aujourd’hui ou en retard} other {# tâches pour aujourd’hui ou en retard}}",
     "listLabel": "Tâches : {tab}"
   }
 }

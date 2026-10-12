@@ -1009,7 +1009,7 @@
       "inEnglish": "Show in English",
       "inFrench": "Show in French",
       "en": "Hello, this is {me} from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
-      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead}⍽? Nous avons de nouveaux lots cette semaine⍽: puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp⍽?",
+      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?",
       "enNoName": "Hello, I’m calling from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
       "frNoName": "Bonjour, je vous appelle de la part de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?"
     },
@@ -1022,11 +1022,11 @@
     "noteSheet": "Note about the call",
     "noteDone": "Done",
     "skip": "Skip",
-    "keysHint": "1–7 and 0 log an outcome · S skip · N note · C call · U undo",
+    "keysHint": "1–7 and 0 log an outcome · S skip · N note · C call · U undo",
     "stats": "This session: {calls, plural, one {# call} other {# calls}} · {talks, plural, one {# talk} other {# talks}}",
     "confirm": "Confirm",
     "cancel": "Cancel",
-    "confirmKeys": "↩ confirms · Esc cancels",
+    "confirmKeys": "↩ confirms · Esc cancels",
     "needTime": "A meeting needs a date and a time.",
     "dncChanged": "{name} was marked Do not contact meanwhile. Only 7 and Skip work on this card.",
     "lostClaim": "A teammate is on that one now. Here’s the next.",
@@ -1147,7 +1147,8 @@
     "showMore": "Show more",
     "loadingMore": "Loading more…",
     "dncLead": "Asked not to be contacted",
-    "keysHint": "T new task · J/K move · X done · E edit · D dismiss · ⌫ delete · ↩ open the lead",
+    "keysHint": "T new task · J/K move · X done · E edit · D dismiss · ⌫ delete · ↩ open the lead",
+    "dueCount": "{count, plural, one {# task due today or overdue} other {# tasks due today or overdue}}",
     "listLabel": "{tab} tasks"
   }
 }

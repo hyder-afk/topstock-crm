@@ -137,6 +137,39 @@ test.describe("import and lead page messages", () => {
     expect(tf("Queue.script.frNoName", { lead: "Dupont SARL" })).toContain("pour Dupont SARL\u202f?");
   });
 
+  test("no stray symbols; the French call script reads the same in the English interface (Day 4c)", () => {
+    // U+237D (a shouldered open box) once stood in for the narrow no-break space in en.json's French script.
+    for (const locale of ["en", "fr"]) {
+      const raw = readFileSync(path.join(__dirname, "..", "..", "messages", `${locale}.json`), "utf8");
+      expect(raw.includes("\u237d"), `${locale}.json has U+237D`).toBe(false);
+    }
+    const scriptsEn = en.Queue as { script: Record<string, string> };
+    const scriptsFr = fr.Queue as { script: Record<string, string> };
+    for (const key of ["fr", "frNoName", "en", "enNoName"]) expect(scriptsEn.script[key]).toBe(scriptsFr.script[key]);
+    for (const key of ["fr", "frNoName"]) {
+      const text = scriptsEn.script[key];
+      expect(/[ \u00a0][:;?!»]/.test(text) || text.includes("'"), `en.json Queue.script.${key}`).toBe(false);
+    }
+  });
+
+  test("key hints break only at the separators (Day 4c)", () => {
+    for (const messages of [en, fr]) {
+      const m = messages as Record<string, Record<string, string>>;
+      for (const text of [m.Queue.keysHint, m.Queue.confirmKeys, m.Tasks.keysHint]) {
+        // Each "key word" part holds no ordinary space; the parts are joined by " · ".
+        for (const part of text.split(" · ")) expect(part.includes(" "), part).toBe(false);
+        expect(text.split(" · ").length).toBeGreaterThan(1);
+      }
+    }
+  });
+
+  test("the Tasks title count says what it counts (Day 4c)", () => {
+    expect(say(en, "en")("Tasks.dueCount", { count: 1 })).toBe("1 task due today or overdue");
+    expect(say(en, "en")("Tasks.dueCount", { count: 5 })).toBe("5 tasks due today or overdue");
+    expect(say(fr, "fr")("Tasks.dueCount", { count: 0 })).toBe("0 tâche pour aujourd’hui ou en retard");
+    expect(say(fr, "fr")("Tasks.dueCount", { count: 2 })).toBe("2 tâches pour aujourd’hui ou en retard");
+  });
+
   test("every call outcome, kind of entry and database hint has words in both languages", () => {
     for (const messages of [en, fr]) {
       const t = messages as Record<string, Record<string, unknown>>;
