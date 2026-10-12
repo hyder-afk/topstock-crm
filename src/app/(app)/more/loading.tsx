@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 const bar = "rounded-sm bg-muted motion-safe:animate-pulse";
 
-// Skeleton matching More block for block and at the same heights: title, the phone-only sections list, the name form,
+// Skeleton matching More block for block and at the same heights: title, the phone-only sections list, Team, the name form,
 // settings, system status and sign out. No spinners.
 export default async function Loading() {
   const t = await getTranslations("Common");
@@ -22,6 +22,18 @@ export default async function Loading() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Administration > Team (admins only; every user is an admin today, so the skeleton keeps its place). */}
+      <div className="flex flex-col gap-3">
+        <div className={`h-7 w-36 ${bar}`} />
+        <div className="flex min-h-14 items-center gap-3 rounded-lg bg-card px-4 py-3 sm:px-6">
+          <div className={`size-[22px] ${bar}`} />
+          <div className="flex flex-1 flex-col gap-1">
+            <div className={`h-6 w-16 ${bar}`} />
+            <div className={`h-5 w-40 ${bar}`} />
+          </div>
         </div>
       </div>
 

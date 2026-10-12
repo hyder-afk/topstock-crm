@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { SettingsBar } from "@/components/settings-bar";
 import { ProfileForm } from "@/components/shell/profile-form";
+import { TeamEntry } from "@/components/team/team-entry";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/auth";
 import { publicEnv } from "@/lib/env";
@@ -60,6 +61,8 @@ export default async function MorePage() {
           })}
         </ul>
       </section>
+
+      <TeamEntry supabase={supabase} userId={claims.sub} />
 
       <section id="profile" aria-labelledby="more-profile" className="flex scroll-mt-6 flex-col gap-3">
         <h2 id="more-profile" className="text-lg font-bold">
