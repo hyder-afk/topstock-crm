@@ -1551,7 +1551,7 @@ declare
   v_owner uuid;
   v_summary jsonb;
   v_stages jsonb := '[]'::jsonb;
-  v_all uuid[] := '{}';
+  v_all uuid[] := '{}'::uuid[];
   v_more jsonb := '{}'::jsonb;
   v_cards jsonb;
   v_col jsonb;
