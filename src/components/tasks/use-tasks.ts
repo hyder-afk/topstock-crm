@@ -44,8 +44,13 @@ export function prefetchTasks(queryClient: QueryClient, scope: TaskScope, bucket
 type Lists = InfiniteData<TaskPageWithCounts>;
 export type ListsSnapshot = [readonly unknown[], Lists | undefined][];
 
-/** Takes a task off every loaded list (optimistic), and answers what was there, to put it back on failure. */
-export function removeTask(queryClient: QueryClient, id: string): ListsSnapshot {
+/**
+ * Takes a task off every loaded list (optimistic), and answers what was there, to put it back on failure. A list read
+ * still on its way is cancelled first (as the 4b timeline does), so an answer that started before this change cannot
+ * bring the task back.
+ */
+export async function removeTask(queryClient: QueryClient, id: string): Promise<ListsSnapshot> {
+  await queryClient.cancelQueries({ queryKey: ["tasks"] });
   const snapshot = queryClient.getQueriesData<Lists>({ queryKey: ["tasks"] });
   queryClient.setQueriesData<Lists>({ queryKey: ["tasks"] }, (old) =>
     old ? { ...old, pages: old.pages.map((p) => ({ ...p, rows: p.rows.filter((r) => r.id !== id) })) } : old,

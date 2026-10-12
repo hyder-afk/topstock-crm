@@ -3,7 +3,7 @@
 import { memo, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useIsPresent, useReducedMotion } from "motion/react";
 import { Building2, Check, Ellipsis } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -15,7 +15,8 @@ import { localDate, primaryZone, zonedInstant } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 export type RowActions = {
-  toggle: (task: TaskListRow, check: HTMLElement) => void;
+  /** `failed` runs when the change was refused or not sent (the row comes back as it was). */
+  toggle: (task: TaskListRow, check: HTMLElement, failed: () => void) => void;
   dismiss: (task: TaskListRow, from: HTMLElement) => void;
   askDelete: (task: TaskListRow, from: HTMLElement) => void;
   save: (task: TaskListRow, edit: { title: string; dueDate: string | null; dueAt: string | null; assigneeId: string | null }) => Promise<boolean>;
@@ -72,6 +73,14 @@ export const TaskRow = memo(function TaskRow({
   const checkRef = useRef<HTMLButtonElement>(null);
   const done = !!task.done_at;
   const [checking, setChecking] = useState(false);
+  // A row put back while it was still fading out (a failed toggle, an Undo) is the same row again: its check shows the
+  // task's own state, not the click that sent it away.
+  const present = useIsPresent();
+  const [wasPresent, setWasPresent] = useState(present);
+  if (present !== wasPresent) {
+    setWasPresent(present);
+    if (present) setChecking(false);
+  }
   const overdue = !done && now ? bucketOf(task, zone, now) === "overdue" : false;
   const Icon = kindIcon[task.kind] ?? kindIcon.todo;
   const theirZone = task.company_call_zone ? primaryZone(task.company_call_zone) : null;
@@ -95,7 +104,10 @@ export const TaskRow = memo(function TaskRow({
     <motion.li
       ref={rowRef}
       layout={reduce ? false : "position"}
-      initial={false}
+      // A task added after the list was first drawn fades in and rises 8 px (design 7.8; reduced motion: the fade only).
+      // Rows already there when the list first shows do not move (AnimatePresence initial={false} in the list).
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={reduce ? { duration: 0.12 } : springs.smooth}
       data-task-id={task.id}
@@ -116,7 +128,7 @@ export const TaskRow = memo(function TaskRow({
             disabled={task.pending}
             onClick={(e) => {
               setChecking(true);
-              actions.toggle(task, e.currentTarget);
+              actions.toggle(task, e.currentTarget, () => setChecking(false));
             }}
             className="group grid size-11 shrink-0 place-items-center rounded-full transition-transform duration-150 active:scale-[0.94] sm:size-10"
           >

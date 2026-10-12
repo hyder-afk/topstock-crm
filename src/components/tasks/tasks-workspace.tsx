@@ -111,15 +111,16 @@ export function TasksWorkspace({
   const actions = useMemo<RowActions>(() => {
     const call = async <T,>(p: Promise<ActionResult<T>>): Promise<ActionResult<T>> => p.catch(() => ({ ok: false as const, error: "unavailable" as const }));
     return {
-      toggle: (task, check) => {
+      toggle: (task, check, failed) => {
         const on = !task.done_at;
         // The check fills first, then the row leaves its list (it now belongs to another tab).
         window.setTimeout(async () => {
           focusAfterLeaving(check);
-          const snapshot = removeTask(queryClient, task.id);
+          const snapshot = await removeTask(queryClient, task.id);
           const res = await call(setTaskDone({ id: task.id, on }));
           if (!res.ok) {
             restoreLists(queryClient, snapshot);
+            failed();
             fail(res);
             return;
           }
@@ -136,8 +137,9 @@ export function TasksWorkspace({
       },
       dismiss: (task, from) => {
         focusAfterLeaving(from);
-        const snapshot = removeTask(queryClient, task.id);
-        void call(setTaskCancelled({ id: task.id, on: true })).then((res) => {
+        void (async () => {
+          const snapshot = await removeTask(queryClient, task.id);
+          const res = await call(setTaskCancelled({ id: task.id, on: true }));
           if (!res.ok) {
             restoreLists(queryClient, snapshot);
             fail(res);
@@ -152,7 +154,7 @@ export function TasksWorkspace({
               if (!back.ok) fail(back);
             },
           });
-        });
+        })();
       },
       askDelete: (task, from) => {
         deleteFrom.current = from;
@@ -188,7 +190,7 @@ export function TasksWorkspace({
     }
     // The dialog gives the focus back when it has closed: to the neighbour of the deleted task.
     deleteFrom.current = focusAfterLeaving(from);
-    removeTask(queryClient, task.id);
+    await removeTask(queryClient, task.id);
     refreshTasks(queryClient, task.company_id);
     toast.show(t("deleted"));
   };
@@ -275,9 +277,10 @@ export function TasksWorkspace({
         } else if ((event.key === "Backspace" || event.key === "Delete") && rowTask.can_edit) {
           event.preventDefault();
           actions.askDelete(rowTask, rowCheck);
-        } else if (event.key === "Enter" && rowTask.company_id && active === rowCheck) {
+        } else if (event.key === "Enter" && active === rowCheck) {
+          // Enter opens the task's lead; it never ticks the check (X or Space do), even on a task with no lead.
           event.preventDefault();
-          router.push(`/leads/${rowTask.company_id}`);
+          if (rowTask.company_id) router.push(`/leads/${rowTask.company_id}`);
         }
       }
     };
@@ -356,7 +359,13 @@ export function TasksWorkspace({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
-          {counts ? <span className="font-mono text-base text-muted-foreground">{format.number(counts.today + counts.overdue)}</span> : null}
+          {counts ? (
+            // The number of tasks due today or overdue, said in words to assistive tech (and on hover).
+            <span title={t("dueCount", { count: counts.today + counts.overdue })} className="font-mono text-base text-muted-foreground">
+              <span aria-hidden="true">{format.number(counts.today + counts.overdue)}</span>
+              <span className="sr-only">{t("dueCount", { count: counts.today + counts.overdue })}</span>
+            </span>
+          ) : null}
         </div>
         {canTeam ? (
           <div role="group" aria-label={t("scopeLabel")} className="flex gap-0.5 rounded-md bg-muted p-1">

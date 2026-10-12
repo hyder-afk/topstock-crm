@@ -27,6 +27,15 @@ export function LeadPicker({ value, onChange }: { value: PickedLead | null; onCh
   const locale = useLocale();
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const removeRef = useRef<HTMLButtonElement>(null);
+  // After a pick the field gives way to the chip: the focus goes to the chip's remove button, never to the page.
+  const focusChip = useRef(false);
+  useEffect(() => {
+    if (value && focusChip.current) {
+      focusChip.current = false;
+      removeRef.current?.focus();
+    }
+  }, [value]);
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -42,6 +51,7 @@ export function LeadPicker({ value, onChange }: { value: PickedLead | null; onCh
   const rows = (results.data?.rows ?? []).slice(0, SHOWN);
 
   const pick = (row: { id: string; name: string }) => {
+    focusChip.current = true;
     onChange({ id: row.id, name: row.name });
     setText("");
     setOpen(false);
@@ -53,6 +63,7 @@ export function LeadPicker({ value, onChange }: { value: PickedLead | null; onCh
         <Building2 aria-hidden="true" strokeWidth={1.75} className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 truncate">{value.name}</span>
         <button
+          ref={removeRef}
           type="button"
           aria-label={t("unlinkLead", { name: value.name })}
           onClick={() => {

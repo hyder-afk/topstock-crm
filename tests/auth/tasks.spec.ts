@@ -341,3 +341,70 @@ test("phone_lead_link_target: on a phone, a task's lead link is a 44 px tap targ
   await settled(page);
   await context.close();
 });
+
+test("lead_picker_focus: picking a lead from the keyboard puts the focus on the chip's remove button, never the page", async ({ browser }) => {
+  const name = `Picker Focus Textiles ${run}`;
+  sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, country)
+       select org_id, '${name}', id, 'cold', '+33 6 00 00 00 45', 'FR' from public.profiles where id = '${userId(adminEmail)}'`);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openTasks(page);
+  const search = page.getByRole("combobox", { name: "Search leads" });
+  await search.fill(name);
+  await expect(page.getByRole("option", { name: new RegExp(name) })).toBeVisible();
+  await search.press("ArrowDown");
+  await search.press("ArrowUp");
+  await search.press("Enter");
+  const remove = page.getByRole("button", { name: `Remove the link to ${name}` });
+  await expect(remove).toBeFocused();
+  expect(await focusedTag(page)).toBe("BUTTON");
+  // Removing it gives the focus back to the field.
+  await remove.click();
+  await expect(page.getByRole("combobox", { name: "Search leads" })).toBeFocused();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("failed_toggle_reverts: a toggle that cannot be sent puts the row back with an empty check", async ({ browser }) => {
+  sql(`update public.tasks set cancelled_at = now() where assignee_id = '${userId(adminEmail)}' and done_at is null and cancelled_at is null`);
+  makeTask(adminEmail, "Offline toggle task", { date: todayIn("Europe/Paris") });
+  const { context, page } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openTasks(page);
+  const check = page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" });
+  await expect(check).toHaveAttribute("aria-checked", "false");
+  await context.setOffline(true);
+  await check.click();
+  // The toggle is refused (no connection): the row comes back as it was, with an empty check, and a toast says so.
+  await expect(toast(page)).toContainText(/connection|try again|Couldn’t/i);
+  await expect(row(page, "Offline toggle task")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" })).toHaveAttribute("aria-checked", "false");
+  await page.waitForTimeout(600); // past the row's exit spring
+  await expect(page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" })).toHaveAttribute("aria-checked", "false");
+  await context.setOffline(false);
+  expect(sql(`select done_at is null from public.tasks where ${mine()} and title = 'Offline toggle task'`)).toBe("t");
+  // Back online, the same check completes it.
+  await page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" }).click();
+  await expect.poll(() => sql(`select done_at is not null from public.tasks where ${mine()} and title = 'Offline toggle task'`)).toBe("t");
+  await context.close();
+});
+
+test("enter_on_task_without_lead: Enter on a task's check never ticks it (X or Space do)", async ({ browser }) => {
+  sql(`update public.tasks set cancelled_at = now() where assignee_id = '${userId(adminEmail)}' and done_at is null and cancelled_at is null`);
+  makeTask(adminEmail, "Renew the warehouse insurance", { date: todayIn("Europe/Paris") });
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openTasks(page);
+  await page.locator("main h1").click();
+  await page.keyboard.press("j");
+  const check = page.getByRole("checkbox", { name: "Mark “Renew the warehouse insurance” done" });
+  await expect(check).toBeFocused();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(700); // longer than the toggle's 160 ms delay and a round trip
+  await expect(row(page, "Renew the warehouse insurance")).toBeVisible();
+  await expect(check).toHaveAttribute("aria-checked", "false");
+  expect(sql(`select done_at is null from public.tasks where ${mine()} and title = 'Renew the warehouse insurance'`)).toBe("t");
+  await expect(page).toHaveURL(/\/tasks/);
+  // Space does tick it.
+  await page.keyboard.press("Space");
+  await expect.poll(() => sql(`select done_at is not null from public.tasks where ${mine()} and title = 'Renew the warehouse insurance'`)).toBe("t");
+  expect(errors).toEqual([]);
+  await context.close();
+});
