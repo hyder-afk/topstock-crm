@@ -52,7 +52,27 @@ yet**: see "Rebase points". No screens, no server actions, no routes (5b and 5c)
 - `supabase/tests/perf_day5.sql` (new, part 1) and `scripts/db-perf.sh` (runs it after `perf_day4.sql`, then P10).
 - Spikes S6 to S9: `docs/evidence/day5a/spikes/` (scripts) and `docs/log.md` (results and decisions).
 
-CHECK_RESULTS_PLACEHOLDER
+## Check results
+
+Code head **b8e839f** (the last commit that changes code; later commits change `docs/` only), 12 Oct 2026, 03:20 UTC.
+
+| Check | Result |
+|---|---|
+| `bash scripts/db-test.sh` (a copy on port 54361; the real script keeps 54329) | exit 0: rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency, outcome_attack, outcome_concurrency, **deals_attack**, **deal_concurrency** (cases 1 to 8; case 9: 194 moved, 27 conflicts, 19 `reopen_first`, 0 deadlocks) all pass |
+| Supabase advisors (splinter, in `db-test.sh`) | no ERROR-level findings. WARN `set_user_role` (accepted since Day 1); INFO `unindexed_foreign_keys` 3 (`activities_org_id_fkey`, `private.activity_undo` and the new `private.deal_moves` org FK: the same accepted pattern, a 10-minute table), INFO `unused_index` 3 |
+| `plpgsql_check` over every plpgsql function in `public` and `private` (what CI's `supabase db lint` runs) | no error, no warning (one type warning in `pipeline_board` fixed in cff33b5) |
+| Mutations (`mutations.md`) | day5a **53 rows: 49 caught, 4 documented two-layer rows, 0 not as listed** (8bd6e4b, three rows on 3a21018); the 36 earlier rows re-aimed at the Day 5a copies of `audit_row` and `task_guard`: 36 caught (8bd6e4b); `--anchors` on b8e839f: every anchor of all four sets found once (37 / 104 / 94 / 53) |
+| Perf part 1 (`perf.md`, 3 runs on b8e839f) | met: P1 team 18.8–20.4 ms (25), P2 all six 2.8–4.2 ms (5), P3 4.3–5.5 ms (10), P4 undo 7.7–8.0 and open 7.2–8.4 ms (10), P4b 2.1–4.4 ms (6 / 10), P6 list_lead_deals 2.3–2.6 ms (3), get_deal 4.5–5.8 ms (5, 2 of 3); **missed**: P1 mine 17.8–19.4 ms (15), P4 move/win/lose 9.9–11.7 ms (10), P10 p95 35.5–58.0 ms (20). P9: no regression traced to 5a code (medians within the run-to-run spread; import and undo within +10 to +16% against main with the same deals) |
+| `scripts/check-migration-order.sh` | ok (newest on origin/main 20261012090000; added 20261015090000); a base with a later file fails it (tested) |
+| `npm run lint` | exit 0: 0 errors, the 2 existing React Compiler warnings |
+| `npm run typecheck` | exit 0 |
+| `npm run test:unit` | 329 passed (321 before plus `sql-guc.spec.ts`'s 8) |
+| gitleaks (`origin/main..HEAD`) | GITLEAKS_RESULT |
+| `npm audit --omit=dev` | found 0 vulnerabilities |
+| Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
+| `/security-review` | not run in this step (the lead builder runs it on the PR head in the advisor loop); the threat table is re-checked in `security-review.md` |
+| Playwright | not needed: no UI change in 5a (the existing suites are unchanged) |
+
 
 ## Spikes (design 2.4; full results in `docs/log.md`, scripts in `spikes/`)
 
@@ -94,7 +114,7 @@ CHECK_RESULTS_PLACEHOLDER
 12. **`pipeline_board`** reads all its cards in one call and takes each column's next cursor from its last card; column
     pages look up the lead only for "stalled only" (speed; same answers).
 13. **Mutations**: 53 rows instead of 31. Design rows 20 and 23 are split into their layers (the two-layer rows are
-    documented); rows 32 onward are additions. Design row 21 ("deadlock test") is caught in 5a by concurrency case 8,
+    documented); rows 34 onward are additions (39/40 split the same way). Design row 21 ("deadlock test") is caught in 5a by concurrency case 8,
     since 5b's `log_activity` with a deal does not exist yet.
 14. **Unit tests**: only `sql-guc.spec.ts` is 5a's; `day5-parity`, `deals`, `days-in-stage` and the rest of design 8.4
     test `src/lib/deals.ts` and friends, which 5b writes.
@@ -118,7 +138,23 @@ merge, before 5a merges:
 
 ## Open risks
 
-OPEN_RISKS_PLACEHOLDER
+1. **Speed misses under a loaded VM** (`perf.md`): the rep's board 17.8–19.4 ms (15), a move that touches the lead
+   9.9–11.7 ms (10), P10 p95 35.5–58.0 ms (20, includes lock waits by design). Every run shared 4 cores with two other
+   workflows; re-measure on CI hardware or a quiet VM before deciding. Haider decides whether to accept them as the
+   baseline (as he did for Day 4b's speed on 11 Oct).
+2. **Mutation runs on a shared VM**: concurrency tests depend on timing (0.4 s head starts). Two baselines passed before
+   the run and every caught row's first failure was read and is the protection's own test; still, a run on a quiet
+   machine would be cleaner.
+3. **Rebase onto 4c/4d** (section above): two functions are copies of merged bodies; the PR must re-copy them.
+4. **Stall clock-change cases**: the SQL side is zone-free by construction (hours), but the fixed-instant 25 Oct / 1 Nov
+   cases of design 5.5 are only testable on the TypeScript side (5b).
+5. **A direct PATCH of `value` with 3 decimals is rounded** by the column; the RPCs refuse it (residual risk 6 in
+   `security-review.md`).
+6. **The design's residual risks 1 to 5 stand** (`security-review.md`).
+7. **Process note**: twice in this step a `pkill -f`/`pgrep -f` pattern matched the agent's own shell and ended it (the
+   mutation runs were then stopped by PID and restarted cleanly from a reset worktree); nothing outside this step's
+   processes was affected (other workflows' ports 54371/54372 and 54329 untouched).
+
 
 ## Docs used
 
