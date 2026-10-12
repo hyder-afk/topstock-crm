@@ -547,16 +547,27 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
 
   // The tab goes away (closed, reloaded, sent to the background for good): a keepalive request lets the claims go. Back
   // from the browser's page cache, the claims are gone: start again from the start screen.
+  // Safari can close a tab without its pagehide reaching the page, and drops keepalive requests sent while it closes:
+  // beforeunload sends too (once per page life), and a beacon goes first, with the keepalive request as the fallback.
   useEffect(() => {
+    let sent = false;
     const onHide = () => {
+      if (sent) return;
       const ids = cardsRef.current.map((c) => c.id).slice(0, 3);
       if (ids.length === 0) return;
+      sent = true;
+      const body = JSON.stringify({ ids });
+      try {
+        if (navigator.sendBeacon?.("/api/queue/release", new Blob([body], { type: "application/json" }))) return;
+      } catch {
+        // No beacon: the keepalive request below.
+      }
       try {
         void fetch("/api/queue/release", {
           method: "POST",
           keepalive: true,
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ids }),
+          body,
         }).catch(() => {});
       } catch {
         // The browser refused the request: the claims end by themselves within 10 minutes.
@@ -564,14 +575,17 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     };
     const onShow = (e: PageTransitionEvent) => {
       if (!e.persisted) return;
+      sent = false;
       newSession();
       setCards(() => []);
       setPhase("start");
     };
     window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
     window.addEventListener("pageshow", onShow);
     return () => {
       window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
       window.removeEventListener("pageshow", onShow);
       // Leaving the queue inside the app: let the claims go.
       const ids = cardsRef.current.map((c) => c.id).slice(0, 3);
