@@ -170,6 +170,7 @@ test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
 test("share_public_lists_warehouse_stock_with_max_price_and_never_cost", async ({ browser }) => {
   const { context, page, errors, urls, bodies } = await openPublic(browser, link);
   await expect(page.getByRole("heading", { name: "Stock disponible", level: 1 })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "fr");
   const warehouse = page.getByRole("region", { name: /Dans notre entrepôt en France/ });
   const row = warehouse.getByRole("button", { name: new RegExp(visible) });
   await expect(row).toBeVisible();
@@ -311,6 +312,7 @@ test("share_public_keyboard_only_and_language_toggle", async ({ browser }) => {
   await page.getByRole("link", { name: "EN", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/s/en#${token}$`));
   await expect(page.getByRole("heading", { name: "Stock available now", level: 1 })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("button", { name: new RegExp(visible) }).getByText("€999.99", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
   await context.close();

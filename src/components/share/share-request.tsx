@@ -115,7 +115,7 @@ export function ItemSheet({
                       role="radio"
                       aria-checked={unit === u}
                       onClick={() => setUnit(u)}
-                      className={cn("min-h-9 min-w-11 rounded-[10px] px-2 font-mono text-sm", unit === u && "bg-card shadow-sm")}
+                      className={cn("min-h-11 min-w-11 rounded-[10px] px-2 font-mono text-sm sm:min-h-9", unit === u && "bg-card shadow-sm")}
                     >
                       {u === "piece" ? t("pcs") : t("ctn")}
                     </button>
