@@ -4,7 +4,8 @@ import enMessages from "../../messages/en.json";
 import frMessages from "../../messages/fr.json";
 import { isShareSurface, shareMessages } from "@/i18n/share-messages";
 import { assertSameOrigin, readJsonCapped } from "@/lib/http";
-import { mapShareItem, mapShareItems, mapShareRequest, mapShareView, snapshotFromWire, snapshotToWire } from "@/lib/share/map";
+import { mapShareItem, mapShareItems, mapShareRequest, mapShareView, snapshotToWire } from "@/lib/share/map";
+import { itemFromWire, snapshotFromWire } from "@/lib/share/wire";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { requestBodySchema, viewBodySchema } from "@/lib/share/schema";
 import { defaultLinkLanguage } from "@/lib/share/team";
@@ -110,6 +111,12 @@ test.describe("map", () => {
     expect(snapshotFromWire(JSON.parse(JSON.stringify(wire)))).toEqual(snap);
     expect(snapshotFromWire({ ...wire, items: [[...row, "0.42"]] })).toBeNull();
     expect(snapshotFromWire({ ...wire, cost: 1 })).toBeNull();
+    // The browser's hand-written check agrees with the server's schema on good and bad rows.
+    for (const r of [row, [...row, "0.42"], row.slice(0, 7), [ID, ...row.slice(1)], [42, "x", null, "2.5", 24, -1, 0, null],
+                     [42, "x", null, "2.55555", 24, 1, 0, null], [42, "", null, null, 24, 1, 0, null], [0, "x", null, null, 1, 1, 0, null],
+                     [42, "x", null, null, 1, 1, 0, "2026-13-45"], [42, "x", "c".repeat(81), null, 1, 1, 0, null], [42, "x", null, null, 1.5, 1, 0, null]]) {
+      expect(itemFromWire(r)).toEqual(mapShareItem(r));
+    }
     expect(mapShareRequest({ status: "boom" })).toEqual({ status: "unavailable" });
   });
 });

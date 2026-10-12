@@ -19,26 +19,6 @@ export function mapShareItem(row: unknown): ShareItem | null {
   return parsed.success ? parsed.data : null;
 }
 
-/** The item back to its positional form for the wire (about 50 bytes an item; design I10). */
-export function itemToWire(i: ShareItem): unknown[] {
-  return [i.number, i.name, i.category, i.priceMax, i.piecesPerCarton, i.warehouse, i.transit, i.etaWeek];
-}
-
-/** What /api/share/view sends: the checked snapshot with its items as positional arrays (only whitelisted fields). */
-export function snapshotToWire(s: ShareSnapshot): Omit<ShareSnapshot, "items"> & { items: unknown[][] } {
-  return { ...s, items: s.items.map(itemToWire) };
-}
-
-/** The browser's side: the wire answer back to a checked snapshot (null when anything is off). */
-export function snapshotFromWire(raw: unknown): ShareSnapshot | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const items = mapShareItems(r.items);
-  if (!items) return null;
-  const parsed = shareSnapshotSchema.safeParse({ ...r, items });
-  return parsed.success ? parsed.data : null;
-}
-
 export function mapShareItems(rows: unknown): ShareItem[] | null {
   if (!Array.isArray(rows)) return null;
   const out: ShareItem[] = [];
@@ -48,6 +28,16 @@ export function mapShareItems(rows: unknown): ShareItem[] | null {
     out.push(item);
   }
   return out;
+}
+
+/** The item back to its positional form for the wire (about 50 bytes an item; design I10). */
+export function itemToWire(i: ShareItem): unknown[] {
+  return [i.number, i.name, i.category, i.priceMax, i.piecesPerCarton, i.warehouse, i.transit, i.etaWeek];
+}
+
+/** What /api/share/view sends: the checked snapshot with its items as positional arrays (only whitelisted fields). */
+export function snapshotToWire(s: ShareSnapshot): Omit<ShareSnapshot, "items"> & { items: unknown[][] } {
+  return { ...s, items: s.items.map(itemToWire) };
 }
 
 /** The share_view answer, mapped and checked; anything unexpected is "unavailable". */
