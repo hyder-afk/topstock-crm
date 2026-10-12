@@ -821,6 +821,9 @@ begin
   -- A rep on someone else's lead; a stale code; aal1; another org's lead.
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000e1', 'aal2', 30);
   perform pg_temp.expect_error($q$select public.create_share_link('5e000000-0000-0000-0000-0000000000b1', 'en')$q$, '42501');
+  -- The same rep straight into the table (fresh code, granted columns only): the insert policy's editor check refuses.
+  perform pg_temp.expect_error($q$insert into private.share_links (company_id, language)
+    values ('5e000000-0000-0000-0000-0000000000b1', 'en')$q$, '42501');
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 900);
   perform pg_temp.expect_error($q$select public.create_share_link('5e000000-0000-0000-0000-0000000000b1', 'en')$q$, '42501', 'step_up');
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal1');

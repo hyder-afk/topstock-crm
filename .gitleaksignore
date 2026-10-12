@@ -5,3 +5,6 @@ e13ea2e0d4d9e1eee71e7ec2865df0db8686aa1d:scripts/local-auth/start.sh:generic-api
 # a field named call_zone_key and matched generic-api-key. The test now compares the fields one by one; this line only
 # covers the old commit in history.
 3ddd2a2d8c0aa2024d24c005bcaabee7461921cb:supabase/tests/outcome_attack.sql:generic-api-key:336
+# False positive (reviewed 12 Oct 2026): a fixed UUID used as a request's idempotency key in a unit test matched
+# generic-api-key. The test now builds an all-zero UUID; this line only covers the old commit in history.
+c24418cef9f5c047e133765dff8e4248ececd750:tests/unit/share.spec.ts:generic-api-key:48

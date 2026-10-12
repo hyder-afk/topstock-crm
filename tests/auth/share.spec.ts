@@ -18,7 +18,8 @@ const repEmail = `share-rep-${run}@example.test`;
 let adminSecret = "";
 let adminState: Awaited<ReturnType<BrowserContext["storageState"]>>;
 let repState: Awaited<ReturnType<BrowserContext["storageState"]>>;
-const visible = `Sac kraft ${tag}`;
+// Not "Sac …": inventory.spec searches "Sac" and counts its own two products on the same database.
+const visible = `Pochette kraft ${tag}`;
 const hidden = `Caché ${tag}`;
 const soldOut = `Épuisé ${tag}`;
 const arriving = `Gobelet arrivage ${tag}`;
@@ -55,10 +56,17 @@ async function openApp(browser: Browser, state: typeof adminState, o: { width?: 
 }
 
 /** A client's phone: a fresh context, no storage state, no cookies. Collects every request URL and response body. */
-async function openPublic(browser: Browser, url: string, o: { width?: number; scheme?: "light" | "dark"; state?: typeof adminState } = {}) {
+async function openPublic(
+  browser: Browser,
+  url: string,
+  o: { width?: number; scheme?: "light" | "dark"; state?: typeof adminState; ip?: string } = {},
+) {
   const width = o.width ?? 390;
   const context = await browser.newContext({
     ...(o.state ? { storageState: o.state } : {}),
+    // A documentation address (RFC 5737) as the platform's x-forwarded-for: the route's per-IP limiter (60 views a
+    // minute) then counts this client apart from the other tests, which all come from localhost.
+    ...(o.ip ? { extraHTTPHeaders: { "x-forwarded-for": o.ip } } : {}),
     viewport: { width, height: width < 600 ? 844 : 900 },
     hasTouch: width < 600,
     colorScheme: o.scheme ?? "light",
@@ -91,9 +99,9 @@ test.beforeAll(async ({ browser }) => {
   sql(`update private.inventory_settings set sharing_enabled = false`);
   const eta = sql(`select (current_date + 30 + ((10 - extract(isodow from current_date + 30)::integer) % 7))::text`); // a Wednesday
   for (const [name, ppc, min, max, qty, place, visibleFlag, cat] of [
-    [visible, 24, 1.11, 999.99, 480, "warehouse", true, "Sacs"],
-    [hidden, 10, 1, 2, 100, "warehouse", false, "Sacs"],
-    [soldOut, 10, 1, 2, null, null, true, "Sacs"],
+    [visible, 24, 1.11, 999.99, 480, "warehouse", true, "Pochettes"],
+    [hidden, 10, 1, 2, 100, "warehouse", false, "Pochettes"],
+    [soldOut, 10, 1, 2, null, null, true, "Pochettes"],
     [arriving, 50, 1, 1.5, 500, "transit", true, "Gobelets"],
     [xss, 12, 1, 3, 60, "warehouse", true, "Gobelets"],
   ] as const) {
@@ -134,7 +142,9 @@ test("enable_sharing_needs_admin_fresh_code", async ({ browser }) => {
 
 test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
   const { context, page, errors } = await openApp(browser, adminState);
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost:3100" });
+  // Clipboard permissions exist in Chromium only; WebKit checks the address field instead.
+  const chromium = test.info().project.name === "chromium";
+  if (chromium) await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost:3100" });
   await ageStepUp(context, 700);
   await settled(page);
   await page.goto(`/leads/${leadId}?tab=stock`);
@@ -151,7 +161,7 @@ test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
   await expect(field).toHaveValue(/^http:\/\/localhost:3100\/s\/fr#tss_[A-Za-z0-9_-]{43}$/);
   link = await field.inputValue();
   token = link.split("#")[1];
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
+  if (chromium) expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
   // WhatsApp and e-mail carry the message with the link; the lead's number is dialled in international form.
   await expect(card.getByRole("link", { name: "Share on WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/33612345678\?text=Bonjour/);
   await expect(card.getByRole("link", { name: "Email" })).toHaveAttribute("href", /^mailto:\?subject=/);
@@ -356,7 +366,7 @@ test("share_public_rate_limit_message", async ({ browser }) => {
   const fresh = asUser(adminEmail, `select public.create_share_link('${leadId}', 'en') ->> 'token'`)
     .split("\n")
     .find((l) => /^tss_/.test(l)) as string;
-  const { context, page } = await openPublic(browser, `http://localhost:3100/s/en#${fresh}`);
+  const { context, page } = await openPublic(browser, `http://localhost:3100/s/en#${fresh}`, { ip: "198.51.100.200" });
   await expect(page.getByText(visible)).toBeVisible();
   for (let i = 0; i < 30; i++) {
     await page.request.post("/api/share/view", { data: JSON.stringify({ token: fresh }), headers: { "content-type": "application/json", origin: "http://localhost:3100" } });
@@ -373,14 +383,20 @@ test("screens", async ({ browser }) => {
   test.setTimeout(900_000);
   const dir = "test-results/share-screens";
   mkdirSync(dir, { recursive: true });
-  const shot = asUser(adminEmail, `select public.create_share_link('${leadId}', 'fr', p_label => 'Salon') ->> 'token'`)
-    .split("\n")
-    .find((l) => /^tss_/.test(l)) as string;
+  // A fresh link for each language and scheme (it replaces the previous one): a link answers 30 views a minute.
+  const mint = () =>
+    asUser(adminEmail, `select public.create_share_link('${leadId}', 'fr', p_label => 'Salon', p_replace => true) ->> 'token'`)
+      .split("\n")
+      .find((l) => /^tss_/.test(l)) as string;
+  let client = 0;
   for (const locale of ["fr", "en"] as const) {
     for (const scheme of ["light", "dark"] as const) {
+      const shot = mint();
+      // Its own address too: the run opens the client page 28 times (the route allows 60 views a minute an address).
+      const ip = `198.51.100.${++client}`;
       for (const width of [360, 390, 768, 1024, 1280, 1440, 1728]) {
         const name = (s: string) => `${dir}/${s}-${locale}-${scheme}-${width}.png`;
-        const { context, page, errors } = await openPublic(browser, `http://localhost:3100/s/${locale}#${shot}`, { width, scheme });
+        const { context, page, errors } = await openPublic(browser, `http://localhost:3100/s/${locale}#${shot}`, { width, scheme, ip });
         await expect(page.getByText(visible)).toBeVisible();
         expect(await noSideways(page), `client ${locale} ${scheme} ${width}`).toBeLessThanOrEqual(0);
         await page.screenshot({ path: name("client"), fullPage: true });
