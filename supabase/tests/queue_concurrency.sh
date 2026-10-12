@@ -22,10 +22,17 @@
 #  8. claim_cap_two_tabs: one person's two tabs claim at the same time; together they never hold more than 3 claims
 #     (the claim guard's per-person lock makes the second tab wait and then see the first tab's claims).
 #  9. second_look: a lead a teammate claims, calls and lets go while this session's claim waits (its candidates read
-#     before) is let go again instead of served (claim_next_lead looks at the lead again after winning the claim).
+#     before) is let go again instead of served (claim_next_lead looks at the lead again after winning the claim). The
+#     wait is on a claim row being written by a session that holds no lead lock (the superuser), since a claim taken
+#     through the functions holds its lead's lock and the walk skips it instead of waiting.
 # 10. lock_order_contact_then_lead: a teammate's transaction holds contact C (a name change), then changes the lead; a
 #     wrong number on C waits for C before it takes the lead, so neither deadlocks (Day 4b's mutation reversing
 #     log_activity's lock order is caught here).
+# 11. crossing_orders_no_deadlock: two admins each have a due call task on a different Negotiation lead, so their queues
+#     meet the same two leads in opposite orders (each one's follow-up first). Both press Start (two cards) at the same
+#     instant, 20 rounds: nobody fails (before the lead locks, one of the two died with "deadlock detected" in almost
+#     every round), each gets their own follow-up first, and no lead is held twice. A third case session then holds
+#     the lead lock of a lead (a claim being taken) and a Start skips that lead at once instead of waiting.
 # Usage: queue_concurrency.sh "<libpq connection string>" (after queue_attack.sql). Used by scripts/db-test.sh and the
 # CI "rls" job. Fixtures are made by the superuser connection; the probes run as the admins through the API role.
 set -euo pipefail
@@ -230,9 +237,10 @@ got=$(as_owner "select count(*) from private.queue_claims where user_id = '$W2' 
 [ "$got" = "3" ] || fail "claim_cap_two_tabs: $got live claims (expected 3)"
 
 # 9. A lead a teammate called while this claim waited is not served -------------------------------------------------
-# Yul's queue holds X then L. Xan holds an open claim on X, so Yul's claim_next_lead (two cards) reads both candidates
-# and waits on X; meanwhile Wyn claims L, calls it (no answer: back the next working day) and lets it go. When Xan rolls
-# back, Yul gets X, then claims L: the second look sees Wyn's call, and L is let go instead of served.
+# Yul's queue holds X then L. An open transaction writes a claim on X (without the lead's lock, as the superuser), so
+# Yul's claim_next_lead (two cards) reads both candidates and waits on X; meanwhile Wyn claims L, calls it (no answer:
+# back the next working day) and lets it go. When that transaction rolls back, Yul gets X, then claims L: the second
+# look sees Wyn's call, and L is let go instead of served.
 as_owner "delete from private.queue_claims where user_id in ('$W1', '$W2', '$W3');" > /dev/null
 l9x=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_status, phone, country, next_action_at)
                 select id, 'Race second look X', '$W3', 'negotiation', '+33 1 99 00 50 91', 'FR', now() - interval '3000 days'
@@ -240,10 +248,13 @@ l9x=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_statu
 l9l=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_status, phone, country, next_action_at)
                 select id, 'Race second look L', '$W3', 'negotiation', '+33 1 99 00 50 92', 'FR', now() - interval '2999 days'
                   from public.orgs where name = 'TopStock Wholesale' returning id;")
-as_user "$W2" "begin;
-select public.claim_lead('$l9x') \g /dev/null
+psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL & pc=$!
+begin;
+insert into private.queue_claims (company_id, org_id, user_id, expires_at)
+select id, org_id, '$W2', now() + interval '10 minutes' from public.companies where id = '$l9x';
 select pg_sleep(3) \g /dev/null
-rollback;" & pc=$!
+rollback;
+SQL
 sleep 0.5
 as_user "$W3" "select string_agg(c ->> 'id', ',') from jsonb_array_elements(
                  public.claim_next_lead('mine', '{}'::uuid[], '{}', 2, true) -> 'cards') c;" > "$TMPDIR_QC/second.out" & pb=$!
@@ -280,6 +291,71 @@ $(cat "$TMPDIR_QC/order-edit.err" "$TMPDIR_QC/order-call.err")"
 got=$(as_owner "select c.name || ' ' || (k.phone_wrong_at is not null)::text from public.companies c
                   join public.contacts k on k.id = '$c10' where c.id = '$lead10';")
 [ "$got" = "Race lock order renamed true" ] || fail "lock_order_contact_then_lead: '$got'"
+
+# 11. Two admins whose queues meet the same leads in opposite orders --------------------------------------------------
+# Wyn's call task is on A, Xan's on B: Wyn walks A then B, Xan B then A (both Negotiation leads due 9,000 days ago, so
+# they lead every other part of the queue). A controller session holds an advisory lock that both wait on, then lets
+# go, so both claim_next_lead calls (two cards, one statement each) start within a millisecond or so.
+as_owner "delete from private.queue_claims;" > /dev/null
+l11a=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_status, phone, country, next_action_at)
+                 select id, 'Race cross A', '$W3', 'negotiation', '+33 1 99 00 51 11', 'FR', now() - interval '9000 days'
+                   from public.orgs where name = 'TopStock Wholesale' returning id;")
+l11b=$(as_owner "insert into public.companies (org_id, name, owner_id, lead_status, phone, country, next_action_at)
+                 select id, 'Race cross B', '$W3', 'negotiation', '+33 1 99 00 51 12', 'FR', now() - interval '9000 days'
+                   from public.orgs where name = 'TopStock Wholesale' returning id;")
+as_owner "insert into public.tasks (org_id, company_id, title, kind, due_date, assignee_id, created_by)
+          select c.org_id, c.id, 'Race cross call', 'call', current_date - 1, x.who, x.who
+            from public.companies c join (values ('$l11a'::uuid, '$W1'::uuid), ('$l11b'::uuid, '$W2'::uuid)) x(lead, who)
+              on x.lead = c.id;" > /dev/null
+starter() {
+  psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 <<SQL > "$TMPDIR_QC/x$2.out" 2> "$TMPDIR_QC/x$2.err"
+set role authenticated;
+select set_config('request.jwt.claims', '{"sub":"$1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+select (select string_agg(c ->> 'id', ',') from jsonb_array_elements(r -> 'cards') c)
+  from (select pg_advisory_xact_lock_shared(911011), public.claim_next_lead('team', null, '{}', 2, true) as r) s;
+SQL
+}
+for round in $(seq 1 20); do
+  as_owner "delete from private.queue_claims;" > /dev/null
+  psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL & pg=$!
+begin;
+select pg_advisory_xact_lock(911011) \g /dev/null
+select pg_sleep(0.6) \g /dev/null
+commit;
+SQL
+  sleep 0.3
+  starter "$W1" 1 & s1=$!
+  starter "$W2" 2 & s2=$!
+  r1=0; wait $s1 || r1=$?
+  r2=0; wait $s2 || r2=$?
+  wait $pg || fail "crossing_orders_no_deadlock: the controller failed"
+  [ $r1 = 0 ] && [ $r2 = 0 ] || fail "crossing_orders_no_deadlock: round $round: Wyn exit $r1, Xan exit $r2: \
+$(cat "$TMPDIR_QC/x1.err" "$TMPDIR_QC/x2.err")"
+  first1=$(cut -d, -f1 "$TMPDIR_QC/x1.out"); first2=$(cut -d, -f1 "$TMPDIR_QC/x2.out")
+  [ "$first1" = "$l11a" ] && [ "$first2" = "$l11b" ] || fail "crossing_orders_no_deadlock: round $round: first cards \
+'$first1' / '$first2' (expected each one's own follow-up)"
+  dup=$(tr ',' '\n' < "$TMPDIR_QC/x1.out" | cat - <(tr ',' '\n' < "$TMPDIR_QC/x2.out") | grep -c . || true)
+  uniq_n=$(tr ',' '\n' < "$TMPDIR_QC/x1.out" | cat - <(tr ',' '\n' < "$TMPDIR_QC/x2.out") | grep . | sort -u | wc -l)
+  [ "$dup" = "$uniq_n" ] || fail "crossing_orders_no_deadlock: round $round: a lead was served to both"
+done
+# A lead whose lock is held (a claim being taken elsewhere) is skipped at once, never waited for.
+as_owner "delete from private.queue_claims;" > /dev/null
+psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL & ph=$!
+begin;
+select pg_advisory_xact_lock(hashtextextended('queue_claim:' || '$l11a', 0)) \g /dev/null
+select pg_sleep(2) \g /dev/null
+commit;
+SQL
+sleep 0.4
+start=$(date +%s%N)
+got=$(as_user "$W1" "select (select string_agg(c ->> 'id', ',') from jsonb_array_elements(r -> 'cards') c)
+                     from (select public.claim_next_lead('team', null, '{}', 1, true) as r) s;")
+took=$(( ($(date +%s%N) - start) / 1000000 ))
+wait $ph || fail "crossing_orders_no_deadlock: the holding session failed"
+[ "$took" -lt 1000 ] || fail "crossing_orders_no_deadlock: Start waited ${took} ms for a lead being claimed"
+[ -n "$got" ] && [ "$got" != "$l11a" ] || fail "crossing_orders_no_deadlock: Start served '$got' (expected another lead)"
+as_owner "update public.companies set lead_status = 'disqualified' where id in ('$l11a', '$l11b');
+          update public.tasks set cancelled_at = now() where title = 'Race cross call';" > /dev/null
 
 as_owner "delete from private.queue_claims;" > /dev/null
 echo "queue_concurrency: all checks passed"

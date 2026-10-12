@@ -230,6 +230,11 @@ $$;
 -- ===========================================================================
 -- Part 5. Queue claims (design 5.4, threats 13 to 15). Private schema: no API endpoint. Not audited (short-lived, no
 -- lead data).
+-- Lock order: a person's claims take turns (advisory lock 'queue_claims:' || person, always first), then a lead's claim
+-- row is only changed under that lead's advisory lock ('queue_claim:' || lead). The functions that change the caller's
+-- own claims, claim_lead and log_activity wait for it (in lead id order when several); the queue's walk only tries it
+-- and skips a lead someone else is claiming at that moment. So two people's claims can never wait on each other in a
+-- circle (two admins whose queues meet the same leads in opposite orders press Start together: no deadlock).
 -- ===========================================================================
 create table private.queue_claims (
   company_id uuid primary key references public.companies (id) on delete cascade,  -- one live claim per lead
@@ -260,7 +265,8 @@ grant select, insert (company_id), update (expires_at), delete on private.queue_
 
 -- The claim guard (INVOKER, BEFORE INSERT OR UPDATE). For a signed-in person: the organisation, the person, the time
 -- claimed and the end (now + 10 minutes) are the server's, on every insert and renewal, so a client can neither choose
--- a claim's length nor claim for someone else; nothing else of a claim ever changes; and nobody holds more than 3 live
+-- a claim's length nor claim for someone else; nothing else of a claim ever changes; a renewal needs the lead to still
+-- be one the caller may claim (owner, manager, admin: a reassigned lead is let go); and nobody holds more than 3 live
 -- claims (a fourth, or renewing an expired claim beyond 3, gives 22023 busy). A person's claims take turns (advisory
 -- lock per person, also taken first by the queue functions), so two tabs cannot pass the limit together. Sessions with
 -- no signed-in user (fixtures, maintenance) are left alone.
@@ -283,6 +289,11 @@ begin
   elsif row(new.company_id, new.org_id, new.user_id, new.claimed_at)
         is distinct from row(old.company_id, old.org_id, old.user_id, old.claimed_at) then
     raise exception 'only the end of a claim can change' using errcode = '42501', hint = 'not_editable';
+  elsif not exists (select 1 from public.companies c
+                     where c.id = new.company_id
+                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then
+    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).
+    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';
   end if;
   new.expires_at := now() + interval '10 minutes';
   if (tg_op = 'INSERT' or old.expires_at <= now())
@@ -692,6 +703,7 @@ begin
        order by f.follow_up desc, c.queue_rank nulls last, c.next_action_at nulls last, c.last_activity_at nulls first,
                 c.id  -- the queue order (Start claims two at the same instant)
     loop
+      perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || r.company_id::text, 0));
       if v_won < p_count and r.live and r.eligible then
         update private.queue_claims q set expires_at = now() where q.company_id = r.company_id and q.user_id = caller;
         v_cards := v_cards || jsonb_build_array(
@@ -703,9 +715,19 @@ begin
       end if;
     end loop;
   else
-    -- The screen keeps these cards: their claims are renewed, every other claim of the caller goes.
+    -- The screen keeps these cards: their claims are renewed, every other claim of the caller goes, and so does a kept
+    -- one whose lead is no longer in this queue for the caller (reassigned meanwhile; threat 13). `kept` then leaves it
+    -- out, so the screen lets that card go.
+    perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || q.company_id::text, 0))
+       from private.queue_claims q where q.user_id = caller order by q.company_id;
     delete from private.queue_claims q
      where q.user_id = caller and (not (q.company_id = any (p_keep)) or q.expires_at <= now());
+    delete from private.queue_claims q
+     where q.user_id = caller
+       and not exists (select 1 from public.companies c
+                        where c.id = q.company_id
+                          and (p_scope = 'team' or c.owner_id = caller
+                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));
     with renewed as (
       update private.queue_claims q set expires_at = now()
        where q.user_id = caller and q.company_id = any (p_keep)
@@ -720,14 +742,19 @@ begin
     for v_cand in select x from private.queue_candidates(v_seg, p_scope, v_open, v_skip, v_today, v_tz, v_want) x loop
       v_fetched := v_fetched + 1;
       v_skip := v_skip || v_cand;
+      -- Someone else is claiming this lead at this moment: skip it rather than wait (see the lock order, part 5).
+      continue when not pg_try_advisory_xact_lock(hashtextextended('queue_claim:' || v_cand::text, 0));
       delete from private.queue_claims q where q.company_id = v_cand and q.expires_at <= now();
       v_got := null;
       begin
         insert into private.queue_claims (company_id) values (v_cand)
         on conflict (company_id) do nothing
         returning company_id into v_got;
-      exception when insufficient_privilege then
-        v_got := null;  -- the lead changed hands since it was read: not the caller's to claim any more
+      exception
+        when insufficient_privilege then
+          v_got := null;  -- the lead changed hands since it was read: not the caller's to claim any more
+        when foreign_key_violation then
+          v_got := null;  -- the lead was deleted since it was read
       end;
       -- The candidates were read before this claim: meanwhile a teammate may have claimed the lead, called it and let
       -- it go (its next call date moved). A second look, in a statement of its own, sees what they committed.
@@ -784,6 +811,7 @@ begin
     raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('queue_claims:' || caller::text, 0));
+  perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || p_company::text, 0));
   update private.queue_claims q set expires_at = now()
    where q.company_id = p_company and q.user_id = caller
   returning q.company_id into v_got;
@@ -798,8 +826,9 @@ begin
 end;
 $$;
 
--- Keep the caller's live claims for 10 more minutes (the queue page, every 4 minutes while in use). Answers the new
--- end, or null when the caller holds no live claim.
+-- Keep the caller's live claims for 10 more minutes (the queue page, every 4 minutes while in use). A claim on a lead
+-- the caller may no longer claim (reassigned meanwhile) is let go instead (threat 13). Answers the new end, or null when
+-- the caller holds no live claim.
 create function public.renew_claims() returns timestamptz
 language plpgsql volatile set search_path = '' as $$
 declare
@@ -810,6 +839,13 @@ begin
     raise exception 'two-factor sign-in required' using errcode = '42501';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('queue_claims:' || caller::text, 0));
+  perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || q.company_id::text, 0))
+     from private.queue_claims q where q.user_id = caller order by q.company_id;
+  delete from private.queue_claims q
+   where q.user_id = caller
+     and not exists (select 1 from public.companies c
+                      where c.id = q.company_id
+                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));
   with renewed as (
     update private.queue_claims q set expires_at = now()
      where q.user_id = caller and q.expires_at > now()
@@ -832,6 +868,10 @@ begin
   if cardinality(p_ids) > 10 or array_position(p_ids, null) is not null then
     raise exception 'at most 10 leads at a time' using errcode = '22023', hint = 'bounds';
   end if;
+  perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || q.company_id::text, 0))
+     from private.queue_claims q
+    where q.user_id = caller and (p_ids is null or q.company_id = any (p_ids))
+    order by q.company_id;
   delete from private.queue_claims q where q.user_id = caller and (p_ids is null or q.company_id = any (p_ids));
   get diagnostics n = row_count;
   return n;
@@ -1199,6 +1239,7 @@ begin
 
   -- 9. From the queue: the caller's claim on this lead is released (the next card is claimed by claim_next_lead).
   if p_from_queue then
+    perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || p_company::text, 0));
     delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;
   end if;
   return private.logged_activity(v_id, false);

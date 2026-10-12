@@ -958,6 +958,50 @@ begin
   delete from public.companies where id in (k2, k3, k4);
 end $$;
 
+-- 9b. claim_reassigned_not_renewed (threat 13): a claim is renewed only while its lead is still one the holder may
+-- claim. Rep Hal claims his own lead; an admin gives it to rep Ivy; Hal's renewals (a direct renewal, renew_claims, and
+-- claim_next_lead keeping the card) let it go instead of keeping Ivy out of her own lead.
+do $$
+declare
+  h constant uuid := '00000000-0000-0000-0000-0000000000a5';
+  i constant uuid := '00000000-0000-0000-0000-0000000000a6';
+  l1 uuid := pg_temp.new_lead(h, 'disqualified', lead_name => 'R1 reassigned, renewed');
+  l2 uuid := pg_temp.new_lead(h, 'disqualified', lead_name => 'R2 reassigned, kept');
+  r jsonb;
+begin
+  perform pg_temp.act(h);
+  perform public.release_claims();
+  if not public.claim_lead(l1) or not public.claim_lead(l2) then raise exception 'FAIL: Hal claims his own leads'; end if;
+  perform pg_temp.su();
+  update public.companies set owner_id = i where id in (l1, l2);
+  perform pg_temp.act(h);
+  -- A direct renewal is refused (the claim guard), with a constant error.
+  perform pg_temp.expect_error(format('update private.queue_claims set expires_at = now() where company_id = %L', l1),
+                               '42501', 'scope');
+  -- claim_next_lead keeping the card: not kept, and the claim is gone.
+  r := public.claim_next_lead('mine', array[l2], '{}', 1, true);
+  if r -> 'kept' <> '[]'::jsonb or exists (select 1 from jsonb_array_elements(r -> 'cards') c where (c ->> 'id')::uuid = l2) then
+    raise exception 'FAIL: a reassigned lead was kept: %', r;
+  end if;
+  perform public.release_claims();
+  perform pg_temp.su();
+  -- renew_claims: the claim on a reassigned lead goes, and nothing is renewed.
+  insert into private.queue_claims (company_id, org_id, user_id, expires_at)
+  select id, org_id, h, now() + interval '1 minute' from public.companies where id = l1;
+  perform pg_temp.act(h);
+  if public.renew_claims() is not null then raise exception 'FAIL: renew_claims renewed a reassigned lead'; end if;
+  perform pg_temp.su();
+  if exists (select 1 from private.queue_claims where company_id in (l1, l2)) then
+    raise exception 'FAIL: a claim on a reassigned lead stayed';
+  end if;
+  -- Ivy can claim her lead at once.
+  perform pg_temp.act(i);
+  if not public.claim_lead(l1) or not public.claim_lead(l2) then raise exception 'FAIL: Ivy is kept out of her own lead'; end if;
+  perform public.release_claims();
+  perform pg_temp.su();
+  delete from public.companies where id in (l1, l2);
+end $$;
+
 -- 10. Start, reload and keep (design 5.4 buffer): p_keep null brings back the caller's eligible claims (renewed),
 -- p_keep renews those cards and lets the others go; bounds.
 do $$

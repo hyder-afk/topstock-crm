@@ -968,6 +968,16 @@ MUTATIONS_4C = [
     ("Wrong number: a main line without a digit counts as another working number (no find-the-number task)",
      [("    if not ((coalesce(v_lead.phone ~ '[0-9]', false) and v_lead.phone_wrong_at is null and p_dialled <> 'lead')",
        "    if not ((v_lead.phone is not null and v_lead.phone_wrong_at is null and p_dialled <> 'lead')")]),
+    ("Claim guard: a renewal of a lead that changed hands passes (renew_claims and the keep path still let it go)",
+     [("  elsif not exists (select 1 from public.companies c\n                     where c.id = new.company_id\n                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).\n    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';\n", "")]),
+    ("renew_claims: a reassigned lead's claim is renewed, not let go (the claim guard then refuses the renewal)",
+     [('  delete from private.queue_claims q\n   where q.user_id = caller\n     and not exists (select 1 from public.companies c\n                      where c.id = q.company_id\n                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));\n', "")]),
+    ("claim_next_lead keep: a reassigned lead's claim is kept (the claim guard then refuses the renewal)",
+     [("    delete from private.queue_claims q\n     where q.user_id = caller\n       and not exists (select 1 from public.companies c\n                        where c.id = q.company_id\n                          and (p_scope = 'team' or c.owner_id = caller\n                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));\n", "")]),
+    ("Renewals of a reassigned lead: the guard, renew_claims and the keep path all let it pass (all three layers)",
+     [("  elsif not exists (select 1 from public.companies c\n                     where c.id = new.company_id\n                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).\n    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';\n", ""), ('  delete from private.queue_claims q\n   where q.user_id = caller\n     and not exists (select 1 from public.companies c\n                      where c.id = q.company_id\n                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));\n', ""), ("    delete from private.queue_claims q\n     where q.user_id = caller\n       and not exists (select 1 from public.companies c\n                        where c.id = q.company_id\n                          and (p_scope = 'team' or c.owner_id = caller\n                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));\n", "")]),
+    ("claim_next_lead walk: no lead lock tried (waits on a teammate's claim; two crossing walks deadlock)",
+     [("      continue when not pg_try_advisory_xact_lock(hashtextextended('queue_claim:' || v_cand::text, 0));\n", "")]),
 ]
 
 # Day 4c redefines the audit trigger, get_lead and log_activity (create or replace, Day 4b's text kept): the earlier rows
