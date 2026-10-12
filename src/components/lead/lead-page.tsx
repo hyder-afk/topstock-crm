@@ -349,7 +349,14 @@ export function LeadPage({
           </Activity>
           <Activity mode={tab === "stock" ? "visible" : "hidden"}>
             <TabPanel idBase={`lead-${id}`} id="stock" className="flex min-w-0 flex-col gap-4">
-              <LeadStockTab lead={{ id, name: lead.name }} me={me.id} role={me.role} active={tab === "stock"} />
+              <LeadStockTab
+                lead={{ id, name: lead.name, country: lead.country, phone: lead.phone, email: lead.email }}
+                me={me.id}
+                meFirstName={team.find((m) => m.id === me.id)?.first_name ?? null}
+                role={me.role}
+                active={tab === "stock"}
+                stepUp={stepUp}
+              />
             </TabPanel>
           </Activity>
           <Activity mode={tab === "details" ? "visible" : "hidden"}>

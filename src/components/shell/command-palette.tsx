@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Receipt, Search, Settings, Sun, Upload, type LucideIcon } from "lucide-react";
+import { Eye, History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Receipt, Search, Settings, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -98,6 +98,12 @@ export function CommandPalette({
                 icon={Inbox}
                 label={t("stockRequests")}
                 onSelect={() => run(() => router.push("/inventory?tab=requests"))}
+              />
+              <Item
+                value="what clients see client view share link stock page ce que voient les clients lien client"
+                icon={Eye}
+                label={t("clientView")}
+                onSelect={() => run(() => router.push("/inventory/client-view"))}
               />
               {isAdmin ? (
                 <>

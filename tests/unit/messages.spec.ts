@@ -29,6 +29,8 @@ const namespaces = [
   "InventorySettings",
   "StockImport",
   "Sales",
+  "Share",
+  "ShareLinks",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

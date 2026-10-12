@@ -6,13 +6,14 @@ import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { extendHold, setRequestStatus } from "@/app/(app)/inventory/sales/actions";
 import { useQtyText } from "@/components/inventory/bits";
-import { useStockErrorText } from "@/components/inventory/stock-actions";
+import { useStockErrorText, type StepUp } from "@/components/inventory/stock-actions";
 import { ListState } from "@/components/inventory/tab-lists";
 import { useReleaseHold } from "@/components/inventory/use-hold-actions";
 import { fetchProductDetail } from "@/components/inventory/use-inventory";
 import { RequestStatusBadge, SaleTypeBadge, lineTone, useRequestLineText } from "@/components/sales/bits";
 import { HoldSheet, LogRequestSheet } from "@/components/sales/hold-and-request-sheets";
 import { RecordSaleSheet, type SalePrefill } from "@/components/sales/record-sale-sheet";
+import { ShareLinkCard, type ShareLead } from "@/components/share-links/link-card";
 import { refreshSales, useLeadStock } from "@/components/sales/use-sales";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -22,10 +23,24 @@ import { cn } from "@/lib/utils";
 
 type Role = "admin" | "manager" | "rep";
 
-// The lead's Stock tab (design 10.4): the actions row (Record sale is the neutral primary here, Call stays the red one),
+// The lead's Stock tab (design 10.4): the client link card (6e), the actions row (Record sale is the neutral primary here, Call stays the red one),
 // Wants (open requests first, each line with live availability), Reserved (active holds: Sell, Extend, Release) and
 // Bought (the latest sales and the total). A lead the person cannot change shows the lists without the actions.
-export function LeadStockTab({ lead, me, role, active }: { lead: { id: string; name: string }; me: string; role: Role; active: boolean }) {
+export function LeadStockTab({
+  lead,
+  me,
+  meFirstName,
+  role,
+  active,
+  stepUp,
+}: {
+  lead: ShareLead;
+  me: string;
+  meFirstName: string | null;
+  role: Role;
+  active: boolean;
+  stepUp: StepUp;
+}) {
   const t = useTranslations("Sales.tab");
   const query = useLeadStock(active ? lead.id : null);
   const [sale, setSale] = useState<{ open: boolean; prefill: SalePrefill | null }>({ open: false, prefill: null });
@@ -40,6 +55,7 @@ export function LeadStockTab({ lead, me, role, active }: { lead: { id: string; n
   const canEdit = data.can_edit;
   return (
     <div className="flex min-w-0 flex-col gap-6">
+      <ShareLinkCard lead={lead} canEdit={canEdit} ownerFirstName={data.owner_first_name} me={meFirstName} stepUp={stepUp} />
       {canEdit ? (
         <div className="flex flex-wrap gap-2">
           <Button variant="neutral" onClick={() => setSale({ open: true, prefill: null })}>

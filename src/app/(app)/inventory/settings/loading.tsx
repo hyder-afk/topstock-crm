@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 
 const bar = "rounded-sm bg-muted motion-safe:animate-pulse";
 
-// Skeleton matching the settings page: back link, title, then two cards of fields.
+// Skeleton matching the settings page: back link, title, then the two settings cards and the client links card.
 export default async function Loading() {
   const t = await getTranslations("Common");
   return (
@@ -10,7 +10,7 @@ export default async function Loading() {
       <span className="sr-only">{t("loading")}</span>
       <div className={`h-11 w-24 rounded-md ${bar}`} />
       <div className={`h-9 w-56 sm:h-10 ${bar}`} />
-      {[3, 2].map((n, i) => (
+      {[3, 2, 2].map((n, i) => (
         <div key={i} className="flex flex-col gap-4 rounded-lg bg-card p-5 sm:p-6">
           <div className={`h-6 w-40 ${bar}`} />
           {Array.from({ length: n }, (_, j) => (
