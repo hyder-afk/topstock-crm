@@ -33,7 +33,7 @@ export function ClientView({ preview }: { preview: SharePreview | null }) {
         <h1 className="text-2xl font-bold text-balance">{t("clientView")}</h1>
         {preview ? (
           <p className="font-mono text-sm text-muted-foreground tabular-nums">
-            {ts("updated", { time: format.dateTime(new Date(preview.generated_at), { hour: "2-digit", minute: "2-digit" }) })}
+            {ts("updated", { time: format.dateTime(new Date(preview.generated_at), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) })}
           </p>
         ) : null}
       </div>

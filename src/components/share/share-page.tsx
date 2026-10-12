@@ -256,8 +256,8 @@ export function SharePage() {
       ) : null}
 
       {snap?.allowRequests && (basket.length > 0 || note.trim()) ? (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] backdrop-blur">
-          <div className="mx-auto flex max-w-[720px] items-center justify-between gap-3">
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card/95 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] backdrop-blur sm:px-6">
+          <div className="mx-auto flex max-w-[672px] items-center justify-between gap-3">
             <p className="text-sm font-bold" aria-live="polite">
               {tb("bar", { count: basket.length })}
             </p>

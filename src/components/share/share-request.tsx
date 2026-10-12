@@ -76,9 +76,14 @@ export function ItemSheet({
                 <DialogTitle className="text-xl font-bold text-balance break-words" translate="no">
                   {item.name}
                 </DialogTitle>
-                <DialogDescription id={`${id}-desc`} className="font-mono text-sm text-muted-foreground tabular-nums">
-                  {item.priceMax === null ? ts("priceOnRequest") : `${price(item.priceMax)} ${ts("perPiece")}`} ·{" "}
-                  {ts("availability", { pieces: format.number(avail), cartons: Math.floor(avail / ppc), ppc: format.number(ppc) })}
+                <DialogDescription id={`${id}-desc`} className="flex flex-wrap gap-x-2 font-mono text-sm text-muted-foreground tabular-nums">
+                  <span className="whitespace-nowrap">
+                    {item.priceMax === null ? ts("priceOnRequest") : `${price(item.priceMax)} ${ts("perPiece")}`}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span className="whitespace-nowrap">
+                    {ts("availability", { pieces: format.number(avail), cartons: Math.floor(avail / ppc), ppc: format.number(ppc) })}
+                  </span>
                 </DialogDescription>
               </div>
               <button type="button" onClick={onClose} aria-label={t("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full hover:bg-muted">
@@ -239,9 +244,15 @@ export function ReviewSheet({
             </ul>
           )}
           <div className="flex flex-col gap-2">
-            <label htmlFor={`${id}-note`} className="text-sm font-bold">
-              {t("other")}
-            </label>
+            <div className="flex items-baseline justify-between gap-3">
+              <label htmlFor={`${id}-note`} className="text-sm font-bold">
+                {t("other")}
+              </label>
+              {/* The counter sits on the label's line, so the empty slot adds no gap under the field. */}
+              <p id={`${id}-note-count`} className="font-mono text-xs text-muted-foreground tabular-nums" aria-live="polite">
+                {used >= 900 ? t("counter", { used }) : ""}
+              </p>
+            </div>
             <textarea
               id={`${id}-note`}
               name="note"
@@ -253,9 +264,6 @@ export function ReviewSheet({
               aria-describedby={`${id}-note-count`}
               className="rounded-md border border-border bg-background px-3 py-2 text-base"
             />
-            <p id={`${id}-note-count`} className="min-h-4 text-right font-mono text-xs text-muted-foreground" aria-live="polite">
-              {used >= 900 ? t("counter", { used }) : ""}
-            </p>
           </div>
           <div className="flex flex-col gap-2">
             <label htmlFor={`${id}-name`} className="text-sm font-bold">

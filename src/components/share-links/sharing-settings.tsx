@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { revokeShareLink, setSharingEnabled } from "@/app/(app)/inventory/share/actions";
@@ -68,8 +69,9 @@ export function SharingSettings({ initialOn, stepUpSeconds }: { initialOn: boole
           {on ? t("switchOff") : t("switchOn")}
         </Button>
       </div>
-      <Link href="/inventory/client-view" className="inline-flex min-h-11 items-center self-start text-sm font-bold underline-offset-4 hover:underline">
+      <Link href="/inventory/client-view" className="inline-flex min-h-11 items-center gap-1 self-start text-sm font-bold underline underline-offset-4">
         {t("clientView")}
+        <ChevronRight aria-hidden="true" strokeWidth={1.75} className="size-4" />
       </Link>
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-bold">{t("linksTitle")}</h3>
