@@ -133,7 +133,7 @@ queue tests failed, then passed with it).
    - `src/app/(app)/leads/queue/page.tsx`: no "TopStock" fallback name; with no first name the script reads without a
      name (`Queue.script.enNoName` / `frNoName`, EN and FR).
 
-**Verifier round checks** (on the head named in the last row; the shared local stack was serving the 6a checkout, so
+**Verifier round checks** (on the head named in the table; the shared local stack was serving the 6a checkout, so
 e2e ran on the isolated copy: README deviation 12):
 
 | Check | Result |
@@ -146,6 +146,10 @@ e2e ran on the isolated copy: README deviation 12):
 | Without the fixes (fix taken out, app rebuilt) | `claims_end_cards_leave`, `lost_claim_quiet_swap`, `focus_never_drops_to_body` each failed; restored and passed |
 | Screenshots | "work queue" screens test re-run: 70 shots, none failed; `queue-released` added (`screens/README.md`) |
 | Speed (PERF=1, 4x CPU) | table below, "Verifier round" column |
+| gitleaks (`origin/main..HEAD`, on 81d0728) | 28 commits scanned, no leaks found, exit 0 |
+| `npm audit --omit=dev` | found 0 vulnerabilities, exit 0 |
+| Head | code and tests final on 3b55c1b (db-test, unit 341, lint, typecheck re-run there); the commits after it change only `docs/` |
+| Not run here | WebKit, Semgrep, `journey.spec.ts` (CI); the whole auth suite (only the affected specs above) |
 
 ## Check results
 
