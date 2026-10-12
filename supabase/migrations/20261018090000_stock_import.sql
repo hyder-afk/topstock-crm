@@ -87,6 +87,13 @@ create table private.stock_import_staging (
 ) with (fillfactor = 60);
 create index stock_import_staging_org_idx on private.stock_import_staging (org_id);
 create index stock_import_staging_key_idx on private.stock_import_staging (batch_id, name_key);
+-- The undo plan sums a product's import rows per place (perf I14): the batch index of 6a becomes (batch, product).
+drop index private.movements_batch_idx;
+create index movements_batch_product_idx on private.stock_movements (import_batch_id, product_id)
+  where import_batch_id is not null;
+-- The commit and the lock helper find a product's rows by its id (perf I13).
+create index stock_import_staging_product_idx on private.stock_import_staging (batch_id, match_product_id)
+  where match_product_id is not null;
 
 alter table private.stock_import_staging enable row level security;
 create policy require_mfa on private.stock_import_staging as restrictive to authenticated
@@ -646,8 +653,10 @@ $$;
 --  update     anything else (reason below_reserved when a target is under what is held there: quantities skipped)
 -- A blank price, carton or PP keeps the product's value (warning carton_kept for the carton); a place the sheet leaves
 -- out counts as 0 there, for products it lists (open question 3).
+-- The staging rows are never analysed, so the planner thinks a batch has one row and would join the check's results
+-- back to them in a nested loop (25 million comparisons at 5,000 rows, perf I12): hash joins only.
 create function public.validate_stock_import(p_batch uuid, p_moved_policy text default 'keep_crm') returns jsonb
-language plpgsql volatile security invoker set search_path = '' set work_mem = '32MB' as $$
+language plpgsql volatile security invoker set search_path = '' set work_mem = '32MB' set enable_nestloop = off as $$
 declare
   b public.import_batches%rowtype;
   v_wh uuid;
@@ -768,7 +777,9 @@ begin
            t.sheet_wh, t.sheet_tr, t.fppc, t.fmin, t.fmax, t.fcost, t.wh_on, t.tr_on, t.wh_res + t.tr_res as res,
            (t.wh_moved or t.tr_moved) as moved, t.live, t.bad
       from t
-  ), x as (
+  ), x as materialized (
+    -- Materialized: the update below joins it by row number once (inlined, the planner re-ran its window per staged
+    -- row: 150 s at 5,000 rows, perf I12).
     -- Every live row of a product takes its group's outcome, reason and product (from the group's first row); a
     -- below_reserved product whose fields do not change either is "unchanged".
     select o.row_no, o.live, o.bad, o.warnings, o.match_row_no,
@@ -816,13 +827,14 @@ begin
    where s.batch_id = p_batch;
   return jsonb_build_object('status', b.status, 'row_count', b.row_count, 'rejected', b.rejected,
                             'repeated', b.duplicates, 'issue_counts', b.issue_counts,
-                            'not_in_sheet', (select count(*) from public.products p
+                            'not_in_sheet', (with k as materialized (
+                                               select distinct s.name_key from private.stock_import_staging s
+                                                where s.batch_id = p_batch and s.outcome not in ('rejected', 'repeated'))
+                                             select count(*) from public.products p
                                               where p.org_id = b.org_id and p.archived_at is null
                                                 and exists (select 1 from public.stock_levels l
                                                              where l.product_id = p.id and l.on_hand > 0)
-                                                and not exists (select 1 from private.stock_import_staging s
-                                                                 where s.batch_id = p_batch and s.name_key = p.name_key
-                                                                   and s.outcome not in ('rejected', 'repeated'))),
+                                                and not exists (select 1 from k where k.name_key = p.name_key)),
                             'use_sheet', v_use_sheet) || v_summary;
 end;
 $$;
@@ -902,7 +914,7 @@ $$;
 -- (kept, with the default policy) or a target is under what is held there (skipped). A product's staged rows are marked
 -- in the same transaction, so a retry after a dropped connection never applies anything twice; on a timeout the
 -- browser halves p_max_rows and calls again.
-create function public.commit_stock_import(p_batch uuid, p_max_rows integer default 250) returns jsonb
+create function public.commit_stock_import(p_batch uuid, p_max_rows integer default 125) returns jsonb
 language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
 declare
   b public.import_batches%rowtype;
@@ -930,6 +942,10 @@ declare
   v_created integer := 0;
   v_done integer := 0;
   v_remaining integer;
+  v_qty_ids uuid[] := '{}';
+  v_done_ids uuid[] := '{}';
+  v_outs text[] := '{}';
+  v_reasons text[] := '{}';
 begin
   perform private.assert_import_admin(true);
   if p_max_rows is null or p_max_rows not between 1 and 1000 then
@@ -1084,13 +1100,19 @@ begin
       end if;
     end if;
     if v_moved_rows then
-      update private.stock_import_changes c set qty_changed = true
-       where c.batch_id = p_batch and c.product_id = g.match_product_id;
+      v_qty_ids := v_qty_ids || g.match_product_id;
     end if;
-    update private.stock_import_staging s set outcome = v_out, reason = v_reason
-     where s.batch_id = p_batch and s.match_product_id = g.match_product_id and s.outcome in ('new', 'update', 'moved');
+    v_done_ids := v_done_ids || g.match_product_id;
+    v_outs := v_outs || v_out;
+    v_reasons := v_reasons || v_reason;
     v_done := v_done + 1;
   end loop;
+  -- 4. The chunk's marks, set-based (same transaction: a retry never applies anything twice).
+  update private.stock_import_changes c set qty_changed = true
+   where c.batch_id = p_batch and c.product_id = any (v_qty_ids);
+  update private.stock_import_staging s set outcome = x.o, reason = x.r
+    from unnest(v_done_ids, v_outs, v_reasons) as x (id, o, r)
+   where s.batch_id = p_batch and s.match_product_id = x.id and s.outcome in ('new', 'update', 'moved');
 
   select count(*) into v_remaining from private.stock_import_staging s
    where s.batch_id = p_batch and s.group_first and s.outcome in ('new', 'update', 'moved');
@@ -1130,7 +1152,7 @@ $$;
 -- import created or brought back is archived when nothing else uses it; prices and carton restored when unchanged since,
 -- and the cost when it is still the import's. Each product is marked undone or kept (with the reason) in the same
 -- transaction; call again until status is 'rolled_back'.
-create function public.rollback_stock_import(p_batch uuid, p_max_rows integer default 250) returns jsonb
+create function public.rollback_stock_import(p_batch uuid, p_max_rows integer default 125) returns jsonb
 language plpgsql volatile security invoker set search_path = '' set lock_timeout = '3s' as $$
 declare
   b public.import_batches%rowtype;

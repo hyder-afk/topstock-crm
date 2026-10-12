@@ -4,8 +4,8 @@
 -- products already in the CRM (warehouse 2,100 for stocked ones, transit 650 for transit-only ones, prices up 0.10)
 -- and 1,000 new ones. Each RPC call runs in its own transaction (psql autocommit), timed by \timing:
 --  I12  validate_stock_import at 5,000 rows (policy use_sheet: every product is applied)        ≤ 1,000 ms
---  I13  commit_stock_import chunks of 250 products / the whole sheet                             ≤ 1,500 ms per call / ≤ 30 s
---  I14  rollback_stock_import chunks of 250                                                     ≤ 1,500 ms per call
+--  I13  commit_stock_import chunks of 125 products (the cap rule; 250 missed) / the whole sheet                             ≤ 1,500 ms per call / ≤ 30 s
+--  I14  rollback_stock_import chunks of 125                                                     ≤ 1,500 ms per call
 -- The lines starting "TIMING" are what perf.md records.
 \set ON_ERROR_STOP 1
 \set QUIET 1
@@ -32,13 +32,13 @@ select public.stage_stock_import_rows(:'batch', (
 \timing on
 \echo 'TIMING I12 validate_stock_import 5,000 rows (budget 1,000 ms):'
 select public.validate_stock_import(:'batch', 'use_sheet') ->> 'status' as status;
-\echo 'TIMING I13 commit_stock_import chunks of 250 (budget 1,500 ms each, 30 s in all):'
-select format('select public.commit_stock_import(%L, 250) ->> %L as remaining', :'batch', 'remaining') from generate_series(1, 21) \gexec
+\echo 'TIMING I13 commit_stock_import chunks of 125 (budget 1,500 ms each, 30 s in all):'
+select format('select public.commit_stock_import(%L, 125) ->> %L as remaining', :'batch', 'remaining') from generate_series(1, 41) \gexec
 \timing off
 select 'TIMING I13 status ' || status || ', ' || imported || ' products' from public.import_batches where id = :'batch';
 \timing on
-\echo 'TIMING I14 rollback_stock_import chunks of 250 (budget 1,500 ms each):'
-select format('select public.rollback_stock_import(%L, 250) ->> %L as status', :'batch', 'status') from generate_series(1, 21) \gexec
+\echo 'TIMING I14 rollback_stock_import chunks of 125 (budget 1,500 ms each):'
+select format('select public.rollback_stock_import(%L, 125) ->> %L as status', :'batch', 'status') from generate_series(1, 41) \gexec
 \timing off
 select 'TIMING I14 status ' || status || ', kept ' || kept from public.import_batches where id = :'batch';
 reset role;

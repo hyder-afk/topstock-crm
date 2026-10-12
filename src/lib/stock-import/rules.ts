@@ -95,8 +95,11 @@ export const STOCK_LIMITS = {
   maxCodes: 16,
 } as const;
 
-/** Products per commit or undo call (design 7.7); halved after a timeout, down to MIN_CHUNK. */
-export const COMMIT_CHUNK = 250;
+/**
+ * Products per commit or undo call: 125, the design 11.6 cap rule (chunks of 250 missed 1.5 s on the runner); halved
+ * after a timeout, down to MIN_CHUNK.
+ */
+export const COMMIT_CHUNK = 125;
 export const MIN_CHUNK = 25;
 
 // REVENTE (check only, never sent): a mismatch is more than max(0.50 EUR, 0.5 %) away from round(QUANTITE x PRIX, 2).

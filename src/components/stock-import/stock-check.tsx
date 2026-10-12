@@ -81,7 +81,8 @@ export function StockCheck({
       const out: string[] = [];
       for (const p of issue.problems) out.push(tc(`problems.${p}`));
       if (issue.outcome === "repeated" && issue.match_row_no) out.push(t("repeatedOf", { row: issue.match_row_no }));
-      if (issue.reason) out.push(tc(`reasons.${issue.reason}`));
+      // A row the browser already refused carries no values, so the database's own rule (db_*) says nothing more.
+      if (issue.reason && !(issue.problems.length > 0 && issue.reason.startsWith("db_"))) out.push(tc(`reasons.${issue.reason}`));
       if (issue.outcome === "moved" && !issue.reason) out.push(tc("reasons.moved_in_crm"));
       for (const f of issue.fixes) out.push(tc(`fixes.${f}`));
       for (const w of issue.db_warnings) out.push(tc(`dbWarnings.${w}`));
@@ -253,7 +254,7 @@ export function StockCheck({
 
       <ChangeTable batchId={batchId} fetchPage={fetchPage} version={summary.use_sheet ? "use_sheet" : "keep_crm"} />
 
-      <div className="sticky bottom-24 z-10 flex flex-col gap-3 rounded-lg border border-border bg-background/95 p-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+      <div className="z-10 flex flex-col gap-3 rounded-lg border border-border bg-background/95 p-4 backdrop-blur sm:sticky sm:bottom-24 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground" role="status">
           {nothingToDo ? t("nothingToDo") : t("safe")}
         </p>

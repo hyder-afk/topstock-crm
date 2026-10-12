@@ -30,6 +30,8 @@ export function StockHistory({
 }) {
   const t = useTranslations("StockImport.history");
   const format = useFormatter();
+  // Discarded checks changed nothing: they are left out of the list.
+  const shown = imports?.filter((i) => i.status !== "discarded") ?? null;
   return (
     <section aria-labelledby="stock-history-heading" className="flex flex-col gap-3">
       <h2 ref={headingRef} id="stock-history-heading" tabIndex={-1} className="text-lg font-bold tracking-[-0.03em] focus:outline-none">
@@ -43,17 +45,17 @@ export function StockHistory({
             {t("retry")}
           </Button>
         </div>
-      ) : imports === null ? (
+      ) : shown === null ? (
         <ul aria-label={t("loading")} className="flex flex-col gap-2">
           {[0, 1, 2].map((i) => (
             <li key={i} className="h-20 rounded-md bg-muted motion-safe:animate-pulse" />
           ))}
         </ul>
-      ) : imports.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("empty")}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-          {imports.map((item) => {
+          {shown.map((item) => {
             const who = [item.uploader_first_name, item.uploader_last_name].filter(Boolean).join(" ") || t("someone");
             const when = format.dateTime(new Date(item.imported_at ?? item.checked_at ?? item.created_at), { dateStyle: "medium", timeStyle: "short" });
             return (

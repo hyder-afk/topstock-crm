@@ -246,7 +246,7 @@ export function StockMatch({
 
       {preview?.tally.swapped ? <Notice tone="amber">{t("swapped")}</Notice> : null}
 
-      <div className="sticky bottom-24 z-10 flex flex-col gap-3 rounded-lg border border-border bg-background/95 p-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+      <div className="z-10 flex flex-col gap-3 rounded-lg border border-border bg-background/95 p-4 backdrop-blur sm:sticky sm:bottom-24 sm:flex-row sm:items-center sm:justify-between">
         <p id={countsId} role="status" aria-atomic="true" className="text-sm text-muted-foreground">
           {statusLine}
         </p>
