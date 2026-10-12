@@ -5,7 +5,7 @@ section 8.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity and outcome attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day5a|all] [numbers...]  (about 60 s per mutation;
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day5a|day5b|all] [numbers...]  (about 60 s per mutation;
 default: all sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set;
 exits 1 when a row does not behave as listed. --anchors [--set ...] only checks that every edit applies (its text is
 found exactly once where it is aimed), without running anything. A protection with two layers is also removed together with its second layer (one
@@ -16,7 +16,8 @@ that is live after every migration: Day 4a redefines the import "untouched" rule
 Day 4a migration), Day 4b redefines the activity and task delete policies and the insert lock (so the Day 3b and Day 4a
 mutations of those edit the Day 4b migration), and Day 5a redefines the audit trigger and the task guard (so every
 earlier mutation of those edits the Day 5a copy: a Region names the function inside the file, because the Day 5a
-migration holds the same text in other functions too).
+migration holds the same text in other functions too). Day 5b recreates log_activity, undo_activity and get_lead (Day 4b)
+and the activities insert policy (Day 4a), so every earlier mutation aimed inside those now edits the Day 5b copy.
 """
 import pathlib
 import subprocess
@@ -28,6 +29,7 @@ MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
 MIG_5A = ROOT / "supabase/migrations/20261015090000_deals_pipeline.sql"
+MIG_5B = ROOT / "supabase/migrations/20261015120000_deal_links.sql"
 
 
 class Region:
@@ -60,6 +62,18 @@ BOARD = Region(MIG_5A, "create function public.pipeline_board(")
 LIST_STAGE = Region(MIG_5A, "create function public.list_stage_deals(")
 CARDS = Region(MIG_5A, "create function private.deal_cards(")
 ORG_RECENT_PAGE = Region(MIG_5A, "  elsif not p_oldest then\n", "\n  else\n")
+LOG_ACTIVITY_5B = Region(MIG_5B, "create function public.log_activity(")
+UNDO_ACTIVITY_5B = Region(MIG_5B, "create or replace function public.undo_activity(")
+GET_LEAD_5B = Region(MIG_5B, "create or replace function public.get_lead(")
+INSERT_POLICY_5B = Region(MIG_5B, "create policy activities_insert on public.activities for insert to authenticated with check (", ";\n")
+# The Day 4 originals of what Day 5b recreates (an earlier mutation aimed inside one of these is moved to the 5b copy).
+RELIVE_5B = [
+    (Region(MIG_4B, "create function public.log_activity("), LOG_ACTIVITY_5B),
+    (Region(MIG_4B, "create function public.undo_activity("), UNDO_ACTIVITY_5B),
+    (Region(MIG_4B, "create or replace function public.get_lead("), GET_LEAD_5B),
+    (Region(MIG_4A, "create policy activities_insert on public.activities for insert to authenticated with check (", ";\n"),
+     INSERT_POLICY_5B),
+]
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -971,8 +985,106 @@ MUTATIONS_4A = _relive("day4a", MIG_4A, MUTATIONS_4A)
 MUTATIONS_4B = _relive("day4b", MIG_4B, MUTATIONS_4B)
 
 
+# Earlier rows whose text Day 5b changed around (the replay answer appends the deal part; the deal check sits between
+# the contact check and the dialled check): the same protection removed from the Day 5b copy.
+UNIQUE_ANSWER_5B = ("    if v_constraint is distinct from 'activities_author_request_idx' then\n      raise;\n    end if;\n"
+                    "    select a.id into v_id from public.activities a where a.user_id = caller and a.request_id = p_request_id;\n"
+                    "    return private.logged_activity(v_id, true) || private.logged_activity_deal(v_id);")
+OVERRIDES_5B = {
+    ("day4b", "log_activity: no second replay check after the lock, and no unique-violation answer (both layers)"):
+        [(LOG_ACTIVITY_5B, "    -- The same request may have been saved while this one waited for the lock.\n    if p_request_id is not null then",
+          "    -- The same request may have been saved while this one waited for the lock.\n    if false then"),
+         (LOG_ACTIVITY_5B, UNIQUE_ANSWER_5B, "    raise;")],
+    ("day4b", "log_activity: no unique-violation answer (a concurrent duplicate fails)"):
+        [(LOG_ACTIVITY_5B, UNIQUE_ANSWER_5B, "    raise;")],
+    ("day4b", "Input: a contact of another lead (the policy answers 42501 instead of P0002)"):
+        [(LOG_ACTIVITY_5B, "      from public.contacts k where k.id = p_contact and k.company_id = p_company;\n    if not found then\n"
+          "      raise exception 'contact not found on this lead' using errcode = 'P0002';\n    end if;\n  end if;\n  -- A linked deal",
+          "      from public.contacts k where k.id = p_contact;\n  end if;\n  -- A linked deal")],
+}
+
+
+def _relive_5b(default, mutations, name):
+    """Moves an edit aimed inside a Day 4 function that Day 5b recreates to the Day 5b copy (REBASE: and again at 4c)."""
+    out = []
+    for title, edits, *flags in mutations:
+        if (name, title) in OVERRIDES_5B:
+            out.append((title, OVERRIDES_5B[(name, title)], *flags))
+            continue
+        moved = []
+        for edit in edits:
+            target, old, new = edit if len(edit) == 3 else (default, *edit)
+            if not isinstance(target, Region):
+                text = target.read_text()
+                for original, copy in RELIVE_5B:
+                    b = original.path == target and original.bounds(text)
+                    if b and old in text[b[0]:b[1]] and text.count(old) == 1:
+                        target = copy
+                        break
+            moved.append((target, old, new))
+        out.append((title, moved, *flags))
+    return out
+
+
+MUTATIONS_4A = _relive_5b(MIG_4A, MUTATIONS_4A, "day4a")
+MUTATIONS_4B = _relive_5b(MIG_4B, MUTATIONS_4B, "day4b")
+
+# Day 5b (design 8.3 "5b", rows 1 to 5 in the design's order, then the builder's additions from 6). The default target is
+# the Day 5b migration.
+UNDO_DEAL_BLOCK = """  if u.created_deal_id is not null then
+    if u.prev_status is null then
+      perform 1 from public.companies c where c.id = v_company for update;
+    end if;
+    delete from public.deals d where d.id = u.created_deal_id and d.version = 0 and d.created_by = caller;
+    v_deal := case when found then 'removed' else 'kept' end;
+  end if;
+"""
+MUTATIONS_5B = [
+    ("Activities insert policy: no same-lead deal check",
+     [(INSERT_POLICY_5B, "\n  and (deal_id is null or exists (select 1 from public.deals d\n       where d.id = activities.deal_id and d.company_id = activities.company_id))", "")]),
+    ("undo_activity: removes the deal without version = 0 (a moved deal goes too)",
+     [(UNDO_ACTIVITY_5B, "d.id = u.created_deal_id and d.version = 0 and d.created_by = caller", "d.id = u.created_deal_id and d.created_by = caller")]),
+    ("undo_activity: deletes the deal before the lead lock (deadlock test)",
+     [(UNDO_ACTIVITY_5B, UNDO_DEAL_BLOCK, ""),
+      (UNDO_ACTIVITY_5B, "  if u.prev_status is not null then\n    select c.lead_status",
+       UNDO_DEAL_BLOCK.replace("    if u.prev_status is null then\n      perform 1 from public.companies c where c.id = v_company for update;\n    end if;\n", "")
+       + "  if u.prev_status is not null then\n    select c.lead_status")]),
+    ("Deal delete policy: creator branch without the activity-undo condition",
+     [(MIG_5A, "    or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds'\n        and (source_activity_id is null\n             or not exists (select 1 from private.activity_undo u where u.activity_id = deals.source_activity_id)))));",
+       "    or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds')));")]),
+    ("log_activity: opens deals for people who may not change the lead",
+     [(LOG_ACTIVITY_5B, "    if not v_editable then\n      v_deal_answer := jsonb_build_object('opened', false, 'reason', 'not_editable');\n    elsif", "    if")]),
+    ("log_activity: opens a deal on a Do not contact lead (the guard refuses the whole call)",
+     [(LOG_ACTIVITY_5B, "    elsif v_status = 'do_not_contact' then\n      v_deal_answer := jsonb_build_object('opened', false, 'reason', 'dnc');\n", "")]),
+    ("log_activity: no open-rate check before the deal (the guard refuses the whole call)",
+     [(LOG_ACTIVITY_5B, "                                  limit 30) recent) >= 30 then\n      v_deal_answer", "                                  limit 30) recent) >= 1000 then\n      v_deal_answer")]),
+    ("log_activity: a deal opens from any outcome",
+     [(LOG_ACTIVITY_5B, "  if (p_open_deal and (p_type is distinct from 'call' or p_outcome is null\n                       or p_outcome not in ('interested', 'meeting_booked') or p_deal is not null))\n     or",
+       "  if")]),
+    ("log_activity: no deal title pre-check (a skipped open never checks it)",
+     [(LOG_ACTIVITY_5B, "  if v_deal_title is not null and (char_length(v_deal_title) > 120", "  if false and (char_length(v_deal_title) > 120")]),
+    ("log_activity: no deal value pre-check (3 decimals rounded by the column)",
+     [(LOG_ACTIVITY_5B, "  if not private.deal_value_ok(p_deal_value) then", "  if false then")]),
+    ("log_activity: no same-lead check for a linked deal (the policy answers 42501 instead of P0002)",
+     [(LOG_ACTIVITY_5B, "  if p_deal is not null and not exists (select 1 from public.deals d where d.id = p_deal and d.company_id = p_company) then",
+       "  if false then")]),
+    ("undo_activity: never removes the deal the call opened",
+     [(UNDO_ACTIVITY_5B, "    delete from public.deals d where d.id = u.created_deal_id and d.version = 0 and d.created_by = caller;\n", "    perform 1 where false;\n")]),
+    ("log_activity: the undo record forgets the deal",
+     [(LOG_ACTIVITY_5B, "          v_completed, v_cancelled, v_deal);", "          v_completed, v_cancelled, null);")]),
+    ("Replay answer without the opened deal",
+     [("    'deal', case when u.created_deal_id is not null\n", "    'deal', case when false\n")]),
+    ("get_lead: can_open_deal ignores Do not contact",
+     [(GET_LEAD_5B, "    'can_open_deal', e.can_edit and c.lead_status <> 'do_not_contact'", "    'can_open_deal', e.can_edit")]),
+    ("get_lead: open_count counts closed deals too",
+     [(GET_LEAD_5B, "from public.deals d where d.company_id = c.id and d.status = 'open') o)", "from public.deals d where d.company_id = c.id) o)")]),
+    ("log_activity runs as its owner (DEFINER: deals and links for anyone)",
+     [(LOG_ACTIVITY_5B, ") returns jsonb\nlanguage plpgsql volatile set search_path = ''", ") returns jsonb\nlanguage plpgsql volatile security definer set search_path = ''")]),
+]
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
-        "day5a": (MIG_5A, MUTATIONS_5A)}
+        "day5a": (MIG_5A, MUTATIONS_5A), "day5b": (MIG_5B, MUTATIONS_5B)}
 
 
 def run_set(name: str, only: set) -> int:
