@@ -33,40 +33,58 @@ yet**: see "Rebase points". No screens, no server actions, no routes (5b and 5c)
    private helpers (`deal_cards`, `deal_card`, `stage_deal_ids`, `deal_value_ok`, `deal_scope_owner`, `opened_deal`,
    `moved_deal`, `deal_conflict`, `pipeline_summary_for`).
 
+**Verifier round 1 (12 Oct, after the first NOT READY; each fix has a test that failed before it and passes after)**
+
+| # | Finding | Fix | Test (failed before, passes after) |
+|---|---|---|---|
+| 1 | `move_deal` failed (55000 `record "v_lead" is not assigned yet`) on the first move of a new connection that did not touch the lead and sent a request id | the lead's status and next action are scalars (`v_lead_status`, `v_lead_next`), not a record | `deal_concurrency.sh` case 10 `fresh_session_move_with_request_id` (Lead to Qualified, back, and a reopen of a won deal into Qualified, each the first call of a new session): before, "Lead -> Qualified failed" with the 55000 error; block 11 of `deals_attack.sql` run on its own in a fresh session failed the same way |
+| 2 | a win that switched the shipping skipped `deal_closing_blocked` | the guard's win branch calls it when `fulfilment` changes (and the undo path when an undo changes it); a win that keeps the shipping is not blocked | block 13 `closing_blocked_on_fulfilment_change`: before, `mv(..., 'won', 700, 'direct_from_source')` "succeeded, expected 42501" |
+| 3 | the blocking seam had no test with a stub that blocks; mutation 53 was listed as "no test can tell" | block 13 swaps in a stub returning `'order'` inside a rolled-back block and checks every call site (reopen, undo of a win by button and by drag, shipping change by `update_deal`, patch and win, `delete_deal` in the creator window and by an admin), plus what stays allowed; the null stub is checked back after the block | mutations 53 to 57 caught (row 53 is no longer a two-layer row) |
+| 4 | opening and deleting in turn bypassed the 30-an-hour limit (it counted live deals) | new `private.deal_opens` (one row per open by a signed-in person, written by the DEFINER history trigger, pruned after an hour, own rows readable, no client writes, restrictive `require_mfa`); the guard counts it | block 14 `open_deal_rate_counts_deleted_opens` (29 open+delete cycles, then the RPC and a direct insert get `rate_limited`): before, the 31st open "succeeded, expected 22023"; block 0 checks the table's grants and policies; block 11's fixture now plants open records (and checks the hour's pruning) |
+| 5 | 36 raw bidi characters in 9 regexes | written as `\u202A-\u202E\u2066-\u2069` again; the `task_guard` copy now differs from its merged body only by `deal_id` | `tests/unit/sql-bidi.spec.ts` (every SQL file under `supabase/migrations` and `supabase/tests`): before, failed on `20261015090000_deals_pipeline.sql` |
+| 6 | a repeated Undo with the same request id answered `unchanged`, not `replayed` | an Undo sent with a request id stores its own move record (lead before and after, so the replay answers the same) | block 14 `undo_replay_returns_stored`: before, the second answer was `unchanged` |
+| 7 | a manager or admin could empty a deal's owner | the guard refuses an empty owner on update (22023 `owner_required`) unless the referential path (a person deleted) empties it; `update_deal` pre-checks it | block 14 `deal_owner_never_emptied` (admin, RPC and direct patch): before, `update_deal(..., p_owner => null)` "succeeded, expected 22023" |
+| 8 | `delete_deal` answered P0002 when the policy refused a creator-window delete of a deal opened from a call | the creator window follows the policy's undo-record condition, so the caller gets 42501 `step_up` | block 7: before, "gave P0002 (deal not found), expected 42501 (hint step_up)" |
+| 9 | evidence did not match the code | `security-review.md` threats 13, 15, 20, 22 and 30 re-written; this README's deviations 15 to 17; `mutations.md` rows 53 to 65 | (documents) |
+
 **Tests and tooling**
 
-- `supabase/tests/deals_attack.sql` (new, 12 blocks): catalog checks (grants, policies, RPC rules, triggers, CHECKs as the
+- `supabase/tests/deals_attack.sql` (new, 14 blocks): catalog checks (grants, policies, RPC rules, triggers, CHECKs as the
   superuser), aal1, opening, forging, the 20-pair `transition_matrix` (RPC and direct PATCH), undo, conflicts and replays,
   deleting, the `coupling_table` (9 events x 7 lead statuses x editor/non-editor) and lead undo, the board (hand counts,
   scopes, keyset stability, cursors, limits), the shared stall cases in four session time zones, get_deal, move records,
-  audit, flood guards, referential link emptying; both invariants after every block.
+  audit, flood guards, referential link emptying, the Day 6 seam with a blocking stub (13), owner kept, undo replay and
+  opens counted after delete (14); both invariants after every block.
 - `supabase/tests/deal_concurrency.sh` (new, part 1): cases 1 to 7 of design 8.2, plus case 8 (a move and a value change
   are not blocked by an entry's foreign key lock on the deal; a delete is) and case 9 (`history_chain_consistent`,
-  3 sessions x 100 random moves; with `p10` it is perf P10).
+  3 sessions x 100 random moves; with `p10` it is perf P10), and case 10 (a move with a request id as the first call of
+  a new connection; runs before case 9).
 - Fixture updates (design 8.1): `rls_attack.sql` lines 30, 249, 287 to 292, 299 (comment), 313; `import_attack.sql:523`.
 - `scripts/check-migration-order.sh` (new, D35) and a step in `db.yml` (pull requests, full history).
 - `scripts/db-test.sh` and `.github/workflows/db.yml` run `deals_attack.sql` and `deal_concurrency.sh`.
-- `tests/unit/sql-guc.spec.ts` (new, threat 29).
-- `scripts/db-mutations.py`: the day5a set (53 rows), a `Region` target (one function inside a file), the earlier sets'
+- `tests/unit/sql-guc.spec.ts` (new, threat 29) and `tests/unit/sql-bidi.spec.ts` (new, verifier round 1: no raw
+  bidirectional control character in any SQL file).
+- `scripts/db-mutations.py`: the day5a set (65 rows), a `Region` target (one function inside a file), the earlier sets'
   rows aimed at `audit_row` and `task_guard` re-aimed at the live Day 5a copies, and `--anchors`.
 - `supabase/tests/perf_day5.sql` (new, part 1) and `scripts/db-perf.sh` (runs it after `perf_day4.sql`, then P10).
 - Spikes S6 to S9: `docs/evidence/day5a/spikes/` (scripts) and `docs/log.md` (results and decisions).
 
 ## Check results
 
-Code head **b8e839f** (the last commit that changes code; later commits change `docs/` only), 12 Oct 2026, 03:20 UTC.
+Code head **3c67877** (verifier round 1; the last commit that changes code or tests is acc2cf3, the mutation rows; later
+commits change `docs/` only), 12 Oct 2026, 06:30 UTC. Rows re-run in round 1 say so; the first pass ran on b8e839f.
 
 | Check | Result |
 |---|---|
-| `bash scripts/db-test.sh` (a copy on port 54361; the real script keeps 54329) | exit 0: rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency, outcome_attack, outcome_concurrency, **deals_attack**, **deal_concurrency** (cases 1 to 8; case 9: 194 moved, 27 conflicts, 19 `reopen_first`, 0 deadlocks) all pass |
-| Supabase advisors (splinter, in `db-test.sh`) | no ERROR-level findings. WARN `set_user_role` (accepted since Day 1); INFO `unindexed_foreign_keys` 3 (`activities_org_id_fkey`, `private.activity_undo` and the new `private.deal_moves` org FK: the same accepted pattern, a 10-minute table), INFO `unused_index` 3 |
-| `plpgsql_check` over every plpgsql function in `public` and `private` (what CI's `supabase db lint` runs) | no error, no warning (one type warning in `pipeline_board` fixed in cff33b5) |
-| Mutations (`mutations.md`) | day5a **53 rows: 49 caught, 4 documented two-layer rows, 0 not as listed** (8bd6e4b, three rows on 3a21018); the 36 earlier rows re-aimed at the Day 5a copies of `audit_row` and `task_guard`: 36 caught (8bd6e4b); `--anchors` on b8e839f: every anchor of all four sets found once (37 / 104 / 94 / 53) |
-| Perf part 1 (`perf.md`, 3 runs on b8e839f) | met: P1 team 18.8–20.4 ms (25), P2 all six 2.8–4.2 ms (5), P3 4.3–5.5 ms (10), P4 undo 7.7–8.0 and open 7.2–8.4 ms (10), P4b 2.1–4.4 ms (6 / 10), P6 list_lead_deals 2.3–2.6 ms (3), get_deal 4.5–5.8 ms (5, 2 of 3); **missed**: P1 mine 17.8–19.4 ms (15), P4 move/win/lose 9.9–11.7 ms (10), P10 p95 35.5–58.0 ms (20). P9: no regression traced to 5a code (medians within the run-to-run spread; import and undo within +10 to +16% against main with the same deals) |
+| `bash scripts/db-test.sh` (a copy on port 54361; the real script keeps 54329), on acc2cf3 | exit 0: rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency, outcome_attack, outcome_concurrency, **deals_attack** (14 blocks), **deal_concurrency** (cases 1 to 8 and 10; case 9: 195 moved, 23 conflicts, 15 `reopen_first`, 67 unchanged, 0 deadlocks) all pass |
+| Supabase advisors (splinter, in `db-test.sh`) | no ERROR-level findings. WARN `set_user_role` (accepted since Day 1); INFO `unindexed_foreign_keys` 3 (`activities_org_id_fkey`, `private.activity_undo` and the new `private.deal_moves` org FK: the same accepted pattern, a 10-minute table), INFO `unused_index` 3. Round 1 (acc2cf3): the same findings and counts (`private.deal_opens` has RLS, the restrictive `require_mfa` and no foreign key) |
+| `plpgsql_check` over every plpgsql function in `public` and `private` (what CI's `supabase db lint` runs), on acc2cf3 | no error, no warning (one type warning in `pipeline_board` fixed in cff33b5). It does not see finding 1's 55000 (a record field read on a path that never filled it is planned only at run time): concurrency case 10 does |
+| Mutations (`mutations.md`) | day5a **65 rows: 61 caught, 4 documented two-layer rows (20, 24, 39, 63), 0 not as listed**. First pass: rows 1 to 53 on 8bd6e4b (three on 3a21018). Round 1 on acc2cf3: rows 54 to 65 new, and 7, 11, 22 to 27, 37, 44, 46, 53 re-run (row 53, formerly listed as two layers, is caught by block 13), plus day4a 67 (the `task_guard` regex): 24 day5a rows run, 22 caught, 2 documented; day4a 67 caught. The 36 earlier rows re-aimed at the Day 5a copies of `audit_row` and `task_guard`: 36 caught (8bd6e4b). `--anchors` on acc2cf3: every anchor of all four sets found once (37 / 104 / 94 / 65) |
+| Perf part 1 (`perf.md`, 3 runs on b8e839f; round 1: 3 runs of acc2cf3 interleaved with 3 of b8e839f, every median within the spread, `open_deal` +6%, same budgets met and missed) | met: P1 team 18.8–20.4 ms (25), P2 all six 2.8–4.2 ms (5), P3 4.3–5.5 ms (10), P4 undo 7.7–8.0 and open 7.2–8.4 ms (10), P4b 2.1–4.4 ms (6 / 10), P6 list_lead_deals 2.3–2.6 ms (3), get_deal 4.5–5.8 ms (5, 2 of 3); **missed**: P1 mine 17.8–19.4 ms (15), P4 move/win/lose 9.9–11.7 ms (10), P10 p95 35.5–58.0 ms (20). P9: no regression traced to 5a code (medians within the run-to-run spread; import and undo within +10 to +16% against main with the same deals) |
 | `scripts/check-migration-order.sh` | ok (newest on origin/main 20261012090000; added 20261015090000); a base with a later file fails it (tested) |
-| `npm run lint` | exit 0: 0 errors, the 2 existing React Compiler warnings |
-| `npm run typecheck` | exit 0 |
-| `npm run test:unit` | 329 passed (321 before plus `sql-guc.spec.ts`'s 8) |
+| `npm run lint` (acc2cf3) | exit 0: 0 errors, the 2 existing React Compiler warnings |
+| `npm run typecheck` (acc2cf3) | exit 0 |
+| `npm run test:unit` | 347 passed (321 before, `sql-guc.spec.ts`'s 8, `sql-bidi.spec.ts`'s 18) |
 | gitleaks (`origin/main..HEAD`, on 25d2278) | 19 commits scanned (incl. the design commit 5c3e4c3), no leaks found, exit 0 |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
 | Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
@@ -95,6 +113,10 @@ Code head **b8e839f** (the last commit that changes code; later commits change `
 - 0b9d470 Day 5a: the board summary reads a deal's lead only when its stage clock is already past the limit (19 ms to 4 ms on the perf seed)
 - b8e839f Day 5a: the board summary's aggregate is computed once (materialized), not once per stage row
 - 25d2278 Day 5a evidence: perf.md (3 runs on b8e839f, P9 against main with the same deals), README check results and open risks, log rows
+- 5bee10e Day 5a evidence: gitleaks result and the commit list in the README
+- 581297e Day 5a evidence: mutations.md notes the two speed commits after the runs
+- 3c67877 Day 5a verifier round 1: move_deal on a new connection, the block check on a win that changes shipping, opens counted after delete, undo replay, owner kept, delete answer, bidi escapes
+- acc2cf3 Day 5a mutations: rows 54 to 65 for the verifier round 1 fixes; row 53 caught by the blocking-stub tests (no longer a two-layer row); lead coupling rows follow the scalar lead fields
 
 ## Spikes (design 2.4; full results in `docs/log.md`, scripts in `spikes/`)
 
@@ -117,8 +139,8 @@ Code head **b8e839f** (the last commit that changes code; later commits change `
 4. **Contact of another lead**: `open_deal` and `update_deal` answer P0002 "contact not found on this lead" before any
    write, like `log_activity` and `create_task`; a direct insert still gets 42501 from the policy (design threat 4 named
    42501 for both).
-5. **Error hints added**: 22023 `stage` (unknown stage key), `bad_scope` (unknown scope), `limit` (page sizes); 42501
-   `stage` also when the caller has no pipeline on insert.
+5. **Error hints added**: 22023 `stage` (unknown stage key), `bad_scope` (unknown scope), `limit` (page sizes),
+   `owner_required` (an owner emptied; deviation 16); 42501 `stage` also when the caller has no pipeline on insert.
 6. **An ordinary Lose must send its reason** (`lost_reason_required`), and its note replaces the old one, instead of
    `coalesce` with a reason kept from an earlier loss (design 5.2 step 7 wrote `coalesce`); a hand drag back into Lost
    that is an undo needs none. A Win still keeps an estimated value and a chosen shipping when none is sent.
@@ -138,8 +160,17 @@ Code head **b8e839f** (the last commit that changes code; later commits change `
 13. **Mutations**: 53 rows instead of 31. Design rows 20 and 23 are split into their layers (the two-layer rows are
     documented); rows 34 onward are additions (39/40 split the same way). Design row 21 ("deadlock test") is caught in 5a by concurrency case 8,
     since 5b's `log_activity` with a deal does not exist yet.
-14. **Unit tests**: only `sql-guc.spec.ts` is 5a's; `day5-parity`, `deals`, `days-in-stage` and the rest of design 8.4
+14. **Unit tests**: only `sql-guc.spec.ts` and `sql-bidi.spec.ts` are 5a's; `day5-parity`, `deals`, `days-in-stage` and the rest of design 8.4
     test `src/lib/deals.ts` and friends, which 5b writes.
+15. **The open flood guard counts `private.deal_opens`**, not live deals on `deals_created_by_idx` (design 3.1, guard insert step 5):
+    a delete removes the deal but not its open record, so opening and deleting in turn is limited too (verifier round 1,
+    threat 22). The table is new (own rows readable, written only by the revoked DEFINER history trigger); 5b's
+    `log_activity` can count it before an open to skip with `rate_limited` (design 5.1, "From Interested or Book meeting" step 3), as the guard does.
+16. **G11 also on updates**: a deal's owner cannot be emptied by `update_deal` or a patch (22023 `owner_required`),
+    for admins too; only the referential path (a person deleted, one trigger level down) may empty it.
+17. **The Day 6 block check also runs when a win or an undo changes the shipping** (design named a same-stage
+    fulfilment change in 3.1; section 10 and threat 30 say "changing fulfilment"). A win that keeps the shipping chosen while
+    open is never blocked, so a Day 6 reservation does not stop a win.
 
 ## Rebase points (Day 4c and 4d are not merged)
 

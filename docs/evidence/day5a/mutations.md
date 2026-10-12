@@ -22,7 +22,60 @@ random run met an "unchanged" answer (a colleague had just moved the deal to tha
 accepts (8bd6e4b). Row 37 was first NOT CAUGHT on 8bd6e4b: the test compared `owner_id <> admin`, which is null, not
 true, for an empty owner; the test file now uses null-safe comparisons for every column a mutation can empty.
 
-## day5a (53 rows): 49 caught, 4 documented two-layer rows, 0 not as listed
+## Verifier round 1 (12 Oct): rows 54 to 65 added, the rows whose code changed re-run, on acc2cf3
+
+The verifier's NOT READY report (findings 1 to 8) changed `move_deal` (lead fields in scalars, an Undo's own move record),
+the guard (the Day 6 block check when a win or an undo changes the shipping, the open flood guard counting
+`private.deal_opens`, an owner never emptied on update), the history trigger (the open record), `update_deal` (owner
+pre-check), `delete_deal` (the creator window follows the policy's undo-record condition) and the bidi escapes in every
+regex. Rows 54 to 65 are new; the earlier rows whose code or anchor changed were re-run: 7, 11, 22, 27, 37, 44, 46, the
+lead-coupling rows 23 to 26 (their edits now name the scalar lead fields), 53 (now caught by block 13's blocking stub)
+and day4a 67 (the `task_guard` title regex, back to `\u` escapes). Throwaway worktree `scratchpad/wt-5a-mut` on
+**acc2cf3** (code head 3c67877), its `db-test.sh` copy on port 54362; the baseline run passed first; 03:47 to 04:11 UTC.
+Every caught row's first failure was read: it is the protection's own test. `--anchors` on acc2cf3: every anchor of the
+four sets found once (day3b 37, day4a 104, day4b 94, day5a 65).
+
+### day5a (24 rows run: 22 caught, 2 documented two-layer rows not caught, 0 not as listed)
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 7 | Guard: reopening a won deal needs no fresh code | caught | FAIL: "update public.deals set stage_id = private.stage_id('lead') where id = 'e85770fe-997b-4a11-b074-22759e2fdb03'" succeeded, expected 42 |
+| 11 | move_deal: no version compare | caught | FAIL: a stale move should be a conflict result {"deal": {"id": "1a2f999d-4d34-4df3-b9c7-d0cd5ebc462f", "city": null, "stage": "negotiations" |
+| 22 | move_deal: locks the deal FOR UPDATE (blocks behind an entry's key lock; spike S8) | caught | canceling statement due to lock timeout |
+| 23 | Lead coupling: a win overrides Do not contact | caught | FAIL: coupling_table won on a do_not_contact lead (editor t): got customer, expected do_not_contact |
+| 24 | Lead coupling: without the editor lock (row level security on the lead update still stops it) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 25 | Lead coupling: without the editor lock, and move_deal runs as its owner (both layers) | caught | FAIL: RPC rules broken by {"move_deal(uuid,text,integer,numeric,text,text,text,bigint,uuid)"} |
+| 26 | Undo: the lead put back whatever it holds now | caught | FAIL: undo_restores_lead_only_if_unchanged |
+| 27 | Guard: no open flood guard | caught | FAIL: "select public.open_deal('4de74139-e951-4e0a-b1e5-7e364e97674f')" succeeded, expected 22023 |
+| 37 | Guard: an admin's deal left without an owner (G11) | caught | FAIL: owner_defaults_to_creator |
+| 44 | delete_deal: no fresh-code pre-check (no step_up hint) | caught | FAIL: "select public.delete_deal('07d6bd3d-b1d8-42f6-800f-b71578feafe1')" gave 42501 (hint "", only a manager or an admin can delete a deal) |
+| 46 | list_stage_deals: half a cursor accepted | caught | FAIL: "select * from public.list_stage_deals('lead', p_after_at => now())" succeeded, expected 22023 |
+| 53 | Undo: a win undone without the Day 6 block check | caught | FAIL: "select pg_temp.mv('d848c15f-b8a3-4404-8c62-11acfdfb2643', 'lead', undo_of => 626)" succeeded, expected 42501 |
+| 54 | Guard: a win that changes the shipping skips the Day 6 block check | caught | FAIL: "select pg_temp.mv('898c2d9d-c930-4129-af3c-f0e9b287b519', 'won', 700, 'direct_from_source')" succeeded, expected 42501 |
+| 55 | Guard: reopening a won deal without the Day 6 block check | caught | FAIL: "select pg_temp.mv('204069ec-252d-4bbb-bdf5-142d189f0edd', 'negotiations')" succeeded, expected 42501 |
+| 56 | Guard: a shipping change on the same stage without the Day 6 block check | caught | FAIL: "select public.update_deal('ad4d3fa9-dd86-417f-aa24-803aaab03f41', 1, '{fulfilment}', p_fulfilment => 'direct_from_source')" succeeded |
+| 57 | delete_deal: no Day 6 block check | caught | FAIL: "select public.delete_deal('3effef39-d9c9-478a-8b57-5e0255f53652')" succeeded, expected 42501 |
+| 58 | Guard: the open flood guard counts live deals only (open and delete in turn is not counted) | caught | FAIL: "select public.open_deal('f7eb6619-28a1-4836-85b1-aaebb1f43468')" succeeded, expected 22023 |
+| 59 | History trigger: no open record written | caught | FAIL: an open should remove its author's open records older than an hour |
+| 60 | Open records: insert granted to clients | caught | FAIL: private.deal_opens protections |
+| 61 | move_deal: no move record for an Undo with a request id (a repeated Undo is not a replay) | caught | FAIL: undo_replay_returns_stored {"deal": {"id": "df316dd8-e485-45d6-a4bc-43b51f78b407", "city": null, "stage": "lead", "title": "Owned", "v |
+| 62 | Guard: a deal's owner can be emptied on update (G11) | caught | FAIL: "update public.deals set owner_id = null where id = '3f5c8714-d993-40ee-a66a-31e58bbc8c5f'" succeeded, expected 22023 |
+| 63 | update_deal: no owner pre-check (the guard answers the same 22023 owner_required) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 64 | update_deal: no owner pre-check, and the guard lets the owner be emptied (both layers) | caught | FAIL: "select public.update_deal('9541c056-1369-4f04-8515-50121bba79eb', 0, '{owner_id}', p_owner => null)" succeeded, expected 22023 |
+| 65 | delete_deal: the creator's window ignores the call's undo record (a refused delete answers P0002) | caught | FAIL: "select public.delete_deal('dbc326c4-9cd2-4fda-97b6-619bedb9830b')" gave P0002 (hint "", deal not found), expected 42501 (hint "step_u |
+
+### day4a (1 row run: 1 caught)
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 67 | Task guard: C1 controls pass the title pre-check | caught | FAIL: "insert into public.tasks (title) values ('PLANTED-SECRET |
+
+**Rows 63 and 64:** `update_deal`'s owner pre-check answers the same 22023 `owner_required` as the guard, so removing it
+alone changes nothing a test can see (documented: two layers); row 64 removes both and is caught. **Row 53** was a
+documented two-layer row before this round ("the stub returns null, so no test can tell"); the verifier showed a
+superuser can swap the stub inside a rolled-back block, which block 13 now does at every call site, so 53 is caught.
+
+## day5a (first run, 53 rows): 49 caught, 4 documented two-layer rows, 0 not as listed (row 53 caught since round 1: 50 caught, 3 documented; with rows 54 to 65 the set is 65 rows: 61 caught, 4 documented two-layer rows (20, 24, 39, 63), 0 not as listed)
 
 Rows 1 to 33 follow the design's list (8.3: its rows 20 and 23 split into one row per layer, so the design's 21 to 31 are
 rows 22, 23 and 26 to 33 here); rows 34 onward are the builder's additions.
@@ -81,9 +134,9 @@ rows 22, 23 and 26 to 33 here); rows 34 onward are the builder's additions.
 | 50 | Audit: the lost note copied | caught | 8bd6e4b | FAIL: audit_deal_insert_update_delete_rows / audit_deal_value_change_logged / audit_lost_note_masked: [{"diff": {"new": {"id": "9b33e9ed-a73 |
 | 51 | open_deal: no lead lock (a non-editor's open reaches the policy; the answer loses its hint) | caught | 8bd6e4b | FAIL: "select public.open_deal('01eb374f-5938-4745-bbfe-edcd076bfd72')" gave 42501 (hint "", new row violates row-level security policy for |
 | 52 | Guard: the value bound not checked on a same-stage change (the CHECK answers with the row) | caught | 8bd6e4b | FAIL: "update public.deals set value = 'NaN' where id = 'cf7bda53-483c-449e-9ba4-91514cf0624e'" gave 23514 (hint "", new row for relation "d |
-| 53 | Undo: a win undone without the Day 6 block check | **NOT CAUGHT** (documented: two layers) | 8bd6e4b | advisors: no ERROR-level findings |
+| 53 | Undo: a win undone without the Day 6 block check | **NOT CAUGHT** on 8bd6e4b (then listed as two layers); **caught** on acc2cf3 (round 1: block 13's blocking stub) | 8bd6e4b, acc2cf3 | 8bd6e4b: advisors: no ERROR-level findings; acc2cf3: see the round 1 table |
 
-**The four documented two-layer rows**
+**The documented two-layer rows** (20, 24, 39 and, since round 1, 63; 53 was one until round 1)
 
 - **20** `deals_value_bounds` without its NaN term: the bound `value <= 100000000` refuses NaN too (NaN sorts above
   every number, spike S6). Row 21 removes both and the superuser CHECK probe in block 0 catches it.
@@ -92,8 +145,11 @@ rows 22, 23 and 26 to 33 here); rows 34 onward are the builder's additions.
   DEFINER) is caught.
 - **39** the guard keeping the client's stage clock on insert: there is no insert grant on `stage_entered_at`, and its
   default is `now()`. Row 40 (with the grant) is caught.
-- **53** undoing a win without the Day 6 block check: `deal_closing_blocked` returns null in 5a, so no test can tell; Day 6
-  replaces the stub and its own tests cover the seam (design section 10).
+- **53** (until round 1) undoing a win without the Day 6 block check: listed as "the stub returns null, so no test can
+  tell". Wrong: block 13 of `deals_attack.sql` swaps in a stub returning `'order'` inside a rolled-back block, and row 53
+  is caught since round 1.
+- **63** `update_deal` without its owner pre-check: the guard answers the same 22023 `owner_required`. Row 64 (both) is
+  caught.
 
 ## Earlier sets: the rows re-aimed at the Day 5a copies of `audit_row` and `task_guard` (8bd6e4b)
 

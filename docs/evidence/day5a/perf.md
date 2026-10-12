@@ -139,3 +139,39 @@ same leads, owners and statuses, inserted with triggers off; without deals, main
 
 Within the +10% budget or inside the run-to-run spread (P3, P6 preview and P7 move by more between two runs of the same
 code); no regression traced to 5a code.
+
+## Verifier round 1 re-measure (acc2cf3, code head 3c67877)
+
+Round 1 changed the write paths only: `open_deal`'s guard counts `private.deal_opens` (one short range read on
+`deal_opens_user_idx`) and the history trigger writes one open record and prunes the caller's records older than an
+hour; `move_deal` keeps two scalars instead of a record and writes a move record for an Undo sent with a request id; the
+guard calls the (null) Day 6 stub when a win changes the shipping; `update_deal` and `delete_deal` gained a pre-check.
+No read path changed. To separate the change from the machine, **three pairs of runs interleaved** the round 1 head and
+the previous head b8e839f (a throwaway worktree, the same `db-perf.sh` copy on port 54365; the round 1 runs on 54364),
+06:21 to 06:29 UTC, load average 3 to 5 on 4 cores (Day 4c's workflow was running).
+
+| Case | Round 1 runs 1 / 2 / 3 (ms) | b8e839f runs 1 / 2 / 3 (ms) | Median change | Budget |
+|---|---|---|---|---|
+| P1 pipeline_board team (admin) | 20.83 / 25.12 / 18.44 | 19.1 / 29.33 / 20.78 | +0% | 25 |
+| P1 pipeline_board mine (rep) | 20.13 / 19.88 / 25.11 | 19.11 / 26.98 / 19.23 | +5% | 15 (missed, as before) |
+| P2 list_stage_deals (six cases) | 3.0 to 5.19 | 3.18 to 5.56 | -36% to +13% | 5 (3 single runs at 5.1 to 5.2; b8e839f had 3 at 5.3 to 5.6 in the same window) |
+| P3 pipeline_summary team | 5.45 / 4.88 / 5.15 | 6.06 / 5.79 / 5.48 | -11% | 10 |
+| P6 get_deal (50 history rows) | 5.09 / 4.92 / 4.75 | 4.96 / 4.87 / 7.1 | -1% | 5 |
+| P6 list_lead_deals | 2.43 / 2.27 / 3.72 | 2.39 / 2.73 / 4.07 | -11% | 3 |
+| P4 move_deal (lead lock, coupling, record) | 11.72 / 11.92 / 13.92 | 12.31 / 13.75 / 11.19 | -3% | 10 (missed, as before) |
+| P4 move_deal win | 10.25 / 12.28 / 12.31 | 11.49 / 12.84 / 10.1 | +7% | 10 (missed) |
+| P4 move_deal lose | 10.65 / 12.67 / 14.75 | 12.68 / 10.52 / 12.0 | +6% | 10 (missed) |
+| P4 move_deal undo by reverse move | 8.08 / 9.44 / 9.3 | 8.64 / 13.27 / 8.58 | +8% | 10 |
+| P4 open_deal | 9.2 / 9.36 / 10.5 | 9.62 / 7.58 / 8.87 | +6% | 10 (met in 2 of 3) |
+| P4b update_deal | 4.91 / 4.85 / 5.46 | 5.44 / 4.24 / 4.58 | +7% | 6 |
+| P4b delete_deal (admin, fresh code) | 3.47 / 2.39 / 2.88 | 2.82 / 2.28 / 2.45 | +18% | 10 |
+| P6 get_lead (a lead with deals) | 1.85 / 1.66 / 2.71 | 2.02 / 2.6 / 1.67 | -8% | Day 4 P1 + 2 ms |
+| P10 p95 per move (3 sessions x 100) | 54.94 / 83.3 / 39.63 | 65.26 / 90.8 / 41.39 | -16% | 20 (missed, as before) |
+
+Reading: both heads were slower than the 03:14 runs above (the VM was busier: the unchanged Day 4 cases moved by up to
++56% between the same two heads too, e.g. `log_activity` on a typical lead 7.7 to 13.8 ms against 7.9 to 9.7 ms). Every
+round 1 median is within the run-to-run spread of the previous head; `open_deal` +6% (about 0.5 ms: one index read, one
+insert and one prune) and `delete_deal` +18% (0.4 ms, the undo-record look-up for creator-window deletes) are the only
+plausible costs, both far inside their budgets. The budgets met and missed are the same as above: the misses stand in
+README "Open risks". Logs: `scratchpad/5a/perf-new-{1,2,3}.log`, `perf-old-{1,2,3}.log` (also three earlier round 1
+runs, `perf-5a-r1-*.log`, 06:16 to 06:21, at heavier load: board team 21.8 to 34.1 ms with no board code changed).
