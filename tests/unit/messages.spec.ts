@@ -121,14 +121,20 @@ test.describe("import and lead page messages", () => {
     expect(te("Queue.reason.retryNth", { count: 2 })).toBe("Retry · 2nd try");
     expect(te("Queue.reason.retryNth", { count: 3 })).toBe("Retry · 3rd try");
     expect(te("Queue.reason.retryNth", { count: 11 })).toBe("Retry · 11th try");
-    expect(tf("Queue.reason.retryNth", { count: 1 })).toBe("Nouvel essai · 1er essai");
-    expect(tf("Queue.reason.retryNth", { count: 3 })).toBe("Nouvel essai · 3e essai");
+    expect(tf("Queue.reason.retryNth", { count: 1 })).toBe("Nouvel essai · 1er appel");
+    expect(tf("Queue.reason.retryNth", { count: 3 })).toBe("Nouvel essai · 3e appel");
     expect(te("Queue.stats", { calls: 1, talks: 0 })).toBe("This session: 1 call · 0 talks");
     expect(tf("Queue.stats", { calls: 23, talks: 4 })).toBe("Cette session\u202f: 23 appels · 4 échanges");
     expect(te("Queue.empty.noNumber", { count: 1 })).toBe("1 lead has no number.");
     expect(tf("Queue.empty.noNumber", { count: 1203 })).toContain("prospects n’ont pas de numéro.");
     expect(tf("Tasks.deleteConfirm.title")).toBe("Supprimer cette tâche\u202f?");
     expect(te("LeadPage.workedBy", { name: "Henri", time: "10:24" })).toBe("Henri is on this lead in the queue (until 10:24)");
+    expect(te("Queue.lostClaimNamed", { name: "Henri" })).toBe("Henri is on that one now. Here’s the next.");
+    expect(tf("Queue.lostClaimNamed", { name: "Henri" })).toBe("Henri s’en occupe déjà. Voici le suivant.");
+    expect(tf("Queue.released.body")).toContain("onglet)\u202f: les prospects");
+    expect(tf("Queue.released.logCall", { lead: "Dupont SARL" })).toBe("Noter votre appel à Dupont SARL");
+    expect(te("Queue.script.enNoName", { lead: "Dupont SARL" })).toContain("I’m calling from TopStock Wholesale");
+    expect(tf("Queue.script.frNoName", { lead: "Dupont SARL" })).toContain("pour Dupont SARL\u202f?");
   });
 
   test("every call outcome, kind of entry and database hint has words in both languages", () => {

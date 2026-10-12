@@ -9,7 +9,7 @@ import { countryName } from "@/lib/countries";
 import { personName, type LeadStatus } from "@/lib/leads";
 import { callHref } from "@/lib/phone";
 import type { QueueCard as Card } from "@/lib/queue";
-import { CALL_WINDOW, isOpen, localDate, primaryZone, spanEnds, zonedInstant } from "@/lib/timezones";
+import { isOpen, localDate, openUntilMinutes, primaryZone, spanEnds, zonedInstant } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 /** The number a call goes to: the lead's main line, or one contact's. */
@@ -44,12 +44,15 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
   dialled: Dialled | null;
   onDial: (d: Dialled) => void;
   skipLunch: boolean;
-  me: string;
+  /** The caller's first name for the script (null: the script without a name). */
+  me: string | null;
+  /** The caller's profile zone: a follow-up's time reads as on the Tasks page. */
+  profileZone: string;
   changedStatus: string | null;
   claiming: boolean;
   part: "head" | "details";
   headingId?: string;
-}>(function QueueCardView({ card, next, dialled, onDial, skipLunch, me, changedStatus, claiming, part, headingId }, ref) {
+}>(function QueueCardView({ card, next, dialled, onDial, skipLunch, me, profileZone, changedStatus, claiming, part, headingId }, ref) {
   const t = useTranslations("Queue");
   const tOut = useTranslations("Outcomes");
   const tTypes = useTranslations("Composer.types");
@@ -69,7 +72,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
     const followTask = card.reason === "follow_up" ? card.my_open_tasks.find((x) => x.kind === "call") : undefined;
     const reason =
       card.reason === "follow_up" && followTask?.due_at
-        ? t("reason.followUpAt", { time: time(format, new Date(followTask.due_at), Intl.DateTimeFormat().resolvedOptions().timeZone) })
+        ? t("reason.followUpAt", { time: time(format, new Date(followTask.due_at), profileZone) })
         : card.reason === "retry" && card.attempts > 0
           ? t("reason.retryNth", { count: card.attempts + 1 })
           : t(`reason.${card.reason}`);
@@ -78,8 +81,10 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
       if (ends) clock = t("spanTime", { from: time(format, now, ends[1]), to: time(format, now, ends[0]) });
       else clock = open ? t("theirTime", { time: time(format, now, zone) }) : t("outsideCard", { time: time(format, now, zone) });
     }
-    // The end of calling hours on the lead's side today, worded by Intl in that zone.
-    const until = now ? time(format, zonedInstant(localDate(zone, now), `${String(CALL_WINDOW.end / 60).padStart(2, "0")}:00`, zone), zone) : "";
+    // The end of calling hours on the lead's side today (12:00 before lunch with the lunch switch on, in Europe), worded
+    // by Intl in that zone.
+    const endsAt = now ? openUntilMinutes(zone, now, skipLunch) : 0;
+    const until = now ? time(format, zonedInstant(localDate(zone, now), `${String(endsAt / 60).padStart(2, "0")}:00`, zone), zone) : "";
     const mainNumber = card.phone && /\d/.test(card.phone) ? card.phone : null;
     return (
       <div className="flex min-w-0 flex-col gap-3">
@@ -254,7 +259,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
         </summary>
         <div className="flex flex-col gap-2 pb-1">
           <p lang={lang} className="max-w-[65ch] text-sm text-pretty">
-            {t(`script.${lang}`, { me, lead: card.name })}
+            {me ? t(`script.${lang}`, { me, lead: card.name }) : t(`script.${lang}NoName`, { lead: card.name })}
           </p>
           <button
             type="button"

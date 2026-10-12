@@ -14,6 +14,14 @@ export type QueueReason = (typeof QUEUE_REASONS)[number];
 
 /** Claims last 10 minutes (the database sets it); the page renews every 4 minutes while visible and in use. */
 export const CLAIM_MINUTES = 10;
+export const CLAIM_MS = CLAIM_MINUTES * 60_000;
+/**
+ * A card counts as no longer held this long before its claim's end as the browser reckons it (the request's start plus
+ * 10 minutes: the database's end is never earlier), so it leaves the screen before a teammate can take the lead.
+ */
+export const CLAIM_MARGIN_MS = 20_000;
+/** How often the page checks whether the cards on screen are still held. */
+export const CLAIM_CHECK_MS = 15_000;
 export const RENEW_EVERY_MS = 4 * 60_000;
 /** "In use": a key or a click in the last 10 minutes. A closed laptop holds its leads 10 minutes at most. */
 export const ACTIVE_WINDOW_MS = 10 * 60_000;
@@ -228,12 +236,39 @@ export function firstOpening(waiting: QueueSummary["waiting_by_zone"], at: Date,
   return best;
 }
 
-/** Which empty state the queue shows when no card came back. */
+/**
+ * Which empty state the queue shows when no card came back. With "Show leads outside calling hours" on, the leads still
+ * waiting for their hours were offered already, so there is nothing more to offer: all done.
+ */
 export type EmptyReason = "noneMine" | "outsideHours" | "allDone";
-export function emptyReason(summary: QueueSummary | null, scope: QueueScope, mineHasLeads: boolean): EmptyReason {
+export function emptyReason(summary: QueueSummary | null, scope: QueueScope, mineHasLeads: boolean, anyHours = false): EmptyReason {
   if (scope === "mine" && !mineHasLeads) return "noneMine";
-  if (summary && summary.waiting_by_zone.length > 0) return "outsideHours";
+  if (!anyHours && summary && summary.waiting_by_zone.length > 0) return "outsideHours";
   return "allDone";
+}
+
+/**
+ * The cards the screen asked to keep that the database no longer holds for the caller (claim_next_lead answers `kept`:
+ * the p_keep ids still claimed). Such a card's claim ended and may be a teammate's now: it must leave the screen. An
+ * answer without `kept` keeps nothing.
+ */
+export function lostKept(keep: readonly string[] | null, kept: readonly string[] | null | undefined): string[] {
+  if (!keep || keep.length === 0) return [];
+  const still = new Set(Array.isArray(kept) ? kept : []);
+  return keep.filter((id) => !still.has(id));
+}
+
+/** True when one of the cards on screen may no longer be held (its claim ends within the margin, or has ended). */
+export function claimsStale(cards: readonly { claimedUntil: number }[], now: number): boolean {
+  return cards.some((c) => now >= c.claimedUntil - CLAIM_MARGIN_MS);
+}
+
+/**
+ * After a renewal that started at `sentAt`: the cards still held then are held 10 more minutes; a card that was no
+ * longer held is not brought back by a renewal (renew_claims renews live claims only).
+ */
+export function renewedUntil<T extends { claimedUntil: number }>(cards: readonly T[], sentAt: number): T[] {
+  return cards.map((c) => (c.claimedUntil - CLAIM_MARGIN_MS > sentAt ? { ...c, claimedUntil: sentAt + CLAIM_MS } : c));
 }
 
 /** POST /api/queue/next: the next card(s) (after a Skip, or when the reserve ran dry). */

@@ -59,11 +59,13 @@ export function QueueWorkspace({
   canWide,
   mineCount,
   me,
+  zone,
 }: {
   initialSummary: QueueSummary | null;
   canWide: boolean;
   mineCount: number;
-  me: string;
+  me: string | null;
+  zone: string;
 }) {
   const t = useTranslations("Queue");
   const tOut = useTranslations("Outcomes");
@@ -76,6 +78,12 @@ export function QueueWorkspace({
   const now = useClientNow(30_000);
   const viewerZone = useSyncExternalStore(noop, () => browserZone() ?? "Europe/Paris", () => "Europe/Paris");
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Where the focus goes when what held it leaves (keyboard first: never the page): the page title while cards load,
+  // the Start button back on the start screen, the empty state's heading.
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const startRef = useRef<HTMLButtonElement>(null);
+  const emptyRef = useRef<HTMLHeadingElement>(null);
+  const focusStart = useRef(false);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const [live, setLive] = useState("");
   const [choice, setChoice] = useState<CallOutcome | null>(null);
@@ -90,15 +98,22 @@ export function QueueWorkspace({
   const onEvent = useCallback(
     (e: QueueEvent) => {
       if (e.kind === "logged") {
-        // Worded in the effect on q.lastLogged below (its Undo needs the hook's own undo).
+        // Worded in the effect on q.lastLogged below (its Undo needs the hook's own undo). A card lost in the same answer
+        // was swapped quietly: the focus goes to the card that took its place.
+        if (e.entry.lostClaim) advanced.current = true;
       } else if (e.kind === "failed") {
         toast.show(tErr(e.error === "invalid" && e.hint ? `hint.${e.hint}` : e.error));
       } else if (e.kind === "undone") {
         toast.show(e.claimed ? tOut("toast.undone") : t("lostClaim"));
       } else if (e.kind === "undoFailed") {
         toast.show(tErr(e.error));
+      } else if (e.kind === "released") {
+        // Said on the start screen itself (with a link to log a call made meanwhile); the focus goes to Start.
+        focusStart.current = true;
       } else {
-        toast.show(t("lostClaim"));
+        // A quiet swap: the next card takes the place (and the focus) of the one a teammate is working.
+        advanced.current = true;
+        toast.show(e.name ? t("lostClaimNamed", { name: e.name }) : t("lostClaim"));
       }
     },
     [t, tOut, tErr, toast],
@@ -121,6 +136,7 @@ export function QueueWorkspace({
         parts.push(tOut("toast.back", { date: format.dateTime(new Date(r.next_action_at), { weekday: "short", day: "numeric", month: "short" }) }));
       }
     }
+    if (lastLogged.lostClaim) parts.push(t("lostClaim"));
     toast.show(parts.join(" · "), { label: `${tOut("toast.undo")} (U)`, run: () => void undo() }, { duration: 10_000 });
     // Once per logged entry: undo changes with it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,12 +174,29 @@ export function QueueWorkspace({
     setFollow(noFollowUp);
   }
   useEffect(() => {
-    if (!currentId || !advanced.current) return;
+    if (!currentId) {
+      // Cards loading (after Start, or the reserve ran dry): the page title holds the focus meanwhile.
+      const active = document.activeElement;
+      if (q.phase === "working" && (!active || active === document.body || !active.isConnected)) titleRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (!advanced.current) return;
     advanced.current = false;
     const active = document.activeElement;
     if (active && active !== document.body && isTyping(active)) return;
     requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: false }));
-  }, [currentId]);
+  }, [currentId, q.phase]);
+  // Back on the start screen (Done for now, Back to start, the claims ended): Start has the focus, so ↩ starts again.
+  // The empty state: its heading has the focus (the card or the title that held it is gone or says less).
+  useEffect(() => {
+    if (q.phase === "start" && focusStart.current) {
+      focusStart.current = false;
+      startRef.current?.focus();
+    } else if (q.phase === "empty") {
+      const active = document.activeElement;
+      if (!active || !isTyping(active)) emptyRef.current?.focus();
+    }
+  }, [q.phase]);
 
   const dialled = current ? (dials[current.id] ?? defaultDial(current)) : null;
   const note = current ? (notes[current.id] ?? "") : "";
@@ -258,7 +291,20 @@ export function QueueWorkspace({
     q.skip();
   }, [current, q, announce]);
 
-  const start = useCallback((over?: Partial<{ scope: QueueScope; anyHours: boolean }>) => q.start(over), [q]);
+  // Start (or start again): the button that was pressed goes away, so the title holds the focus until the first card's
+  // heading takes it.
+  const start = useCallback(
+    (over?: Partial<{ scope: QueueScope; anyHours: boolean }>) => {
+      advanced.current = true;
+      titleRef.current?.focus({ preventScroll: true });
+      q.start(over);
+    },
+    [q],
+  );
+  const stop = useCallback(() => {
+    focusStart.current = true;
+    q.stop();
+  }, [q]);
 
   // Keys: on the start screen ↩ starts; while working, digits (by position), S, N, C, U and Cmd/Ctrl+Z; with a follow-up
   // open, ↩ confirms and Esc cancels. Quiet while typing (except ↩/Esc in the follow-up's date and time fields), during
@@ -330,13 +376,13 @@ export function QueueWorkspace({
           <ArrowLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
           {t("back")}
         </Link>
-        <h1 className="flex flex-wrap items-baseline gap-x-3 text-3xl font-bold sm:text-4xl">
+        <h1 ref={titleRef} tabIndex={-1} className="flex flex-wrap items-baseline gap-x-3 text-3xl font-bold focus-visible:outline-offset-4 sm:text-4xl">
           {t("title")}
           {q.phase !== "start" ? <span className="text-base font-normal text-muted-foreground">{scopeLabel(settings.scope)}</span> : null}
         </h1>
       </div>
       {q.phase !== "start" ? (
-        <Button variant="quiet" onClick={q.stop}>
+        <Button variant="quiet" onClick={stop}>
           {t("stop")}
         </Button>
       ) : null}
@@ -350,6 +396,23 @@ export function QueueWorkspace({
       <div className="flex min-w-0 flex-col gap-6 pt-2">
         {header}
         <section aria-labelledby="queue-counts" className="flex max-w-[720px] min-w-0 flex-col gap-5 rounded-lg bg-card p-5 sm:p-6">
+          {q.released ? (
+            <div role="status" className="flex flex-col items-start gap-1.5 rounded-md bg-muted p-4">
+              <p className="flex items-center gap-2 font-bold">
+                <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-status-amber" />
+                {t("released.title")}
+              </p>
+              <p className="max-w-[65ch] text-sm text-muted-foreground">{t("released.body")}</p>
+              {q.released.leadId && q.released.leadName ? (
+                <Link
+                  href={`/leads/${q.released.leadId}`}
+                  className="inline-flex min-h-11 items-center text-sm font-bold underline underline-offset-4 transition-transform duration-150 active:scale-[0.97] sm:min-h-8"
+                >
+                  <span dir="auto">{t("released.logCall", { lead: q.released.leadName })}</span>
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
           <p className="max-w-[65ch] text-muted-foreground">{t("intro")}</p>
           {scopes.length > 1 ? (
             <div role="group" aria-label={t("scopeLabel")} className="flex max-w-full flex-wrap gap-0.5 self-start rounded-md bg-muted p-1">
@@ -418,7 +481,7 @@ export function QueueWorkspace({
             <span>{t("skipLunch")}</span>
           </label>
           <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={() => start()} aria-keyshortcuts="Enter">
+            <Button ref={startRef} onClick={() => start()} aria-keyshortcuts="Enter">
               {t("start")}
               <Kbd aria-hidden="true" className="hidden border-transparent bg-brand-foreground/10 text-brand-foreground sm:inline-grid">
                 ↩
@@ -432,7 +495,7 @@ export function QueueWorkspace({
 
   // Nothing left: all done, outside calling hours, or no leads of one's own.
   if (q.phase === "empty") {
-    const reason = emptyReason(q.summary, settings.scope, mineCount > 0);
+    const reason = emptyReason(q.summary, settings.scope, mineCount > 0, settings.anyHours);
     const opening = reason === "outsideHours" && q.summary && now ? firstOpening(q.summary.waiting_by_zone, now, settings.skipLunch) : null;
     let body: React.ReactNode = null;
     if (reason === "outsideHours" && opening && now) {
@@ -450,7 +513,7 @@ export function QueueWorkspace({
       <div className="flex min-w-0 flex-col gap-6 pt-2">
         {header}
         <section role="status" className="flex max-w-[720px] flex-col items-start gap-3 rounded-lg bg-card p-5 sm:p-6">
-          <h2 className="text-xl font-bold">
+          <h2 ref={emptyRef} tabIndex={-1} className="text-xl font-bold focus-visible:outline-offset-4">
             {reason === "noneMine" ? t("empty.noneMineTitle") : reason === "outsideHours" ? t("empty.outsideHoursTitle") : t("empty.allDoneTitle")}
           </h2>
           {reason === "noneMine" ? <p className="text-muted-foreground">{t("empty.noneMineBody")}</p> : body}
@@ -472,7 +535,7 @@ export function QueueWorkspace({
                 {t("empty.workUnassigned")}
               </Button>
             ) : null}
-            <Button variant="quiet" onClick={q.stop}>
+            <Button variant="quiet" onClick={stop}>
               {t("empty.backToStart")}
             </Button>
           </div>
@@ -518,6 +581,7 @@ export function QueueWorkspace({
                   onDial={(d) => setDials((m) => ({ ...m, [current.id]: d }))}
                   skipLunch={settings.skipLunch}
                   me={me}
+                  profileZone={zone}
                   changedStatus={q.changedStatus}
                   claiming={q.claiming}
                 />
@@ -557,6 +621,7 @@ export function QueueWorkspace({
               onDial={(d) => setDials((m) => ({ ...m, [current.id]: d }))}
               skipLunch={settings.skipLunch}
               me={me}
+              profileZone={zone}
               changedStatus={q.changedStatus}
               claiming={q.claiming}
             />

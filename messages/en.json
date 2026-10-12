@@ -1009,7 +1009,9 @@
       "inEnglish": "Show in English",
       "inFrench": "Show in French",
       "en": "Hello, this is {me} from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
-      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead}⍽? Nous avons de nouveaux lots cette semaine⍽: puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp⍽?"
+      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead}⍽? Nous avons de nouveaux lots cette semaine⍽: puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp⍽?",
+      "enNoName": "Hello, I’m calling from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "frNoName": "Bonjour, je vous appelle de la part de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?"
     },
     "next": "Next: {name}",
     "nextPlace": "Next: {name} ({place})",
@@ -1028,6 +1030,12 @@
     "needTime": "A meeting needs a date and a time.",
     "dncChanged": "{name} was marked Do not contact meanwhile. Only 7 and Skip work on this card.",
     "lostClaim": "A teammate is on that one now. Here’s the next.",
+    "lostClaimNamed": "{name} is on that one now. Here’s the next.",
+    "released": {
+      "title": "Your leads went back to the team",
+      "body": "No key or click here for 10 minutes (or the queue was opened in another tab), so the leads on your screen were let go for your teammates.",
+      "logCall": "Log your call to {lead}"
+    },
     "notSaved": "{count, plural, one {# outcome not saved} other {# outcomes not saved}}",
     "retry": "Retry",
     "retrying": "Saving…",

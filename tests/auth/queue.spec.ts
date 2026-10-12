@@ -13,6 +13,7 @@ const password = "Work-Queue-Pass-42!";
 const run = Date.now();
 const adminEmail = `queue-admin-${run}@example.test`;
 const repEmail = `queue-rep-${run}@example.test`;
+const mateEmail = `queue-mate-${run}@example.test`;
 let adminState: Awaited<ReturnType<BrowserContext["storageState"]>>;
 let repState: Awaited<ReturnType<BrowserContext["storageState"]>>;
 const open = countryInHours(true, 30);
@@ -39,6 +40,14 @@ function makeLeads(email: string, names: string[], o: { status?: string; country
 const leadId = (email: string, name: string) => sql(`select id from public.companies where owner_id = '${userId(email)}' and name = '${name}'`);
 const outcomes = (id: string) => sql(`select coalesce(string_agg(outcome, ',' order by created_at), '') from public.activities where company_id = '${id}'`);
 const claims = (email: string) => sql(`select count(*) from private.queue_claims where user_id = '${userId(email)}' and expires_at > now()`);
+/** Who holds a live claim on this lead (a user id, or nothing). */
+const holder = (lead: string) => sql(`select coalesce((select user_id::text from private.queue_claims where company_id = '${lead}' and expires_at > now()), '')`);
+/** A teammate takes the lead in the queue (written as the superuser, past the claim guard: the teammate's own claim). */
+const takeClaim = (email: string, lead: string) =>
+  sql(`set session_replication_role = replica;
+       delete from private.queue_claims where company_id = '${lead}';
+       insert into private.queue_claims (company_id, org_id, user_id, expires_at)
+       select '${lead}', org_id, id, now() + interval '10 minutes' from public.profiles where id = '${userId(email)}'`);
 
 const card = (page: Page) => page.locator("main section[role=region]:not([data-leaving])");
 const heading = (page: Page) => card(page).locator("h2");
@@ -71,10 +80,13 @@ test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   const adminSecret = await createUser(adminEmail, password, true);
   const repSecret = await createUser(repEmail, password, true);
+  await createUser(mateEmail, password, true);
+  setRole(mateEmail, "admin");
   setRole(adminEmail, "admin");
   setRole(repEmail, "rep");
   sql(`update public.profiles set first_name = 'Inès', last_name = 'Garnier', timezone = 'Europe/Paris' where id = '${userId(adminEmail)}'`);
   sql(`update public.profiles set first_name = 'Malo', last_name = 'Perrin', timezone = 'Europe/Paris' where id = '${userId(repEmail)}'`);
+  sql(`update public.profiles set first_name = 'Henri', last_name = 'Mate', timezone = 'Europe/Paris' where id = '${userId(mateEmail)}'`);
   adminState = await fullSession(browser, adminEmail, password, adminSecret);
   repState = await fullSession(browser, repEmail, password, repSecret);
 });
@@ -333,4 +345,99 @@ test("rep_sees_only_mine, and the lead page says who is on a lead", async ({ bro
   expect(admin.errors).toEqual([]);
   await rep.context.close();
   await admin.context.close();
+});
+
+test("claims_end_cards_leave: 10 minutes without a key or a click, the cards go and the start screen says so", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail, mateEmail);
+  makeLeads(adminEmail, ["Held Alpha", "Held Bravo", "Held Charlie", "Held Delta"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  // The page's own clock, so 10 minutes can pass at once (it flows normally otherwise).
+  await page.clock.install();
+  await openQueue(page);
+  await start(page);
+  const first = await current(page);
+  const firstId = leadId(adminEmail, first);
+  // Away for 10.5 minutes: by then the database has ended the claims (no renewal without a key or a click), and a
+  // teammate takes the lead that was on screen.
+  sql(`update private.queue_claims set expires_at = now() - interval '1 second' where user_id = '${userId(adminEmail)}'`);
+  takeClaim(mateEmail, firstId);
+  await page.clock.fastForward("10:30");
+  // The card is gone (no lead on two screens); the start screen says why, with a link to log a call made meanwhile.
+  await expect(card(page)).toHaveCount(0);
+  await expect(page.getByText("Your leads went back to the team")).toBeVisible();
+  await expect(page.getByRole("link", { name: `Log your call to ${first}` })).toHaveAttribute("href", `/leads/${firstId}`);
+  // Keyboard first: Start has the focus (never the page); an outcome key does nothing here.
+  await expect(page.getByRole("button", { name: "Start" })).toBeFocused();
+  await page.keyboard.press("Digit1");
+  await page.waitForTimeout(500);
+  expect(outcomes(firstId)).toBe("");
+  // Start again (↩ on the focused Start): the teammate's lead is not served; the new card is held by this person.
+  await start(page);
+  const next = await current(page);
+  expect(next).not.toBe(first);
+  expect(holder(leadId(adminEmail, next))).toBe(userId(adminEmail));
+  expect(holder(firstId)).toBe(userId(mateEmail));
+  await expect(page.getByText("Your leads went back to the team")).toHaveCount(0);
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
+});
+
+test("lost_claim_quiet_swap: a reserve card a teammate holds now leaves the screen at once, with a toast", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail, mateEmail);
+  makeLeads(adminEmail, ["Swap Alpha", "Swap Bravo", "Swap Charlie", "Swap Delta"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  await start(page);
+  const first = await current(page);
+  // The reserve card (the other lead this person holds) goes to a teammate: its claim ended and Henri took it.
+  await expect.poll(() => claims(adminEmail)).toBe("2");
+  const reserve = sql(`select c.name from private.queue_claims q join public.companies c on c.id = q.company_id
+                        where q.user_id = '${userId(adminEmail)}' and c.name <> '${first}'`);
+  takeClaim(mateEmail, leadId(adminEmail, reserve));
+  await page.keyboard.press("Digit1");
+  // The save's answer says the database no longer holds the reserve for this person: it leaves, the next card shows
+  // and has the focus.
+  await expect(page.getByText("A teammate is on that one now. Here’s the next.")).toBeVisible();
+  await expect(heading(page)).not.toHaveText(reserve);
+  await expect(heading(page)).not.toHaveText(first);
+  await expect(heading(page)).toBeFocused();
+  const next = await current(page);
+  expect(holder(leadId(adminEmail, next))).toBe(userId(adminEmail));
+  await expect.poll(() => outcomes(leadId(adminEmail, first))).toBe("no_answer");
+  expect(outcomes(leadId(adminEmail, reserve))).toBe("");
+  expect(holder(leadId(adminEmail, reserve))).toBe(userId(mateEmail));
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
+});
+
+test("focus_never_drops_to_body: after Start, Done for now, the empty state and Back to the start", async ({ browser }) => {
+  test.setTimeout(180_000);
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Focus Alpha", "Focus Bravo"]);
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openQueue(page);
+  const onBody = () => page.evaluate(() => !document.activeElement || document.activeElement === document.body);
+  // Start with the pointer: the button goes, the first card's heading takes the focus.
+  await page.getByRole("button", { name: "Start" }).click();
+  expect(await onBody()).toBe(false);
+  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await expect(heading(page)).toBeFocused();
+  // Done for now: back on the start screen, Start has the focus.
+  await page.getByRole("button", { name: "Done for now" }).click();
+  await expect(page.getByRole("button", { name: "Start" })).toBeFocused();
+  // Nothing left to call: the empty state’s heading has the focus; Back to the start gives it to Start.
+  fresh(adminEmail);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByRole("button", { name: "Back to the start" })).toBeVisible();
+  await expect(page.locator("main h2:focus")).toHaveCount(1);
+  expect(await onBody()).toBe(false);
+  await page.getByRole("button", { name: "Back to the start" }).click();
+  await expect(page.getByRole("button", { name: "Start" })).toBeFocused();
+  expect(errors).toEqual([]);
+  await settled(page);
+  await context.close();
 });

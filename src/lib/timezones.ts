@@ -144,6 +144,15 @@ function zoneOpen(zone: string, at: Date, skipLunch: boolean): boolean {
   return true;
 }
 
+/**
+ * When today's calling hours close in a plain zone, in minutes after local midnight: 18:00, or 12:00 before lunch when
+ * the lunch switch is on for a European zone ("open until 12:00"). For a zone that is open now.
+ */
+export function openUntilMinutes(zone: string, at: Date, skipLunch = false): number {
+  if (skipLunch && zone.startsWith("Europe/") && localParts(zone, at).minutes < CALL_WINDOW.lunch[0]) return CALL_WINDOW.lunch[0];
+  return CALL_WINDOW.end;
+}
+
 /** True during calling hours on the lead's side (a span: both ends at once). */
 export function isOpen(key: string, at: Date, skipLunch = false): boolean {
   const ends = spanEnds(key);

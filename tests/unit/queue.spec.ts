@@ -1,20 +1,26 @@
 import { expect, test } from "@playwright/test";
 import {
+  CLAIM_MARGIN_MS,
+  CLAIM_MS,
   addExcluded,
   addPending,
   claimCount,
   claimNextInput,
+  claimsStale,
   emptyReason,
   firstOpening,
   queueKeyFor,
   queueOutcomeInput,
+  lostKept,
   readPending,
   releaseBody,
   releaseInput,
   removePending,
+  renewedUntil,
   startQueueInput,
   type PendingOutcome,
 } from "@/lib/queue";
+import { CALL_WINDOW, openUntilMinutes } from "@/lib/timezones";
 
 // The work queue's pure parts (Day 4 design 5.4, 7.4, 7.7): requests, keys, the not-saved store, empty states.
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -139,4 +145,46 @@ test("empty states", () => {
   expect(emptyReason(summary, "team", false)).toBe("allDone");
   expect(emptyReason({ ...summary, waiting_by_zone: [{ key: "US", count: 3 }] }, "mine", true)).toBe("outsideHours");
   expect(emptyReason(summary, "mine", true)).toBe("allDone");
+  // After "Show leads outside calling hours", the waiting zones were offered already: no second offer.
+  expect(emptyReason({ ...summary, waiting_by_zone: [{ key: "US", count: 3 }] }, "mine", true, true)).toBe("allDone");
+  expect(emptyReason({ ...summary, waiting_by_zone: [{ key: "US", count: 3 }] }, "team", true, false)).toBe("outsideHours");
+});
+
+test("a kept card the database no longer holds for the caller leaves the screen", () => {
+  // Start (no keep): nothing to check.
+  expect(lostKept(null, [])).toEqual([]);
+  expect(lostKept([], [])).toEqual([]);
+  // The reserve card is still the caller's: kept.
+  expect(lostKept([id(2)], [id(2)])).toEqual([]);
+  // Its claim ended and a teammate took it (or it simply ended): the database does not list it.
+  expect(lostKept([id(2)], [])).toEqual([id(2)]);
+  expect(lostKept([id(2), id(3)], [id(3)])).toEqual([id(2)]);
+  // An answer without the list keeps nothing.
+  expect(lostKept([id(2)], undefined)).toEqual([id(2)]);
+  expect(lostKept([id(2)], null)).toEqual([id(2)]);
+});
+
+test("cards on screen count as held until shortly before their claim ends", () => {
+  const t0 = 1_800_000_000_000;
+  const card = { claimedUntil: t0 + CLAIM_MS };
+  expect(claimsStale([], t0 + CLAIM_MS * 2)).toBe(false);
+  expect(claimsStale([card], t0)).toBe(false);
+  expect(claimsStale([card], t0 + CLAIM_MS - CLAIM_MARGIN_MS - 1)).toBe(false);
+  expect(claimsStale([card], t0 + CLAIM_MS - CLAIM_MARGIN_MS)).toBe(true);
+  expect(claimsStale([card, { claimedUntil: t0 + 60_000 }], t0 + 60_000)).toBe(true);
+  // A renewal holds the cards that were still held when it was sent, 10 minutes from then; it never revives one.
+  const sentAt = t0 + 4 * 60_000;
+  const [live, ended] = renewedUntil([card, { claimedUntil: t0 + 30_000 }], sentAt);
+  expect(live.claimedUntil).toBe(sentAt + CLAIM_MS);
+  expect(ended.claimedUntil).toBe(t0 + 30_000);
+});
+
+test("'open until': 12:00 before lunch with the lunch switch on in Europe, else 18:00", () => {
+  // Monday 12 Oct 2026: 08:00 UTC is 10:00 in Paris (summer time) and 04:00 in New York; 11:00 UTC is 13:00 in Paris.
+  const morning = new Date("2026-10-12T08:00:00Z");
+  const afternoon = new Date("2026-10-12T13:00:00Z");
+  expect(openUntilMinutes("Europe/Paris", morning, false)).toBe(CALL_WINDOW.end);
+  expect(openUntilMinutes("Europe/Paris", morning, true)).toBe(CALL_WINDOW.lunch[0]);
+  expect(openUntilMinutes("Europe/Paris", afternoon, true)).toBe(CALL_WINDOW.end);
+  expect(openUntilMinutes("America/New_York", morning, true)).toBe(CALL_WINDOW.end);
 });
