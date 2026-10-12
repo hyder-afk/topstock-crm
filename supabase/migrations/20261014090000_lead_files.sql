@@ -61,14 +61,25 @@ language sql stable set search_path = '' as $$
 $$;
 
 -- The stored object's size and type, as storage-api writes them into storage.objects.metadata (spike S4: the key names
--- live here only; if the pinned image uses others, these two lines change and nothing else).
+-- live in these two functions only; if the pinned image uses others, these two lines change and nothing else). They are
+-- immutable with no argument, so a query folds them into a constant when it is planned (the space sum below reads
+-- thousands of rows, and a function with a SET clause is never inlined).
+create function private.object_size_key() returns text
+language sql immutable set search_path = '' as $$
+  select 'size'
+$$;
+create function private.object_mime_key() returns text
+language sql immutable set search_path = '' as $$
+  select 'mimetype'
+$$;
 create function private.object_size(p_metadata jsonb) returns bigint
 language sql immutable set search_path = '' as $$
-  select case when (p_metadata ->> 'size') ~ '^[0-9]{1,12}$' then (p_metadata ->> 'size')::bigint end
+  select case when (p_metadata ->> private.object_size_key()) ~ '^[0-9]{1,12}$'
+              then (p_metadata ->> private.object_size_key())::bigint end
 $$;
 create function private.object_mime(p_metadata jsonb) returns text
 language sql immutable set search_path = '' as $$
-  select p_metadata ->> 'mimetype'
+  select p_metadata ->> private.object_mime_key()
 $$;
 
 drop policy files_rw on public.files;
@@ -100,7 +111,10 @@ grant insert (company_id, name, mime, size), update (status), delete on public.f
 create function private.org_storage_bytes(p_org uuid) returns bigint
 language plpgsql stable set search_path = '' as $$
 begin
-  return coalesce((select sum(coalesce(private.object_size(o.metadata), 0))
+  -- A JSON number is the size (storage-api writes one); anything else counts 0. Typed access, not object_size's text
+  -- match: this reads every object of the team (P11, docs/evidence/day4d/perf.md).
+  return coalesce((select sum(case when jsonb_typeof(o.metadata -> private.object_size_key()) = 'number'
+                                  then (o.metadata -> private.object_size_key())::numeric else 0 end)::bigint
                      from storage.objects o
                     where o.bucket_id = 'lead-files'
                       and o.name >= p_org::text || '/' and o.name < p_org::text || '0'), 0);   -- '0' follows '/'
@@ -565,9 +579,11 @@ $$;
 revoke all on function private.file_guard_insert(), private.file_guard_update(), private.file_guard_delete(),
   private.org_storage_bytes(uuid) from public, anon, authenticated;
 revoke all on function private.file_ext(text), private.file_name_ok(text), private.file_quota_bytes(),
-  private.object_size(jsonb), private.object_mime(jsonb), private.audit_file_access(uuid) from public, anon;
+  private.object_size_key(), private.object_mime_key(), private.object_size(jsonb), private.object_mime(jsonb),
+  private.audit_file_access(uuid) from public, anon;
 grant execute on function private.file_ext(text), private.file_name_ok(text), private.file_quota_bytes(),
-  private.object_size(jsonb), private.object_mime(jsonb), private.audit_file_access(uuid) to authenticated;
+  private.object_size_key(), private.object_mime_key(), private.object_size(jsonb), private.object_mime(jsonb),
+  private.audit_file_access(uuid) to authenticated;
 
 do $$
 declare
