@@ -110,7 +110,7 @@ export function StockToolbar({
           )}
         </div>
         {summary && summary.categories.length > 0 ? (
-          <div className="w-full min-w-0 sm:w-40">
+          <div className="w-full min-w-0 sm:w-40 xl:w-52">
             <label htmlFor={`${id}-cat`} className="sr-only">
               {t("category")}
             </label>
