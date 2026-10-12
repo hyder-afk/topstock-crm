@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { stockError } from "@/lib/inventory/errors";
 import { parseTab } from "@/lib/inventory/filters";
 import { addDays, extendedUntil } from "@/lib/sales/dates";
+import { rankByName } from "@/lib/sales/rank";
 import { cancelSaleSchema, extendHoldSchema, logRequestSchema, recordSaleSchema, requestStatusSchema, saleListParams } from "@/lib/sales/schemas";
 
 // Day 6d pure rules: the action schemas (shapes only, unknown keys refused), the hold dates, the error contract's new
@@ -80,5 +81,14 @@ test.describe("errors and tabs", () => {
     expect(parseTab("sales")).toBe("sales");
     expect(parseTab("requests")).toBe("requests");
     expect(parseTab("orders")).toBe("stock");
+  });
+});
+
+test.describe("picker ranking", () => {
+  test("names starting with the search come first, then names containing it, else the server's order", () => {
+    const rows = [{ name: "Gobelet bambou 1" }, { name: "Tablier coton 1" }, { name: "Coton bio tablier" }];
+    expect(rankByName(rows, "tablier coton").map((r) => r.name)).toEqual(["Tablier coton 1", "Gobelet bambou 1", "Coton bio tablier"]);
+    expect(rankByName(rows, "TABLIER").map((r) => r.name)).toEqual(["Tablier coton 1", "Coton bio tablier", "Gobelet bambou 1"]);
+    expect(rankByName(rows, " ")).toBe(rows);
   });
 });

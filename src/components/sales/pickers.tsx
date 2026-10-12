@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Search } from "lucide-react";
 import { searchProducts } from "@/components/sales/use-sales";
+import { rankByName } from "@/lib/sales/rank";
 import { useQtyText } from "@/components/inventory/bits";
 import type { StockRow } from "@/lib/inventory/types";
 import type { LeadRow } from "@/lib/leads";
@@ -48,10 +49,28 @@ function Combobox<T>({
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<Option<T>[] | null>(null);
+  // The text the options were loaded for: Enter typed before the results of the latest letters arrive waits for them
+  // (it never picks a row of an older search).
+  const [optionsFor, setOptionsFor] = useState<string | null>(null);
+  const pendingPick = useRef(false);
+  const textNow = useRef(value);
+  const blurTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (blurTimer.current !== null) window.clearTimeout(blurTimer.current);
+    },
+    [],
+  );
   const [active, setActive] = useState(0);
   const query = useDebounced(text, 150);
   const seq = useRef(0);
   const loadNow = useEffectEvent((q: string) => load(q));
+  const pick = (o: Option<T>) => {
+    pendingPick.current = false;
+    onPick(o.item);
+    setOpen(false);
+  };
+  const pickLater = useEffectEvent((o: Option<T>) => pick(o));
   useEffect(() => {
     if (!open) return;
     const n = ++seq.current;
@@ -59,15 +78,22 @@ function Combobox<T>({
       .then((o) => {
         if (n === seq.current) {
           setOptions(o);
+          setOptionsFor(query);
           setActive(0);
+          if (pendingPick.current && query === textNow.current) {
+            pendingPick.current = false;
+            if (o[0]) pickLater(o[0]);
+          }
         }
       })
-      .catch(() => n === seq.current && setOptions([]));
+      .catch(() => {
+        if (n === seq.current) {
+          setOptions([]);
+          setOptionsFor(query);
+        }
+      });
   }, [query, open]);
-  const pick = (o: Option<T>) => {
-    onPick(o.item);
-    setOpen(false);
-  };
+  const fresh = optionsFor === text;
   return (
     <div className="relative flex min-w-0 flex-col gap-2">
       <label htmlFor={id} className="text-sm font-bold">
@@ -89,11 +115,22 @@ function Combobox<T>({
           placeholder={placeholder}
           value={text}
           onChange={(e) => {
+            textNow.current = e.target.value;
+            pendingPick.current = false;
             setText(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+          onFocus={() => {
+            if (blurTimer.current !== null) window.clearTimeout(blurTimer.current);
+            // An empty box opens its list on typing, a click or the Down arrow, not on focus alone: a list opened by
+            // the sheet's own focus would cover the fields below it.
+            if (textNow.current.trim()) setOpen(true);
+          }}
+          onClick={() => setOpen(true)}
+          onBlur={() => {
+            // Late enough for a tap on an option to land; a focus coming back cancels it.
+            blurTimer.current = window.setTimeout(() => setOpen(false), 120);
+          }}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();
@@ -102,9 +139,10 @@ function Combobox<T>({
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setActive((a) => Math.max(a - 1, 0));
-            } else if (e.key === "Enter" && open && options?.[active]) {
+            } else if (e.key === "Enter" && open) {
               e.preventDefault();
-              pick(options[active]);
+              if (fresh && options?.[active]) pick(options[active]);
+              else if (!fresh) pendingPick.current = true;
             } else if (e.key === "Escape" && open) {
               e.stopPropagation();
               setOpen(false);
@@ -174,7 +212,7 @@ export function ProductPicker({
       emptyText={t("noProduct")}
       value=""
       autoFocus={autoFocus}
-      load={(q) => searchProducts(q).then((rows) => rows.filter((r) => !r.archived).map((r) => ({ key: r.id, item: r })))}
+      load={(q) => searchProducts(q).then((rows) => rankByName(rows.filter((r) => !r.archived), q).map((r) => ({ key: r.id, item: r })))}
       onPick={onPick}
       render={(p) => (
         <>
@@ -213,7 +251,7 @@ export function LeadPicker({ label, onPick, autoFocus }: { label: string; onPick
         const res = await fetch(`/api/leads?${p}`, { headers: { accept: "application/json" } });
         if (!res.ok) return [];
         const page = (await res.json()) as LeadPage;
-        return page.rows.slice(0, 8).map((r) => ({ key: r.id, item: r }));
+        return rankByName(page.rows, q).slice(0, 8).map((r) => ({ key: r.id, item: r }));
       }}
       onPick={onPick}
       render={(l) => (

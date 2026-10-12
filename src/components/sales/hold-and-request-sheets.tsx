@@ -8,6 +8,7 @@ import { reserveStock } from "@/app/(app)/inventory/actions";
 import { logStockRequest } from "@/app/(app)/inventory/sales/actions";
 import { QuantityField, fieldPieces, useQtyText } from "@/components/inventory/bits";
 import { requestId as newRequestId, useStockErrorText } from "@/components/inventory/stock-actions";
+import { focusField } from "@/components/sales/bits";
 import { ProductPicker } from "@/components/sales/pickers";
 import { refreshSales } from "@/components/sales/use-sales";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,7 @@ export function HoldSheet({
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent aria-describedby={`${formId}-desc`} className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto sm:w-[min(560px,calc(100%-32px))]")}>
         <form
+          id={formId}
           className="flex flex-col gap-5 p-5 sm:p-6"
           onSubmit={(e) => {
             e.preventDefault();
@@ -142,7 +144,14 @@ export function HoldSheet({
               ) : null}
             </div>
           ) : (
-            <ProductPicker label={t("product")} autoFocus onPick={(p) => setProduct(p)} />
+            <ProductPicker
+              label={t("product")}
+              autoFocus
+              onPick={(p) => {
+                setProduct(p);
+                focusField(formId, "quantity");
+              }}
+            />
           )}
           {product && product.tr_on_hand > 0 ? (
             <div role="radiogroup" aria-label={t("place")} className="grid grid-cols-2 rounded-md bg-muted p-1">
@@ -219,7 +228,7 @@ export function HoldSheet({
             </p>
           ) : null}
           <div className="flex flex-col items-stretch gap-1 sm:items-end">
-            <Button type="submit" variant="neutral" disabled={!!reason} aria-describedby={`${formId}-why`}>
+            <Button type="submit" variant="neutral" aria-disabled={!!reason || busy || undefined} aria-describedby={`${formId}-why`}>
               {busy ? t("holding") : pieces && product ? t("holdN", { pieces: qty(pieces, ppc) }) : t("hold")}
             </Button>
             <p id={`${formId}-why`} className="min-h-5 text-xs text-muted-foreground" aria-live="polite">
@@ -293,6 +302,7 @@ export function LogRequestSheet({ open, onOpenChange, lead }: { open: boolean; o
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent aria-describedby={`${formId}-desc`} className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto sm:w-[min(600px,calc(100%-32px))]")}>
         <form
+          id={formId}
           className="flex flex-col gap-5 p-5 sm:p-6"
           onSubmit={(e) => {
             e.preventDefault();
@@ -326,12 +336,26 @@ export function LogRequestSheet({ open, onOpenChange, lead }: { open: boolean; o
                     <span className="truncate font-bold" translate="no">
                       {l.product.name}
                     </span>
-                    <Button type="button" variant="link" onClick={() => setLine(l.key, { product: null })}>
+                    <Button
+                      type="button"
+                      variant="link"
+                      onClick={() => {
+                        setLine(l.key, { product: null });
+                        focusField(formId, "product", lines.filter((x) => !x.product || x.key === l.key).findIndex((x) => x.key === l.key));
+                      }}
+                    >
                       {t("changeProduct")}
                     </Button>
                   </div>
                 ) : (
-                  <ProductPicker label={t("product")} autoFocus={i === lines.length - 1} onPick={(p) => setLine(l.key, { product: p })} />
+                  <ProductPicker
+                    label={t("product")}
+                    autoFocus={i === lines.length - 1}
+                    onPick={(p) => {
+                      setLine(l.key, { product: p });
+                      focusField(formId, `quantity-${i}`);
+                    }}
+                  />
                 )}
                 <Button type="button" variant="link" className="self-start" onClick={() => setLine(l.key, { other: !l.other, product: null, unit: "piece" })}>
                   {l.other ? t("fromList") : t("notInList")}
@@ -364,7 +388,7 @@ export function LogRequestSheet({ open, onOpenChange, lead }: { open: boolean; o
             </p>
           ) : null}
           <div className="flex flex-col items-stretch gap-1 sm:items-end">
-            <Button type="submit" variant="neutral" disabled={!!reason} aria-describedby={`${formId}-why`}>
+            <Button type="submit" variant="neutral" aria-disabled={!!reason || busy || undefined} aria-describedby={`${formId}-why`}>
               {busy ? t("logging") : t("log")}
             </Button>
             <p id={`${formId}-why`} className="min-h-5 text-xs text-muted-foreground" aria-live="polite">

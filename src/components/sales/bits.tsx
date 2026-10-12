@@ -62,3 +62,12 @@ export function lineTone(l: RequestLine): "green" | "amber" | "none" {
   if (l.now.warehouse_available > 0 || l.now.transit_on_hand > 0) return "amber";
   return "none";
 }
+
+/** Moves the focus to a field of the form once React has drawn it (a picked option unmounts the search box: the focus
+ * must never fall back to the page). */
+export function focusField(formId: string, name: string, index = 0) {
+  requestAnimationFrame(() => {
+    const els = document.getElementById(formId)?.querySelectorAll<HTMLElement>(`[name="${name}"]`);
+    els?.[Math.min(index, els.length - 1)]?.focus();
+  });
+}

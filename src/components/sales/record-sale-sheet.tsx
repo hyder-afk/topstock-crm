@@ -7,6 +7,7 @@ import { Plus, X } from "lucide-react";
 import { recordSale, undoSale } from "@/app/(app)/inventory/sales/actions";
 import { QuantityField, fieldPieces, useQtyText } from "@/components/inventory/bits";
 import { requestId as newRequestId, useStockErrorText } from "@/components/inventory/stock-actions";
+import { focusField } from "@/components/sales/bits";
 import { LeadPicker, ProductPicker } from "@/components/sales/pickers";
 import { refreshSales, useLeadStock } from "@/components/sales/use-sales";
 import { Button } from "@/components/ui/button";
@@ -248,7 +249,14 @@ export function RecordSaleSheet({
               </Button>
             </div>
           ) : (
-            <LeadPicker label={t("lead")} autoFocus onPick={(l) => setChosenLead({ id: l.id, name: l.name })} />
+            <LeadPicker
+              label={t("lead")}
+              autoFocus
+              onPick={(l) => {
+                setChosenLead({ id: l.id, name: l.name });
+                focusField(formId, "product");
+              }}
+            />
           )}
 
           <div role="radiogroup" aria-label={t("type")} className="grid grid-cols-2 rounded-md bg-muted p-1">
@@ -299,7 +307,14 @@ export function RecordSaleSheet({
                         {t("available", { available: qty(p.room, p.l.product.pieces_per_carton) })}
                       </span>
                     </span>
-                    <Button type="button" variant="link" onClick={() => setLine(p.l.key, { product: null })}>
+                    <Button
+                      type="button"
+                      variant="link"
+                      onClick={() => {
+                        setLine(p.l.key, { product: null });
+                        focusField(formId, "product", i);
+                      }}
+                    >
                       {t("changeProduct")}
                     </Button>
                   </div>
@@ -309,7 +324,11 @@ export function RecordSaleSheet({
                       label={t("product")}
                       autoFocus={!!chosenLead && i === lines.length - 1}
                       heldFor={heldFor}
-                      onPick={(pr) => setLine(p.l.key, { product: pr, priceText: priceText(pr.price_max) })}
+                      onPick={(pr) => {
+                        // A price typed while the search was still loading stays.
+                        setLine(p.l.key, { product: pr, priceText: p.l.priceText.trim() ? p.l.priceText : priceText(pr.price_max) });
+                        focusField(formId, `quantity-${i}`);
+                      }}
                     />
                     {fulfilment === "direct_from_source" ? (
                       <label className="flex flex-col gap-2 text-sm font-bold">
@@ -446,7 +465,7 @@ export function RecordSaleSheet({
               <span className="font-mono text-xl tabular-nums">{format.number(total, { style: "currency", currency: "EUR" })}</span>
             </p>
             <div className="flex flex-col items-stretch gap-1 sm:items-end">
-              <Button type="submit" variant="neutral" disabled={!!reason} aria-disabled={busy || undefined} aria-describedby={`${formId}-why`}>
+              <Button type="submit" variant="neutral" aria-disabled={!!reason || busy || undefined} aria-describedby={`${formId}-why`}>
                 {busy ? t("recording") : t("record")}
                 {modKey ? <Kbd className="max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
               </Button>
