@@ -17,7 +17,8 @@
 #     KEY SHARE) while a move and a value change run: both go through at once (lock_timeout 1 s), because they lock the
 #     deal FOR NO KEY UPDATE (spike S8; 5b's log_activity with a deal relies on it). A delete would wait.
 #  9. history_chain_consistent: 3 sessions x 100 random stage changes over 20 deals (owner, manager and admin), each in
-#     its own transaction, deadlock_timeout 200 ms: no deadlock and no error other than the rules' own refusals; history
+#     its own transaction, deadlock_timeout 200 ms: no deadlock and no error other than the rules' own refusals (a
+#     conflict, or "unchanged" when a colleague just moved the deal to that stage, are results); history
 #     rows = successful moves + 20 opens; versions strictly increase; status follows the stage. With "p10" as the second
 #     argument only this case runs, timed (perf P10: p95 per move, on the perf seed's database).
 # Usage: deal_concurrency.sh "<libpq connection string>" [p10]  (after deals_attack.sql). Used by scripts/db-test.sh, the
@@ -233,8 +234,8 @@ wait $p2 || fail "history_chain_consistent: session 2 failed: $(cat "$TMP_DC/s2.
 wait $p3 || fail "history_chain_consistent: session 3 failed: $(cat "$TMP_DC/s3.out.err")"
 cat "$TMP_DC"/s?.out > "$TMP_DC/all.out"
 [ "$(wc -l < "$TMP_DC/all.out")" = "300" ] || fail "history_chain_consistent: $(wc -l < "$TMP_DC/all.out") results, expected 300"
-if grep -v -E '^(moved|conflict|same|refused:(reopen_first|rate_limited)) ' "$TMP_DC/all.out" | grep -q .; then
-  fail "history_chain_consistent: unexpected outcomes: $(grep -v -E '^(moved|conflict|same|refused:(reopen_first|rate_limited)) ' "$TMP_DC/all.out" | sort | uniq -c | tr '\n' ';')"
+if grep -v -E '^(moved|conflict|unchanged|same|refused:(reopen_first|rate_limited)) ' "$TMP_DC/all.out" | grep -q .; then
+  fail "history_chain_consistent: unexpected outcomes: $(grep -v -E '^(moved|conflict|unchanged|same|refused:(reopen_first|rate_limited)) ' "$TMP_DC/all.out" | sort | uniq -c | tr '\n' ';')"
 fi
 grep -q 'deadlock\|40P01' "$TMP_DC"/s?.out.err && fail "history_chain_consistent: a deadlock"
 moved=$(grep -c '^moved ' "$TMP_DC/all.out" || true)
