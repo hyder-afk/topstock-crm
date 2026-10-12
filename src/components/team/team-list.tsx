@@ -137,7 +137,9 @@ export function TeamList({
                 <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     {name ? (
-                      <span className="font-bold break-words">{name}</span>
+                      <span className="font-bold break-words" translate="no">
+                        {name}
+                      </span>
                     ) : (
                       <span className="font-bold text-muted-foreground">{t("noName")}</span>
                     )}
@@ -148,14 +150,15 @@ export function TeamList({
                   <p className="text-sm text-muted-foreground">
                     {name ? null : (
                       <>
-                        <span className="font-mono">{t("userId", { id: shortId(p.id) })}</span>
+                        <span className="font-mono" translate="no">
+                          {t("userId", { id: shortId(p.id) })}
+                        </span>
                         <span aria-hidden="true"> · </span>
                       </>
                     )}
                     {t("created", { date: created[p.id] ?? "" })}
                   </p>
                   {name ? null : <p className="max-w-[60ch] text-sm text-muted-foreground">{t("noNameHint")}</p>}
-                  {pending === p.id ? <p className="text-sm text-muted-foreground">{t("saving")}</p> : null}
                   {error ? (
                     <p id={`role-error-${p.id}`} className="max-w-[60ch] text-sm text-status-red">
                       {error}
@@ -273,7 +276,12 @@ function RoleMenu({
         aria-label={label}
         aria-describedby={describedBy}
         aria-disabled={busy || undefined}
-        className={cn(buttonVariants({ variant: "quiet" }), "min-h-11 min-w-36 justify-between px-4 text-sm", busy && "opacity-60")}
+        aria-busy={busy || undefined}
+        className={cn(
+          buttonVariants({ variant: "quiet" }),
+          "min-h-11 min-w-36 justify-between px-4 text-sm transition-[opacity,transform] duration-150",
+          busy && "opacity-60",
+        )}
       >
         {t(`role.${role}`)}
         <ChevronDown aria-hidden="true" strokeWidth={1.75} className="size-4 text-muted-foreground" />

@@ -121,7 +121,6 @@
     },
     "roleMenu": "Rôle de {who} : {role}",
     "rolesTitle": "Rôles",
-    "saving": "Enregistrement…",
     "confirm": {
       "title": "Changer le rôle ?",
       "body": "{who} devient {role, select, admin {admin} manager {manager} other {commercial}}.",

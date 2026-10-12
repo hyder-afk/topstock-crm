@@ -121,7 +121,6 @@
     },
     "roleMenu": "Role for {who}: {role}",
     "rolesTitle": "Roles",
-    "saving": "Saving…",
     "confirm": {
       "title": "Change role?",
       "body": "{who} becomes {role, select, admin {an admin} manager {a manager} other {a rep}}.",
