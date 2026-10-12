@@ -47,14 +47,24 @@ yet**: see "Rebase points". No screens, no server actions, no routes (5b and 5c)
 | 8 | `delete_deal` answered P0002 when the policy refused a creator-window delete of a deal opened from a call | the creator window follows the policy's undo-record condition, so the caller gets 42501 `step_up` | block 7: before, "gave P0002 (deal not found), expected 42501 (hint step_up)" |
 | 9 | evidence did not match the code | `security-review.md` threats 13, 15, 20, 22 and 30 re-written; this README's deviations 15 to 17; `mutations.md` rows 53 to 65 | (documents) |
 
+**Verifier round 2 (12 Oct, NOT READY: N1 to N4; each fix has a test that fails without it)**
+
+| # | Finding | Fix | Test (fails without the fix) |
+|---|---|---|---|
+| N1 | one multi-row INSERT (40 rows by `generate_series`, 100 by `json_populate_recordset`, the PostgREST bulk-POST shape) passed the 30-an-hour open limit: the guard counts `private.deal_opens` before each row, but the AFTER row trigger writes those rows at the end of the statement (a regression from the round 1 fix; the round 0 count of live deals saw earlier rows of the same statement) | statement-level `AFTER INSERT ... REFERENCING NEW TABLE ... FOR EACH STATEMENT` trigger `flood_deal_open` (`private.deal_open_flood`, DEFINER, revoked): after the statement's AFTER row triggers it counts the caller's open records again and refuses the whole statement over 30 (22023 `rate_limited`, as the guard). PostgreSQL 16 fires row-level AFTER triggers before statement-level AFTER triggers (docs 39.1, via Context7) | block 15 `bulk_insert_over_open_limit_refused` (31 rows, and 100 through `json_populate_recordset`: refused, no deal, open record or history row left) and `bulk_insert_at_open_limit_ok` (30 rows pass, the next single open and RPC are refused); mutations 66 (no recount: the 31-row insert "succeeded"), 67 (31 allowed), 71 (both layers) |
+| N2 | one PATCH (150 deals) made more than 120 stage changes in a minute: the history rows come from the AFTER row trigger too | statement-level `AFTER UPDATE ... REFERENCING OLD TABLE ... NEW TABLE ... FOR EACH STATEMENT` trigger `flood_deal_move` (`private.deal_move_flood`, DEFINER, revoked): when the statement changed at least one stage, it counts the caller's history rows of the last 60 s again and refuses over 120. DEFINER, so the caller's history on a deal since handed to a colleague counts too (the INVOKER guard cannot see it) | block 15 `bulk_patch_over_move_limit_refused` (150 deals: refused, nothing moved, no history), `bulk_patch_at_move_limit_ok` (120 pass, the next move refused), `stage_flood_counts_hidden_history` (120 hidden rows: the guard passes, the recount refuses), `stage_flood_ignores_other_edits` (at 121, a title PATCH passes, a move is refused); mutations 68, 69, 70, 72; block 0 checks both triggers' kind (AFTER, statement, new rows), DEFINER, `search_path` and grants |
+| N3 | four raw bidi characters (U+202A, U+202E, U+2066, U+2069) in a comment of `tests/unit/sql-bidi.spec.ts`, which scanned `.sql` files only | the comment writes the escapes as text; the spec now scans every source, test, script, message and document file (`.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`, `.sql`, `.sh`, `.py`, `.json`, `.md`, `.yml`, `.yaml`, `.css`, `.toml` under `src`, `tests`, `scripts`, `supabase`, `docs`, `messages`, `.github`, `.claude` and the root), itself included. Fake `.csv` data stays out: `tests/fixtures/import/leads-500-fake.csv` plants a right-to-left override for the import tests on purpose (Day 3b) | with the old comment line put back, the spec fails at that line ("raw bidi characters (file:line)"); restored, 3 passed. A `git ls-files` scan of every tracked file finds only the planted `.csv` line |
+| N4 | threat 22 and deviation 15 said the limits held | `security-review.md` threat 22 re-written (per statement as well as per row) and its DEFINER notes; deviation 15 and new deviation 18 below; `mutations.md` round 2 | (documents) |
+
 **Tests and tooling**
 
-- `supabase/tests/deals_attack.sql` (new, 14 blocks): catalog checks (grants, policies, RPC rules, triggers, CHECKs as the
+- `supabase/tests/deals_attack.sql` (new, 15 blocks): catalog checks (grants, policies, RPC rules, triggers, CHECKs as the
   superuser), aal1, opening, forging, the 20-pair `transition_matrix` (RPC and direct PATCH), undo, conflicts and replays,
   deleting, the `coupling_table` (9 events x 7 lead statuses x editor/non-editor) and lead undo, the board (hand counts,
   scopes, keyset stability, cursors, limits), the shared stall cases in four session time zones, get_deal, move records,
   audit, flood guards, referential link emptying, the Day 6 seam with a blocking stub (13), owner kept, undo replay and
-  opens counted after delete (14); both invariants after every block.
+  opens counted after delete (14), one statement with many rows against both flood limits (15, verifier round 2); both
+  invariants after every block.
 - `supabase/tests/deal_concurrency.sh` (new, part 1): cases 1 to 7 of design 8.2, plus case 8 (a move and a value change
   are not blocked by an entry's foreign key lock on the deal; a delete is) and case 9 (`history_chain_consistent`,
   3 sessions x 100 random moves; with `p10` it is perf P10), and case 10 (a move with a request id as the first call of
@@ -63,7 +73,7 @@ yet**: see "Rebase points". No screens, no server actions, no routes (5b and 5c)
 - `scripts/check-migration-order.sh` (new, D35) and a step in `db.yml` (pull requests, full history).
 - `scripts/db-test.sh` and `.github/workflows/db.yml` run `deals_attack.sql` and `deal_concurrency.sh`.
 - `tests/unit/sql-guc.spec.ts` (new, threat 29) and `tests/unit/sql-bidi.spec.ts` (new, verifier round 1: no raw
-  bidirectional control character in any SQL file).
+  bidirectional control character in any SQL file; since round 2 in any source, test, script, message or document file).
 - `scripts/db-mutations.py`: the day5a set (65 rows), a `Region` target (one function inside a file), the earlier sets'
   rows aimed at `audit_row` and `task_guard` re-aimed at the live Day 5a copies, and `--anchors`.
 - `supabase/tests/perf_day5.sql` (new, part 1) and `scripts/db-perf.sh` (runs it after `perf_day4.sql`, then P10).
@@ -71,21 +81,22 @@ yet**: see "Rebase points". No screens, no server actions, no routes (5b and 5c)
 
 ## Check results
 
-Code head **3c67877** (verifier round 1; the last commit that changes code or tests is acc2cf3, the mutation rows; later
-commits change `docs/` only), 12 Oct 2026, 06:30 UTC. Rows re-run in round 1 say so; the first pass ran on b8e839f.
+Code head **de33fc6** (verifier round 2: 35d9b51 the statement-level recounts and block 15, de33fc6 the bidi spec; the
+last commit that changes code or tests is 2de7f9c, the mutation rows; later commits change `docs/` only), 12 Oct 2026,
+07:25 UTC. Rows re-run in round 2 say so, then round 1's; the first pass ran on b8e839f.
 
 | Check | Result |
 |---|---|
-| `bash scripts/db-test.sh` (a copy on port 54361; the real script keeps 54329), on acc2cf3 | exit 0: rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency, outcome_attack, outcome_concurrency, **deals_attack** (14 blocks), **deal_concurrency** (cases 1 to 8 and 10; case 9: 195 moved, 23 conflicts, 15 `reopen_first`, 67 unchanged, 0 deadlocks) all pass |
-| Supabase advisors (splinter, in `db-test.sh`) | no ERROR-level findings. WARN `set_user_role` (accepted since Day 1); INFO `unindexed_foreign_keys` 3 (`activities_org_id_fkey`, `private.activity_undo` and the new `private.deal_moves` org FK: the same accepted pattern, a 10-minute table), INFO `unused_index` 3. Round 1 (acc2cf3): the same findings and counts (`private.deal_opens` has RLS, the restrictive `require_mfa` and no foreign key) |
-| `plpgsql_check` over every plpgsql function in `public` and `private` (what CI's `supabase db lint` runs), on acc2cf3 | no error, no warning (one type warning in `pipeline_board` fixed in cff33b5). It does not see finding 1's 55000 (a record field read on a path that never filled it is planned only at run time): concurrency case 10 does |
-| Mutations (`mutations.md`) | day5a **65 rows: 61 caught, 4 documented two-layer rows (20, 24, 39, 63), 0 not as listed**. First pass: rows 1 to 53 on 8bd6e4b (three on 3a21018). Round 1 on acc2cf3: rows 54 to 65 new, and 7, 11, 22 to 27, 37, 44, 46, 53 re-run (row 53, formerly listed as two layers, is caught by block 13), plus day4a 67 (the `task_guard` regex): 24 day5a rows run, 22 caught, 2 documented; day4a 67 caught. The 36 earlier rows re-aimed at the Day 5a copies of `audit_row` and `task_guard`: 36 caught (8bd6e4b). `--anchors` on acc2cf3: every anchor of all four sets found once (37 / 104 / 94 / 65) |
+| `bash scripts/db-test.sh` (a copy on port 54361; the real script keeps 54329), round 2 on 35d9b51 | exit 0, all 9 suites; **deals_attack** now 15 blocks; deal_concurrency case 9: 207 moved, 14 conflicts, 22 `reopen_first`, 57 unchanged, 0 deadlocks. Round 1 on acc2cf3: exit 0: rls_attack, import_attack, import_concurrency, activity_attack, activity_concurrency, outcome_attack, outcome_concurrency, **deals_attack** (14 blocks), **deal_concurrency** (cases 1 to 8 and 10; case 9: 195 moved, 23 conflicts, 15 `reopen_first`, 67 unchanged, 0 deadlocks) all pass |
+| Supabase advisors (splinter, in `db-test.sh`) | no ERROR-level findings. WARN `set_user_role` (accepted since Day 1); INFO `unindexed_foreign_keys` 3 (`activities_org_id_fkey`, `private.activity_undo` and the new `private.deal_moves` org FK: the same accepted pattern, a 10-minute table), INFO `unused_index` 3. Round 1 (acc2cf3): the same findings and counts (`private.deal_opens` has RLS, the restrictive `require_mfa` and no foreign key). Round 2 (35d9b51): the same findings and counts (the two new DEFINER functions are in `private`, revoked, trigger-only) |
+| `plpgsql_check` over every plpgsql function in `public` and `private` (what CI's `supabase db lint` runs), on acc2cf3; round 2 on de33fc6 (66 functions; the two flood triggers checked with their transition tables named, `newtable`/`oldtable`) | no error, no warning (one type warning in `pipeline_board` fixed in cff33b5). It does not see finding 1's 55000 (a record field read on a path that never filled it is planned only at run time): concurrency case 10 does |
+| Mutations (`mutations.md`) | day5a **73 rows: 66 caught, 7 documented two-layer rows (20, 24, 27, 28, 39, 58, 63), 0 not as listed**. Round 2 on 2de7f9c: rows 66 to 73 new, 27, 28, 58, 59, 60 re-run: 13 rows, 10 caught, 3 documented (27, 28, 58: the statement-level recount answers the same `rate_limited`; 71 to 73 remove both layers and are caught); `--anchors` all four sets found once (day5a 73). Before round 2: 65 rows: 61 caught, 4 documented two-layer rows (20, 24, 39, 63). First pass: rows 1 to 53 on 8bd6e4b (three on 3a21018). Round 1 on acc2cf3: rows 54 to 65 new, and 7, 11, 22 to 27, 37, 44, 46, 53 re-run (row 53, formerly listed as two layers, is caught by block 13), plus day4a 67 (the `task_guard` regex): 24 day5a rows run, 22 caught, 2 documented; day4a 67 caught. The 36 earlier rows re-aimed at the Day 5a copies of `audit_row` and `task_guard`: 36 caught (8bd6e4b). `--anchors` on acc2cf3: every anchor of all four sets found once (37 / 104 / 94 / 65) |
 | Perf part 1 (`perf.md`, 3 runs on b8e839f; round 1: 3 runs of acc2cf3 interleaved with 3 of b8e839f, every median within the spread, `open_deal` +6%, same budgets met and missed) | met: P1 team 18.8–20.4 ms (25), P2 all six 2.8–4.2 ms (5), P3 4.3–5.5 ms (10), P4 undo 7.7–8.0 and open 7.2–8.4 ms (10), P4b 2.1–4.4 ms (6 / 10), P6 list_lead_deals 2.3–2.6 ms (3), get_deal 4.5–5.8 ms (5, 2 of 3); **missed**: P1 mine 17.8–19.4 ms (15), P4 move/win/lose 9.9–11.7 ms (10), P10 p95 35.5–58.0 ms (20). P9: no regression traced to 5a code (medians within the run-to-run spread; import and undo within +10 to +16% against main with the same deals) |
 | `scripts/check-migration-order.sh` | ok (newest on origin/main 20261012090000; added 20261015090000); a base with a later file fails it (tested) |
-| `npm run lint` (acc2cf3) | exit 0: 0 errors, the 2 existing React Compiler warnings |
-| `npm run typecheck` (acc2cf3) | exit 0 |
-| `npm run test:unit` | 347 passed (321 before, `sql-guc.spec.ts`'s 8, `sql-bidi.spec.ts`'s 18) |
-| gitleaks (`origin/main..HEAD`, on 7ab09ce) | 24 commits scanned (incl. the design commit 5c3e4c3), no leaks found, exit 0 |
+| `npm run lint` (de33fc6; also the pre-commit hook on each round 2 commit) | exit 0: 0 errors, the 2 existing React Compiler warnings |
+| `npm run typecheck` (de33fc6) | exit 0 |
+| `npm run test:unit` (de33fc6) | 332 passed (347 in round 1: `sql-bidi.spec.ts` had one case per SQL file, 18; it now has 3, one of them scanning every source file) |
+| gitleaks (`origin/main..HEAD`, on 2de7f9c) | 28 commits scanned (incl. the design commit 5c3e4c3), no leaks found, exit 0 |
 | `npm audit --omit=dev` | found 0 vulnerabilities |
 | Semgrep | not run locally (semgrep.dev is blocked here); CI's `semgrep` job |
 | `/security-review` | not run in this step (the lead builder runs it on the PR head in the advisor loop); the threat table is re-checked in `security-review.md` |
@@ -118,6 +129,10 @@ commits change `docs/` only), 12 Oct 2026, 06:30 UTC. Rows re-run in round 1 say
 - 3c67877 Day 5a verifier round 1: move_deal on a new connection, the block check on a win that changes shipping, opens counted after delete, undo replay, owner kept, delete answer, bidi escapes
 - acc2cf3 Day 5a mutations: rows 54 to 65 for the verifier round 1 fixes; row 53 caught by the blocking-stub tests (no longer a two-layer row); lead coupling rows follow the scalar lead fields
 - 7ab09ce Day 5a evidence, verifier round 1: README fix table and deviations 15 to 17, threat rows 13/15/20/22/30, mutations (65 rows: 61 caught, 4 documented), perf re-measure interleaved with b8e839f, log rows
+- 8dcb476 Day 5a evidence: gitleaks on 7ab09ce (24 commits, no leaks) and the round 1 commits in the README
+- 35d9b51 Day 5a verifier round 2: the flood limits hold for one statement with many rows (N1, N2)
+- de33fc6 Day 5a verifier round 2: no raw bidi characters in the bidi spec, which now scans every source file (N3)
+- 2de7f9c Day 5a mutations: rows 66 to 73 for the statement-level flood recounts; rows 27, 28 and 58 are now two-layer rows
 
 ## Spikes (design 2.4; full results in `docs/log.md`, scripts in `spikes/`)
 
@@ -167,11 +182,17 @@ commits change `docs/` only), 12 Oct 2026, 06:30 UTC. Rows re-run in round 1 say
     a delete removes the deal but not its open record, so opening and deleting in turn is limited too (verifier round 1,
     threat 22). The table is new (own rows readable, written only by the revoked DEFINER history trigger); 5b's
     `log_activity` can count it before an open to skip with `rate_limited` (design 5.1, "From Interested or Book meeting" step 3), as the guard does.
+    Since verifier round 2 the count is also made once more after each statement (deviation 18), so one bulk insert
+    cannot pass it either.
 16. **G11 also on updates**: a deal's owner cannot be emptied by `update_deal` or a patch (22023 `owner_required`),
     for admins too; only the referential path (a person deleted, one trigger level down) may empty it.
 17. **The Day 6 block check also runs when a win or an undo changes the shipping** (design named a same-stage
     fulfilment change in 3.1; section 10 and threat 30 say "changing fulfilment"). A win that keeps the shipping chosen while
     open is never blocked, so a Day 6 reservation does not stop a win.
+18. **Two statement-level AFTER triggers on `deals`** (`flood_deal_open`, `flood_deal_move`; DEFINER, trigger-only,
+    revoked) recount the open and stage-change limits after each statement (verifier round 2, N1 and N2). Design 3.1
+    puts the flood guards in the guard only, which sees nothing the AFTER row triggers write in the same statement. The
+    Day 6 contract ("AFTER triggers only" on deals) is kept: both are AFTER triggers and the BEFORE set is unchanged.
 
 ## Rebase points (Day 4c and 4d are not merged)
 
@@ -208,6 +229,9 @@ merge, before 5a merges:
 7. **Process note**: twice in this step a `pkill -f`/`pgrep -f` pattern matched the agent's own shell and ended it (the
    mutation runs were then stopped by PID and restarted cleanly from a reset worktree); nothing outside this step's
    processes was affected (other workflows' ports 54371/54372 and 54329 untouched).
+8. **Speed after round 2 not re-measured**: every UPDATE and INSERT on `deals` now also captures a transition table
+   and runs one statement-level count (one range read on an index, limit 31 or 121; the move recount only when a stage
+   changed). Expected well under 1 ms per statement; `perf_day5.sql` should be re-run with the next perf pass.
 
 
 ## Docs used
@@ -216,6 +240,9 @@ merge, before 5a merges:
   BEFORE triggers; `WHEN (OLD.x IS DISTINCT FROM NEW.x)`), numeric special values (NaN sorts above every number;
   Infinity only in unconstrained numeric), row-level lock conflicts (`FOR NO KEY UPDATE` vs `FOR KEY SHARE`; which
   UPDATEs take `FOR UPDATE`). Each was then checked on PG 16.15 by spikes S6, S8 and S9.
+- Context7 `/websites/postgresql_16` (verifier round 2): trigger overview 39.1 ("row-level AFTER triggers fire at the end
+  of the statement, but before any statement-level AFTER triggers"), CREATE TRIGGER `REFERENCING NEW TABLE / OLD TABLE`
+  with `FOR EACH STATEMENT` and PL/pgSQL transition tables. Checked on PG 16 by block 15 and mutations 66 to 73.
 - Repository: the merged migrations (core schema, leads are companies, lead import, activity hardening, lead page) for
   guards, grants, lock order, `has_aal2`/`has_recent_aal2`, constant pre-checks and `audit_row`; `docs/evidence/day4b/README.md`;
   `docs/evidence/day6/design.md` section 12.1 (the Day 5 contract: status `lost` set on Closed/lost, which the guard

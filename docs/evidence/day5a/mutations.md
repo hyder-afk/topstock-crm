@@ -22,6 +22,43 @@ random run met an "unchanged" answer (a colleague had just moved the deal to tha
 accepts (8bd6e4b). Row 37 was first NOT CAUGHT on 8bd6e4b: the test compared `owner_id <> admin`, which is null, not
 true, for an empty owner; the test file now uses null-safe comparisons for every column a mutation can empty.
 
+## Verifier round 2 (12 Oct): rows 66 to 73 added, the flood rows re-run, on 2de7f9c
+
+The verifier's second NOT READY report (N1, N2) showed that one statement with many rows passed both flood limits: the
+guard counts before each row, but the open records and history rows are written by the AFTER row trigger at the end of
+the statement. Two statement-level AFTER triggers now count again after the statement (`private.deal_open_flood`,
+`private.deal_move_flood`; block 15 of `deals_attack.sql`). Rows 66 to 73 are new. Rows 27, 28 and 58 (the guard's own
+counts) are now **documented two-layer rows**: with the guard's count removed, the statement-level recount refuses the
+same statement with the same 22023 `rate_limited`, so no test can tell; rows 71, 72 and 73 remove both layers and are
+caught. Rows 59 and 60 (the open record and its grants) were re-run because the recount reads the same table. Throwaway
+worktree `scratchpad/wt-5a-mut2` on **2de7f9c** (code head 35d9b51), its `db-test.sh` copy on port 54362; the baseline
+run passed first; 07:04 to 07:19 UTC; the worktree was removed afterwards. Every caught row's first failure was read: it
+is the protection's own test. Row 68's first failure is block 15's hidden-history move (the first move of the block); a
+separate run of row 68 with that one check taken out failed at `bulk_patch_over_move_limit_refused` (the 150-deal
+PATCH "succeeded"), so the bulk test catches it on its own. `--anchors` on 2de7f9c: every anchor of the four sets found
+once (day3b 37, day4a 104, day4b 94, day5a 73).
+
+### day5a (13 rows run: 10 caught, 3 documented two-layer rows not caught, 0 not as listed)
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 27 | Guard: no open flood guard (since verifier round 2 the statement-level recount answers the same rate_limited) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 28 | Guard: no stage-change flood guard (since verifier round 2 the statement-level recount answers the same rate_limited) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 58 | Guard: the open flood guard counts live deals only (since verifier round 2 the statement-level recount counts the open records) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 59 | History trigger: no open record written | caught | FAIL: an open should remove its author's open records older than an hour |
+| 60 | Open records: insert granted to clients | caught | FAIL: private.deal_opens protections |
+| 66 | Open flood: no statement-level recount (a bulk insert passes the 30-an-hour limit) | caught | FAIL: "insert into public.deals (company_id) select '7c45703f-9233-4a30-85b8-19ed1b89cccc'::uuid from generate_series(1, 31)" succeeded, exp |
+| 67 | Open flood: the statement-level recount allows 31 an hour | caught | FAIL: "insert into public.deals (company_id) select '98dc376d-4278-4b1c-86fe-6cff76161110'::uuid from generate_series(1, 31)" succeeded, exp |
+| 68 | Stage flood: no statement-level recount (a bulk PATCH passes the 120-a-minute limit) | caught | FAIL: "update public.deals set stage_id = private.stage_id('qualified') where id = '26e82057-7bec-43c8-843e-9398dd7bd699'" succeeded, expect |
+| 69 | Stage flood: the statement-level recount is INVOKER (history on a deal handed on is not counted) | caught | FAIL: flood trigger function private.deal_move_flood() must be DEFINER, search_path empty, revoked from everyone |
+| 70 | Stage flood: the statement-level recount runs for edits that change no stage | caught | too many stage changes in a minute |
+| 71 | Open flood: no guard and no statement-level recount (both layers of row 27) | caught | FAIL: "select public.open_deal('b3dd9056-33f7-4ce4-b784-2cbbea2f6009')" succeeded, expected 22023 |
+| 72 | Stage flood: no guard and no statement-level recount (both layers of row 28) | caught | FAIL: "update public.deals set stage_id = private.stage_id('qualified') where id = '08119296-a6ed-42de-8a1a-e91788b30515'" succeeded, expect |
+| 73 | Open flood: the guard counts live deals only, and no statement-level recount (both layers of row 58) | caught | FAIL: "select public.open_deal('813aabb2-3aae-4696-b6e4-23e93f58c0c6')" succeeded, expected 22023 |
+
+Whole day5a set after round 2: **73 rows: 66 caught, 7 documented two-layer rows (20, 24, 27, 28, 39, 58, 63), 0 not as
+listed**.
+
 ## Verifier round 1 (12 Oct): rows 54 to 65 added, the rows whose code changed re-run, on acc2cf3
 
 The verifier's NOT READY report (findings 1 to 8) changed `move_deal` (lead fields in scalars, an Undo's own move record),
@@ -75,7 +112,7 @@ alone changes nothing a test can see (documented: two layers); row 64 removes bo
 documented two-layer row before this round ("the stub returns null, so no test can tell"); the verifier showed a
 superuser can swap the stub inside a rolled-back block, which block 13 now does at every call site, so 53 is caught.
 
-## day5a (first run, 53 rows): 49 caught, 4 documented two-layer rows, 0 not as listed (row 53 caught since round 1: 50 caught, 3 documented; with rows 54 to 65 the set is 65 rows: 61 caught, 4 documented two-layer rows (20, 24, 39, 63), 0 not as listed)
+## day5a (first run, 53 rows): 49 caught, 4 documented two-layer rows, 0 not as listed (row 53 caught since round 1: 50 caught, 3 documented; with rows 54 to 65 the set is 65 rows: 61 caught, 4 documented two-layer rows (20, 24, 39, 63), 0 not as listed; with rows 66 to 73 (round 2) 73 rows: 66 caught, 7 documented (20, 24, 27, 28, 39, 58, 63))
 
 Rows 1 to 33 follow the design's list (8.3: its rows 20 and 23 split into one row per layer, so the design's 21 to 31 are
 rows 22, 23 and 26 to 33 here); rows 34 onward are the builder's additions.
@@ -136,7 +173,7 @@ rows 22, 23 and 26 to 33 here); rows 34 onward are the builder's additions.
 | 52 | Guard: the value bound not checked on a same-stage change (the CHECK answers with the row) | caught | 8bd6e4b | FAIL: "update public.deals set value = 'NaN' where id = 'cf7bda53-483c-449e-9ba4-91514cf0624e'" gave 23514 (hint "", new row for relation "d |
 | 53 | Undo: a win undone without the Day 6 block check | **NOT CAUGHT** on 8bd6e4b (then listed as two layers); **caught** on acc2cf3 (round 1: block 13's blocking stub) | 8bd6e4b, acc2cf3 | 8bd6e4b: advisors: no ERROR-level findings; acc2cf3: see the round 1 table |
 
-**The documented two-layer rows** (20, 24, 39 and, since round 1, 63; 53 was one until round 1)
+**The documented two-layer rows** (20, 24, 39; since round 1, 63; since round 2, 27, 28 and 58; 53 was one until round 1)
 
 - **20** `deals_value_bounds` without its NaN term: the bound `value <= 100000000` refuses NaN too (NaN sorts above
   every number, spike S6). Row 21 removes both and the superuser CHECK probe in block 0 catches it.
@@ -150,6 +187,10 @@ rows 22, 23 and 26 to 33 here); rows 34 onward are the builder's additions.
   is caught since round 1.
 - **63** `update_deal` without its owner pre-check: the guard answers the same 22023 `owner_required`. Row 64 (both) is
   caught.
+- **27, 28, 58** (since round 2) the guard's open and stage-change counts (removed, or for 58 counting live deals): the
+  statement-level recount after the statement refuses the same statement with the same 22023 `rate_limited`, and the
+  statement is rolled back either way. Rows 71, 72 and 73 remove both layers and are caught. The guard's count stays as
+  the early refusal (before any row is written); the recount is the one that holds for multi-row statements.
 
 ## Earlier sets: the rows re-aimed at the Day 5a copies of `audit_row` and `task_guard` (8bd6e4b)
 

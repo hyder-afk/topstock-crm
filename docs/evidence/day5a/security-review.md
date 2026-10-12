@@ -7,7 +7,7 @@ Scope: `supabase/migrations/20261015090000_deals_pipeline.sql` and its tests (`s
 
 How to read the table: "Test" names the case in `deals_attack.sql` (block number in brackets) or `deal_concurrency.sh`
 (case number); "Mutation" names the rows of the day5a set in `mutations.md` that remove the control and are caught by
-that test. Every row was re-checked on the final head (acc2cf3, after verifier round 1) by reading the control in the migration and running the test
+that test. Every row was re-checked on the final head (acc2cf3, after verifier round 1; threat 22 again after verifier round 2, on 2de7f9c) by reading the control in the migration and running the test
 (`bash scripts/db-test.sh`, all suites green; see README "Check results").
 
 ## Threat rows for 5a (design section 6), re-checked
@@ -33,7 +33,7 @@ that test. Every row was re-checked on the final head (acc2cf3, after verifier r
 | 19 | Lead side effects on a lead the caller cannot change; DNC or Disqualified overwritten | lead `FOR UPDATE` gives no row to non-editors (S7); closed coupling table; compare-and-restore on undo | `coupling_table` (9 events x 7 statuses x editor/non-editor, incl. `win_never_overrides_dnc`, `coupling_never_touches_disqualified`, `non_editor_move_no_lead_change`) [8]; `undo_restores_lead_only_if_unchanged` [8b] | 23, 24 (documented two-layer), 25, 26, 48 |
 | 20 | Owner reassigned by a rep or outside the org; ownerless deals | `enforce_org_and_owner`; guard default on insert; on update the guard refuses an empty owner (22023 `owner_required`) except on the referential path (a person deleted), and `update_deal` pre-checks it (verifier round 1) | `rep_cannot_reassign_deal` [2], [3]; `owner_must_be_org_member`, `owner_defaults_to_creator` [2]; `deal_owner_never_emptied` (admin, RPC and direct patch) [14] | 37, 62, 63 (documented two-layer), 64 |
 | 21 | XSS, bidi or control characters; values in logs | safe-character CHECKs (C0, DEL, C1, bidi) and constant pre-checks; planted markers never in the message or detail | `deal_title_bidi_refused`, `deal_bad_value_constant_error` and the lost note marker [2], [4], [6] | (the CHECK backstop is checked as superuser [0]) |
-| 22 | Flooding history, audit and deals | 30 opens an hour per person, counted from `private.deal_opens` (one row per open, written by the DEFINER history trigger, not removed by a deal delete: before verifier round 1 the guard counted live deals, so opening and deleting in turn was never limited); 120 stage changes a minute; page limits 1 to 100 | `open_deal_rate_limited` (with records older than an hour pruned), `move_rate_limited` [11]; `open_deal_rate_counts_deleted_opens` (29 open+delete cycles, then the RPC and a direct insert refused), `deal_opens_own_rows_only` [14]; `private.deal_opens` protections [0]; `limit_bounds_22023` [9] | 27, 28, 58, 59, 60 |
+| 22 | Flooding history, audit and deals | 30 opens an hour and 120 stage changes a minute per person, **per statement as well as per row**: the guard counts before each row (opens from `private.deal_opens`, one row per open written by the DEFINER history trigger and not removed by a deal delete; stage changes from the history actor index), and since verifier round 2 two statement-level AFTER triggers (`flood_deal_open`, `flood_deal_move`; DEFINER, revoked, `search_path = ''`) count again after the statement's AFTER row triggers and refuse the whole statement over the limit. Before round 2 a multi-row INSERT (a PostgREST bulk POST) or a filtered PATCH passed both limits, because the open records and history rows are written at the end of the statement (N1, N2); before round 1 opening and deleting in turn was never limited. The move recount runs only when the statement changed a stage, and counts the caller's history on deals the caller can no longer see. Page limits 1 to 100 | `open_deal_rate_limited` (with records older than an hour pruned), `move_rate_limited` [11]; `open_deal_rate_counts_deleted_opens`, `deal_opens_own_rows_only` [14]; `bulk_insert_over_open_limit_refused` (31 rows, and 100 rows through `json_populate_recordset`, the PostgREST bulk shape: refused whole, nothing left), `bulk_insert_at_open_limit_ok` (30 rows, then the next open refused), `bulk_patch_over_move_limit_refused` (150 deals in one PATCH: refused whole), `bulk_patch_at_move_limit_ok` (120, then the next move refused), `stage_flood_counts_hidden_history`, `stage_flood_ignores_other_edits` [15]; `private.deal_opens` protections and the flood triggers' kind, DEFINER and grants [0]; `limit_bounds_22023` [9] | 59, 60, 66 to 73 (27, 28 and 58 are now two-layer rows: the recount answers the same `rate_limited`; 71 to 73 remove both layers) |
 | 25 | Direct REST writes to history, stages or forbidden columns; private tables exposed | grants; `private` has no endpoint | the grant checks [0], [3]. The REST probes (`history_table_write_refused`, `deal_patch_status_column_denied`, `private_deal_moves_not_exposed`) are e2e in 5b (`day5-security.spec.ts`) | 12 |
 | 26 | Noisy or leaky audit | deals audited; `version` not diffed; `lost_note` masked (lengths only; `lost_note_len` on insert and delete); history not audited | `audit_deal_insert_update_delete_rows`, `audit_version_not_diffed`, `audit_lost_note_masked` [11], [7] | 49, 50 |
 | 27 | Deals on a Do not contact lead | guard `dnc` on insert | `open_deal_on_dnc_refused` (RPC and direct) [2] | 35 |
@@ -51,13 +51,20 @@ proves the lock that makes it safe: concurrency case 8 and mutation 22), 17 (act
   from OLD/NEW and `auth.uid()`; reads stage keys and the undo candidate without RLS, which is what the guard already
   decided under RLS: spike S9 showed both get the same candidate). On insert it also writes the caller's open record in
   `private.deal_opens` and prunes the caller's records older than an hour (nothing for maintenance sessions).
+  Since verifier round 2 also `private.deal_open_flood()` and `private.deal_move_flood()` (trigger-only, revoked from
+  everyone, `search_path = ''`, statement-level AFTER triggers with transition tables). They read only counts of the
+  caller's own rows (`auth.uid()`) and write nothing; DEFINER so a history row on a deal since handed to a colleague
+  still counts (an INVOKER count would miss it). They raise the same constant 22023 `rate_limited` as the guard.
 - **Record variables (verifier round 1):** `move_deal` read `v_lead.next_action_at` from a record filled only when the
   move touched the lead; PL/pgSQL plans the statement on its first run in a connection and failed with 55000 there. The
   lead's fields are now scalars. Every other `record` variable in the migration is filled before any read on every path
   (`open_deal.v_lead` raises when the lock returns nothing; `deal_guard.v_hist` only on the undo path that fills it;
   `v_deal` and `s` always), checked by hand.
-- **Source text:** no raw bidirectional control character in any SQL file (`tests/unit/sql-bidi.spec.ts`); the regexes
-  write them as `\u202A-\u202E\u2066-\u2069`, as the merged migrations do.
+- **Source text:** no raw bidirectional control character in any source, test, script, message or document file
+  (`tests/unit/sql-bidi.spec.ts`; SQL only until verifier round 2, when the spec's own comment held four raw characters,
+  N3); the regexes write them as `\u202A-\u202E\u2066-\u2069`, as the merged migrations do. The fake import sample
+  `tests/fixtures/import/leads-500-fake.csv` keeps its planted right-to-left override on purpose (import tests; `.csv`
+  is outside the scan).
 - **No dynamic SQL:** every new function body was checked in `pg_proc` for `EXECUTE` and `format(` (block 0).
 - **Error messages:** every raise in the guard and the RPCs is a constant English sentence plus a hint; no value is
   concatenated except the Day 6 seam's code in the hint (`blocked_<code>`), a server-chosen word.
