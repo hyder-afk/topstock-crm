@@ -35,9 +35,11 @@ export function PipelineSkeleton({ label }: { label: string }) {
               <div className={`h-4 w-28 ${bar}`} />
               <div className={`h-3 w-20 ${bar}`} />
             </div>
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-[120px] rounded-lg border border-border bg-card" />
-            ))}
+            <div className="flex flex-col gap-2 overflow-hidden md:h-[calc(100dvh-var(--board-top,300px)-152px)] md:min-h-[360px]">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-[120px] shrink-0 rounded-lg border border-border bg-card" />
+              ))}
+            </div>
           </div>
         ))}
       </div>

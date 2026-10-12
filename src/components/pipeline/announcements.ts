@@ -10,12 +10,22 @@ export function buildAnnouncements(
   facts: (id: string) => CardFacts | null,
   stageName: (id: string) => string,
 ): Announcements {
+  // The target last announced. dnd-kit reports the card's own column as "over" a frame after pick-up; saying
+  // "Over Lead." then would cut off "Picked up ..." in the live region, so a target is only announced when it changes.
+  let last: string | null = null;
   return {
     onDragStart: ({ active }) => {
+      const stage = active.data?.current?.stage;
+      last = typeof stage === "string" ? stage : null;
       const f = facts(String(active.id));
       return f ? t("start", { lead: f.lead, value: f.value, stage: f.stage }) : undefined;
     },
-    onDragOver: ({ over }) => (over ? t("over", { stage: stageName(String(over.id)) }) : t("overNone")),
+    onDragOver: ({ over }) => {
+      const id = over ? String(over.id) : null;
+      if (id === last) return undefined;
+      last = id;
+      return id ? t("over", { stage: stageName(id) }) : t("overNone");
+    },
     onDragEnd: ({ active, over }) => {
       const f = facts(String(active.id));
       if (!f) return undefined;

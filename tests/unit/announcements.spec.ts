@@ -14,7 +14,7 @@ for (const locale of ["en", "fr"] as const) {
     const t = createTranslator({ locale, messages, namespace: "Pipeline.announce" }) as unknown as (k: string, v?: Record<string, string>) => string;
     const stages = createTranslator({ locale, messages, namespace: "Stages" }) as unknown as (k: string) => string;
     const a = buildAnnouncements(t, (id) => (id === "d1" ? { lead: "Maison Verdane", value: "12 400 €", stage: stages("qualified") } : null), (id) => stages(id));
-    const active = { id: "d1" } as unknown as Active;
+    const active = { id: "d1", data: { current: { stage: "qualified" } } } as unknown as Active;
     const over = (id: string) => ({ id }) as unknown as Over;
     const lines = [
       a.onDragStart({ active }),
@@ -42,5 +42,12 @@ for (const locale of ["en", "fr"] as const) {
       expect(lines[3]).toBe("Maison Verdane déplacée vers Négociation. Appuyez sur U pour annuler.");
     }
     expect(a.onDragStart({ active: { id: "missing" } as unknown as Active })).toBeUndefined();
+    // The card's own column, reported just after pick-up, is not announced (it would cut off the pick-up line);
+    // the same target twice is said once; coming back to the own column after leaving it is said.
+    a.onDragStart({ active });
+    expect(a.onDragOver({ active, over: over("qualified") })).toBeUndefined();
+    expect(a.onDragOver({ active, over: over("negotiations") })).toBe(t("over", { stage: stages("negotiations") }));
+    expect(a.onDragOver({ active, over: over("negotiations") })).toBeUndefined();
+    expect(a.onDragOver({ active, over: over("qualified") })).toBe(t("over", { stage: stages("qualified") }));
   });
 }

@@ -12,7 +12,7 @@ export const ContextMenuSub = Menu.Sub;
 export const ContextMenuGroup = Menu.Group;
 
 const panel =
-  "floating-content z-40 max-h-[min(70vh,420px)] min-w-[220px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none";
+  "floating-content z-[60] max-h-[min(70vh,420px)] min-w-[220px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none";
 const item =
   "relative flex min-h-11 cursor-pointer select-none items-center gap-3 rounded-md px-3 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-muted sm:min-h-9";
 

@@ -29,7 +29,9 @@ export function makeColumnJump(isPhone: () => boolean): KeyboardCoordinateGetter
   return (event, { context, currentCoordinates }) => {
     const stage = context.active?.data.current?.stage as string | undefined;
     const current = context.over ? String(context.over.id) : (stage ?? "lead");
-    const available = [...context.droppableRects.keys()].map(String);
+    // The registered targets, not droppableRects: the rects are measured a frame after pick-up, so an arrow pressed
+    // straight away would otherwise find no targets and the card would not move.
+    const available = context.droppableContainers.getEnabled().map((c) => String(c.id));
     const target = jumpTarget(event.code, current, isPhone(), available);
     if (!target) {
       // Up and down on a wide board, and the ends: the card stays where it is (no 10 px nudge).

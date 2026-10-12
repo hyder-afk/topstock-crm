@@ -19,7 +19,7 @@ export function DropdownMenuContent({ className, align = "end", sideOffset = 8, 
         sideOffset={sideOffset}
         collisionPadding={16}
         className={cn(
-          "floating-content z-40 max-h-[min(70vh,420px)] min-w-[220px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none",
+          "floating-content z-[60] max-h-[min(70vh,420px)] min-w-[220px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none",
           className,
         )}
         {...props}
@@ -80,7 +80,7 @@ export function DropdownMenuSubContent({ className, ...props }: React.ComponentP
       <Menu.SubContent
         collisionPadding={16}
         className={cn(
-          "floating-content z-40 max-h-[min(70vh,420px)] min-w-[200px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none",
+          "floating-content z-[60] max-h-[min(70vh,420px)] min-w-[200px] overflow-y-auto rounded-lg border border-border bg-card p-1.5 text-foreground shadow-[0_16px_40px_rgb(14_14_16/0.18)] focus:outline-none",
           className,
         )}
         {...props}
