@@ -176,6 +176,8 @@ export type LeadDetail = {
   open_task_count?: number;
   next_task?: LeadTaskSummary | null;
   import?: { id: string; filename: string; created_at: string } | null;
+  // Day 4c: a teammate working this lead in the queue right now (never the viewer).
+  worked_by?: { first_name: string | null; until: string } | null;
 };
 
 export type TeamMember = { id: string; first_name: string; last_name: string; role: "admin" | "manager" | "rep" };

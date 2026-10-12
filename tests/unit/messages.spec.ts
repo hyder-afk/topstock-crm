@@ -25,6 +25,10 @@ const namespaces = [
   "Errors",
   "Leads",
   "Shortcuts",
+  "Queue",
+  "Tasks",
+  "Profile",
+  "Palette",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {
@@ -105,6 +109,26 @@ test.describe("import and lead page messages", () => {
     expect(tf("Outcomes.taskTitle.rightNumber", { lead: "Maison Verdane" })).toBe("Trouver le bon numéro de Maison Verdane");
     expect(tf("LeadPage.position", { index: "3", total: "1 204" })).toBe("3 sur 1 204");
     expect(tf("Leads.until.title")).toBe("Jusqu’à quand\u202f?");
+  });
+
+  test("queue and tasks counts (Day 4c)", () => {
+    const tf = say(fr, "fr");
+    const te = say(en, "en");
+    expect(te("Queue.notSaved", { count: 1 })).toBe("1 outcome not saved");
+    expect(te("Queue.notSaved", { count: 2 })).toBe("2 outcomes not saved");
+    expect(tf("Queue.notSaved", { count: 1 })).toBe("1 résultat non enregistré");
+    expect(tf("Queue.notSaved", { count: 3 })).toBe("3 résultats non enregistrés");
+    expect(te("Queue.reason.retryNth", { count: 2 })).toBe("Retry · 2nd try");
+    expect(te("Queue.reason.retryNth", { count: 3 })).toBe("Retry · 3rd try");
+    expect(te("Queue.reason.retryNth", { count: 11 })).toBe("Retry · 11th try");
+    expect(tf("Queue.reason.retryNth", { count: 1 })).toBe("Nouvel essai · 1er essai");
+    expect(tf("Queue.reason.retryNth", { count: 3 })).toBe("Nouvel essai · 3e essai");
+    expect(te("Queue.stats", { calls: 1, talks: 0 })).toBe("This session: 1 call · 0 talks");
+    expect(tf("Queue.stats", { calls: 23, talks: 4 })).toBe("Cette session\u202f: 23 appels · 4 échanges");
+    expect(te("Queue.empty.noNumber", { count: 1 })).toBe("1 lead has no number.");
+    expect(tf("Queue.empty.noNumber", { count: 1203 })).toContain("prospects n’ont pas de numéro.");
+    expect(tf("Tasks.deleteConfirm.title")).toBe("Supprimer cette tâche\u202f?");
+    expect(te("LeadPage.workedBy", { name: "Henri", time: "10:24" })).toBe("Henri is on this lead in the queue (until 10:24)");
   });
 
   test("every call outcome, kind of entry and database hint has words in both languages", () => {

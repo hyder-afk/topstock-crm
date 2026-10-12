@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { SettingsBar } from "@/components/settings-bar";
 import { ProfileForm } from "@/components/shell/profile-form";
+import { TimezoneForm } from "@/components/shell/timezone-form";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/auth";
 import { publicEnv } from "@/lib/env";
@@ -31,9 +32,12 @@ export default async function MorePage() {
     getTranslations("Nav"),
     getTranslations("Profile"),
     databaseReachable(),
-    supabase.from("profiles").select("first_name, last_name").eq("id", claims.sub).maybeSingle(),
+    supabase.from("profiles").select("first_name, last_name, timezone").eq("id", claims.sub).maybeSingle(),
   ]);
   const phoneOnly = sections.filter((s) => !s.phone);
+  // The zones this server knows (the same list the time zone action accepts), drawn on the server so the browser's own
+  // list (which can differ) never changes the options after loading.
+  const zones = ["UTC", ...(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["Europe/Paris"])];
   return (
     <div className="flex flex-col gap-8 pt-4">
       <h1 className="text-3xl font-bold sm:text-4xl">{nav("more")}</h1>
@@ -71,6 +75,15 @@ export default async function MorePage() {
             lastName={profile.data?.last_name ?? ""}
             unavailable={!!profile.error}
           />
+        </div>
+      </section>
+
+      <section id="timezone" aria-labelledby="more-timezone" className="flex scroll-mt-6 flex-col gap-3">
+        <h2 id="more-timezone" className="text-lg font-bold">
+          {profileT("timezoneTitle")}
+        </h2>
+        <div className="rounded-lg bg-card p-4 sm:p-6">
+          <TimezoneForm current={profile.data?.timezone || "Europe/Paris"} zones={zones} unavailable={!!profile.error} />
         </div>
       </section>
 

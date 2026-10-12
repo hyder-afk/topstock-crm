@@ -149,7 +149,8 @@
     "help": "Help and account",
     "shortcuts": "Keyboard shortcuts",
     "signOut": "Sign out",
-    "importLeads": "Import leads"
+    "importLeads": "Import leads",
+    "startQueue": "Start work queue"
   },
   "Shortcuts": {
     "title": "Keyboard shortcuts",
@@ -165,7 +166,22 @@
     "openLead": "Open the previewed lead as a page",
     "outcomeKeys": "Pick a call outcome (call panel)",
     "undoLast": "Undo the last call or entry (2 minutes)",
-    "saveEntry": "Save to timeline"
+    "saveEntry": "Save to timeline",
+    "goQueue": "Start the work queue",
+    "queue": "Work queue",
+    "queueOutcomes": "Log an outcome",
+    "queueSkip": "Skip this lead",
+    "queueNote": "Write a note",
+    "queueCall": "Call the main number",
+    "queueUndo": "Undo the last outcome",
+    "tasks": "Tasks",
+    "tasksNew": "New task",
+    "tasksMove": "Next or previous task",
+    "tasksDone": "Done or not done",
+    "tasksEdit": "Edit the task",
+    "tasksDismiss": "Dismiss the task",
+    "tasksDelete": "Delete the task",
+    "tasksOpen": "Open the task’s lead"
   },
   "Profile": {
     "title": "Your name",
@@ -178,7 +194,14 @@
       "invalid": "Names can be up to 80 characters.",
       "unavailable": "Couldn’t save just now. Try again.",
       "load": "Couldn’t load your name just now. Reload the page to try again."
-    }
+    },
+    "timezoneTitle": "Your time zone",
+    "timezone": "Time zone",
+    "timezoneHelp": "“Today” on your tasks and the queue’s follow-ups follow this zone.",
+    "timezoneDevice": "Use this device’s zone ({zone})",
+    "timezoneSave": "Save time zone",
+    "timezoneSaved": "Time zone saved.",
+    "timezoneError": "That time zone couldn’t be saved. Pick one from the list."
   },
   "Leads": {
     "title": "Leads",
@@ -348,7 +371,8 @@
       "pick": "Pick a date",
       "cancel": "Cancel",
       "confirm": "Set Cool off"
-    }
+    },
+    "workQueue": "Work queue"
   },
   "StepUp": {
     "title": "Confirm it’s you",
@@ -363,7 +387,8 @@
       "rateLimited": "Too many tries. Wait a minute, then try again.",
       "unavailable": "We couldn’t check the code just now. Try again in a moment."
     },
-    "bodyDelete": "Deleting an entry can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes."
+    "bodyDelete": "Deleting an entry can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
+    "bodyDeleteTask": "Deleting a task can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes."
   },
   "Import": {
     "title": "Import leads",
@@ -730,7 +755,8 @@
       "nextSaved": "Next call saved.",
       "nextCleared": "Next call cleared."
     },
-    "noNextStepDnc": "No next step."
+    "noNextStepDnc": "No next step.",
+    "workedBy": "{name} is on this lead in the queue (until {time})"
   },
   "QuickActions": {
     "call": "Call",
@@ -924,7 +950,196 @@
       "state": "That task is already done or dismissed.",
       "task_kind": "Unknown kind of task.",
       "task_due": "A task has a date or a time, not both; a meeting needs a time.",
-      "lead_has_files": "Delete this lead’s files first."
+      "lead_has_files": "Delete this lead’s files first.",
+      "bad_bucket": "Reload the page and try again.",
+      "timezone": "That time zone isn’t known. Pick one from the list."
     }
+  },
+  "Queue": {
+    "title": "Work queue",
+    "intro": "One lead at a time, best first: follow-ups due, then Negotiation, Warm, retries and first calls. Only leads in their calling hours (Monday to Friday, 09:00 to 18:00 their time).",
+    "back": "Leads",
+    "scopeLabel": "Whose leads",
+    "scope": {
+      "mine": "Mine",
+      "mineUnassigned": "Mine + unassigned",
+      "team": "Team"
+    },
+    "countsLabel": "Right now",
+    "callableNow": "{count, plural, one {<n>#</n> to call now} other {<n>#</n> to call now}}",
+    "followUpsDue": "{count, plural, one {<n>#</n> follow-up due} other {<n>#</n> follow-ups due}}",
+    "laterToday": "{count, plural, one {<n>#</n> more later today} other {<n>#</n> more later today}}",
+    "noNumber": "{count, plural, one {<n>#</n> lead with no number} other {<n>#</n> leads with no number}}",
+    "claimedByOthers": "{count, plural, one {<n>#</n> being called by a teammate} other {<n>#</n> being called by teammates}}",
+    "summaryError": "Couldn’t load the counts.",
+    "skipLunch": "Skip lunch (12:00–14:00) for European leads",
+    "showOutside": "Show leads outside calling hours",
+    "start": "Start",
+    "starting": "Starting…",
+    "stop": "Done for now",
+    "regionLabel": "Lead to call: {name}",
+    "reason": {
+      "follow_up": "Follow-up due",
+      "followUpAt": "Follow-up due {time}",
+      "negotiation": "Negotiation",
+      "warm": "Warm lead",
+      "retry": "Retry",
+      "retryNth": "Retry · {count, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} try",
+      "returning": "Back from Cool off",
+      "first_call": "First call"
+    },
+    "theirTime": "{time} their time",
+    "openUntil": "open until {time}",
+    "outsideCard": "Outside calling hours · {time} their time",
+    "spanTime": "{from}–{to} their time",
+    "noCountry": "Local time unknown",
+    "call": "Call",
+    "callNumber": "Call {number}",
+    "wrongMark": "Marked wrong",
+    "noPhoneMain": "No main number",
+    "contacts": "Contacts",
+    "lastNotes": "Last notes",
+    "noNotes": "No notes yet.",
+    "myTasks": "My open tasks",
+    "owner": "Owner: {name}",
+    "unassigned": "Unassigned",
+    "readOnly": "Only {owner} or an admin can change this lead. Your call is still logged.",
+    "script": {
+      "title": "Call script",
+      "inEnglish": "Show in English",
+      "inFrench": "Show in French",
+      "en": "Hello, this is {me} from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead}⍽? Nous avons de nouveaux lots cette semaine⍽: puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp⍽?"
+    },
+    "next": "Next: {name}",
+    "nextPlace": "Next: {name} ({place})",
+    "nextLoading": "Finding the next lead…",
+    "padTitle": "How did it go?",
+    "note": "Note",
+    "notePlaceholder": "Quick note about the call…",
+    "noteSheet": "Note about the call",
+    "noteDone": "Done",
+    "skip": "Skip",
+    "keysHint": "1–7 and 0 log an outcome · S skip · N note · C call · U undo",
+    "stats": "This session: {calls, plural, one {# call} other {# calls}} · {talks, plural, one {# talk} other {# talks}}",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "confirmKeys": "↩ confirms · Esc cancels",
+    "needTime": "A meeting needs a date and a time.",
+    "dncChanged": "{name} was marked Do not contact meanwhile. Only 7 and Skip work on this card.",
+    "lostClaim": "A teammate is on that one now. Here’s the next.",
+    "notSaved": "{count, plural, one {# outcome not saved} other {# outcomes not saved}}",
+    "retry": "Retry",
+    "retrying": "Saving…",
+    "live": "Logged {outcome} for {lead}. Next: {next}.",
+    "liveEnd": "Logged {outcome} for {lead}.",
+    "liveSkip": "Skipped {lead}. Next: {next}.",
+    "empty": {
+      "allDoneTitle": "Everyone due has been called.",
+      "noNumber": "{count, plural, one {# lead has no number.} other {# leads have no number.}}",
+      "laterToday": "{count, plural, one {# more comes back later today.} other {# more come back later today.}}",
+      "outsideHoursTitle": "Nobody to call right now.",
+      "opensNext": "{place} opens at {time} their time ({relative}).",
+      "opensNextDay": "{place} opens {day} at {time} their time ({relative}).",
+      "noneMineTitle": "No leads are assigned to you.",
+      "noneMineBody": "Ask an admin to give you leads, or work the unassigned ones.",
+      "workUnassigned": "Work unassigned leads",
+      "backToStart": "Back to the start"
+    },
+    "error": "Couldn’t load the next lead.",
+    "loading": "Loading the next lead…"
+  },
+  "Tasks": {
+    "title": "Tasks",
+    "tabsLabel": "Task lists",
+    "tabs": {
+      "today": "Today",
+      "overdue": "Overdue",
+      "upcoming": "Upcoming",
+      "done": "Done"
+    },
+    "scopeLabel": "Whose tasks",
+    "scope": {
+      "mine": "Mine",
+      "team": "Team"
+    },
+    "quickAdd": {
+      "label": "New task",
+      "placeholder": "Add a task…",
+      "add": "Add",
+      "adding": "Adding…",
+      "dateLabel": "When",
+      "date": "Date",
+      "time": "Time (optional)",
+      "timeRequired": "Time",
+      "kindLabel": "Kind",
+      "needTitle": "Write the task first.",
+      "needTime": "A meeting needs a date and a time.",
+      "added": "Task added: {title}."
+    },
+    "chips": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "nextWeek": "Next week",
+      "pick": "Pick a date",
+      "none": "No date"
+    },
+    "kinds": {
+      "todo": "To-do",
+      "call": "Call",
+      "meeting": "Meeting"
+    },
+    "linkLead": "Link a lead",
+    "leadSearch": "Search leads",
+    "leadSearchPlaceholder": "Lead name…",
+    "noLeadMatch": "No lead matches.",
+    "leadSearchError": "Couldn’t search the leads.",
+    "unlinkLead": "Remove the link to {name}",
+    "overdue": "Overdue",
+    "noDate": "No date",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday",
+    "theirTime": "{time} their time",
+    "doneAt": "Done {when}",
+    "assignee": "For {name}",
+    "markDone": "Mark “{title}” done",
+    "markOpen": "Mark “{title}” not done",
+    "done": "Done: {title}.",
+    "reopened": "Not done: {title}.",
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed: {title}.",
+    "undo": "Undo",
+    "undone": "Undone.",
+    "edit": "Edit",
+    "editLabel": "Edit task",
+    "editTitle": "Title",
+    "editAssignee": "For",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "saved": "Task saved.",
+    "delete": "Delete",
+    "deleteConfirm": {
+      "title": "Delete this task?",
+      "body": "“{title}” goes for good. To dismiss it instead, press Cancel and pick Dismiss.",
+      "confirm": "Delete task"
+    },
+    "deleted": "Task deleted.",
+    "menu": "More actions for “{title}”",
+    "openLead": "Open {lead}",
+    "empty": {
+      "today": "Nothing due today.",
+      "overdue": "Nothing overdue.",
+      "upcoming": "Nothing planned.",
+      "done": "Nothing done yet."
+    },
+    "error": "Couldn’t load these tasks.",
+    "retry": "Try again",
+    "showMore": "Show more",
+    "loadingMore": "Loading more…",
+    "dncLead": "Asked not to be contacted",
+    "keysHint": "T new task · J/K move · X done · E edit · D dismiss · ⌫ delete · ↩ open the lead",
+    "listLabel": "{tab} tasks"
   }
 }
