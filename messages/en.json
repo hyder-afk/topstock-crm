@@ -927,7 +927,7 @@
       "task_due": "A task has a date or a time, not both; a meeting needs a time.",
       "lead_has_files": "Delete this lead’s files first.",
       "file_type": "Only PDF, PNG, JPG, Word or Excel files.",
-      "file_size": "A file can be up to 10 MB.",
+      "file_size": "A file can be up to 10 MB.",
       "file_name": "This file name can’t be stored. Rename the file and try again.",
       "file_lead": "Reload the page and try again."
     }
@@ -937,7 +937,7 @@
     "drop": "Drop files here or choose files",
     "choose": "Choose files",
     "add": "Add file",
-    "limits": "PDF, PNG, JPG, Word or Excel, up to 10 MB each",
+    "limits": "PDF, PNG, JPG, Word or Excel, up to 10 MB each",
     "uploadsLabel": "Uploads",
     "uploading": "Uploading…",
     "checking": "Checking the file…",
@@ -966,16 +966,16 @@
       "confirm": "Delete"
     },
     "errors": {
-      "tooBig": "Too big: a file can be up to 10 MB.",
+      "tooBig": "Too big: a file can be up to 10 MB. Make it smaller, or split it.",
       "empty": "This file is empty.",
       "type": "Only PDF, PNG, JPG, Word or Excel files.",
       "mismatch": {
-        "pdf": "This file isn’t really a PDF.",
-        "image": "This file isn’t really a photo (PNG or JPG).",
-        "word": "This isn’t a real Word file, or it contains macros.",
-        "excel": "This isn’t a real Excel file, or it contains macros."
+        "pdf": "This file isn’t really a PDF. Save or export it as a PDF again, then add it.",
+        "image": "This file isn’t really a photo (PNG or JPG). Save it as JPG or PNG, then add it.",
+        "word": "This isn’t a real Word file, or it contains macros. Save it as a .docx without macros, then add it.",
+        "excel": "This isn’t a real Excel file, or it contains macros. Save it as an .xlsx without macros, then add it."
       },
-      "quota": "The team’s file space is full (800 MB). Delete old files first.",
+      "quota": "The team’s file space is full (800 MB). Delete old files first.",
       "rateLimited": "That’s a lot of uploads in an hour. Try again later.",
       "tooManyPending": "Wait for the uploads in progress to finish.",
       "connection": "Connection lost. Try again.",

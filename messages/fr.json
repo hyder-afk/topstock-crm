@@ -927,7 +927,7 @@
       "task_due": "Une tâche a une date ou une heure, pas les deux ; un rendez-vous a besoin d’une heure.",
       "lead_has_files": "Supprimez d’abord les fichiers de ce prospect.",
       "file_type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
-      "file_size": "10 Mo maximum par fichier.",
+      "file_size": "10 Mo maximum par fichier.",
       "file_name": "Ce nom de fichier ne peut pas être enregistré. Renommez le fichier et réessayez.",
       "file_lead": "Rechargez la page et réessayez."
     }
@@ -937,7 +937,7 @@
     "drop": "Déposez des fichiers ici ou choisissez-les",
     "choose": "Choisir des fichiers",
     "add": "Ajouter un fichier",
-    "limits": "PDF, PNG, JPG, Word ou Excel, 10 Mo maximum chacun",
+    "limits": "PDF, PNG, JPG, Word ou Excel, 10 Mo maximum chacun",
     "uploadsLabel": "Envois",
     "uploading": "Envoi…",
     "checking": "Vérification du fichier…",
@@ -966,16 +966,16 @@
       "confirm": "Supprimer"
     },
     "errors": {
-      "tooBig": "Trop lourd : 10 Mo maximum par fichier.",
+      "tooBig": "Trop lourd : 10 Mo maximum par fichier. Réduisez-le ou découpez-le.",
       "empty": "Ce fichier est vide.",
       "type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
       "mismatch": {
-        "pdf": "Ce fichier n’est pas vraiment un PDF.",
-        "image": "Ce fichier n’est pas vraiment une photo (PNG ou JPG).",
-        "word": "Ce n’est pas un vrai fichier Word, ou il contient des macros.",
-        "excel": "Ce n’est pas un vrai fichier Excel, ou il contient des macros."
+        "pdf": "Ce fichier n’est pas vraiment un PDF. Enregistrez-le ou exportez-le à nouveau en PDF, puis ajoutez-le.",
+        "image": "Ce fichier n’est pas vraiment une photo (PNG ou JPG). Enregistrez-le en JPG ou PNG, puis ajoutez-le.",
+        "word": "Ce n’est pas un vrai fichier Word, ou il contient des macros. Enregistrez-le en .docx sans macros, puis ajoutez-le.",
+        "excel": "Ce n’est pas un vrai fichier Excel, ou il contient des macros. Enregistrez-le en .xlsx sans macros, puis ajoutez-le."
       },
-      "quota": "L’espace de fichiers de l’équipe est plein (800 Mo). Supprimez d’abord d’anciens fichiers.",
+      "quota": "L’espace de fichiers de l’équipe est plein (800 Mo). Supprimez d’abord d’anciens fichiers.",
       "rateLimited": "Beaucoup d’envois en une heure. Réessayez plus tard.",
       "tooManyPending": "Attendez la fin des envois en cours.",
       "connection": "Connexion perdue. Réessayez.",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useId, useRef, useState } from "react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useNow, useTranslations } from "next-intl";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { FileSpreadsheet, FileText, FileType2, Image as ImageIcon, MoreHorizontal, Upload, X } from "lucide-react";
@@ -74,6 +74,7 @@ export function useFileSize() {
 export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial: FilesPage | null; stepUp: StepUp }) {
   const t = useTranslations("Files");
   const format = useFormatter();
+  const now = useNow();
   const size = useFileSize();
   const reduce = useReducedMotion();
   const queryClient = useQueryClient();
@@ -200,14 +201,14 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
 
   const date = (iso: string) => {
     const d = new Date(iso);
-    const thisYear = d.getFullYear() === new Date().getFullYear();
+    const thisYear = d.getFullYear() === now.getFullYear(); // the request's shared "now": server and browser agree
     return format.dateTime(d, thisYear ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
   };
 
   return (
     <section aria-labelledby={`${inputId}-title`} className="flex min-w-0 flex-col gap-4 rounded-lg bg-card p-4 sm:p-5">
       <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <h2 ref={headingRef} tabIndex={-1} id={`${inputId}-title`} className="text-sm font-bold text-muted-foreground outline-none">
+        <h2 ref={headingRef} tabIndex={-1} id={`${inputId}-title`} className="text-sm font-bold text-muted-foreground">
           {t("title")}
         </h2>
         {usage !== null ? (
@@ -409,7 +410,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
 function FileName({ name, className }: { name: string; className?: string }) {
   const { stem, ext } = splitName(name);
   return (
-    <span className={cn("flex min-w-0", className)} title={name}>
+    <span className={cn("flex min-w-0", className)} title={name} translate="no">
       <span dir="auto" className="truncate">
         {stem}
       </span>

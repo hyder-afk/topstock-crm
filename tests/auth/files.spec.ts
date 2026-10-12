@@ -130,7 +130,7 @@ test("files_tab_empty_state: the tab is shown, empty, with the limits and a real
   await gotoFiles(page, lead);
   const panel = filesPanel(page);
   await expect(panel.getByText("No files yet. Add quotes, price lists or photos.")).toBeVisible();
-  await expect(panel.getByText("PDF, PNG, JPG, Word or Excel, up to 10 MB each")).toBeVisible();
+  await expect(panel.getByText("PDF, PNG, JPG, Word or Excel, up to 10 MB each")).toBeVisible();
   await expect(panel.getByRole("button", { name: "Choose files" })).toBeVisible();
   const accept = await panel.locator("input[type=file]").getAttribute("accept");
   for (const t of ["application/pdf", "image/png", "image/jpeg", W, ".xlsx"]) expect(accept).toContain(t);
@@ -161,9 +161,9 @@ test("too_big_rejected_before_upload, renamed_exe_rejected, docm_renamed_docx_re
     { name: "vector.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg/>") },
   ]);
   const uploads = filesPanel(page).getByRole("list", { name: "Uploads" });
-  await expect(uploads.getByText("Too big: a file can be up to 10 MB.")).toBeVisible();
-  await expect(uploads.getByText("This file isn’t really a PDF.")).toHaveCount(2);
-  await expect(uploads.getByText("This isn’t a real Word file, or it contains macros.")).toBeVisible();
+  await expect(uploads.getByText(/^Too big: a file can be up to 10\sMB\./)).toBeVisible();
+  await expect(uploads.getByText(/^This file isn’t really a PDF\./)).toHaveCount(2);
+  await expect(uploads.getByText(/^This isn’t a real Word file, or it contains macros\./)).toBeVisible();
   await expect(uploads.getByText("Only PDF, PNG, JPG, Word or Excel files.")).toBeVisible();
   expect(sent).toEqual([]);
   // Dismissing a refused file moves the focus to Choose files, never to the page.
@@ -253,7 +253,7 @@ test("quota_message: a full team space refuses before any byte is sent", async (
     const { context, page, errors } = await open(browser, repState);
     await gotoFiles(page, repLead);
     await filesPanel(page).locator("input[type=file]").setInputFiles({ name: "devis.pdf", mimeType: "application/pdf", buffer: pdfBytes() });
-    await expect(filesPanel(page).getByText("The team’s file space is full (800 MB). Delete old files first.")).toBeVisible();
+    await expect(filesPanel(page).getByText(/^The team’s file space is full \(800\sMB\)\./)).toBeVisible();
     expect(sql(`select count(*) from public.files where company_id = '${repLead}' and name = 'devis.pdf'`)).toBe("0");
     expect(errors).toEqual([]);
     await context.close();
