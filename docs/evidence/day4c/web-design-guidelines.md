@@ -1,0 +1,72 @@
+# Web Interface Guidelines review: Day 4c, 12 Oct 2026
+
+Rules pinned at
+`https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/434b7f91364665f2f733b310ec54809bf8f37937/command.md`
+(fetched for this review). Files: `src/components/tasks/*`, `src/components/queue/*`,
+`src/components/shell/timezone-form.tsx`, `src/app/(app)/tasks/*`, `src/app/(app)/leads/queue/*`, the lead header's
+"on this lead" line, and the routes `/api/tasks`, `/api/queue/*`. Plus the screenshots in `screens/`.
+
+## Findings and fixes (8d2a3f7)
+
+```text
+## src/components/tasks/quick-add.tsx
+quick-add.tsx (submit) - errors inline, but the focus stayed put on a refused Add → the first field to fix takes the focus (the title, or a meeting's time)
+
+## src/components/tasks/task-row.tsx
+task-row.tsx (li) - lists grow by pages of 50 with no off-screen skipping → content-visibility: auto with a 64 px intrinsic size per row
+
+## src/components/tasks/tasks-workspace.tsx
+tasks-workspace.tsx (tabs row) - bare key caps with no words → one line of words ("T new task · J/K move · …"), aria-hidden caps removed
+
+## src/components/queue/queue-card.tsx
+queue-card.tsx (place line) - "open until 18:00" built from a string → Intl, in the lead's zone
+queue-card.tsx (contacts) - name truncated in a flex row on phones → wraps on its own line (min width), titles break-words
+
+## src/components/queue/queue-rail.tsx
+queue-rail.tsx (note) - textarea without autocomplete → autocomplete="off"
+
+## src/components/queue/queue-workspace.tsx
+queue-workspace.tsx (note sheet) - textarea without autocomplete → autocomplete="off"; autoFocus kept with its reason written next to it (the sheet opens only to type the note)
+queue-workspace.tsx (scope switch) - overflowing segments hidden in a scroll strip (French at 390) → wraps
+
+## src/components/leads/leads-workspace.tsx
+leads-workspace.tsx (Work queue link) - prefetch={false} made a click wait for the server with no skeleton → default prefetch, which stops at the queue's loading skeleton (no data read, nothing claimed)
+```
+
+## Checked and passing
+
+- **Accessibility:** icon-only buttons have `aria-label` (task menu, unlink a lead, phone note); every field is
+  labelled (quick add, edit, lead search, note, time zone); actions are `<button>`, navigation is `<a>`/`<Link>` (lead
+  links, Back to leads, the card's Call is a `tel:` link); decorative icons `aria-hidden`; toasts and the queue's
+  "Logged … Next: …" message are polite live regions; headings in order (h1 page, h2 card name and "How did it go?",
+  h3 card sections); the leaving card is `inert` and hidden from assistive tech; the lead picker is a WAI-ARIA combobox
+  (`aria-expanded`, `aria-controls`, `aria-activedescendant`, options with `aria-selected`).
+- **Focus:** visible rings from the global focus style; no `outline-none` without a replacement; the focus is moved
+  after every removal (see the Apple audit's "Touch and keyboard").
+- **Forms:** names on every input; `autocomplete="off"` on non-auth fields; placeholders end with "…"; Add, Save,
+  Retry and Confirm stay enabled with `aria-disabled` and say why (needs a title, a meeting needs a time); no paste
+  blocking.
+- **Animation:** transform and opacity only (card slide, row fade and layout); listed transition properties, never
+  `all`; reduced motion handled; interruptible springs.
+- **Typography:** "…" everywhere, curly quotes and apostrophes (French typography checked by `messages.spec.ts`),
+  DM Mono (fixed-width digits) for counts and times; "Loading…", "Saving…", "Adding…", "Starting…".
+- **Content:** long titles and lead names `break-words`; `min-w-0` on flex children; an empty state per tab
+  ("Nothing due today." …) and per queue end (all done, outside hours with the next opening, no leads of one's own).
+- **Navigation and state:** the Tasks tab and scope are in the URL (`?tab=`, `?scope=`, written with
+  `replaceState`); the queue's state is deliberately not in the URL (claims start on an explicit Start, design 4.2).
+  Destructive actions: Delete asks first and needs a fresh code; Done, Dismiss and outcomes have Undo.
+- **Touch:** `touch-action: manipulation` and the tap highlight are set globally; sheets use `overscroll-behavior:
+  contain`; no gesture-only action.
+- **Dark mode:** `color-scheme` per theme; native selects (time zone, assignee) have explicit background and text.
+- **Locale:** every date, time and number through Intl (`useFormatter`, ICU plurals and ordinals); phone numbers and
+  zone names `translate="no"` where shown as codes.
+- **Hydration:** times that depend on the viewer render after mount (`useClientNow`); the time zone list is drawn on
+  the server and sent to the form, so the browser's own list never changes the options.
+
+## Not followed, on purpose
+
+- **Title Case for headings and buttons:** the project writes sentence case (Master Plan override, as in every earlier
+  step).
+- **Virtualising lists over 50:** task pages of 50 use `content-visibility: auto` instead (design D13's approach).
+
+Unresolved: none.
