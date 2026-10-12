@@ -24,8 +24,15 @@ test.describe("token", () => {
     expect(TOKEN).toMatch(TOKEN_RE);
     expect(tokenFromHash(`#${TOKEN}`)).toBe(TOKEN);
     expect(tokenFromHash(TOKEN)).toBe(TOKEN);
-    for (const bad of ["", "#", "#main", `#${TOKEN}x`, `#${TOKEN} `, `#${TOKEN.slice(0, -1)}`, `#tss_${"a".repeat(42)}=`, null, undefined]) {
+    for (const bad of ["", "#", "#main", `#${TOKEN}x`, `#${TOKEN}_`, `#${TOKEN}-`, `#x${TOKEN}`, `#.${TOKEN}`, `#${TOKEN.slice(0, -1)}`, `#${TOKEN.slice(0, -1)}.`,
+                       `#tss_${"a".repeat(42)}=`, null, undefined]) {
       expect(tokenFromHash(bad)).toBeNull();
+    }
+  });
+  test("share_token_trailing_punctuation: a full stop, bracket or quote a chat app glued to the link is left out", () => {
+    // The 43 characters must be followed by something that cannot be part of a token; the token itself is unchanged.
+    for (const tail of [".", ",", ";", ":", "!", "?", ")", ").", "]", "\"", "'", "’", "»", "…", " ", "%2E", "%C2%BB", "%20", "\n"]) {
+      expect(tokenFromHash(`#${TOKEN}${tail}`), JSON.stringify(tail)).toBe(TOKEN);
     }
   });
   test("the address carries the token in the fragment, never in the path or query", () => {
