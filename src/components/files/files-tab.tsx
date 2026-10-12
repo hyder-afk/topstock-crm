@@ -11,9 +11,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } fro
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
 import { filesKey, sizeParts, useFiles } from "@/components/files/use-files";
-import type { ActionFailure } from "@/lib/db-errors";
 import { splitName } from "@/lib/files/name";
-import { checkLocalFile, uploadBytes } from "@/lib/files/upload";
+import { checkLocalFile, failureToUpload, uploadBytes, type UploadError } from "@/lib/files/upload";
 import { ACCEPT, FILES_PER_DROP, TEAM_QUOTA_BYTES, fileKind, opensInline, type FileKind, type FileMime, type FilesPage, type LeadFile } from "@/lib/files/types";
 import { personName } from "@/lib/leads";
 import { springs } from "@/lib/motion";
@@ -29,7 +28,6 @@ import { cn } from "@/lib/utils";
 // the 60-second link to the bytes exists only in that route's redirect.
 
 type StepUp = { ensureFresh: (minSeconds?: number) => Promise<boolean>; requireFresh: () => Promise<boolean> };
-type UploadError = "tooBig" | "empty" | "type" | "mismatch" | "quota" | "rateLimited" | "tooManyPending" | "connection" | "tooMany" | "unavailable";
 type Upload = {
   key: number;
   name: string;
@@ -42,23 +40,6 @@ type Upload = {
 };
 
 const kindIcon: Record<FileKind, typeof FileText> = { pdf: FileText, image: ImageIcon, word: FileType2, excel: FileSpreadsheet };
-
-function failureToUpload(f: ActionFailure): UploadError {
-  switch (f.error) {
-    case "quota":
-      return "quota";
-    case "rate_limited":
-      return "rateLimited";
-    case "busy":
-      return "tooManyPending";
-    case "type_mismatch":
-      return "mismatch";
-    case "invalid":
-      return f.hint === "file_size" ? "tooBig" : "type";
-    default:
-      return "unavailable";
-  }
-}
 
 export function useFileSize() {
   const format = useFormatter();
@@ -310,7 +291,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={Math.round(u.progress * 100)}
-                    aria-valuetext={u.phase === "checking" ? t("checking") : `${Math.round(u.progress * 100)} %`}
+                    aria-valuetext={u.phase === "checking" ? t("checking") : format.number(u.progress, { style: "percent", maximumFractionDigits: 0 })}
                     className="h-1.5 overflow-hidden rounded-full bg-background"
                   >
                     <motion.div

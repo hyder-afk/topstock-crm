@@ -1,3 +1,4 @@
+import type { ActionFailure } from "@/lib/db-errors";
 import { typeOf } from "@/lib/files/name";
 import { HEAD_BYTES, TAIL_BYTES, needsTail, sniffFile } from "@/lib/files/sniff";
 import { BUCKET, MAX_FILE_BYTES, type FileMime } from "@/lib/files/types";
@@ -23,6 +24,28 @@ export async function checkLocalFile(file: File): Promise<LocalCheck> {
     return sniffFile({ mime, size: file.size, head, tail }) ? { ok: true, mime } : { ok: false, reason: "mismatch", mime };
   } catch {
     return { ok: false, reason: "mismatch", mime };
+  }
+}
+
+/** What an upload's line says when it fails (the Files tab words each one: Files.errors.<key>). */
+export type UploadError = "tooBig" | "empty" | "type" | "mismatch" | "quota" | "rateLimited" | "tooManyPending" | "connection" | "tooMany" | "unavailable";
+
+/** A refusal from beginUpload or finishUpload as an upload line. Only a refused type or size is worded as such; a
+ *  refused name or lead (hints file_name, file_lead) or a refusal without a hint is "unavailable". */
+export function failureToUpload(f: ActionFailure): UploadError {
+  switch (f.error) {
+    case "quota":
+      return "quota";
+    case "rate_limited":
+      return "rateLimited";
+    case "busy":
+      return "tooManyPending";
+    case "type_mismatch":
+      return "mismatch";
+    case "invalid":
+      return f.hint === "file_size" ? "tooBig" : f.hint === "file_type" ? "type" : "unavailable";
+    default:
+      return "unavailable";
   }
 }
 
