@@ -1480,11 +1480,13 @@ begin
       from public.pipeline_stages s
       left join (select d.stage_id, count(*) as n, sum(d.value) as total,
                         count(*) filter (where d.value is null) as no_value,
-                        count(*) filter (where greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))
+                        -- stalled: the stage clock first; the lead is read only for those (AND stops early)
+                        count(*) filter (where d.stage_entered_at < now() - make_interval(hours => 24 * st.stall_days)
+                                           and coalesce((select c.last_activity_at from public.companies c
+                                                          where c.id = d.company_id), '-infinity'::timestamptz)
                                                < now() - make_interval(hours => 24 * st.stall_days)) as stalled
                    from public.deals d
                    join public.pipeline_stages st on st.id = d.stage_id
-                   join public.companies c on c.id = d.company_id
                   where d.status = 'open' and d.owner_id = p_owner
                   group by d.stage_id) x on x.stage_id = s.id
      where s.org_id = v_org and s.key in ('lead', 'qualified', 'negotiations');
@@ -1508,11 +1510,13 @@ begin
       from public.pipeline_stages s
       left join (select d.stage_id, count(*) as n, sum(d.value) as total,
                         count(*) filter (where d.value is null) as no_value,
-                        count(*) filter (where greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))
+                        -- stalled: the stage clock first; the lead is read only for those (AND stops early)
+                        count(*) filter (where d.stage_entered_at < now() - make_interval(hours => 24 * st.stall_days)
+                                           and coalesce((select c.last_activity_at from public.companies c
+                                                          where c.id = d.company_id), '-infinity'::timestamptz)
                                                < now() - make_interval(hours => 24 * st.stall_days)) as stalled
                    from public.deals d
                    join public.pipeline_stages st on st.id = d.stage_id
-                   join public.companies c on c.id = d.company_id
                   where d.status = 'open' and d.org_id = v_org
                   group by d.stage_id) x on x.stage_id = s.id
      where s.org_id = v_org and s.key in ('lead', 'qualified', 'negotiations');
