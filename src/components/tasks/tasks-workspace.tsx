@@ -166,8 +166,6 @@ export function TasksWorkspace({
         }
         refreshTasks(queryClient, task.company_id);
         toast.show(t("saved"));
-        // Back to the row's check once the form has gone.
-        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-task-id="${task.id}"] [data-task-check]`)?.focus());
         return true;
       },
     };
@@ -248,7 +246,8 @@ export function TasksWorkspace({
       if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTyping(event.target) || document.querySelector("[role=dialog],[role=menu]")) return;
       const key = event.key.toLowerCase();
-      const checks = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-task-check]") ?? [])];
+      // A task still being added (its check disabled) is skipped by J/K.
+      const checks = [...(listRef.current?.querySelectorAll<HTMLElement>("[data-task-check]:not(:disabled)") ?? [])];
       const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const row = active?.closest<HTMLElement>("[data-task-id]") ?? null;
       const rowTask = row ? rows.find((r) => r.id === row.dataset.taskId) : undefined;
@@ -355,10 +354,10 @@ export function TasksWorkspace({
   return (
     <div className="mx-auto flex w-full max-w-[880px] min-w-0 flex-col gap-5 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-baseline gap-3 text-3xl font-bold sm:text-4xl">
-          {t("title")}
-          {counts ? <span className="font-mono text-base font-normal text-muted-foreground">{format.number(counts.today + counts.overdue)}</span> : null}
-        </h1>
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
+          {counts ? <span className="font-mono text-base text-muted-foreground">{format.number(counts.today + counts.overdue)}</span> : null}
+        </div>
         {canTeam ? (
           <div role="group" aria-label={t("scopeLabel")} className="flex gap-0.5 rounded-md bg-muted p-1">
             {(["mine", "team"] as const).map((s) => (

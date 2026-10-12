@@ -80,9 +80,20 @@ export const TaskRow = memo(function TaskRow({
       ? format.dateTime(new Date(task.due_at), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: theirZone })
       : null;
   const shownChecked = done !== checking;
+  const rowRef = useRef<HTMLLIElement>(null);
+  // Leaving the inline edit (Save or Cancel) gives the focus back to the row's check, once it is drawn again.
+  const wasEditing = useRef(editing);
+  useEffect(() => {
+    if (wasEditing.current && !editing) {
+      const active = document.activeElement;
+      if (!active || active === document.body || rowRef.current?.contains(active)) checkRef.current?.focus();
+    }
+    wasEditing.current = editing;
+  }, [editing]);
 
   return (
     <motion.li
+      ref={rowRef}
       layout={reduce ? false : "position"}
       initial={false}
       exit={{ opacity: 0 }}

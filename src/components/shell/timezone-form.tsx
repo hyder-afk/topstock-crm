@@ -71,7 +71,7 @@ export function TimezoneForm({ current, zones, unavailable = false }: { current:
         <Button type="submit" variant="neutral" disabled={unavailable || state === "saving"}>
           {state === "saving" ? t("saving") : t("timezoneSave")}
         </Button>
-        {device && device !== value && options.includes(device) ? (
+        {device && device !== value && options.includes(device) && !unavailable ? (
           <Button
             variant="quiet"
             onClick={() => {
@@ -82,9 +82,17 @@ export function TimezoneForm({ current, zones, unavailable = false }: { current:
             {t("timezoneDevice", { zone: device })}
           </Button>
         ) : null}
-        <FormMessage id={msg} tone={state === "error" || unavailable ? "error" : "info"}>
-          {unavailable ? t("errors.load") : state === "error" ? t("timezoneError") : state === "saved" ? t("timezoneSaved") : null}
-        </FormMessage>
+        {/* When the profile cannot be read, the name form above already says so (one alert per page); this one stays locked. */}
+        {/* A polite live line (not a second status region on More, which the name form already has); errors as an alert. */}
+        {state === "error" ? (
+          <FormMessage id={msg} tone="error">
+            {t("timezoneError")}
+          </FormMessage>
+        ) : (
+          <p id={msg} aria-live="polite" className="min-h-6 text-sm text-muted-foreground">
+            {state === "saved" ? t("timezoneSaved") : null}
+          </p>
+        )}
       </div>
     </form>
   );

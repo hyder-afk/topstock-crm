@@ -182,7 +182,7 @@ test("karachi_today_boundary: Today and Tomorrow follow the profile's zone, not 
   const zone = page.getByRole("combobox", { name: "Time zone" });
   await zone.selectOption("Europe/Paris");
   await page.getByRole("button", { name: "Save time zone" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Time zone saved." })).toBeVisible();
+  await expect(page.getByText("Time zone saved.")).toBeVisible();
   expect(sql(`select timezone from public.profiles where id = '${userId(adminEmail)}'`)).toBe("Europe/Paris");
   const parisIsKarachisDay = todayIn("Europe/Paris") === todayIn("Asia/Karachi");
   await openTasks(page, parisIsKarachisDay ? "" : "?tab=upcoming");
@@ -258,6 +258,7 @@ test("keyboard_only: T, Enter, J/K, X, E, D, Backspace and Enter to the lead, th
   await page.keyboard.press("Escape");
   await page.locator("main h1").click(); // out of the field (a click on plain text), so single keys work
   await expect(rows(page)).toHaveCount(3);
+  await expect(page.locator("[data-task-check]:disabled")).toHaveCount(0); // the new task is confirmed
   // J to the first task's check, J again to the second.
   await page.keyboard.press("j");
   await expect(page.locator("[data-task-check]").first()).toBeFocused();

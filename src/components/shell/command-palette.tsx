@@ -82,7 +82,7 @@ export function CommandPalette({
 
             <Group heading={t("actions")}>
               <Item
-                value="start work queue call calling dial next lead"
+                value="start work queue call next"
                 icon={Headset}
                 label={t("startQueue")}
                 keys={["G", queueGoKey.toUpperCase()]}
