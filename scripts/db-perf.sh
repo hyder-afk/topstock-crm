@@ -6,7 +6,8 @@
 # Day 6a adds the stock engine timings (supabase/tests/perf_stock.sql: 5,000 products, 200,000 ledger rows, 5,000 holds)
 # before the import, so the import's undo runs with holds in place, and the stock concurrency timings
 # (stock_concurrency.sh perf) at the end; Day 6b the inventory reads (supabase/tests/perf_inventory.sql, I1 to I4) right
-# after the stock seed. Local only.
+# after the stock seed; Day 6d the sales and lead stock timings (supabase/tests/perf_sales.sql, I6 and I8) after those.
+# Local only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
@@ -26,5 +27,6 @@ $PSQL -f "$ROOT/supabase/tests/perf_leads.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_day4.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_stock.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_inventory.sql" 2>&1
+$PSQL -f "$ROOT/supabase/tests/perf_sales.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_import.sql" 2>&1
 bash "$ROOT/supabase/tests/stock_concurrency.sh" "host=$WORK port=54327 user=postgres dbname=postgres" perf 2>&1

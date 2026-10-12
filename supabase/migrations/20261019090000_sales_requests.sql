@@ -1705,40 +1705,48 @@ end;
 $$;
 
 -- Live availability of one product, for request lines and the lead's Stock tab.
-create function private.product_availability(p_product uuid) returns jsonb
+-- Requests with their lines and live availability per line (design 10.4), set-based: one read of the requests, one of
+-- their lines and one of the levels of the products they name, whatever the number of requests (the lead's Stock tab
+-- asks for 20 at once; perf I8).
+create function private.requests_json(p_ids uuid[]) returns table (id uuid, j jsonb)
 language sql stable set search_path = '' as $$
-  select jsonb_build_object(
-           'warehouse_available', coalesce(sum(l.on_hand - l.reserved) filter (where x.kind = 'warehouse'), 0),
-           'transit_on_hand', coalesce(sum(l.on_hand) filter (where x.kind = 'transit'), 0),
-           'transit_eta', (select p.transit_eta from public.products p where p.id = p_product),
-           'archived', (select p.archived_at is not null from public.products p where p.id = p_product))
-    from public.stock_levels l join public.locations x on x.id = l.location_id
-   where l.product_id = p_product
-$$;
-grant execute on function private.product_availability(uuid) to authenticated;
-revoke all on function private.product_availability(uuid) from public, anon;
-
--- A request with its lines and live availability per line.
-create function private.request_json(p_id uuid) returns jsonb
-language sql stable set search_path = '' as $$
-  select jsonb_build_object(
+  with ln as materialized (
+    select ln.request_id, ln.position, ln.product_id, ln.description, ln.quantity, ln.unit, ln.pieces, ln.price_shown,
+           ln.availability, p.name, p.price_max, p.pieces_per_carton, p.transit_eta, p.archived_at
+      from private.stock_request_lines ln left join public.products p on p.id = ln.product_id
+     where ln.request_id = any (p_ids)),
+  av as (
+    select l.product_id,
+           coalesce(sum(l.on_hand - l.reserved) filter (where x.kind = 'warehouse'), 0) as warehouse_available,
+           coalesce(sum(l.on_hand) filter (where x.kind = 'transit'), 0) as transit_on_hand
+      from public.stock_levels l join public.locations x on x.id = l.location_id
+     where l.product_id in (select ln.product_id from ln where ln.product_id is not null)
+     group by l.product_id),
+  lines as (
+    select ln.request_id,
+           jsonb_agg(jsonb_build_object(
+             'position', ln.position, 'product_id', ln.product_id, 'product_name', coalesce(ln.name, ln.description),
+             'quantity', ln.quantity, 'unit', ln.unit, 'pieces', ln.pieces, 'price_shown', ln.price_shown,
+             'price_max', ln.price_max, 'pieces_per_carton', ln.pieces_per_carton, 'availability_then', ln.availability,
+             'now', case when ln.product_id is not null then jsonb_build_object(
+                      'warehouse_available', coalesce(av.warehouse_available, 0),
+                      'transit_on_hand', coalesce(av.transit_on_hand, 0),
+                      'transit_eta', ln.transit_eta, 'archived', ln.archived_at is not null) end)
+             order by ln.position) as lines
+      from ln left join av on av.product_id = ln.product_id
+     group by ln.request_id)
+  select r.id, jsonb_build_object(
            'id', r.id, 'company_id', r.company_id, 'company_name', c.name, 'source', r.source, 'status', r.status,
            'note', r.note, 'requester_name', r.requester_name, 'language', r.language, 'created_at', r.created_at,
            'created_by', r.created_by, 'handled_by', r.handled_by, 'handled_at', r.handled_at, 'team_note', r.team_note,
-           'lines', (select coalesce(jsonb_agg(jsonb_build_object(
-                              'position', ln.position, 'product_id', ln.product_id,
-                              'product_name', coalesce(p.name, ln.description), 'quantity', ln.quantity, 'unit', ln.unit,
-                              'pieces', ln.pieces, 'price_shown', ln.price_shown, 'price_max', p.price_max,
-                              'pieces_per_carton', p.pieces_per_carton, 'availability_then', ln.availability,
-                              'now', case when ln.product_id is not null then private.product_availability(ln.product_id) end)
-                            order by ln.position), '[]'::jsonb)
-                       from private.stock_request_lines ln left join public.products p on p.id = ln.product_id
-                      where ln.request_id = r.id))
-    from private.stock_requests r join public.companies c on c.id = r.company_id
-   where r.id = p_id
+           'lines', coalesce(lines.lines, '[]'::jsonb))
+    from private.stock_requests r
+    join public.companies c on c.id = r.company_id
+    left join lines on lines.request_id = r.id
+   where r.id = any (p_ids)
 $$;
-grant execute on function private.request_json(uuid) to authenticated;
-revoke all on function private.request_json(uuid) from public, anon;
+grant execute on function private.requests_json(uuid[]) to authenticated;
+revoke all on function private.requests_json(uuid[]) from public, anon;
 
 -- The lead's Stock tab (design 10.4): open requests first (20 at most, with live availability), active holds, the last
 -- 20 sales and the total bought, and whether the caller may sell to this lead.
@@ -1760,10 +1768,12 @@ begin
     'company_id', p_company,
     'can_edit', private.is_manager_or_admin() or v_owner = (select auth.uid()),
     'owner_first_name', (select u.first_name from public.profiles u where u.id = v_owner),
-    'requests', (select coalesce(jsonb_agg(private.request_json(q.id) order by q.open desc, q.created_at desc), '[]'::jsonb)
-                   from (select r.id, r.created_at, r.status in ('new', 'in_progress') as open
-                           from private.stock_requests r where r.company_id = p_company
-                          order by r.status in ('new', 'in_progress') desc, r.created_at desc limit 20) q),
+    'requests', (with q as materialized (
+                   select r.id, r.created_at, r.status in ('new', 'in_progress') as open
+                     from private.stock_requests r where r.company_id = p_company
+                    order by r.status in ('new', 'in_progress') desc, r.created_at desc limit 20)
+                 select coalesce(jsonb_agg(rj.j order by q.open desc, q.created_at desc), '[]'::jsonb)
+                   from q join private.requests_json((select array_agg(q.id) from q)) rj on rj.id = q.id),
     'requests_count', (select count(*) from private.stock_requests r where r.company_id = p_company),
     'holds', (select coalesce(jsonb_agg(jsonb_build_object(
                        'id', r.id, 'product_id', r.product_id, 'product_name', p.name, 'location', x.kind,
@@ -1928,7 +1938,7 @@ begin
   if (select auth.uid()) is null or not private.has_aal2() then
     raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
   end if;
-  v := private.request_json(p_id);
+  select rj.j into v from private.requests_json(array[p_id]) rj;
   if v is null then
     raise exception 'request not found' using errcode = 'P0002';
   end if;
