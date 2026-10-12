@@ -54,20 +54,23 @@ files; the places that redefine a merged definition are listed under "Rebase poi
   `types.ts`, `files-server.ts`.
 - Actions `src/app/(app)/leads/[id]/file-actions.ts`: `beginUpload`, `finishUpload` (the bytes sniffed; only bytes
   read in full and refused are removed and answer `type_mismatch`; a read that fails (no link, Storage error, the 3 s
-  budget, a body cut short) answers `unavailable` and leaves the row pending for Cancel or the 15-minute clean-up:
-  `afterUploadCheck` in `stored-bytes.ts`), `abortUpload`, `deleteFile` (step-up; when the bytes cannot be removed the row
+  budget, a body cut short) answers `unavailable` and leaves the row pending: `afterUploadCheck` in `stored-bytes.ts`;
+  the Files tab then cancels that row at once and offers Try again, the 15-minute clean-up being the last resort),
+  `abortUpload`, `deleteFile` (step-up; when the bytes cannot be removed the row
   stays `deleting`).
 - Routes: `GET /api/files/[id]?disposition=` (Sec-Fetch-Site, `open_file`, **the check on every open**, a 60-second
   link, 303 with `no-store` and `no-referrer`, else 303 to `/files/unavailable`), `GET /api/leads/[id]/files`;
   page `/files/unavailable` with its `loading.tsx`.
 - **The Files tab is shown now** (between Stock and Details; D16's hidden state ends): drop zone with a real button
   ("Add file" on phones; `accept` lists the types, so iPhone Safari gives JPEG), uploads with a real progress bar and
-  Cancel, then "Checking the file…", per-file reasons (too big, empty, type, "isn't really a PDF" per kind, space full,
-  too many uploads, connection lost, more than 5 at once), the list (type tile, name keeping its extension, size in DM
+  Cancel, then "Checking the file…", per-file reasons (too big, empty, type, unreadable, "isn't really a PDF" per kind,
+  space full, too many uploads, connection lost, more than 5 at once; each also announced, and Try again on the same
+  line when the file itself was not refused), the list (type tile, name keeping its extension, size in DM
   Mono, who, when; Open for PDF and images, Download, Delete with confirmation and a fresh code), "Couldn't finish
   deleting · Retry", the team's space for managers and admins, loading, empty and error states. The first page comes
   with the lead page; hovering the tab prefetches.
 - Messages EN and FR (`Files`, `LeadPage.tabs.files`, `Errors.hint.file_*`), French typography checked.
+- Screenshots: 66 in `screens/` (verifier round 2 added an upload's line uploading, checking and failed: 24).
 
 ## Spikes S1 to S4 (design 2.4): decided by fallback, proved in CI on the PR
 
@@ -141,6 +144,38 @@ Check results on **90c35b0** (the last code commit), 12 Oct 2026:
 | gitleaks, `npm audit --omit=dev` | gitleaks (`origin/main..HEAD`): no leaks found, exit 0; `npm audit --omit=dev`: found 0 vulnerabilities |
 | WebKit, Semgrep, storage-api e2e (including `signed_upsert_overwrite_after_ready_refused`) and the spikes | CI only |
 
+## Verifier round 2 (12 Oct 2026): findings 7 to 18 (app and design) fixed
+
+Findings from `day4d-findings.json` (n = 7 to 18; the skeptic confirmed each). Code commits: fe173cb (finding 12),
+2a39c31 (Files tab, messages, comments: 7 to 11, 13 to 18), b7b84b9 (e2e and the screenshot spec). Every new e2e test
+was also run against the previous `files-tab.tsx` (rebuilt): each fails there (named below), and passes now.
+
+| # | Finding | What changed | How it was checked |
+|---|---|---|---|
+| 7 | Should fix: a failed check after upload (`unavailable`, or the finish call lost) left an invisible pending row the user could not cancel; five tries locked uploads for 15 minutes | `uploadOne` cancels the pending row at once (`abortUpload`) on any failed finish except a refused file (which the server already removed), and on a failed or refused send; the line offers **Try again** on the same file (`canRetry`: connection, unavailable, more than 5 at once) and keeps the id if the cancel itself failed, so Dismiss and Try again cancel it first. `finishUpload`'s and `afterUploadCheck`'s comments say so; the README line above too | e2e `upload line focus`: while checking, 1 pending row; after the failed check (no storage-api here) 0 pending rows, the line reads "Couldn't add this file. Try again." and announces it; Try again uploads the same line again. Unit `canRetry` |
+| 8, 13 | Should fix: focus fell to `<body>` when Cancel went (checking) or became Dismiss (error) | `patch` notes when a phase change happens with the focus inside the line; an effect after the commit moves it to the line's new `[data-upload-action]` button (Cancel, Try again, or Dismiss) or to the line itself (`tabIndex=-1`) while checking; `drop` sends it to Choose files | e2e `upload line focus`: Cancel focused -> the line focused while checking -> Try again focused after the failed check -> Cancel focused after Try again -> Choose files after Cancel; a lost connection while sending -> Try again focused. **Old component: fails** ("the line" not focused) |
+| 9 | Should fix: a file the browser could not read was called fake | `checkLocalFile` separates the read (`catch` -> `unreadable`) from `sniffFile`'s answer (`mismatch`); "Couldn't read this file. Choose it again." / "Impossible de lire ce fichier. Choisissez-le à nouveau." | Unit `checkLocalFile: a read that fails is unreadable` (a `slice()` whose `arrayBuffer()` rejects with `NotReadableError`, PDF and Word): **fails with the old catch (1 failed, 5 passed)**, passes now |
+| 10 | Nit: "Show older files" unmounted after the last page (focus to `<body>`); a failed page showed nothing | One stable button that reads Try again under an inline `role="alert"` error (`isFetchNextPageError`), `aria-disabled` while loading with two skeleton rows; after the last page the focus moves to the first file that arrived (else the heading) | e2e `show older files` (52 files, the older page answered 502 then let through): the alert and the same button focused; then "Lot 51.pdf" focused. **Old component: fails** (no alert) |
+| 11 | Nit: the stuck delete's Retry was `disabled` while busy (focus to `<body>`) and named only "Retry" | `aria-disabled` with an early return; `aria-label` "Retry deleting `name`" / "Réessayer de supprimer `name`" (visible text unchanged); 44 by 44 on phones, scale 0.97 on press | e2e `delete_needs_fresh_code`: Retry found by its new name, pressed from the keyboard, fails again here (no storage-api), the toast shows, and Retry still has the focus. **Old component: fails** (no such name) |
+| 12 | Nit: the "this year?" check used the process's time zone (hydration mismatch around New Year) | `fileDateLabel` (`src/lib/files/dates.ts`) compares both years through next-intl's formatter (Europe/Paris) | Unit `file-dates.spec.ts`: now 2026-12-31T23:30Z, file 22:00Z: "31 déc. 2026" with the Paris formatter, "31 déc." with a UTC one; passes under `TZ=UTC`, `Europe/Paris` and `America/New_York` |
+| 14 | Should fix: refusal reasons not announced; files past 5 refused silently | Announcement "`name` wasn't added. `reason`" (the line's own words); one ICU-plural summary "2 files weren't added: up to 5 at a time." (FR "2 fichiers n'ont pas été ajoutés : 5 à la fois au maximum."); the status region keeps the last 10 messages as separate nodes, so several outcomes in one render are each read | e2e `announcements` (a fake PDF, 4 SVGs, 2 past the limit): 6 messages, the summary first, each reason present; the extra files offer Try again, the refused ones do not. **Old component: fails** (fewer than 6 messages: only the last of a burst is in the region); unit messages parity and French typography |
+| 15 | Should fix: the progress track was invisible in light mode; no uploading or checking screenshot | The upload line is the card colour with a border token; the track is the muted surface (DESIGN.md "tracks"), 8 px as the import bar | 24 new shots: `files-uploading-*` (throttled to about 40%), `files-checking-*`, `files-failed-*` at 390 and 1440, light and dark, EN and FR; the track's length shows in both themes. Apple and WIG audits re-checked against them |
+| 16 | Should fix: the name link was 24 px tall on phones; EN Retry about 36 px wide, no press feedback | Phones: the name link's `::after` covers its line (icon, name, meta), the menu button sits above it, the line tints on press; Retry `min-h-11 min-w-11`, `active:scale-[0.97]` | e2e `phone_390_files`: the line is at least 44 px and a tap on the icon tile and on the meta line lands on the link; Retry at least 44 by 44. **Old component: fails** (the icon tile is not the link) |
+| 17 | Nit: a file dropped outside the zone replaced the page | While the tab is shown (an effect, so React's Activity removes it on hidden tabs), window `dragover`/`drop` with files are cancelled outside the zone (`dropEffect = "none"`) | e2e `hidden tab`: dispatched `dragover`/`drop` on the page title and the Files heading are cancelled while Files is shown, not while Timeline is. **Old component: fails** |
+| 18 | Nit: outcomes while the tab was hidden were silent | A final outcome (failed, added, the past-5 summary) also goes to the app's toast when the tab is hidden (`shown` ref, false while Activity hides the tab); the line stays for when it is shown again | e2e `hidden tab`: an upload's connection fails after switching to Timeline: the toast "`name` wasn't added. Connection lost. Try again." is visible; back on Files, the line says it |
+
+### Checks on b7b84b9 (code as committed; screenshots and docs in the next commit)
+
+| Check | Result |
+|---|---|
+| `npm run test:unit` | 353 passed (new: `file-dates` 2, `file-upload` unreadable and `canRetry`) |
+| `npm run lint` / `npm run typecheck` | exit 0 (pre-commit hook on each commit; the 2 existing React Compiler warnings) |
+| `db-test.sh` (a copy on port 54371) | all 9 suites pass; advisors 0 ERROR (WARN `set_user_role` accepted; INFO `unindexed_foreign_keys` 2, `unused_index` 3, as after round 2's database fixes); exit 0. No migration change in this round, so no mutation row is affected |
+| E2E local, Chromium | `files.spec.ts` **11 passed, 5 skipped** (CI only); `files-screens.spec.ts` 3 passed (66 shots, no console error, no sideways scroll); `lead-page.spec.ts` + `files-spikes.spec.ts` 26 passed, 4 skipped. The shared stack was idle (6a's gateway, no Playwright run), restarted for this worktree and left running |
+| New e2e against the previous `files-tab.tsx` (rebuilt) | `phone_390_files`, `announcements`, `upload line focus`, `hidden tab`, `show older files`, `delete_needs_fresh_code` (Retry's name): each fails |
+| gitleaks (`origin/main..HEAD`), `npm audit --omit=dev` | no leaks found, exit 0; found 0 vulnerabilities |
+| WebKit, Semgrep, storage-api e2e | CI only. In CI the new upload tests run the same way (the Storage request is answered or held by the test, so no object is stored and the check after upload fails as here) |
+
 ## Check results (first round)
 
 Code checks on **6a08a49** (the last code commit; the commits after it are docs), 12 Oct 2026. Local auth stack
@@ -175,6 +210,12 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 - Next.js 16.2 (`/vercel/next.js/v16.2.9`): route handlers with `params` promises, `NextResponse.redirect` (status and
   headers), `notFound` in route handlers.
 - MDN (known): `XMLHttpRequest.upload.onprogress`, `Sec-Fetch-Site`.
+- React (`/reactjs/react.dev`): a hidden `<Activity>` hides its children with `display: none` and cleans up their
+  Effects (re-run when shown), used for the drop guard and the "tab shown" flag (verifier round 2 findings 17, 18).
+- TanStack Query (`/tanstack/query`): `useInfiniteQuery` `isFetchNextPageError`, `fetchNextPage()` resolving with the
+  observer result (`hasNextPage`), for "Show older files" (finding 10).
+- next-intl (`/amannn/next-intl`): `createFormatter({ locale, timeZone })` from `use-intl/core` for the date unit test,
+  and `format.dateTime` using the configured time zone (finding 12).
 - next-intl (`/amannn/next-intl`): `useFormatter().number(value, options)` takes `Intl.NumberFormatOptions`, used with
   `style: "percent"` for the progress bar's `aria-valuetext` ("40%" in English, "40 %" with a narrow no-break space in
   French).
@@ -219,6 +260,13 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
     against; `open_file` joins `storage.objects` and refuses a changed version, size or type, or a missing object.
 19. Verifier round 2: `private.lead_has_files(uuid)` is a third DEFINER function (yes/no for a lead of the caller's
     organisation), so import undo sees other people's pending uploads.
+20. Verifier round 2 (finding 7): a failed check after upload cancels the pending row from the browser at once (design
+    5.7 left it for Cancel or the clean-up); the line offers Try again on the same file, which design 7.6 did not list.
+21. Verifier round 2 (findings 14, 15): the status region keeps the last 10 messages as separate nodes (design 7.9:
+    "one polite live region"; still one region); upload lines are card-coloured with a border so the muted track
+    shows (design 7.6 did not specify the line's surface).
+22. Verifier round 2 (finding 16): on phones the whole file line opens the file (the name link stretched over it);
+    on desktop only the name is the link, as designed.
 
 ## Rebase points (4c not merged)
 
