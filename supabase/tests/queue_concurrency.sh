@@ -15,8 +15,10 @@
 #     main number). The contact trigger locks the lead before it looks, so the second sees the first: the lead ends with
 #     no contact number and no rank. Without the lock both would miss each other and the lead would keep a rank.
 #  7. outcome_vs_contact_edit_no_deadlock: a wrong number on contact C1 (contact, then lead) while a teammate removes
-#     contact C2's number and then changes C1 (contact C2, then the lead through the trigger, then C1);
-#     deadlock_timeout 200 ms; both finish, C1's new number has no mark, and the lead's flag matches its contacts.
+#     contact C2's number and then changes C1 (contact C2, then the lead through the trigger, then C1); both finish
+#     (a deadlock would fail the run), C1's new number has no mark, and the lead's flag matches its contacts.
+# (No "set deadlock_timeout": it needs a superuser, which the CI image's postgres role may not be; the default 1 s only
+# makes a deadlock take a little longer to show.)
 #  8. claim_cap_two_tabs: one person's two tabs claim at the same time; together they never hold more than 3 claims
 #     (the claim guard's per-person lock makes the second tab wait and then see the first tab's claims).
 #  9. second_look: a lead a teammate claims, calls and lets go while this session's claim waits (its candidates read
@@ -59,7 +61,6 @@ as_owner "insert into public.companies (org_id, name, owner_id, lead_status, pho
             from public.orgs o, generate_series(1, 120) g where o.name = 'TopStock Wholesale';" > /dev/null
 worker() {
   psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 <<SQL 2> "$TMPDIR_QC/w$2.err" > "$TMPDIR_QC/w$2.out"
-set deadlock_timeout = '200ms';
 set role authenticated;
 select set_config('request.jwt.claims', '{"sub":"$1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
 do \$\$
@@ -176,7 +177,6 @@ c71=$(as_owner "insert into public.contacts (org_id, company_id, first_name, pho
 c72=$(as_owner "insert into public.contacts (org_id, company_id, first_name, phone)
                 select org_id, id, 'Dino', '+33 6 39 98 50 72' from public.companies where id = '$lead7' returning id;")
 psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL & pa=$!
-set deadlock_timeout = '200ms';
 set role authenticated;
 select set_config('request.jwt.claims', '{"sub":"$W1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
 begin;
@@ -188,7 +188,6 @@ commit;
 SQL
 sleep 0.5
 psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 > /dev/null <<SQL || fail "outcome_vs_contact_edit_no_deadlock: the contact edits failed"
-set deadlock_timeout = '200ms';
 set role authenticated;
 select set_config('request.jwt.claims', '{"sub":"$W2","role":"authenticated","aal":"aal2"}', false) \g /dev/null
 begin;

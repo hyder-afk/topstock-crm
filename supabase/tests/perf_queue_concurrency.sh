@@ -21,7 +21,6 @@ ANY_HOURS=$(psql "$CONN" -X -q -A -t -c "select not exists (select 1 from unnest
 echo "P10: 3 sessions x 100 rounds, team queue, p_any_hours = $ANY"
 session() {
   psql "$CONN" -X -q -A -t -v ON_ERROR_STOP=1 <<SQL 2> "$TMPDIR_PQ/s$3.err" > /dev/null
-set deadlock_timeout = '200ms';
 set role authenticated;
 do \$\$
 declare
