@@ -53,6 +53,8 @@ jobs:
         run: bash supabase/tests/stock_import_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Sales, holds and requests attack tests (Day 6d)
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/sales_attack.sql
+      - name: Sales under concurrency (Day 6d)
+        run: bash supabase/tests/sales_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions
