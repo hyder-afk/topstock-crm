@@ -33,6 +33,8 @@ export const INVALID_HINTS = [
   "task_kind",
   "task_due",
   "lead_has_files",
+  "bad_bucket",
+  "timezone",
 ] as const;
 export type InvalidHint = (typeof INVALID_HINTS)[number];
 
