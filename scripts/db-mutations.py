@@ -29,10 +29,12 @@ MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
 MIG_6A = ROOT / "supabase/migrations/20261016090000_stock_engine.sql"
 MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
+MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
 # Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
-# "untouched" rule; Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a).
+# "untouched" rule; Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
+# Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 4a).
 # An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
-REDEFINERS = [MIG_6A, MIG_6C]
+REDEFINERS = [MIG_6A, MIG_6C, MIG_6D]
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [

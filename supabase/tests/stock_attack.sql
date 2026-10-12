@@ -232,8 +232,18 @@ begin
    where attrelid = 'public.locations'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'UPDATE');
   if cols is distinct from array['name'] then raise exception 'FAIL: location update columns are %', cols; end if;
-  -- stock_levels_direct_write_denied (catalog), holds and hold uses read only (S1).
-  foreach t in array array['public.stock_levels', 'private.stock_reservations', 'private.stock_hold_uses'] loop
+  -- stock_levels_direct_write_denied (catalog), hold uses read only (S1); holds read only but for their end date
+  -- (6d: extend_reservation, guarded by reservation_extend_guard).
+  select array_agg(attname::text order by attname) into cols from pg_attribute
+   where attrelid = 'private.stock_reservations'::regclass and attnum > 0 and not attisdropped
+     and (has_column_privilege('authenticated', attrelid, attname, 'UPDATE')
+          or has_column_privilege('authenticated', attrelid, attname, 'INSERT'));
+  if cols is distinct from array['hold_until'] or has_table_privilege('authenticated', 'private.stock_reservations', 'INSERT')
+     or has_table_privilege('authenticated', 'private.stock_reservations', 'DELETE')
+     or has_table_privilege('authenticated', 'private.stock_reservations', 'TRUNCATE') then
+    raise exception 'FAIL: hold write columns are %', cols;
+  end if;
+  foreach t in array array['public.stock_levels', 'private.stock_hold_uses'] loop
     if not has_table_privilege('authenticated', t, 'SELECT')
        or has_table_privilege('authenticated', t, 'INSERT') or has_table_privilege('authenticated', t, 'UPDATE')
        or has_table_privilege('authenticated', t, 'DELETE') or has_table_privilege('authenticated', t, 'TRUNCATE')
@@ -347,6 +357,7 @@ begin
                             'private.stock_hold_uses:stock_hold_uses_select',
                             'private.stock_movements:stock_movements_insert',
                             'private.stock_movements:stock_movements_select',
+                            'private.stock_reservations:stock_reservations_extend',
                             'private.stock_reservations:stock_reservations_select',
                             'public.locations:locations_select', 'public.locations:locations_update',
                             'public.products:products_import_column', 'public.products:products_insert',
