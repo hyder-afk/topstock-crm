@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { Package, Plus, Settings } from "lucide-react";
+import { FileUp, Package, Plus, Settings } from "lucide-react";
 import { useStepUp } from "@/components/auth/step-up-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -240,6 +240,12 @@ export function InventoryWorkspace({
           {s ? <span className="font-mono text-base font-normal text-muted-foreground">{t("productsCount", { count: s.products })}</span> : null}
         </h1>
         <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Link href="/inventory/import" className={buttonVariants({ variant: "quiet" })} aria-label={t("importSheet")}>
+              <FileUp aria-hidden="true" strokeWidth={1.75} className="size-4" />
+              <span className="hidden sm:inline">{t("importSheet")}</span>
+            </Link>
+          ) : null}
           {isAdmin ? (
             <Link href="/inventory/settings" className={buttonVariants({ variant: "quiet" })} aria-label={t("settings")}>
               <Settings aria-hidden="true" strokeWidth={1.75} className="size-4" />

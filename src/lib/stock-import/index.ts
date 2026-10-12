@@ -7,3 +7,4 @@ export * from "./numbers";
 export * from "./values";
 export * from "./normalise";
 export * from "./schema";
+export * from "./types";

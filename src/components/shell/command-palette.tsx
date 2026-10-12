@@ -96,6 +96,12 @@ export function CommandPalette({
                     onSelect={() => run(() => router.push("/leads/import"))}
                   />
                   <Item
+                    value="import stock sheet csv inventory feuille de stock importer"
+                    icon={Upload}
+                    label={t("importStock")}
+                    onSelect={() => run(() => router.push("/inventory/import"))}
+                  />
+                  <Item
                     value="inventory settings warehouse hold days restock reglages stock"
                     icon={Settings}
                     label={t("inventorySettings")}

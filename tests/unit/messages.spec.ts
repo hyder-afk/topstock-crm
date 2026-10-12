@@ -27,6 +27,7 @@ const namespaces = [
   "Shortcuts",
   "Inventory",
   "InventorySettings",
+  "StockImport",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {
