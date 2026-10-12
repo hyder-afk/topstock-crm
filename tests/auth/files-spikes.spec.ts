@@ -13,6 +13,10 @@ import { createUser, nextWindow, setRole, sql, totp } from "./helpers";
 //  S3: do signed links honour Range? Fallback in place either way (src/lib/files/stored-bytes.ts).
 //  S4: storage.objects.metadata key names, and whether they are written before the insert policy runs (a probe bucket
 //      whose insert policy needs metadata ? 'size'). The ready check runs at finish, after the upload, either way.
+//  S5 (verifier 4d finding 8): is the insert policy (pending, the uploader's, under 15 minutes) checked again when bytes
+//      reach a signed upload link, or only when the link is made? A link made for a pending upload, the upload then
+//      cancelled, then bytes sent to the link. Recorded only: stray bytes this way are accepted residual risk 7 (they
+//      still count against the team's space; files_attack.sql shows the quota reads real stored bytes).
 test.describe.configure({ mode: "serial" });
 test.skip(!process.env.E2E_STORAGE, "needs storage-api: CI auth-journey only");
 
@@ -159,4 +163,45 @@ test("S3: do signed links honour Range?", async () => {
     range_honoured: head.status === 206 && headBody.length === 5,
   });
   expect([200, 206]).toContain(head.status);
+});
+
+test("S5: a signed upload link after the upload was cancelled", async () => {
+  const lead = sql(`insert into public.companies (org_id, name) select p.org_id, 'Spike S5 lead ${Date.now()}' from public.profiles p
+                    join auth.users u on u.id = p.id where u.email = '${email}' returning id`);
+  const body = Buffer.from("%PDF-1.7\n%%EOF\n");
+  const call = async (fn: string, args: Record<string, unknown>) =>
+    fetch(`${url()}/rest/v1/rpc/${fn}`, { method: "POST", headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify(args) });
+  const begun = await (await call("begin_file_upload", { p_company: lead, p_name: "s5.pdf", p_mime: "application/pdf", p_size: body.length })).json();
+  const sign = await fetch(`${url()}/storage/v1/object/upload/sign/lead-files/${begun.path}`, { method: "POST", headers: headers({ "Content-Type": "application/json" }), body: "{}" });
+  const signed = (await sign.json().catch(() => ({}))) as { url?: string };
+  const aborted = await call("abort_file_upload", { p_id: begun.id });
+  let putStatus: number | null = null;
+  try {
+    if (signed.url) {
+      const put = await fetch(`${url()}/storage/v1${signed.url}`, {
+        method: "PUT",
+        headers: { "content-type": "application/pdf", "x-upsert": "false", "cache-control": "max-age=0" },
+        body: new Uint8Array(body),
+      });
+      putStatus = put.status;
+    }
+    record("S5", {
+      sign_status: sign.status,
+      abort_status: aborted.status,
+      put_after_cancel_status: putStatus,
+      object_stored_after_cancel: sql(`select count(*) from storage.objects where bucket_id = 'lead-files' and name = '${begun.path}'`) === "1",
+      policy_rechecked_at_upload: putStatus !== null && putStatus >= 400,
+    });
+  } finally {
+    // Test-only clean-up of the probe's row and object (the bytes left in CI's container do not matter). Newer storage
+    // versions may refuse a direct delete from storage.objects; a leftover probe object harms nothing.
+    sql(`delete from public.files where id = '${begun.id}'`);
+    try {
+      sql(`delete from storage.objects where bucket_id = 'lead-files' and name = '${begun.path}'`);
+    } catch {
+      test.info().annotations.push({ type: "S5 clean-up", description: "probe object left in place" });
+    }
+  }
+  expect(begun.path).toBeTruthy();
+  expect(aborted.status).toBe(200);
 });

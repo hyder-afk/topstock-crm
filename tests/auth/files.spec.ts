@@ -220,6 +220,8 @@ test("files_list: rows, sizes, who and when; names as text (xss); the team space
   await rep.context.close();
 });
 
+const accesses = (file: string) => sql(`select count(*) from public.audit_log where action = 'file_access' and record_id = '${file}'`);
+
 test("rep_cannot_open_others_file, cross_site_file_request_refused, the unavailable page", async ({ browser }) => {
   const adminFile = seedFile(lead, "Confidentiel.pdf", { by: adminEmail });
   const rep = await open(browser, repState);
@@ -229,6 +231,16 @@ test("rep_cannot_open_others_file, cross_site_file_request_refused, the unavaila
   expect(new URL(res.headers()["location"], "http://localhost:3100").pathname).toBe("/files/unavailable");
   expect(res.headers()["cache-control"]).toContain("no-store");
   expect(res.headers()["referrer-policy"]).toBe("no-referrer");
+  // Without bytes here every open ends on /files/unavailable, so the answer alone proves nothing (verifier 4d finding
+  // 2). open_file writes the file_access audit row only when the caller may open the file: none for the rep, one for
+  // the admin (the control: the same request reaches open_file). Real bytes: the CI test below.
+  expect(accesses(adminFile)).toBe("0");
+  const admin = await open(browser, adminState);
+  await admin.page.goto("/leads");
+  const own = await admin.page.request.get(`/api/files/${adminFile}`, { headers: { "Sec-Fetch-Site": "same-origin" }, maxRedirects: 0 });
+  expect(own.status()).toBe(303);
+  expect(accesses(adminFile)).toBe("1");
+  await admin.context.close();
   // Another site making the browser open a file: refused before anything is read.
   const cross = await rep.page.request.get(`/api/files/${adminFile}`, { headers: { "Sec-Fetch-Site": "cross-site" }, maxRedirects: 0 });
   expect(cross.status()).toBe(403);
@@ -358,11 +370,14 @@ test.describe("with storage-api (CI)", () => {
   test.skip(!storage, "needs storage-api: CI auth-journey only (logged waiver, design 8.5)");
 
   test("upload_pdf_progress_then_open, signed_url_dead_after_60s, deleted_file_url_404", async ({ browser }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(300_000);
     const { context, page, errors } = await open(browser, adminState);
     await gotoFiles(page, lead);
     await filesPanel(page).locator("input[type=file]").setInputFiles({ name: "Catalogue été.pdf", mimeType: "application/pdf", buffer: pdfBytes(2_000_000) });
-    await expect(filesPanel(page).getByRole("progressbar", { name: "Uploading Catalogue été.pdf" })).toBeVisible();
+    const progress = filesPanel(page).getByRole("progressbar", { name: "Uploading Catalogue été.pdf" });
+    await expect(progress).toBeVisible();
+    // The value is read out in the page's language (Intl percent: "40%" in English), or "Checking the file…" after.
+    await expect(progress).toHaveAttribute("aria-valuetext", /^(\d{1,3}%|Checking the file…)$/);
     const link = filesPanel(page).getByRole("link", { name: /Catalogue été\.pdf/ });
     await expect(link).toBeVisible({ timeout: 30_000 });
     const id = sql(`select id from public.files where company_id = '${lead}' and name = 'Catalogue été.pdf' and status = 'ready'`);
@@ -380,8 +395,58 @@ test.describe("with storage-api (CI)", () => {
     expect((await fetch(signed)).status).toBe(200);
     await page.waitForTimeout(61_000);
     expect((await fetch(signed)).status).toBeGreaterThanOrEqual(400);
+    // deleted_file_url_404 (design threat 22; verifier 4d finding 3): a link handed out before the delete dies with it,
+    // the stored object is gone, and the app's route answers "unavailable".
+    const path = sql(`select storage_path from public.files where id = '${id}'`);
+    const before = await page.request.get(`/api/files/${id}?disposition=attachment`, { headers: { "Sec-Fetch-Site": "same-origin" }, maxRedirects: 0 });
+    const fresh = before.headers()["location"];
+    expect((await fetch(fresh)).status).toBe(200);
+    expect(sql(`select count(*) from storage.objects where bucket_id = 'lead-files' and name = '${path}'`)).toBe("1");
+    await ageStepUp(context, 700);
+    await gotoFiles(page, lead); // the page reads the aged session
+    await filesPanel(page).getByRole("button", { name: "Actions for Catalogue été.pdf" }).click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await page.getByRole("dialog", { name: "Delete this file?" }).getByRole("button", { name: "Delete" }).click();
+    const stepUp = page.getByRole("dialog", { name: "Confirm it’s you" });
+    await expect(stepUp).toBeVisible();
+    await nextWindow();
+    await stepUp.getByLabel("6-digit code").fill(totp(adminSecret));
+    await expect(filesPanel(page).getByText("Catalogue été.pdf")).toHaveCount(0);
+    expect(sql(`select count(*) from public.files where id = '${id}'`)).toBe("0");
+    expect(sql(`select count(*) from storage.objects where bucket_id = 'lead-files' and name = '${path}'`)).toBe("0");
+    const after = await page.request.get(`/api/files/${id}?disposition=attachment`, { headers: { "Sec-Fetch-Site": "same-origin" }, maxRedirects: 0 });
+    expect(after.status()).toBe(303);
+    expect(new URL(after.headers()["location"], "http://localhost:3100").pathname).toBe("/files/unavailable");
+    const dead = (await fetch(fresh)).status;
+    expect(dead).toBeGreaterThanOrEqual(400);
+    expect(dead).toBeLessThan(500);
     expect(errors).toEqual([]);
     await context.close();
+  });
+
+  test("rep_cannot_open_others_file with real bytes: the admin reaches Storage, the rep gets unavailable", async ({ browser }) => {
+    test.setTimeout(240_000);
+    // Verifier 4d finding 2: a real stored file, so the only difference between the two answers is who asks.
+    const token = await aal2Token(adminEmail, adminSecret);
+    const body = pdfBytes(8192);
+    const begun = await rpc(token, "begin_file_upload", { p_company: lead, p_name: "Confidentiel stocké.pdf", p_mime: "application/pdf", p_size: body.length });
+    expect(begun.status).toBe(200);
+    expect(await putObject(token, begun.body.path, "application/pdf", body)).toBe(200);
+    expect((await rpc(token, "finish_file_upload", { p_id: begun.body.id })).status).toBe(200);
+    const ask = async (state: typeof adminState) => {
+      const { context, page } = await open(browser, state);
+      await page.goto("/leads");
+      const res = await page.request.get(`/api/files/${begun.body.id}?disposition=attachment`, { headers: { "Sec-Fetch-Site": "same-origin" }, maxRedirects: 0 });
+      await context.close();
+      return { status: res.status(), location: new URL(res.headers()["location"], "http://localhost:3100") };
+    };
+    const admin = await ask(adminState);
+    expect(admin.status).toBe(303);
+    expect(admin.location.origin).toBe(new URL(env("SUPABASE_LOCAL_URL")).origin);
+    const rep = await ask(repState);
+    expect(rep.status).toBe(303);
+    expect(rep.location.origin).toBe("http://localhost:3100");
+    expect(rep.location.pathname).toBe("/files/unavailable");
   });
 
   test("direct_api_html_as_pdf_refused_at_open: bytes stored by a direct API call are checked when opened", async ({ browser }) => {
