@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Local only: proves the client-link checks in the app catch each protection being removed (Day 6 design section
-11.3, rows 48 to 52). Each row edits one source file in place, runs the check that must fail (a unit spec, or one e2e
+11.3, rows 48 to 52; rows 53 to 55 from the Day 6e verifier round). Each row edits one source file in place, runs the check that must fail (a unit spec, or one e2e
 test on the shared local stack), and restores the file. Never run it in a checkout someone else is reading.
 Usage: python3 scripts/app-mutations.py [--e2e] [numbers...]   (--e2e also runs the rows checked by Playwright on the
 local auth stack, which must already serve this checkout with a fresh build: those rows rebuild the app.)
@@ -31,6 +31,16 @@ MUTATIONS = [
     ("The proxy keeps incoming surface headers [design 52]",
      "src/proxy.ts", "  requestHeaders.delete(\"x-topstock-surface\");\n  requestHeaders.delete(\"x-topstock-locale\");\n", "",
      UNIT + ["tests/unit/proxy-share.spec.ts"]),
+    # Day 6e verifier round (findings 1 to 3): the client page's own checks.
+    ("The client page counts lengths in UTF-16 units (an emoji at the limit blanks the list) [verifier 1]",
+     "src/lib/share/wire.ts", "  const n = [...v].length;", "  const n = v.length;",
+     UNIT + ["tests/unit/share.spec.ts"]),
+    ("The client page sends the elapsed time uncapped (a page open a day is refused) [verifier 2]",
+     "src/lib/share/wire.ts", "  return Math.min(MAX_ELAPSED_MS, Math.max(0, Math.round(now - loadedAt)));",
+     "  return Math.max(0, Math.round(now - loadedAt));", UNIT + ["tests/unit/share.spec.ts"]),
+    ("The token must end the fragment (a glued full stop makes the link inactive) [verifier 3]",
+     "src/lib/share/token.ts", "const TOKEN_PREFIX_RE = /^tss_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/;",
+     "const TOKEN_PREFIX_RE = /^tss_[A-Za-z0-9_-]{43}$/;", UNIT + ["tests/unit/share.spec.ts"]),
 ]
 
 E2E = ["bash", "-c", "set -a; . /tmp/topstock-auth/env; set +a; export PW_CHROMIUM_PATH=/opt/pw-browsers/chromium "
