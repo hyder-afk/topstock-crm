@@ -617,7 +617,7 @@ test("work queue: start screen, a card, a follow-up open, the claims ended, no l
   await shoot(browser, "full", "/leads/queue", "queue-followup-view", async (page) => {
     await startQueue(page);
     await page.locator('button[data-outcome="interested"]').click();
-    await expect(page.getByRole("button", { name: /^(Confirm|Valider)$/ })).toBeInViewport();
+    await expect(page.getByRole("button", { name: /^(Confirm|Confirmer)$/ })).toBeInViewport();
     await page.waitForTimeout(600);
   }, lightMatrix, undefined, { fullPage: false });
   // An outcome an earlier visit could not save: said in the header on the start screen too (every phase), with Retry.

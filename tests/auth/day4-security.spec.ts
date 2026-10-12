@@ -352,7 +352,8 @@ test("no console errors and no CSP violations on the Tasks page, the queue and M
   await expect(page.locator("main h1")).toContainText("Work queue");
   await appReady(page);
   await page.getByRole("button", { name: "Start" }).click();
-  await expect(page.locator("main section[role=region], main [role=status] h2").first()).toBeVisible();
+  // A card, or the empty state's heading (no longer a role=status section: its heading takes the focus instead).
+  await expect(page.locator("main section[role=region], main #queue-empty-title").first()).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).toEqual([]);
   await page.goto("/more");
   await expect(page.getByRole("combobox", { name: "Time zone" })).toBeVisible();
