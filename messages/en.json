@@ -656,6 +656,7 @@
       "timeline": "Timeline",
       "deals": "Deals",
       "stock": "Stock",
+      "files": "Files",
       "details": "Details"
     },
     "railLabel": "Log, tasks and contacts",
@@ -924,7 +925,74 @@
       "state": "That task is already done or dismissed.",
       "task_kind": "Unknown kind of task.",
       "task_due": "A task has a date or a time, not both; a meeting needs a time.",
-      "lead_has_files": "Delete this lead’s files first."
+      "lead_has_files": "Delete this lead’s files first.",
+      "file_type": "Only PDF, PNG, JPG, Word or Excel files.",
+      "file_size": "A file can be up to 10 MB.",
+      "file_name": "This file name can’t be stored. Rename the file and try again.",
+      "file_lead": "Reload the page and try again."
+    }
+  },
+  "Files": {
+    "title": "Files",
+    "drop": "Drop files here or choose files",
+    "choose": "Choose files",
+    "add": "Add file",
+    "limits": "PDF, PNG, JPG, Word or Excel, up to 10 MB each",
+    "uploadsLabel": "Uploads",
+    "uploading": "Uploading…",
+    "checking": "Checking the file…",
+    "cancel": "Cancel",
+    "dismiss": "Dismiss {name}",
+    "progressLabel": "Uploading {name}",
+    "open": "Open",
+    "download": "Download",
+    "delete": "Delete",
+    "menu": "Actions for {name}",
+    "opensNewTab": "(opens in a new tab)",
+    "you": "You",
+    "someone": "Someone",
+    "usage": "{used} of {total} used",
+    "empty": "No files yet. Add quotes, price lists or photos.",
+    "error": "Couldn’t load the files.",
+    "retry": "Try again",
+    "loadOlder": "Show older files",
+    "stuckDeleting": "Couldn’t finish deleting",
+    "retryDelete": "Retry",
+    "deleted": "Deleted {name}",
+    "deleteConfirm": {
+      "title": "Delete this file?",
+      "body": "“{name}” will be removed for everyone. This can’t be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "errors": {
+      "tooBig": "Too big: a file can be up to 10 MB.",
+      "empty": "This file is empty.",
+      "type": "Only PDF, PNG, JPG, Word or Excel files.",
+      "mismatch": {
+        "pdf": "This file isn’t really a PDF.",
+        "image": "This file isn’t really a photo (PNG or JPG).",
+        "word": "This isn’t a real Word file, or it contains macros.",
+        "excel": "This isn’t a real Excel file, or it contains macros."
+      },
+      "quota": "The team’s file space is full (800 MB). Delete old files first.",
+      "rateLimited": "That’s a lot of uploads in an hour. Try again later.",
+      "tooManyPending": "Wait for the uploads in progress to finish.",
+      "connection": "Connection lost. Try again.",
+      "tooMany": "Up to 5 files at a time. Add this one again.",
+      "unavailable": "Couldn’t add this file. Try again.",
+      "deleteFailed": "Couldn’t finish deleting. Try again."
+    },
+    "announce": {
+      "uploading": "Uploading {name}",
+      "added": "Added {name}",
+      "failed": "{name} wasn’t added",
+      "cancelled": "Cancelled {name}"
+    },
+    "unavailable": {
+      "title": "This file can’t be opened",
+      "body": "It’s no longer available, or it isn’t yours to open.",
+      "back": "Back to leads"
     }
   }
 }

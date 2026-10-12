@@ -17,6 +17,8 @@ import { EntryList, Timeline } from "@/components/activity/timeline";
 import { fetchTimeline, timelineKey, useTimeline } from "@/components/activity/use-activities";
 import { fetchLead, leadKey, rowBefore, useLeadChanges } from "@/components/leads/use-leads";
 import { DetailsTab } from "@/components/lead/details-tab";
+import { FilesTab } from "@/components/files/files-tab";
+import { prefetchFiles } from "@/components/files/use-files";
 import { Card, ContactsCard, NextStepCard } from "@/components/lead/lead-cards";
 import { LeadHeader } from "@/components/lead/lead-header";
 import { listNeighbours, readListReturn } from "@/components/lead/lead-nav";
@@ -25,6 +27,7 @@ import type { TimelineFilter, TimelinePage } from "@/lib/activities";
 import { LEAD_TABS, personName, type LeadDetail, type LeadStatus, type LeadTab, type TeamMember } from "@/lib/leads";
 import { isTyping } from "@/lib/shortcuts";
 import type { LeadTask } from "@/lib/tasks";
+import type { FilesPage } from "@/lib/files/types";
 import { cardTitle, retryKeepingFocus } from "@/lib/focus";
 
 // The lead page (Day 4 design 7.1). Server-rendered with the lead, the first timeline page and its tasks; the browser
@@ -32,7 +35,7 @@ import { cardTitle, retryKeepingFocus } from "@/lib/focus";
 // right, then the tabs, then a two-column body (the tab, and a sticky rail with the composer and the contacts; the next
 // step with the open tasks leads Summary). 390: a back link, the header stacked, five equal actions, the tabs as a
 // sideways strip; the contacts fold into Summary and the composer opens as a sheet. J and K move to the next or previous lead of the list it was
-// opened from; Back returns to that list where it was. Files stays hidden until Day 4d (design D16).
+// opened from; Back returns to that list where it was. Files (Day 4d, design 7.6) lists, adds, opens and deletes files.
 // Each tab's panel sits in a React Activity boundary: the selected one is shown, the others are drawn in the background
 // at low priority (hidden, effects off), so a tab switch only reveals a panel that is ready (design 8.6: 100 ms), and a
 // panel keeps its state (scroll in the timeline, a half-typed detail) when the reader comes back to it.
@@ -60,6 +63,7 @@ export function LeadPage({
   initialLead,
   initialTimeline,
   initialTasks,
+  initialFiles,
   team,
   me,
   stepUpSeconds,
@@ -69,6 +73,7 @@ export function LeadPage({
   initialLead: LeadDetail;
   initialTimeline: TimelinePage | null;
   initialTasks: LeadTask[] | null;
+  initialFiles: FilesPage | null;
   team: TeamMember[];
   me: { id: string; role: TeamMember["role"] };
   stepUpSeconds: number;
@@ -203,6 +208,7 @@ export function LeadPage({
         staleTime: 30_000,
       });
     }
+    if (tabId === "files") void prefetchFiles(queryClient, id);
   };
 
   const composerCard = (
@@ -349,6 +355,11 @@ export function LeadPage({
           <Activity mode={tab === "stock" ? "visible" : "hidden"}>
             <TabPanel idBase={`lead-${id}`} id="stock" className="flex min-w-0 flex-col gap-4">
               <EmptyState icon={Package} title={t("stockTitle")} body={t("stockEmpty")} />
+            </TabPanel>
+          </Activity>
+          <Activity mode={tab === "files" ? "visible" : "hidden"}>
+            <TabPanel idBase={`lead-${id}`} id="files" className="flex min-w-0 flex-col gap-4">
+              <FilesTab leadId={id} initial={initialFiles} stepUp={stepUp} />
             </TabPanel>
           </Activity>
           <Activity mode={tab === "details" ? "visible" : "hidden"}>
