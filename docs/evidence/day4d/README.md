@@ -2,8 +2,9 @@
 
 Design: `docs/evidence/day4/design.md` (sections 1, 2 with D1 to D17 and the spikes in 2.4, 3.4, 4.3, 5.7, 6 rows 17 to
 28 for files, 7.6, 8, 10 "4d Files" items 3 to 7, 11 with Haider's answer to question 6). Local branch `day4d-local`,
-cut from `main` at a7aa89e (Day 4a and 4b merged). Day 4c is built elsewhere and not merged: nothing here depends on its
-files; the places that redefine a merged definition are listed under "Rebase points". Not pushed; no PR yet.
+cut from `main` at a7aa89e (Day 4a and 4b merged). Day 4c (PR #15 branch `claude/busy-darwin-xech8m`, 959e2b8) was
+merged into this branch on 12 Oct 2026 (merge commit d0d98b0, no rebase): see "Rebase onto Day 4c (merge)". Not pushed;
+no PR yet (it opens once PR #15 is merged).
 
 ## What changed
 
@@ -297,7 +298,51 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 23. Verifier round 3 (finding 2): the browser sends the cleaned name (`cleanFileName`), not the raw one; design 5.7 has
     only the server clean it. The server still cleans it again and the database still checks it.
 
-## Rebase points (4c not merged)
+## Rebase onto Day 4c (merge, 12 Oct 2026)
+
+`origin/claude/busy-darwin-xech8m` (959e2b8: `origin/main` + Day 4c + docs, PR #15) merged into `day4d-local` as merge
+commit d0d98b0 (no rebase), so the Day 4d PR can open as soon as PR #15 is merged.
+
+### What was re-copied
+
+| Definition | 4d redefines it? | Latest before 4d on the merged tree | Result |
+|---|---|---|---|
+| `private.lead_import_untouched` | yes (`create or replace`, marked REBASE) | still Day 4a's (`20261011120000_activity_hardening.sql`): 4c's `20261013090000_tasks_queue.sql` does not redefine it; its queue claims are left out of the rule on purpose ("a claim is not work; it goes with the lead", `on delete cascade`) | 4d's copy checked equal to Day 4a's text plus the one `lead_has_files` line (script comparison); REBASE markers replaced by a note saying so |
+| `private.audit_row` | no | Day 4c's (hides `call_zone`, `queue_rank`; `has_contact_phone` out of diffs) | stays live; the files hourly limit still counts `files` insert rows it writes |
+| `public.get_lead` | no (deviation: Files has its own list call) | Day 4c's (`worked_by`) | stays live |
+| `public.log_activity` | no | Day 4c's | stays live |
+| `audit_log_action_check` | yes (adds `file_access`) | Day 3a's; 4c does not touch it | unchanged |
+
+Every other object the 4d migration creates is new (files functions, triggers, policies on `public.files` and
+`storage.objects`); 4c touches none of them. No mutation anchor moved: all 371 rows (3b 37, 4a 104, 4b 94, 4c 92,
+4d 44) find their text exactly once on the merged tree; Day 3b rows 18 to 21 and Day 4a row 10 keep editing the Day 4d
+migration, 4c's `REDEFINED_IN_4C` rows keep editing the Day 4c one.
+
+### Conflicts resolved (both sides kept)
+
+| File | Resolution |
+|---|---|
+| `scripts/db-test.sh`, `.github/workflows/db.yml` | 4c's queue attack and three-session tests, then 4d's files attack and concurrency tests; db.yml's storage-api settings and the Spike S1 step unchanged (not in conflict); header comments merged |
+| `scripts/db-perf.sh` | `perf_queue_concurrency.sh` (4c), then `perf_files.sql` (4d); comment merged |
+| `scripts/db-mutations.py` | `MIG_4C` and `MIG_4D`; `MUTATIONS_4D` kept beside `MUTATIONS_4C`, `REDEFINED_IN_4C` and its row moves; `SETS` has `day4c` and `day4d`; usage and docstring name both |
+| `messages/en.json`, `messages/fr.json` | all keys: 4c's `bad_bucket`, `timezone` and 4d's `file_*` hints, the `Files` namespace before 4c's `Queue`; 1,035 keys each, parity; no key of either side lost or changed (script check) |
+| `src/lib/db-errors.ts`, `tests/unit/messages.spec.ts` | union of the hints and of the namespaces |
+| `playwright.auth.config.ts` | WebKit `testMatch` union: `shell, leads, import, lead-page, queue, queue-multi, tasks, files` |
+| `supabase/tests/import_attack.sql` | tables referencing leads: `activities, contacts, deals, files, private.queue_claims, tasks` |
+| `docs/log.md` | all rows, ordered by the time each was written (git blame on each branch) |
+| Auto-merged, checked | `src/lib/leads.ts` (4c `worked_by`, 4d `LEAD_TABS` with Files), `tests/auth/helpers.ts` (4c `countryInHours`, `signedInPage`); the lead page files and route had no 4c change |
+
+### Checks after the merge (on d0d98b0)
+
+| Check | Result |
+|---|---|
+| `db-test.sh` (a copy on port 54371) | all 11 suites pass (rls, import x2, activity x2, outcome x2, queue x2, files x2); advisors 0 ERROR (WARN `set_user_role` accepted; INFO `unindexed_foreign_keys` 4 = exactly 4c's accepted four, `activities_org_id_fkey`, `activity_undo_org_id_fkey`, `queue_claims_org_id_fkey`, `tasks_org_id_fkey`: 4d adds none; `unused_index` 4); exit 0 |
+| Mutations touching the re-checked definitions (throwaway worktree, port 54372, removed) | Day 3b 18 to 23 (undo rule and its second look), 28, 29 (audit, now in 4c's copy); Day 4a 10; Day 4c 65, 66 (audit hides `call_zone`/`queue_rank`, contact flag); Day 4d 27, 28, 37, 38 (`audit_file_access`, undo with files, `lead_has_files`): **15 of 15 caught**, 0 not as listed; each set exit 0 |
+| `npm run lint` / `npm run typecheck` / `npm run test:unit` | exit 0 (the 2 existing React Compiler warnings) / exit 0 / 378 passed, exit 0 |
+| E2E local, Chromium (shared stack idle, restarted for this worktree) | `files.spec.ts` 12 passed, 5 skipped (Storage cases, CI only), `lead-page.spec.ts` 26 passed, `queue.spec.ts` 20 passed, `tasks.spec.ts` 12 passed: **70 passed, 5 skipped, 0 failed**, exit 0. Build with the uncommitted `turbopack.root` line (removed before the commit); the stack left running idle for this worktree |
+| gitleaks (`origin/main..HEAD`) | no leaks found (80 commits), exit 0 |
+
+## Rebase points (resolved by the merge above)
 
 - `private.lead_import_untouched` (redefined here with `files`): "-- REBASE: re-copy after 4c merges". 4c adds
   `private.queue_claims` with a lead foreign key and may redefine the rule.
@@ -346,4 +391,4 @@ restarted for this worktree (the shared stack was idle; it served the Day 6a wor
 - **Next.js local build**: this worktree's `node_modules` is a symlink to a sibling worktree, which Turbopack refuses; the
   local builds used an uncommitted `turbopack.root` line in `next.config.ts` (removed before every commit). CI builds
   from a real `npm ci`.
-- **Rebase onto 4c** (see "Rebase points").
+- **Rebase onto 4c**: done by merge (d0d98b0); if PR #15 changes before it merges, merge its branch again.
