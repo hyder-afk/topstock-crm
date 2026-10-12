@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, settled, signedInPage, sql, totp } from "./helpers";
 
 // The Tasks page (Day 4c, design 7.5 and 8.5): quick add with date chips lands in the right tab; done and dismiss with
@@ -367,6 +367,9 @@ test("lead_picker_focus: picking a lead from the keyboard puts the focus on the 
 test("failed_toggle_reverts: a toggle that cannot be sent puts the row back with an empty check", async ({ browser }) => {
   sql(`update public.tasks set cancelled_at = now() where assignee_id = '${userId(adminEmail)}' and done_at is null and cancelled_at is null`);
   makeTask(adminEmail, "Offline toggle task", { date: todayIn("Europe/Paris") });
+  // A second row keeps the list on screen while the first leaves (alone, the list would give way to the empty state and
+  // the row would come back as a new one, hiding the bug).
+  makeTask(adminEmail, "Offline toggle neighbour", { date: todayIn("Europe/Paris") });
   const { context, page } = await signedInPage(browser, adminState, { baseURL: baseURL() });
   await openTasks(page);
   const check = page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" });
@@ -380,6 +383,22 @@ test("failed_toggle_reverts: a toggle that cannot be sent puts the row back with
   await page.waitForTimeout(600); // past the row's exit spring
   await expect(page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" })).toHaveAttribute("aria-checked", "false");
   await context.setOffline(false);
+  expect(sql(`select done_at is null from public.tasks where ${mine()} and title = 'Offline toggle task'`)).toBe("t");
+  // A refusal that arrives while the row is still fading out (the request held 150 ms, then cut): the same row comes
+  // back, and its check is empty again (it does not keep the click that sent it away).
+  const cut = async (route: Route) => {
+    if (route.request().method() === "POST" && route.request().headers()["next-action"]) {
+      await new Promise((r) => setTimeout(r, 150));
+      await route.abort();
+    } else await route.continue();
+  };
+  const onTasks = (u: URL) => u.pathname.startsWith("/tasks");
+  await page.route(onTasks, cut);
+  await page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" }).click();
+  await expect(row(page, "Offline toggle task")).toBeVisible();
+  await page.waitForTimeout(600); // past the exit spring
+  await expect(page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" })).toHaveAttribute("aria-checked", "false");
+  await page.unroute(onTasks, cut);
   expect(sql(`select done_at is null from public.tasks where ${mine()} and title = 'Offline toggle task'`)).toBe("t");
   // Back online, the same check completes it.
   await page.getByRole("checkbox", { name: "Mark “Offline toggle task” done" }).click();
