@@ -4,7 +4,7 @@ import enMessages from "../../messages/en.json";
 import frMessages from "../../messages/fr.json";
 import { isShareSurface, shareMessages } from "@/i18n/share-messages";
 import { assertSameOrigin, readJsonCapped } from "@/lib/http";
-import { mapShareItem, mapShareItems, mapShareRequest, mapShareView } from "@/lib/share/map";
+import { mapShareItem, mapShareItems, mapShareRequest, mapShareView, snapshotFromWire, snapshotToWire } from "@/lib/share/map";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { requestBodySchema, viewBodySchema } from "@/lib/share/schema";
 import { defaultLinkLanguage } from "@/lib/share/team";
@@ -16,7 +16,7 @@ import { shareUrl, tokenFromHash, TOKEN_RE } from "@/lib/share/token";
 
 const TOKEN = "tss_" + "Ab3_-".repeat(8) + "xyz";
 const ID = "9c65bb59-fad7-47ec-adce-d96f9400f487";
-const row = [ID, 42, "Sac kraft", "Bags", "2.5000", 24, 480, 0, null];
+const row = [42, "Sac kraft", "Bags", "2.5", 24, 480, 0, null];
 
 test.describe("token", () => {
   test("share_token_format: tss_ and 43 base64url characters, read from the fragment only", () => {
@@ -42,7 +42,7 @@ test.describe("token", () => {
 test.describe("schemas", () => {
   const body = (over: Record<string, unknown> = {}) => ({
     token: TOKEN,
-    lines: [{ productId: ID, description: null, quantity: 2, unit: "carton" }],
+    lines: [{ productNumber: 42, description: null, quantity: 2, unit: "carton" }],
     note: "",
     name: "",
     idempotencyKey: "0f8fad5b-d9cb-469f-a165-70867728950e",
@@ -59,7 +59,7 @@ test.describe("schemas", () => {
   });
   test("request body: 20 lines at most, notes and names bounded, no bidi or control characters, no extra keys", () => {
     expect(requestBodySchema.safeParse(body()).success).toBe(true);
-    const line = { productId: null, description: "Sacs", quantity: 1, unit: "piece" };
+    const line = { productNumber: null, description: "Sacs", quantity: 1, unit: "piece" };
     expect(requestBodySchema.safeParse(body({ lines: Array.from({ length: 21 }, () => line) })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ lines: [], note: "n".repeat(1001) })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ lines: [], note: "n".repeat(1000) })).success).toBe(true);
@@ -71,9 +71,11 @@ test.describe("schemas", () => {
     expect(requestBodySchema.safeParse({ ...body(), price: 1 }).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ lines: [], note: "ok" })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ lines: [{ ...line, unit: "carton" }] })).success).toBe(false);
-    expect(requestBodySchema.safeParse(body({ lines: [{ productId: ID, description: "x", quantity: 1, unit: "piece" }] })).success).toBe(false);
-    expect(requestBodySchema.safeParse(body({ lines: [{ productId: ID, description: null, quantity: 0, unit: "piece" }] })).success).toBe(false);
-    const dup = { productId: ID, description: null, quantity: 1, unit: "piece" };
+    expect(requestBodySchema.safeParse(body({ lines: [{ productNumber: 42, description: "x", quantity: 1, unit: "piece" }] })).success).toBe(false);
+    expect(requestBodySchema.safeParse(body({ lines: [{ productId: ID, description: null, quantity: 1, unit: "piece" }] })).success).toBe(false);
+    expect(requestBodySchema.safeParse(body({ lines: [{ productNumber: 42, description: null, quantity: 0, unit: "piece" }] })).success).toBe(false);
+    expect(requestBodySchema.safeParse(body({ lines: [{ productNumber: 4.2, description: null, quantity: 1, unit: "piece" }] })).success).toBe(false);
+    const dup = { productNumber: 42, description: null, quantity: 1, unit: "piece" };
     expect(requestBodySchema.safeParse(body({ lines: [dup, dup] })).success).toBe(false);
   });
 });
@@ -81,11 +83,12 @@ test.describe("schemas", () => {
 test.describe("map", () => {
   test("mapShareItems gives exactly the public keys; a wrong array length or type is refused", () => {
     expect(mapShareItem(row)).toEqual({
-      id: ID, number: 42, name: "Sac kraft", category: "Bags", priceMax: "2.5000", piecesPerCarton: 24, warehouse: 480, transit: 0, etaWeek: null,
+      number: 42, name: "Sac kraft", category: "Bags", priceMax: "2.5", piecesPerCarton: 24, warehouse: 480, transit: 0, etaWeek: null,
     });
     expect(mapShareItem([...row, "0.42"])).toBeNull();
-    expect(mapShareItem(row.slice(0, 8))).toBeNull();
-    expect(mapShareItem([ID, 42, "x", null, "2.5", 24, -1, 0, null])).toBeNull();
+    expect(mapShareItem(row.slice(0, 7))).toBeNull();
+    expect(mapShareItem([ID, ...row.slice(1)])).toBeNull();
+    expect(mapShareItem([42, "x", null, "2.5", 24, -1, 0, null])).toBeNull();
     expect(mapShareItems([row, "x"])).toBeNull();
   });
   test("share_output_schema_strips_cost: an answer with any extra field is unavailable, never passed on", () => {
@@ -99,6 +102,14 @@ test.describe("map", () => {
     expect(mapShareView({ status: "other" })).toEqual({ status: "unavailable" });
     expect(mapShareView({ status: "ok", unchanged: true, version: "0123456789abcdef" })).toEqual({ status: "ok", unchanged: true, version: "0123456789abcdef" });
     expect(mapShareRequest({ status: "received", signature: "Henri", request_id: "x" })).toEqual({ status: "received", signature: "Henri" });
+    // The wire form: positional again, only the whitelisted fields, and the browser reads it back to the same snapshot.
+    const snap = mapShareView(ok);
+    if (snap.status !== "ok" || !("items" in snap)) throw new Error("no snapshot");
+    const wire = snapshotToWire(snap);
+    expect(wire.items).toEqual([row]);
+    expect(snapshotFromWire(JSON.parse(JSON.stringify(wire)))).toEqual(snap);
+    expect(snapshotFromWire({ ...wire, items: [[...row, "0.42"]] })).toBeNull();
+    expect(snapshotFromWire({ ...wire, cost: 1 })).toBeNull();
     expect(mapShareRequest({ status: "boom" })).toEqual({ status: "unavailable" });
   });
 });
@@ -143,7 +154,7 @@ test.describe("messages", () => {
 });
 
 test.describe("stock list text", () => {
-  const item = (n: number, warehouse = 4200) => mapShareItem([ID.slice(0, -3) + String(n).padStart(3, "0"), n + 1, `T-shirt coton ${n}`, "Textile", "2.5", 24, warehouse, 0, null])!;
+  const item = (n: number, warehouse = 4200) => mapShareItem([n + 1, `T-shirt coton ${n}`, "Textile", "2.5", 24, warehouse, 0, null])!;
   test("30 in-stock items at most, French typography, the link at the end", () => {
     const items = [item(0, 0), ...Array.from({ length: 40 }, (_, i) => item(i + 1))];
     const text = stockListText(items, "fr", { link: "https://crm.example/s/fr#" + TOKEN, firstName: "Henri" });
@@ -155,7 +166,7 @@ test.describe("stock list text", () => {
     expect(text.length).toBeLessThanOrEqual(3500);
   });
   test("cut to 3,500 characters with the link kept", () => {
-    const long = Array.from({ length: 30 }, (_, i) => mapShareItem([ID.slice(0, -3) + String(i).padStart(3, "0"), i + 1, "N".repeat(190), null, "1", 1, 5, 0, null])!);
+    const long = Array.from({ length: 30 }, (_, i) => mapShareItem([i + 1, "N".repeat(190), null, "1", 1, 5, 0, null])!);
     const text = stockListText(long, "en", { link: "https://x.example/s/en#" + TOKEN });
     expect(text.length).toBeLessThanOrEqual(3500);
     expect(text).toContain("#" + TOKEN);

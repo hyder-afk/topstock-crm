@@ -41,11 +41,11 @@ create function pg_temp.req(lines jsonb, note text default null, nm text default
 returns jsonb language sql as $$
   select jsonb_build_object('lines', lines, 'note', note, 'name', nm, 'idempotency_key', k)
 $$;
-create function pg_temp.line(pid uuid, qty text default '2', unit text default 'carton', descr text default null)
+create function pg_temp.line(pnum text, qty text default '2', unit text default 'carton', descr text default null)
 returns jsonb language sql as $$
-  select jsonb_build_object('product_id', pid, 'description', descr, 'quantity', qty, 'unit', unit)
+  select jsonb_build_object('product_number', pnum::integer, 'description', descr, 'quantity', qty, 'unit', unit)
 $$;
-grant execute on function pg_temp.req(jsonb, text, text, uuid), pg_temp.line(uuid, text, text, text) to anon;
+grant execute on function pg_temp.req(jsonb, text, text, uuid), pg_temp.line(text, text, text, text) to anon;
 
 -- 0. Fixtures ----------------------------------------------------------------------------------------------------------
 -- Leads: SH A (admin a's), SH B1 (rep b1's), SH Gone (deleted later), SH Orphan (no owner); SH C1 in the other org.
@@ -94,6 +94,9 @@ select set_config('t.p_other', public.create_product(p_name => 'SH Other org', p
 reset role;
 select set_config('request.jwt.claims', '', false) \g /dev/null
 update public.products set archived_at = now() where id = current_setting('t.p_arch')::uuid;
+-- The client page names products by their number (P-0042), never by an internal id.
+select set_config('t.n_' || k, (select number::text from public.products where id = current_setting('t.p_' || k)::uuid), false)
+  from unnest(array['vis', 'hid', 'arch', 'out', 'held', 'tr', 'past', 'other']) k \g /dev/null
 
 -- 1. share_view_valid_link_ok (first, so a lookup-order bug cannot hide), share_functions_volatile ---------------------
 set role authenticated;
@@ -108,7 +111,7 @@ declare
   r jsonb := public.share_view(current_setting('t.tok'));
 begin
   if r ->> 'status' <> 'ok' or not exists (select 1 from jsonb_array_elements(r -> 'items') i
-                                            where i ->> 0 = current_setting('t.p_vis')) then
+                                            where i ->> 0 = current_setting('t.n_vis')) then
     raise exception 'FAIL: share_view_valid_link_ok: %', left(r::text, 300);
   end if;
   if r ->> 'signature' <> 'Henri' or r ->> 'language' <> 'fr' or r ->> 'currency' <> 'EUR' then
@@ -255,7 +258,7 @@ do $$
 declare
   r jsonb := public.share_view(current_setting('t.tok'));
 begin
-  if exists (select 1 from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.p_other')) then
+  if exists (select 1 from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.n_other')) then
     raise exception 'FAIL: share_cross_org_never_returned';
   end if;
 end $$;
@@ -322,8 +325,9 @@ begin
     raise exception 'FAIL: share_view_payload_keys_exact: %', (select array_agg(k) from jsonb_object_keys(r) k);
   end if;
   if exists (select 1 from jsonb_array_elements(r -> 'items') i
-              where jsonb_typeof(i) <> 'array' or jsonb_array_length(i) <> 9) then
-    raise exception 'FAIL: share_view_payload_keys_exact (items are 9-place arrays)';
+              where jsonb_typeof(i) <> 'array' or jsonb_array_length(i) <> 8
+                 or i ->> 0 ~ '-') then
+    raise exception 'FAIL: share_view_payload_keys_exact (items are 8-place arrays, no internal id)';
   end if;
   -- The planted minimum price and cost never travel.
   if r::text like '%1.11%' or r::text like '%0.42%' or r::text not like '%999.99%' then
@@ -369,32 +373,32 @@ do $$
 declare
   r jsonb := public.share_view(current_setting('t.tok'));
   ids text[] := (select array_agg(i ->> 0) from jsonb_array_elements(r -> 'items') i);
-  tr jsonb := (select i from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.p_tr'));
-  past jsonb := (select i from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.p_past'));
-  vis jsonb := (select i from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.p_vis'));
+  tr jsonb := (select i from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.n_tr'));
+  past jsonb := (select i from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.n_past'));
+  vis jsonb := (select i from jsonb_array_elements(r -> 'items') i where i ->> 0 = current_setting('t.n_vis'));
   v text := r ->> 'version';
   r2 jsonb;
 begin
-  if ids && array[current_setting('t.p_hid'), current_setting('t.p_arch'), current_setting('t.p_out'),
-                  current_setting('t.p_held')] then
+  if ids && array[current_setting('t.n_hid'), current_setting('t.n_arch'), current_setting('t.n_out'),
+                  current_setting('t.n_held')] then
     raise exception 'FAIL: share_view_hides_sold_out_hidden_archived_fully_held: %', ids;
   end if;
-  if vis ->> 2 <> 'SH Visible' or vis ->> 3 <> 'Bags' or (vis ->> 4)::numeric <> 999.99 or (vis ->> 5)::integer <> 24
-     or (vis ->> 6)::integer <> 480 or (vis ->> 7)::integer <> 0 then
+  if vis ->> 1 <> 'SH Visible' or vis ->> 2 <> 'Bags' or vis ->> 3 <> '999.99' or (vis ->> 4)::integer <> 24
+     or (vis ->> 5)::integer <> 480 or (vis ->> 6)::integer <> 0 then
     raise exception 'FAIL: the visible product reads %', vis;
   end if;
-  if tr is null or (tr ->> 7)::integer <> 500 or (tr ->> 6)::integer <> 0
-     or (tr ->> 8)::date <> date_trunc('week', current_setting('t.eta')::date)::date
-     or extract(isodow from (tr ->> 8)::date) <> 1 or (tr ->> 8)::date = current_setting('t.eta')::date then
+  if tr is null or (tr ->> 6)::integer <> 500 or (tr ->> 5)::integer <> 0
+     or (tr ->> 7)::date <> date_trunc('week', current_setting('t.eta')::date)::date
+     or extract(isodow from (tr ->> 7)::date) <> 1 or (tr ->> 7)::date = current_setting('t.eta')::date then
     raise exception 'FAIL: share_view_eta_is_week_start: % (eta %)', tr, current_setting('t.eta');
   end if;
-  if past is null or past -> 8 <> 'null'::jsonb then
+  if past is null or past -> 7 <> 'null'::jsonb then
     raise exception 'FAIL: share_view_past_eta_hidden: %', past;
   end if;
   r := public.share_view(current_setting('t.tok_notr'));
   if exists (select 1 from jsonb_array_elements(r -> 'items') i
-              where i ->> 0 in (current_setting('t.p_tr'), current_setting('t.p_past')) or (i ->> 7)::integer <> 0
-                 or i -> 8 <> 'null'::jsonb)
+              where i ->> 0 in (current_setting('t.n_tr'), current_setting('t.n_past')) or (i ->> 6)::integer <> 0
+                 or i -> 7 <> 'null'::jsonb)
      or (r ->> 'show_in_transit')::boolean then
     raise exception 'FAIL: share_view_transit_respects_link_setting';
   end if;
@@ -436,7 +440,7 @@ declare
   r jsonb := public.share_view('tss_' || repeat('B', 43));
 begin
   if jsonb_array_length(r -> 'items') <> 2000
-     or exists (select 1 from jsonb_array_elements(r -> 'items') i where (i ->> 6)::integer = 0) then
+     or exists (select 1 from jsonb_array_elements(r -> 'items') i where (i ->> 5)::integer = 0) then
     raise exception 'FAIL: share_view_2000_items_not_truncated: % items', jsonb_array_length(r -> 'items');
   end if;
 end $$;
@@ -506,8 +510,8 @@ declare
   k uuid := gen_random_uuid();
 begin
   r := public.share_request(current_setting('t.tok'),
-         pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.p_vis')::uuid, '2', 'carton'),
-                                       pg_temp.line(current_setting('t.p_tr')::uuid, '100', 'piece'),
+         pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.n_vis'), '2', 'carton'),
+                                       pg_temp.line(current_setting('t.n_tr'), '100', 'piece'),
                                        pg_temp.line(null, '30', 'piece', 'Sacs kraft 30 cm')),
                      'Livraison avant le 15', 'Marie', k));
   if r::text <> '{"status": "received", "signature": "Henri"}' then
@@ -516,7 +520,7 @@ begin
   perform set_config('t.k1', k::text, false);
   -- share_request_idempotent: the same key again writes nothing.
   if public.share_request(current_setting('t.tok'),
-       pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.p_vis')::uuid)), null, null, k)) ->> 'status' <> 'received' then
+       pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.n_vis'))), null, null, k)) ->> 'status' <> 'received' then
     raise exception 'FAIL: share_request_idempotent answer';
   end if;
   -- A second request on the same lead keeps the one open task.
@@ -571,7 +575,7 @@ select set_config('t.tok_orphan', public.create_share_link('5e000000-0000-0000-0
 reset role;
 set role anon;
 select public.share_request(current_setting('t.tok_orphan'), pg_temp.req(jsonb_build_array(
-  pg_temp.line(current_setting('t.p_vis')::uuid, '1', 'carton')))) \g /dev/null
+  pg_temp.line(current_setting('t.n_vis'), '1', 'carton')))) \g /dev/null
 reset role;
 do $$
 begin
@@ -584,17 +588,17 @@ set role anon;
 do $$
 declare
   tok constant text := current_setting('t.tok');
-  vis constant uuid := current_setting('t.p_vis')::uuid;
+  vis constant text := current_setting('t.n_vis');
   bad jsonb;
   r jsonb;
 begin
   -- share_request_rejects_foreign_or_hidden_product
   foreach bad in array array[
-    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.p_other')::uuid))),
-    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.p_hid')::uuid))),
-    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.p_arch')::uuid))),
-    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.p_held')::uuid))),
-    pg_temp.req(jsonb_build_array(pg_temp.line(gen_random_uuid())))] loop
+    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.n_other')))),
+    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.n_hid')))),
+    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.n_arch')))),
+    pg_temp.req(jsonb_build_array(pg_temp.line(current_setting('t.n_held')))),
+    pg_temp.req(jsonb_build_array(pg_temp.line('987654321')))] loop
     r := public.share_request(tok, bad);
     if r::text <> '{"status": "invalid"}' then
       raise exception 'FAIL: share_request_rejects_foreign_or_hidden_product: %', r;

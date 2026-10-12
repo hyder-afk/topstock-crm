@@ -27,7 +27,7 @@ export const viewBodySchema = z.strictObject({
 });
 
 export const requestLineSchema = z.strictObject({
-  productId: z.uuid().nullable(),
+  productNumber: z.int().min(1).max(999_999_999).nullable(),
   description: cleanText(1, 200).nullable(),
   quantity: z.int().min(1).max(10_000_000),
   unit: z.enum(["piece", "carton"]),
@@ -44,14 +44,17 @@ export const requestBodySchema = z
     t: z.int().min(0).max(86_400_000), // milliseconds since the page loaded
   })
   .refine((b) => b.lines.length > 0 || [...b.note.trim()].length >= 3, "empty")
-  .refine((b) => b.lines.every((l) => (l.productId === null) === (l.description !== null)), "line")
-  .refine((b) => b.lines.every((l) => l.productId !== null || l.unit === "piece"), "unit")
-  .refine((b) => new Set(b.lines.filter((l) => l.productId).map((l) => l.productId)).size === b.lines.filter((l) => l.productId).length, "duplicate");
+  .refine((b) => b.lines.every((l) => (l.productNumber === null) === (l.description !== null)), "line")
+  .refine((b) => b.lines.every((l) => l.productNumber !== null || l.unit === "piece"), "unit")
+  .refine((b) => {
+    const named = b.lines.filter((l) => l.productNumber !== null).map((l) => l.productNumber);
+    return new Set(named).size === named.length;
+  }, "duplicate");
 
 export type ShareRequestBody = z.infer<typeof requestBodySchema>;
 
+// A product on the client page, named by its number (P-0042): no internal id leaves the database.
 export const shareItemSchema = z.strictObject({
-  id: z.uuid(),
   number: z.int().min(1),
   name: z.string().min(1).max(200),
   category: z.string().max(80).nullable(),

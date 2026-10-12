@@ -21,11 +21,14 @@ export function ItemSheet({
   initial,
   onClose,
   onSave,
+  returnFocusTo,
 }: {
   item: ShareItem | null;
   initial: BasketLine | null;
   onClose: () => void;
   onSave: (line: BasketLine) => void;
+  /** Where the focus goes when the sheet closes (the product's row; never the page). */
+  returnFocusTo: () => HTMLElement | null;
 }) {
   const t = useTranslations("Share.item");
   const ts = useTranslations("Share");
@@ -34,9 +37,9 @@ export function ItemSheet({
   const id = useId();
   const [unit, setUnit] = useState<"piece" | "carton">(initial?.unit ?? "piece");
   const [text, setText] = useState(initial ? String(initial.quantity) : "");
-  const [openFor, setOpenFor] = useState<string | null>(null);
-  if (item && openFor !== item.id) {
-    setOpenFor(item.id);
+  const [openFor, setOpenFor] = useState<number | null>(null);
+  if (item && openFor !== item.number) {
+    setOpenFor(item.number);
     setUnit(initial?.unit ?? "piece");
     setText(initial ? String(initial.quantity) : "");
   }
@@ -49,7 +52,17 @@ export function ItemSheet({
   const step = (d: number) => setText(String(Math.min(MAX_QTY, Math.max(1, (qty ?? 0) + d))));
   return (
     <Dialog open={!!item} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent aria-describedby={`${id}-desc`} className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain sm:w-[min(480px,calc(100%-32px))]")}>
+      <DialogContent
+        aria-describedby={`${id}-desc`}
+        onCloseAutoFocus={(e) => {
+          const target = returnFocusTo();
+          if (target) {
+            e.preventDefault();
+            target.focus();
+          }
+        }}
+        className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain sm:w-[min(480px,calc(100%-32px))]")}
+      >
         {item ? (
           <form
             className="flex flex-col gap-5 p-5 sm:p-6"
@@ -155,7 +168,7 @@ export function ReviewSheet({
   name: string;
   onName: (v: string) => void;
   onEdit: (line: BasketLine) => void;
-  onRemove: (id: string) => void;
+  onRemove: (number: number) => void;
   onSend: (website: string) => void;
   state: SendState;
 }) {
@@ -206,7 +219,7 @@ export function ReviewSheet({
           ) : (
             <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
               {lines.map((l) => (
-                <li key={l.item.id} className="flex min-h-14 items-center gap-2 py-1 pr-1 pl-3">
+                <li key={l.item.number} className="flex min-h-14 items-center gap-2 py-1 pr-1 pl-3">
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-bold" translate="no">
                       {l.item.name}
@@ -218,7 +231,7 @@ export function ReviewSheet({
                   <Button type="button" variant="link" className="px-2" onClick={() => onEdit(l)} aria-label={t("edit", { name: l.item.name })}>
                     {t("change")}
                   </Button>
-                  <button type="button" onClick={() => onRemove(l.item.id)} aria-label={t("remove", { name: l.item.name })} className="grid size-11 place-items-center rounded-full hover:bg-muted">
+                  <button type="button" onClick={() => onRemove(l.item.number)} aria-label={t("remove", { name: l.item.name })} className="grid size-11 place-items-center rounded-full hover:bg-muted">
                     <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
                   </button>
                 </li>

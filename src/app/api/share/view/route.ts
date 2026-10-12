@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin, readJsonCapped } from "@/lib/http";
+import { snapshotToWire } from "@/lib/share/map";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { viewBodySchema } from "@/lib/share/schema";
 import { shareView } from "@/lib/share/server";
@@ -19,5 +20,6 @@ export async function POST(request: Request) {
   if (!limiter.take(clientIp(request.headers))) return NextResponse.json({ status: "slow_down" }, { status: 429, headers });
   const answer = await shareView(parsed.data.token, parsed.data.knownVersion);
   const status = answer.status === "ok" ? 200 : answer.status === "inactive" ? 404 : answer.status === "slow_down" ? 429 : 503;
-  return NextResponse.json(answer, { status, headers });
+  // A full list travels as positional arrays (checked fields only, about 50 bytes an item); the page maps them back.
+  return NextResponse.json("items" in answer ? snapshotToWire(answer) : answer, { status, headers });
 }

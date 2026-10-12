@@ -21,7 +21,7 @@ export function ShareList({
   items: ShareItem[];
   showInTransit: boolean;
   onPick?: (item: ShareItem) => void;
-  picked?: ReadonlySet<string>;
+  picked?: ReadonlySet<number>;
 }) {
   const t = useTranslations("Share");
   const [q, setQ] = useState("");
@@ -103,7 +103,7 @@ function Section({
   title: string;
   items: ShareItem[];
   onPick?: (item: ShareItem) => void;
-  picked?: ReadonlySet<string>;
+  picked?: ReadonlySet<number>;
 }) {
   const format = useFormatter();
   return (
@@ -114,8 +114,8 @@ function Section({
       </h2>
       <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg bg-card">
         {items.map((i) => (
-          <li key={i.id}>
-            <ItemRow item={i} onPick={onPick} picked={picked?.has(i.id) ?? false} />
+          <li key={i.number}>
+            <ItemRow item={i} onPick={onPick} picked={picked?.has(i.number) ?? false} />
           </li>
         ))}
       </ul>
@@ -179,6 +179,7 @@ function ItemRow({ item, onPick, picked }: { item: ShareItem; onPick?: (item: Sh
   return (
     <button
       type="button"
+      data-item-number={item.number}
       onClick={() => onPick(item)}
       aria-pressed={picked}
       className={cn(cls, "transition-[background-color] duration-150 hover:bg-muted/50 active:bg-muted", picked && "bg-muted/60")}

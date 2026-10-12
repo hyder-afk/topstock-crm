@@ -23,8 +23,8 @@ export async function shareRequest(body: ShareRequestBody): Promise<ShareRequest
     p_token: body.token,
     p_payload: {
       lines: body.lines.map((l) => ({
-        product_id: l.productId,
-        description: l.productId ? null : (l.description?.trim() ?? null),
+        product_number: l.productNumber,
+        description: l.productNumber !== null ? null : (l.description?.trim() ?? null),
         quantity: String(l.quantity),
         unit: l.unit,
       })),

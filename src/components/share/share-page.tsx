@@ -6,6 +6,7 @@ import { Logo } from "@/components/logo";
 import { ShareList } from "@/components/share/share-list";
 import { ItemSheet, ReviewSheet, type BasketLine, type SendState } from "@/components/share/share-request";
 import { Button } from "@/components/ui/button";
+import { snapshotFromWire } from "@/lib/share/map";
 import { tokenFromHash } from "@/lib/share/token";
 import type { ShareItem, ShareSnapshot } from "@/lib/share/schema";
 
@@ -52,7 +53,7 @@ export function SharePage() {
   const [send, setSend] = useState<SendState>({ kind: "idle" });
   const [sentBy, setSentBy] = useState<{ signature: string | null } | null>(null);
   const idemKey = useRef<string | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
+  const lastPicked = useRef<number | null>(null);
 
   useEffect(() => {
     loadedAt.current = performance.now();
@@ -76,15 +77,16 @@ export function SharePage() {
       setView({ kind: navigator.onLine ? "error" : "offline", snap: snapRef.current });
       return;
     }
-    const body = (await res.json().catch(() => null)) as (ShareSnapshot & { unchanged?: boolean }) | { status: string } | null;
+    const body = (await res.json().catch(() => null)) as { unchanged?: boolean; items?: unknown } | null;
+    const fresh = res.ok && body && "items" in body ? snapshotFromWire(body) : null;
     if (res.status === 404) {
       snapRef.current = null;
       setView({ kind: "inactive" });
     } else if (res.status === 429) setView({ kind: "slow_down", snap: snapRef.current });
-    else if (res.ok && body && "unchanged" in body && body.unchanged && snapRef.current) setView({ kind: "ok", snap: snapRef.current });
-    else if (res.ok && body && "items" in body) {
-      snapRef.current = body;
-      setView({ kind: "ok", snap: body });
+    else if (res.ok && body?.unchanged === true && snapRef.current) setView({ kind: "ok", snap: snapRef.current });
+    else if (fresh) {
+      snapRef.current = fresh;
+      setView({ kind: "ok", snap: fresh });
     } else setView({ kind: "error", snap: snapRef.current });
   }, [token]);
 
@@ -111,7 +113,7 @@ export function SharePage() {
   }, [token, load]);
 
   const snap = view.kind === "ok" ? view.snap : view.kind === "loading" || view.kind === "inactive" ? null : view.snap;
-  const picked = useMemo(() => new Set(basket.map((l) => l.item.id)), [basket]);
+  const picked = useMemo(() => new Set(basket.map((l) => l.item.number)), [basket]);
 
   const submit = async (website: string) => {
     if (!token || send.kind === "sending") return;
@@ -126,7 +128,7 @@ export function SharePage() {
         referrerPolicy: "no-referrer",
         body: JSON.stringify({
           token,
-          lines: basket.map((l) => ({ productId: l.item.id, description: null, quantity: l.quantity, unit: l.unit })),
+          lines: basket.map((l) => ({ productNumber: l.item.number, description: null, quantity: l.quantity, unit: l.unit })),
           note,
           name,
           idempotencyKey: idemKey.current,
@@ -235,7 +237,7 @@ export function SharePage() {
               onPick={
                 snap.allowRequests
                   ? (item) => {
-                      opener.current = document.activeElement as HTMLElement | null;
+                      lastPicked.current = item.number;
                       setPicking(item);
                     }
                   : undefined
@@ -271,11 +273,12 @@ export function SharePage() {
       )}
 
       <ItemSheet
+        returnFocusTo={() => (lastPicked.current !== null ? document.querySelector<HTMLElement>(`[data-item-number="${lastPicked.current}"]`) : null)}
         item={picking}
-        initial={picking ? (basket.find((l) => l.item.id === picking.id) ?? null) : null}
+        initial={picking ? (basket.find((l) => l.item.number === picking.number) ?? null) : null}
         onClose={() => setPicking(null)}
         onSave={(line) => {
-          setBasket((b) => (b.some((l) => l.item.id === line.item.id) ? b.map((l) => (l.item.id === line.item.id ? line : l)) : [...b, line]));
+          setBasket((b) => (b.some((l) => l.item.number === line.item.number) ? b.map((l) => (l.item.number === line.item.number ? line : l)) : [...b, line]));
           idemKey.current = null;
           setPicking(null);
         }}
@@ -293,10 +296,11 @@ export function SharePage() {
         onName={setName}
         onEdit={(l) => {
           setReviewOpen(false);
+          lastPicked.current = l.item.number;
           setPicking(l.item);
         }}
         onRemove={(id) => {
-          setBasket((b) => b.filter((l) => l.item.id !== id));
+          setBasket((b) => b.filter((l) => l.item.number !== id));
           idemKey.current = null;
         }}
         onSend={(website) => void submit(website)}

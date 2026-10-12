@@ -1,13 +1,41 @@
-import { shareItemSchema, shareSnapshotSchema, shareUnchangedSchema, type ShareItem, type ShareRequestAnswer, type ShareViewAnswer } from "@/lib/share/schema";
+import {
+  shareItemSchema,
+  shareSnapshotSchema,
+  shareUnchangedSchema,
+  type ShareItem,
+  type ShareRequestAnswer,
+  type ShareSnapshot,
+  type ShareViewAnswer,
+} from "@/lib/share/schema";
 
 // The database answers with positional arrays (design 8.5: about 70 bytes an item); these turn them into fixed keys and
 // re-parse the whole answer strictly, so only the public fields ever leave the server. Pure; unit-tested.
 
-/** [id, number, name, category, price_max, pieces_per_carton, warehouse, transit, eta_week] → ShareItem; null if wrong. */
+/** [number, name, category, price_max, pieces_per_carton, warehouse, transit, eta_week] → ShareItem; null if wrong. */
 export function mapShareItem(row: unknown): ShareItem | null {
-  if (!Array.isArray(row) || row.length !== 9) return null;
-  const [id, number, name, category, priceMax, piecesPerCarton, warehouse, transit, etaWeek] = row;
-  const parsed = shareItemSchema.safeParse({ id, number, name, category, priceMax, piecesPerCarton, warehouse, transit, etaWeek });
+  if (!Array.isArray(row) || row.length !== 8) return null;
+  const [number, name, category, priceMax, piecesPerCarton, warehouse, transit, etaWeek] = row;
+  const parsed = shareItemSchema.safeParse({ number, name, category, priceMax, piecesPerCarton, warehouse, transit, etaWeek });
+  return parsed.success ? parsed.data : null;
+}
+
+/** The item back to its positional form for the wire (about 50 bytes an item; design I10). */
+export function itemToWire(i: ShareItem): unknown[] {
+  return [i.number, i.name, i.category, i.priceMax, i.piecesPerCarton, i.warehouse, i.transit, i.etaWeek];
+}
+
+/** What /api/share/view sends: the checked snapshot with its items as positional arrays (only whitelisted fields). */
+export function snapshotToWire(s: ShareSnapshot): Omit<ShareSnapshot, "items"> & { items: unknown[][] } {
+  return { ...s, items: s.items.map(itemToWire) };
+}
+
+/** The browser's side: the wire answer back to a checked snapshot (null when anything is off). */
+export function snapshotFromWire(raw: unknown): ShareSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const items = mapShareItems(r.items);
+  if (!items) return null;
+  const parsed = shareSnapshotSchema.safeParse({ ...r, items });
   return parsed.success ? parsed.data : null;
 }
 

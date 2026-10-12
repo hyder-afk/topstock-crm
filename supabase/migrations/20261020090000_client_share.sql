@@ -588,13 +588,15 @@ create policy locations_reader on public.locations for select to share_reader
 
 -- ===========================================================================
 -- 6. The whitelist, one definition for the client page and the team's preview (invoker: as share_reader inside
---    share_view, as authenticated under RLS inside share_preview). Positional arrays:
---    [id, number, name, category, price_max, pieces_per_carton, warehouse available, transit available, eta week].
---    Never a cost, a minimum price, a hold, a lead or the exact arrival day. 2,000 items at most, after the filter.
+--    share_view, as authenticated under RLS inside share_preview). Positional arrays (design I10: about 50 bytes an
+--    item, so 2,000 items stay under 150 KB raw): [number, name, category, price_max, pieces_per_carton, warehouse
+--    available, transit available, eta week]. The product's number (P-0042) names it in a request; no internal id
+--    leaves. Never a cost, a minimum price, a hold, a lead or the exact arrival day. 2,000 items at most, after the
+--    filter.
 -- ===========================================================================
 create function private.share_items(p_org uuid, p_with_transit boolean) returns jsonb
 language sql stable set search_path = '' as $$
-  select coalesce(jsonb_agg(jsonb_build_array(i.id, i.number, i.name, i.category, i.price_max::text,
+  select coalesce(jsonb_agg(jsonb_build_array(i.number, i.name, i.category, trim_scale(i.price_max)::text,
                                               i.ppc, i.wh, i.tr, i.eta_week)
                             order by i.category nulls last, i.sort_name, i.id), '[]'::jsonb)
     from (select p.id, p.number, p.name, p.category, p.price_max, p.pieces_per_carton as ppc,
@@ -704,13 +706,13 @@ end;
 $$;
 
 -- A client's request: {"status": "received" | "inactive" | "closed" | "invalid" | "slow_down" | "too_many_open"}.
--- Every shape problem gets the same "invalid"; products resolve only among the visible ones.
+-- Every shape problem gets the same "invalid"; products are named by their number and resolve only among the visible
+-- ones (the same whitelist the page shows).
 create function public.share_request(p_token text, p_payload jsonb) returns jsonb
 language plpgsql volatile security definer set search_path = '' as $$
 declare
   v_link record;
   v_on boolean;
-  v_items jsonb;
   v_key uuid;
   v_note text;
   v_name text;
@@ -751,14 +753,14 @@ begin
      or exists (select 1 from jsonb_array_elements(p_payload -> 'lines') e
                  where jsonb_typeof(e) <> 'object'
                     or (select array_agg(k order by k) from jsonb_object_keys(e) k)
-                       is distinct from array['description', 'product_id', 'quantity', 'unit']
+                       is distinct from array['description', 'product_number', 'quantity', 'unit']
                     or jsonb_typeof(e -> 'quantity') not in ('string', 'number')
                     or e ->> 'quantity' !~ '^[0-9]{1,8}$' or (e ->> 'quantity')::integer not between 1 and 10000000
                     or jsonb_typeof(e -> 'unit') <> 'string' or e ->> 'unit' not in ('piece', 'carton')
-                    or jsonb_typeof(e -> 'product_id') not in ('string', 'null')
+                    or jsonb_typeof(e -> 'product_number') not in ('string', 'number', 'null')
                     or jsonb_typeof(e -> 'description') not in ('string', 'null')
-                    or (e ->> 'product_id' is not null and e ->> 'product_id' !~ uuid_re)
-                    or (e ->> 'product_id' is null
+                    or (e ->> 'product_number' is not null and e ->> 'product_number' !~ '^[1-9][0-9]{0,8}$')
+                    or (e ->> 'product_number' is null
                         and (char_length(btrim(coalesce(e ->> 'description', ''))) not between 1 and 200
                              or e ->> 'description' ~ unsafe or e ->> 'unit' <> 'piece'))) then
     return '{"status":"invalid"}'::jsonb;
@@ -769,20 +771,28 @@ begin
   if jsonb_array_length(p_payload -> 'lines') = 0 and char_length(coalesce(v_note, '')) < 3 then
     return '{"status":"invalid"}'::jsonb;
   end if;
-  if (select count(*) from jsonb_array_elements(p_payload -> 'lines') e where e ->> 'product_id' is not null)
-     <> (select count(distinct e ->> 'product_id') from jsonb_array_elements(p_payload -> 'lines') e
-          where e ->> 'product_id' is not null) then
+  if (select count(*) from jsonb_array_elements(p_payload -> 'lines') e where e ->> 'product_number' is not null)
+     <> (select count(distinct e ->> 'product_number') from jsonb_array_elements(p_payload -> 'lines') e
+          where e ->> 'product_number' is not null) then
     return '{"status":"invalid"}'::jsonb;
   end if;
   -- A retry of the same request writes nothing.
   if exists (select 1 from private.stock_requests r where r.share_link_id = v_link.id and r.idempotency_key = v_key) then
     return jsonb_build_object('status', 'received', 'signature', v_link.signature);
   end if;
-  -- Products: only the visible ones (the whitelist the client page shows).
-  v_items := private.share_items(v_link.org_id, v_link.show_in_transit);
+  -- Products: only the visible ones (share_items' rule, read for the named products only: perf I11).
   if exists (select 1 from jsonb_array_elements(p_payload -> 'lines') e
-              where e ->> 'product_id' is not null
-                and not exists (select 1 from jsonb_array_elements(v_items) i where i ->> 0 = e ->> 'product_id')) then
+              where e ->> 'product_number' is not null
+                and not exists (
+                  select 1 from public.products p
+                    join public.locations lw on lw.org_id = p.org_id and lw.kind = 'warehouse'
+                    join public.locations lt on lt.org_id = p.org_id and lt.kind = 'transit'
+                    left join public.stock_levels w on w.product_id = p.id and w.location_id = lw.id
+                    left join public.stock_levels t on t.product_id = p.id and t.location_id = lt.id
+                   where p.org_id = v_link.org_id and p.number = (e ->> 'product_number')::integer
+                     and p.archived_at is null and p.share_visible
+                     and (coalesce(w.on_hand - w.reserved, 0) > 0
+                          or (v_link.show_in_transit and coalesce(t.on_hand - t.reserved, 0) > 0)))) then
     return '{"status":"invalid"}'::jsonb;
   end if;
   -- Limits: 10 new requests on the link at most; then 5 an hour and 20 a day a link, 200 a day an organisation.
@@ -804,8 +814,9 @@ begin
   end;
   insert into private.stock_request_lines (request_id, position, org_id, product_id, description, quantity, unit,
                                            pieces, price_shown, availability)
-  select v_request, e.n, v_link.org_id, (e.v ->> 'product_id')::uuid,
-         case when e.v ->> 'product_id' is null then btrim(e.v ->> 'description') end,
+  select v_request, e.n, v_link.org_id,
+         (select p.id from public.products p where p.org_id = v_link.org_id and p.number = (e.v ->> 'product_number')::integer),
+         case when e.v ->> 'product_number' is null then btrim(e.v ->> 'description') end,
          (e.v ->> 'quantity')::integer, e.v ->> 'unit', 1, null, 'not_listed'      -- the line guard sets the last three
     from jsonb_array_elements(p_payload -> 'lines') with ordinality e (v, n);
   update private.share_links l set request_count = l.request_count + 1, last_request_at = now() where l.id = v_link.id;
