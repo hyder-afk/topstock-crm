@@ -5,7 +5,7 @@ section 8.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity and outcome attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|all] [numbers...]  (about 40 s per mutation; default: all
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|all] [numbers...]  (about 40 s per mutation; default: all
 sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
 when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
 mutation each way). A row marked SURVIVES is such a layer that no test can see on its own, because the other layer stops
@@ -13,7 +13,8 @@ the same thing: it must stay NOT CAUGHT, and the row removing both layers must b
 An edit is (old, new) on the set's own migration, or (path, old, new) on another one. A mutation edits the definition
 that is live after every migration: Day 4a redefines the import "untouched" rule (so Day 3b's mutations of it edit the
 Day 4a migration), and Day 4b redefines the audit trigger, the activity and task delete policies and the insert lock
-(so the Day 3b and Day 4a mutations of those edit the Day 4b migration).
+(so the Day 3b and Day 4a mutations of those edit the Day 4b migration). Day 4c redefines the audit trigger, get_lead
+and log_activity again: the earlier rows that edit those are moved to the Day 4c migration (REDEFINED_IN_4C below).
 """
 import pathlib
 import subprocess
@@ -24,6 +25,7 @@ MIG_3A = ROOT / "supabase/migrations/20261010090000_leads_are_companies.sql"
 MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
+MIG_4C = ROOT / "supabase/migrations/20261013090000_tasks_queue.sql"
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -684,7 +686,327 @@ MUTATIONS_4B = [
 ]
 
 
-SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B)}
+# Day 4c (tasks and work queue). Rows 1 to 10 are the design's list (section 8.3, 4c), in order; the rest remove every
+# other protection the migration adds, one at a time. A protection with two layers is removed alone (SURVIVES: the other
+# layer stops the same thing) and with its second layer (caught).
+SCOPE_QUEUE = """  if p_scope <> 'mine' and not (select private.is_manager_or_admin()) then
+    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';
+  end if;
+"""
+TEAM_TASKS = """  if p_scope = 'team' and not v_mgr then
+    raise exception 'only managers and admins see the team''s tasks' using errcode = '42501', hint = 'scope';
+  end if;
+"""
+GUARD_LOCK = "  perform pg_advisory_xact_lock(hashtextextended('queue_claims:' || caller::text, 0));\n  if tg_op = 'INSERT' then"
+RPC_LOCK = "  perform pg_advisory_xact_lock(hashtextextended('queue_claims:' || caller::text, 0));\n"
+LOG_LOCKS_4C = """    if p_outcome = 'wrong_number' and p_dialled = 'contact' then
+      select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
+        from public.contacts k where k.id = p_contact for update;
+      v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
+    end if;
+    -- (4c: FOR NO KEY UPDATE, not FOR UPDATE: it still makes outcomes on one lead take turns, and it no longer blocks
+    -- the key-share lock a foreign key check takes, so a teammate claiming this lead in the queue never waits for the
+    -- call being saved, nor deadlocks with its claim release in step 9.)
+    select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
+      into v_lead from public.companies c where c.id = p_company for no key update;
+    v_editable := found;
+"""
+LOG_LOCKS_4C_REVERSED = """    select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
+      into v_lead from public.companies c where c.id = p_company for no key update;
+    v_editable := found;
+    if p_outcome = 'wrong_number' and p_dialled = 'contact' then
+      select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
+        from public.contacts k where k.id = p_contact for update;
+      v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
+    end if;
+"""
+MUTATIONS_4C = [
+    # The design's list (8.3, 4c).
+    ("claim_next_lead and queue_candidates: no scope check (a rep works Team or the unassigned leads; both layers)",
+     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns"),
+      ("  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then\n    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';\n  end if;\n  if p_segment = 0 then",
+       "  if p_segment = 0 then")]),
+    ("Claims delete policy: no expiry condition (an expired claim stays until its holder lets go)",
+     [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  org_id = (select private.current_org_id()) and user_id = (select auth.uid()));")]),
+    ("Claims: no primary key on company_id (two live claims on one lead)",
+     [("  company_id uuid primary key references public.companies (id) on delete cascade,  -- one live claim per lead",
+       "  company_id uuid not null references public.companies (id) on delete cascade,")]),
+    ("Claim guard: keeps the client's end time (a claim stretched for a year)",
+     [("  new.expires_at := now() + interval '10 minutes';\n  if (tg_op = 'INSERT'",
+       "  new.expires_at := coalesce(new.expires_at, now() + interval '10 minutes');\n  if (tg_op = 'INSERT'")]),
+    ("Claims insert policy: no editor condition (a rep locks a teammate out of their lead)",
+     [("  org_id = (select private.current_org_id()) and user_id = (select auth.uid())\n  and exists (select 1 from public.companies c where c.id = queue_claims.company_id\n              and ((select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()))));",
+       "  org_id = (select private.current_org_id()) and user_id = (select auth.uid()));")]),
+    ("Queue rank: Do not contact leads ranked",
+     [("      when lead_status = 'negotiation' then 0\n", "      when lead_status = 'do_not_contact' then 3\n      when lead_status = 'negotiation' then 0\n")]),
+    ("Queue rank: no number-to-dial rule",
+     [("      when not ((coalesce(phone ~ '[0-9]', false) and phone_wrong_at is null) or has_contact_phone) then null\n", "")]),
+    ("claim_next_lead: no calling-hours filter",
+     [("  v_open := case when p_any_hours then null else private.open_call_zones(now(), p_skip_lunch) end;", "  v_open := null;")]),
+    ("Calling hours: a span judged on its eastern zone only",
+     [("  foreach z in array coalesce(v_ends, array[p_key]) loop", "  foreach z in array coalesce(v_ends[1:1], array[p_key]) loop")]),
+    ("Queue rank: Cool off without a date served",
+     [("      when lead_status = 'cool_off' and next_action_at is not null then 2", "      when lead_status = 'cool_off' then 2")]),
+    # Every other protection.
+    ("claim_next_lead: no scope check (queue_candidates still refuses the scope)",
+     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns")], SURVIVES),
+    ("queue_candidates: no scope check (a direct call lists the team's leads for a rep)",
+     [("  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then\n    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';\n  end if;\n  if p_segment = 0 then",
+       "  if p_segment = 0 then")]),
+    ("queue_summary: no scope check",
+     [(SCOPE_QUEUE + "  v_open := private.open_call_zones(now(), p_skip_lunch);", "  v_open := private.open_call_zones(now(), p_skip_lunch);")]),
+    ("list_tasks: Team for anyone",
+     [(TEAM_TASKS + "  v_tz := private.caller_zone();", "  v_tz := private.caller_zone();")]),
+    ("count_tasks: Team for anyone",
+     [("  if p_scope = 'team' and not (select private.is_manager_or_admin()) then\n    raise exception 'only managers and admins see the team''s tasks' using errcode = '42501', hint = 'scope';\n  end if;\n", "")]),
+    ("claim_lead: no editor pre-check (the policy answers without the scope hint)",
+     [("  if not ((select private.is_manager_or_admin()) or v_owner is not distinct from caller) then\n    raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';\n  end if;\n", "")]),
+    ("Contact trigger: no lead lock before it looks (two contacts changed at once leave a wrong flag)",
+     [("    perform 1 from public.companies c where c.id = v_lead for no key update;\n", "")]),
+    ("Contact trigger: a number marked wrong still counts",
+     [("where k.company_id = v_lead and k.phone ~ '[0-9]' and k.phone_wrong_at is null) as has_phone) s",
+       "where k.company_id = v_lead and k.phone ~ '[0-9]') as has_phone) s")]),
+    ("Contact trigger: a number without digits counts",
+     [("where k.company_id = v_lead and k.phone ~ '[0-9]' and k.phone_wrong_at is null) as has_phone) s",
+       "where k.company_id = v_lead and k.phone is not null and k.phone_wrong_at is null) as has_phone) s")]),
+    ("Contact trigger: the old lead is left as it was when a contact moves",
+     [("      from unnest(array[case when tg_op <> 'INSERT' then old.company_id end,\n                        case when tg_op <> 'DELETE' then new.company_id end]) as x (id)",
+       "      from unnest(array[case when tg_op <> 'DELETE' then new.company_id end]) as x (id)")]),
+    ("Contact trigger: not on delete",
+     [("create trigger sync_contact_phone after insert or delete or update of phone, phone_wrong_at, company_id",
+       "create trigger sync_contact_phone after insert or update of phone, phone_wrong_at, company_id")]),
+    ("Contact trigger: not on a wrong-number mark",
+     [("create trigger sync_contact_phone after insert or delete or update of phone, phone_wrong_at, company_id",
+       "create trigger sync_contact_phone after insert or delete or update of phone, company_id")]),
+    ("Contact trigger: SECURITY INVOKER (an editor's contact change fails on the ungranted column)",
+     [("create function private.sync_contact_phone() returns trigger\nlanguage plpgsql security definer set search_path = '' as $$",
+       "create function private.sync_contact_phone() returns trigger\nlanguage plpgsql set search_path = '' as $$")]),
+    ("Queue rank: a main number without digits counts",
+     [("      when not ((coalesce(phone ~ '[0-9]', false) and phone_wrong_at is null) or has_contact_phone) then null",
+       "      when not ((phone is not null and phone_wrong_at is null) or has_contact_phone) then null")]),
+    ("Queue rank: a main number marked wrong still counts",
+     [("      when not ((coalesce(phone ~ '[0-9]', false) and phone_wrong_at is null) or has_contact_phone) then null",
+       "      when not (coalesce(phone ~ '[0-9]', false) or has_contact_phone) then null")]),
+    ("Claims: no two-factor policy",
+     [("create policy require_mfa on private.queue_claims as restrictive to authenticated\n  using ((select private.has_aal2())) with check ((select private.has_aal2()));\n", "")]),
+    ("Claims select policy: every organisation's claims",
+     [("create policy claims_select on private.queue_claims for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy claims_select on private.queue_claims for select to authenticated\n  using (true);")]),
+    ("Claims delete policy: no organisation fence (the select policy still hides other organisations' claims from a delete)",
+     [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  user_id = (select auth.uid()) or expires_at <= now());")], SURVIVES),
+    ("Claims update policy: anyone renews anyone's claim",
+     [("  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));",
+       "  using (true) with check (true);")]),
+    ("Claims: insert grant names the person too",
+     [("grant select, insert (company_id), update (expires_at), delete on private.queue_claims to authenticated;",
+       "grant select, insert (company_id, user_id), update (expires_at), delete on private.queue_claims to authenticated;")]),
+    ("Claim guard: the client's person kept (the grant and the insert policy still stop it)",
+     [("    new.user_id := caller;\n    new.claimed_at := now();", "    new.user_id := coalesce(new.user_id, caller);\n    new.claimed_at := now();")], SURVIVES),
+    ("Claim guard, grant and insert policy: a claim for someone else (all three layers)",
+     [("    new.user_id := caller;\n    new.claimed_at := now();", "    new.user_id := coalesce(new.user_id, caller);\n    new.claimed_at := now();"),
+      ("grant select, insert (company_id), update (expires_at), delete on private.queue_claims to authenticated;",
+       "grant select, insert (company_id, user_id), update (expires_at), delete on private.queue_claims to authenticated;"),
+      ("  org_id = (select private.current_org_id()) and user_id = (select auth.uid())\n  and exists (select 1 from public.companies c where c.id = queue_claims.company_id",
+       "  org_id = (select private.current_org_id())\n  and exists (select 1 from public.companies c where c.id = queue_claims.company_id")]),
+    ("Claim guard: no limit of 3",
+     [("           where q.user_id = caller and q.expires_at > now() and q.company_id <> new.company_id) >= 3 then",
+       "           where q.user_id = caller and q.expires_at > now() and q.company_id <> new.company_id) >= 1000 then")]),
+    ("Claim guard: expired claims count toward the limit",
+     [("           where q.user_id = caller and q.expires_at > now() and q.company_id <> new.company_id) >= 3 then",
+       "           where q.user_id = caller and q.company_id <> new.company_id) >= 3 then")]),
+    ("Claim guard: renewing an expired claim passes the limit",
+     [("  if (tg_op = 'INSERT' or old.expires_at <= now())\n", "  if tg_op = 'INSERT'\n")]),
+    ("Claim guard trigger dropped",
+     [("create trigger claim_guard before insert or update on private.queue_claims\n  for each row execute function private.claim_guard();", "")]),
+    ("Claim guard: other fields may change (the column grants still stop it)",
+     [("    raise exception 'only the end of a claim can change' using errcode = '42501', hint = 'not_editable';\n", "    null;\n")], SURVIVES),
+    ("Claim guard: no per-person lock (claim_lead and the queue still take it)",
+     [(GUARD_LOCK, "  if tg_op = 'INSERT' then")], SURVIVES),
+    ("Claims: no per-person lock anywhere (two tabs pass the limit)",
+     [(GUARD_LOCK, "  if tg_op = 'INSERT' then"),
+      ("  -- The caller's claims take turns (the claim guard takes the same lock), so two tabs never pass the limit together.\n" + RPC_LOCK,
+       "  -- The caller's claims take turns (the claim guard takes the same lock), so two tabs never pass the limit together.\n"),
+      ("    raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';\n  end if;\n" + RPC_LOCK,
+       "    raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';\n  end if;\n")]),
+    ("claim_next_lead: an expired claim is not removed first (a closed laptop keeps its leads)",
+     [("      delete from private.queue_claims q where q.company_id = v_cand and q.expires_at <= now();\n", "")]),
+    ("claim_next_lead: candidates include leads with a live claim (the primary key still refuses them)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n")], SURVIVES),
+    ("claim_next_lead: no second look after winning a claim (a lead a teammate just called is served again)",
+     [("      if v_got is not null and not exists (\n", "      if false and not exists (\n")]),
+    ("claim_next_lead: the session's skips ignored",
+     [("  v_skip := v_exclude || coalesce(p_keep, '{}'::uuid[]);", "  v_skip := coalesce(p_keep, '{}'::uuid[]);")]),
+    ("claim_next_lead: the caller's other claims kept (the screen holds more than it shows)",
+     [("     where q.user_id = caller and (not (q.company_id = any (p_keep)) or q.expires_at <= now());", "     where false;")]),
+    ("claim_next_lead: a reload resumes claims that are no longer eligible",
+     [("      if v_won < p_count and r.live and r.eligible then", "      if v_won < p_count and r.live then")]),
+    ("claim_next_lead: no limit on kept plus new cards",
+     [("     or coalesce(cardinality(p_keep), 0) + p_count > 3\n", "")]),
+    ("claim_next_lead: follow-ups not first (the walk starts at Negotiation)",
+     [("  v_seg integer := 0;", "  v_seg integer := 1;")]),
+    ("Queue follow-ups: a task due today is not yet due",
+     [("                   and (t.due_date <= p_today or t.due_at <= now() + interval '5 minutes')\n                 group by t.company_id) f\n          join public.companies c on c.id = f.company_id\n         where c.owner_id = caller and c.queue_rank is not null",
+       "                   and (t.due_date < p_today or t.due_at <= now() + interval '5 minutes')\n                 group by t.company_id) f\n          join public.companies c on c.id = f.company_id\n         where c.owner_id = caller and c.queue_rank is not null")]),
+    ("Queue follow-ups: the next call date wins over the task",
+     [("         where c.owner_id = caller and c.queue_rank is not null\n",
+       "         where c.owner_id = caller and c.queue_rank is not null and (c.next_action_at is null or c.next_action_at <= now())\n")]),
+    ("Queue order: leads called before come first among first calls",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n         order by c.next_action_at, c.last_activity_at nulls first, c.id",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n         order by c.next_action_at, c.last_activity_at nulls last, c.id")]),
+    ("Queue Mine: anyone's leads (dated part)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists",
+       "         where c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists")]),
+    ("Queue Mine + unassigned: the second half takes anyone's leads",
+     [("                 where c.owner_id is null and c.queue_rank = v_rank and c.next_action_at is null\n",
+       "                 where c.queue_rank = v_rank and c.next_action_at is null\n")]),
+    ("Queue Mine: future dates offered (no stop at now; the second look after the claim still lets them go)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is not null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists")], SURVIVES),
+    ("log_activity: a call from the queue keeps its claim",
+     [("    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;\n", "    null;\n")]),
+    ("log_activity: a call from the queue releases anyone's claim (the delete policy still stops it)",
+     [("    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;\n",
+       "    delete from private.queue_claims q where q.company_id = p_company;\n")], SURVIVES),
+    ("log_activity and the delete policy: a call from the queue releases a teammate's claim (both layers)",
+     [("    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;\n",
+       "    delete from private.queue_claims q where q.company_id = p_company;\n"),
+      ("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  org_id = (select private.current_org_id()));")]),
+    ("log_activity: the lead locked FOR UPDATE again (a claim waits for the call)",
+     [("      into v_lead from public.companies c where c.id = p_company for no key update;",
+       "      into v_lead from public.companies c where c.id = p_company for update;")]),
+    ("get_lead: worked_by names the caller",
+     [("                   where q.company_id = c.id and q.expires_at > now() and q.user_id <> (select auth.uid()))",
+       "                   where q.company_id = c.id and q.expires_at > now())")]),
+    ("get_lead: worked_by from an expired claim",
+     [("                   where q.company_id = c.id and q.expires_at > now() and q.user_id <> (select auth.uid()))",
+       "                   where q.company_id = c.id and q.user_id <> (select auth.uid()))")]),
+    ("Calling hours: the lunch switch also cuts a span (no span has a European end, so the Europe/* rule still spares them)",
+     [("    if v_ends is null and coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then",
+       "    if coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then")], SURVIVES),
+    ("Calling hours: the lunch switch outside Europe",
+     [("    if v_ends is null and coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then",
+       "    if v_ends is null and coalesce(p_skip_lunch, false) and m >= 720 and m < 840 then")]),
+    ("Calling hours: 18:00 still open",
+     [("    if m < 540 or m >= 1080 then", "    if m < 540 or m > 1080 then")]),
+    ("Calling hours: weekends open",
+     [("    if extract(isodow from l) > 5 then\n      return false;\n    end if;\n    m :=", "    m :=")]),
+    ("Calling zone keys: the zones a person may pick left out",
+     [("          union all\n          select unnest(private.country_zone_choices(chr(a) || chr(b)))\n            from generate_series(65, 90) a, generate_series(65, 90) b\n", "")]),
+    ("Audit: call_zone and queue_rank stored",
+     [("  hidden constant text[] := array['search_text', 'email_key', 'phone_key', 'name_key', 'call_zone', 'queue_rank'];",
+       "  hidden constant text[] := array['search_text', 'email_key', 'phone_key', 'name_key'];")]),
+    ("Audit: the contact flag diffed",
+     [("'next_action_at', 'phone_wrong_at', 'has_contact_phone')", "'next_action_at', 'phone_wrong_at')")]),
+    ("list_tasks: days read in UTC, not the person's zone",
+     [("  v_tz := private.caller_zone();\n  v_today := (now() at time zone v_tz)::date;\n  v_tomorrow := (v_today + 1)::timestamp at time zone v_tz;\n\n  if p_bucket = 'overdue' then",
+       "  v_tz := 'UTC';\n  v_today := (now() at time zone v_tz)::date;\n  v_tomorrow := (v_today + 1)::timestamp at time zone v_tz;\n\n  if p_bucket = 'overdue' then")]),
+    ("list_tasks: Today includes times already past",
+     [("                 and (x.due_date = v_today or (x.due_at >= now() and x.due_at < v_tomorrow))\n",
+       "                 and (x.due_date = v_today or x.due_at < v_tomorrow)\n")]),
+    ("list_tasks: undated tasks missing from Upcoming",
+     [("                 and (x.due_date > v_today or x.due_at >= v_tomorrow or (x.due_date is null and x.due_at is null))\n",
+       "                 and (x.due_date > v_today or x.due_at >= v_tomorrow)\n")]),
+    ("list_tasks: dismissed tasks listed in Today",
+     [("               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null and x.cancelled_at is null\n                 and (x.due_date = v_today",
+       "               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null\n                 and (x.due_date = v_today")]),
+    ("list_tasks: Done keyset <= (a task repeated across pages)",
+     [("                 and (p_after_id is null or (x.done_at, x.id) < (p_after_sort, p_after_id))",
+       "                 and (p_after_id is null or (x.done_at, x.id) <= (p_after_sort, p_after_id))")]),
+    ("list_tasks: Upcoming undated cursor >= (a task repeated across pages)",
+     [("                      or (p_after_sort is null and s.sort_at is null and x.id > p_after_id))",
+       "                      or (p_after_sort is null and s.sort_at is null and x.id >= p_after_id))")]),
+    ("update_task: no contact pre-check (the policy answers 42501 instead of P0002)",
+     [("  if p_contact is not null and not exists (select 1 from public.contacts k\n                                            where k.id = p_contact and k.company_id = v_company) then\n    raise exception 'contact not found on this lead' using errcode = 'P0002';\n  end if;\n  update public.tasks t",
+       "  update public.tasks t")]),
+    ("update_task: no person given leaves the task with nobody",
+     [("         assignee_id = coalesce(p_assignee, t.assignee_id), contact_id = p_contact", "         assignee_id = p_assignee, contact_id = p_contact")]),
+    ("delete_task: no fresh-code pre-check (no step_up hint)",
+     [("    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n  if not exists (select 1 from public.tasks t where t.id = p_id) then",
+       "  end if;\n  if not exists (select 1 from public.tasks t where t.id = p_id) then")]),
+    ("Profile zone check trigger dropped",
+     [("create trigger check_profile_timezone before update of timezone on public.profiles\n  for each row execute function private.check_profile_timezone();", "")]),
+    ("set_my_timezone: no pre-check (the profile trigger still refuses it)",
+     [("  if p_timezone is null or char_length(p_timezone) > 64\n     or not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_timezone) then",
+       "  if false then")], SURVIVES),
+    ("set_my_timezone and the profile trigger: any zone stored (both layers)",
+     [("  if p_timezone is null or char_length(p_timezone) > 64\n     or not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_timezone) then",
+       "  if false then"),
+      ("create trigger check_profile_timezone before update of timezone on public.profiles\n  for each row execute function private.check_profile_timezone();", "")]),
+    ("Claims: a lead delete is refused while it has a claim (claims must go with their lead)",
+     [("  company_id uuid primary key references public.companies (id) on delete cascade,  -- one live claim per lead",
+       "  company_id uuid primary key references public.companies (id),")]),
+    ("renew_claims: brings back expired claims",
+     [("     where q.user_id = caller and q.expires_at > now()\n    returning q.expires_at)", "     where q.user_id = caller\n    returning q.expires_at)")]),
+    ("queue_summary: customers counted as having no number",
+     [("count(*) filter (where c.queue_rank is null and c.lead_status in ('cold', 'warm', 'negotiation', 'cool_off')",
+       "count(*) filter (where c.queue_rank is null")]),
+    ("claim_next_lead: null in the skips accepted (every lead skipped)",
+     [("     or array_position(p_keep, null) is not null or array_position(v_exclude, null) is not null\n", "")]),
+    ("Queue Mine: future dates served (no stop at now, and no second look after the claim; both layers)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is not null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists"),
+      ("      if v_got is not null and not exists (\n", "      if false and not exists (\n")]),
+    ("Calling hours: the lunch switch cuts every zone, spans included (both layers)",
+     [("    if v_ends is null and coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then",
+       "    if coalesce(p_skip_lunch, false) and m >= 720 and m < 840 then")]),
+    ("Claims delete and select policies: no organisation fence (another organisation clears expired claims; both layers)",
+     [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  user_id = (select auth.uid()) or expires_at <= now());"),
+      ("create policy claims_select on private.queue_claims for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy claims_select on private.queue_claims for select to authenticated\n  using (true);")]),
+    ("Wrong number: a contact number without a digit counts as another working number (no find-the-number task)",
+     [("                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null\n",
+       "                        where k.company_id = p_company and k.phone is not null and k.phone_wrong_at is null\n")]),
+    ("Wrong number: a main line without a digit counts as another working number (no find-the-number task)",
+     [("    if not ((coalesce(v_lead.phone ~ '[0-9]', false) and v_lead.phone_wrong_at is null and p_dialled <> 'lead')",
+       "    if not ((v_lead.phone is not null and v_lead.phone_wrong_at is null and p_dialled <> 'lead')")]),
+    ("Claim guard: a renewal of a lead that changed hands passes (renew_claims and the keep path still let it go)",
+     [("  elsif not exists (select 1 from public.companies c\n                     where c.id = new.company_id\n                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).\n    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';\n", "")]),
+    ("renew_claims: a reassigned lead's claim is renewed, not let go (the claim guard then refuses the renewal)",
+     [('  delete from private.queue_claims q\n   where q.user_id = caller\n     and not exists (select 1 from public.companies c\n                      where c.id = q.company_id\n                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));\n', "")]),
+    ("claim_next_lead keep: a reassigned lead's claim is kept (the claim guard then refuses the renewal)",
+     [("    delete from private.queue_claims q\n     where q.user_id = caller\n       and not exists (select 1 from public.companies c\n                        where c.id = q.company_id\n                          and (p_scope = 'team' or c.owner_id = caller\n                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));\n", "")]),
+    ("Renewals of a reassigned lead: the guard, renew_claims and the keep path all let it pass (all three layers)",
+     [("  elsif not exists (select 1 from public.companies c\n                     where c.id = new.company_id\n                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).\n    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';\n", ""), ('  delete from private.queue_claims q\n   where q.user_id = caller\n     and not exists (select 1 from public.companies c\n                      where c.id = q.company_id\n                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));\n', ""), ("    delete from private.queue_claims q\n     where q.user_id = caller\n       and not exists (select 1 from public.companies c\n                        where c.id = q.company_id\n                          and (p_scope = 'team' or c.owner_id = caller\n                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));\n", "")]),
+    ("claim_next_lead walk: no lead lock tried (waits on a teammate's claim; two crossing walks deadlock)",
+     [("      continue when not pg_try_advisory_xact_lock(hashtextextended('queue_claim:' || v_cand::text, 0));\n", "")]),
+]
+
+# Day 4c redefines the audit trigger, get_lead and log_activity (create or replace, Day 4b's text kept): the earlier rows
+# that edit those definitions now edit the Day 4c copy, where the live definition is. Rows whose Day 4b text changed in
+# the copy get the Day 4c text (Day 4b row 5, the lock block; row 47, the audit's no-diff list).
+REDEFINED_IN_4C = {
+    "day3b": [28, 29],
+    "day4a": [9, 32, 33, 83],
+    "day4b": [4, 11, 12, 31, 32, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70,
+              71, 72, 73, 74, 79, 87],
+}
+for _set, _rows, _default in (("day3b", MUTATIONS_3B, MIG_3B), ("day4a", MUTATIONS_4A, MIG_4A),
+                              ("day4b", MUTATIONS_4B, MIG_4B)):
+    for _n in REDEFINED_IN_4C[_set]:
+        _title, _edits, *_flags = _rows[_n - 1]
+        _rows[_n - 1] = (_title, [(MIG_4C, *_e[-2:]) if (_e[0] if len(_e) == 3 else _default) == MIG_4B else _e
+                                  for _e in _edits], *_flags)
+MUTATIONS_4B[4] = (MUTATIONS_4B[4][0], [(MIG_4C, LOG_LOCKS_4C, LOG_LOCKS_4C_REVERSED)])
+# Row 65's text changed in Day 4c: another working number needs a digit (k.phone ~ '[0-9]').
+MUTATIONS_4B[64] = (MUTATIONS_4B[64][0],
+                    [(MIG_4C, "            or exists (select 1 from public.contacts k\n                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null\n                          and not (p_dialled = 'contact' and k.id = p_contact))) then",
+                      "            or false) then")])
+MUTATIONS_4B[46] = (MUTATIONS_4B[46][0],
+                    [(MIG_4C, "       and n.key not in ('updated_at', 'last_activity_at', 'next_action_at', 'phone_wrong_at', 'has_contact_phone')",
+                      "       and n.key not in ('updated_at', 'last_activity_at', 'has_contact_phone')")])
+
+
+SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
+        "day4c": (MIG_4C, MUTATIONS_4C)}
 
 
 def run_set(name: str, only: set) -> int:

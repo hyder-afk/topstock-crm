@@ -12,6 +12,9 @@ export const goKeys: Record<SectionId, string> = {
   more: "m",
 };
 
+// "G then Q" starts the work queue (Day 4c; Q is free: design 2.1).
+export const queueGoKey = "q";
+
 // True when the key press belongs to whatever the person is typing in, so single-letter shortcuts must stay quiet.
 export function isTyping(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;

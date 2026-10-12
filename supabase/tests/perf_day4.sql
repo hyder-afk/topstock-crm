@@ -1,5 +1,5 @@
--- Day 4 speed at Release 1 size (design docs/evidence/day4/design.md section 8.6), part 1 (Day 4a) and part 2 (Day 4b,
--- at the end: P1, P4, P4b). Runs after perf_leads.sql (30,015 leads, 10,015 contacts) and before perf_import.sql on the
+-- Day 4 speed at Release 1 size (design docs/evidence/day4/design.md section 8.6), part 1 (Day 4a), part 2 (Day 4b: P1,
+-- P4, P4b) and part 3 (Day 4c, at the end: P3, P5, P6, P9). Runs after perf_leads.sql (30,015 leads, 10,015 contacts) and before perf_import.sql on the
 -- same throwaway database, so the Day 3b import and undo (P7) are re-timed with 300,000 activities, 15,000 tasks and the
 -- Day 4b lead facts in place. Used by scripts/db-perf.sh.
 --  Seed: 300,000 activities (250,000 spread over every lead, 50,000 on 25 leads, one lead with 10,000) inserted with
@@ -392,3 +392,236 @@ begin
 end $$;
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+
+-- =====================================================================================================================
+-- Part 3 (Day 4c; design 8.6 P3, P3b, P3c, P5, P6, P9; P10 is supabase/tests/perf_queue_concurrency.sh). Calling hours
+-- follow the real clock, so the seed picks, at the moment it runs, a country in hours ("open") and one outside hours
+-- ("closed") and sets the leads' countries from them: 60% open, 20% the US (half with a picked zone, America/Chicago),
+-- 20% closed; so about 40% of the leads are outside hours unless the US is in hours. When no country is in hours (a
+-- weekend moment), the typical cases run with "outside calling hours too" and say so.
+--  Leads: the perf admin a1 owns 10,002 (as part 1) and has call tasks due (part 1), so his queue starts with
+--        follow-ups; a third of the unassigned leads (about 6,700) go to the perf rep b4 for P3b; another sixth (about
+--        3,300) to a new perf admin a2, who has no tasks, so his queue walks the ranks (Team, Mine + unassigned, the 200
+--        skipped); the rest (about 10,000) stay unassigned. has_contact_phone is recomputed (parts 1 and 2 seeded with triggers
+--        off); 200 live claims by the perf rep c4 on leads across the team.
+--  P3:   claim_next_lead Mine, a1, two cards (Start), rolled back each time.
+--  P3b:  worst case for b4: all his leads are first calls (rank 3), 90% never called and outside hours (the US span, or
+--        the closed country when the US is in hours), so they sit at the head of the walk; 10% in hours, called before.
+--  P3c:  a2: Team, Mine + unassigned (Merge Append in the plan), Mine with 200 leads skipped.
+--  P5:   list_tasks per bucket (Mine, 50 a page) and count_tasks, a1 (5,000 tasks, 30% done).
+--  P6:   queue_summary, Mine and Team.
+--  P9:   open_call_zones on a new backend (cold), then warm.
+--  Each case: 10 runs to settle (plans 6 and later may be generic plans), then the average of 5; run 6 of P3, P3b and
+--  P3c logs every inner statement (auto_explain) for the generic-plan check.
+-- =====================================================================================================================
+\echo '=== Part 3 (Day 4c): queue facts ==='
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000a2', 'perf-admin-2@test.invalid');
+update public.profiles set role = 'admin' where id = '00000000-0000-0000-0000-0000000000a2';
+select set_config('perf.open_c', coalesce((
+         select code from (select chr(65 + i / 26) || chr(65 + i % 26) as code from generate_series(0, 675) i) c
+          where private.country_call_zone(code) is not null and private.span_zones(private.country_call_zone(code)) is null
+            and private.country_zone_choices(code) is null and private.call_zone_open(private.country_call_zone(code), now(), false)
+          order by code limit 1), ''), false),
+       set_config('perf.closed_c', (
+         select code from (select chr(65 + i / 26) || chr(65 + i % 26) as code from generate_series(0, 675) i) c
+          where private.country_call_zone(code) is not null and private.span_zones(private.country_call_zone(code)) is null
+            and private.country_zone_choices(code) is null and not private.call_zone_open(private.country_call_zone(code), now(), false)
+          order by code limit 1), false),
+       set_config('perf.any_hours', (not exists (
+         select 1 from (select chr(65 + i / 26) || chr(65 + i % 26) as code from generate_series(0, 675) i) c
+          where private.country_call_zone(code) is not null and private.span_zones(private.country_call_zone(code)) is null
+            and private.country_zone_choices(code) is null
+            and private.call_zone_open(private.country_call_zone(code), now(), false)))::text, false) \g /dev/null
+select 'at ' || now() || ': in hours ' || coalesce(nullif(current_setting('perf.open_c'), ''), 'none') || ', outside hours '
+       || current_setting('perf.closed_c') || ', US span ' || case when private.call_zone_open('US', now(), false) then 'in hours'
+       else 'outside hours' end || ', typical cases with p_any_hours = ' || current_setting('perf.any_hours');
+set session_replication_role = replica;
+update public.companies c
+   set country = case when x.n % 10 < 6 then coalesce(nullif(current_setting('perf.open_c'), ''), 'FR')
+                      when x.n % 10 < 8 then 'US' else current_setting('perf.closed_c') end,
+       timezone = case when x.n % 10 = 7 then 'America/Chicago' end
+  from perf_leads x
+ where x.id = c.id and c.id not in (current_setting('perf.heavy')::uuid, current_setting('perf.typical')::uuid);
+-- b4's 10,000: first calls (rank 3); 90% never called and outside hours, 10% called before and in hours.
+update public.companies c
+   set owner_id = '00000000-0000-0000-0000-0000000000b4', lead_status = 'cold', next_action_at = null,
+       phone_wrong_at = null,
+       country = case when x.n % 10 = 0 then coalesce(nullif(current_setting('perf.open_c'), ''), 'FR')
+                      when private.call_zone_open('US', now(), false) then current_setting('perf.closed_c') else 'US' end,
+       timezone = null,
+       last_activity_at = case when x.n % 10 = 0 then now() - interval '30 days' end
+  from perf_leads x
+ where x.id = c.id and c.owner_id is null and x.n % 3 = 1;
+update public.companies c set owner_id = '00000000-0000-0000-0000-0000000000a2'
+  from perf_leads x where x.id = c.id and c.owner_id is null and x.n % 6 = 2;
+update public.companies c set has_contact_phone = exists (
+         select 1 from public.contacts k where k.company_id = c.id and k.phone ~ '[0-9]' and k.phone_wrong_at is null);
+insert into private.queue_claims (company_id, org_id, user_id, claimed_at, expires_at)
+select x.id, x.org_id, '00000000-0000-0000-0000-0000000000c4', now(), now() + interval '1 hour'
+  from perf_leads x where x.n % 150 = 7;
+set session_replication_role = origin;
+vacuum analyze public.companies;
+vacuum analyze private.queue_claims;
+select 'queue facts: ' || count(*) filter (where queue_rank is not null) || ' with a rank ('
+       || count(*) filter (where queue_rank = 0) || ' / ' || count(*) filter (where queue_rank = 1) || ' / '
+       || count(*) filter (where queue_rank = 2) || ' / ' || count(*) filter (where queue_rank = 3) || ' at ranks 0 to 3), '
+       || count(*) filter (where queue_rank is not null and (next_action_at is null or next_action_at <= now())
+                           and call_zone = any (private.open_call_zones(now(), false))) || ' callable now, '
+       || count(*) filter (where owner_id = '00000000-0000-0000-0000-0000000000a1') || ' a1, '
+       || count(*) filter (where owner_id = '00000000-0000-0000-0000-0000000000b4') || ' b4, '
+       || count(*) filter (where owner_id = '00000000-0000-0000-0000-0000000000a2') || ' a2, '
+       || count(*) filter (where owner_id is null) || ' unassigned, '
+       || (select count(*) from private.queue_claims) || ' live claims'
+  from public.companies;
+-- The 200 leads at the head of a2's queue, for "Mine with 200 skipped" (worked out as a2 would see them).
+set role authenticated;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+select set_config('perf.skip200', (
+  select array_agg(x)::text from (
+    select x from private.queue_candidates(1, 'mine', null, '{}', current_date, 'Europe/Paris', 200) x
+    union all select x from private.queue_candidates(2, 'mine', null, '{}', current_date, 'Europe/Paris', 200) x
+    union all select x from private.queue_candidates(3, 'mine', null, '{}', current_date, 'Europe/Paris', 200) x
+    limit 200) s), false) \g /dev/null
+reset role;
+
+-- One claim_next_lead call, rolled back (its claims go); the time in milliseconds comes back in perf.p3, the cards in
+-- perf.p3n.
+create function pg_temp.claim_round(p_scope text, p_exclude uuid[], p_count integer, p_any_hours boolean) returns void
+language plpgsql as $$
+declare
+  t0 timestamptz;
+  r jsonb;
+  ms numeric;
+  n integer;
+begin
+  begin
+    t0 := clock_timestamp();
+    r := public.claim_next_lead(p_scope, null, p_exclude, p_count, p_any_hours);
+    ms := extract(epoch from clock_timestamp() - t0) * 1000;
+    n := jsonb_array_length(r -> 'cards');
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
+  perform set_config('perf.p3', ms::text, false);
+  perform set_config('perf.p3n', n::text, false);
+end;
+$$;
+
+\echo '=== P3, P3b, P3c plan check: 5 runs to settle, then run 6 with every inner statement logged (auto_explain) ==='
+set role authenticated;
+do $$
+declare
+  any_h boolean := current_setting('perf.any_hours')::boolean;
+begin
+  for r in 1..5 loop
+    perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}', false);
+    perform pg_temp.claim_round('mine', '{}', 2, any_h);
+    perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b4","role":"authenticated","aal":"aal2"}', false);
+    perform pg_temp.claim_round('mine', '{}', 1, false);
+    perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated","aal":"aal2"}', false);
+    perform pg_temp.claim_round('mine_unassigned', '{}', 2, any_h);
+    perform pg_temp.claim_round('team', '{}', 2, any_h);
+  end loop;
+end $$;
+reset role;
+set auto_explain.log_min_duration = 0;
+set role authenticated;
+\echo '--- P3 run 6: claim_next_lead Mine (a1, two cards: his due follow-ups come first)'
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+select pg_temp.claim_round('mine', '{}', 2, current_setting('perf.any_hours')::boolean);
+\echo '--- P3b run 6: claim_next_lead Mine (b4, one card: the rank 3 walk past the leads outside hours)'
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000b4","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+select pg_temp.claim_round('mine', '{}', 1, false);
+\echo '--- P3c run 6: claim_next_lead Mine + unassigned (a2, two cards): the candidate query is a Merge Append'
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+select pg_temp.claim_round('mine_unassigned', '{}', 2, current_setting('perf.any_hours')::boolean);
+\echo '--- P3c run 6: claim_next_lead Team (a2, two cards)'
+select pg_temp.claim_round('team', '{}', 2, current_setting('perf.any_hours')::boolean);
+reset role;
+set auto_explain.log_min_duration = -1;
+set role authenticated;
+
+\echo '=== P3, P3b, P3c timings: average of 5 warm runs after 10, milliseconds ==='
+do $$
+declare
+  any_h boolean := current_setting('perf.any_hours')::boolean;
+  skip200 uuid[] := current_setting('perf.skip200')::uuid[];
+  total numeric;
+  cards integer;
+  c integer;
+begin
+  for c in 1..5 loop
+    perform set_config('request.jwt.claims', '{"sub":"' || case c when 1 then '00000000-0000-0000-0000-0000000000a1'
+                       when 2 then '00000000-0000-0000-0000-0000000000b4' else '00000000-0000-0000-0000-0000000000a2' end
+                       || '","role":"authenticated","aal":"aal2"}', false);
+    total := 0;
+    for r in 1..15 loop
+      case c
+        when 1 then perform pg_temp.claim_round('mine', '{}', 2, any_h);
+        when 2 then perform pg_temp.claim_round('mine', '{}', 1, false);
+        when 3 then perform pg_temp.claim_round('team', '{}', 2, any_h);
+        when 4 then perform pg_temp.claim_round('mine_unassigned', '{}', 2, any_h);
+        else perform pg_temp.claim_round('mine', skip200, 1, any_h);
+      end case;
+      if r > 10 then total := total + current_setting('perf.p3')::numeric; end if;
+    end loop;
+    cards := current_setting('perf.p3n')::integer;
+    raise notice '% : % ms (% cards)',
+      rpad((array['P3 Mine, a1, Start (2 cards)', 'P3b worst case, b4, 1 card (90% closed first calls)',
+                  'P3c Team, a2, 2 cards', 'P3c Mine + unassigned, a2, 2 cards', 'P3c Mine, a2, 200 skipped, 1 card'])[c], 52),
+      round(total / 5, 2), cards;
+  end loop;
+end $$;
+
+\echo '=== P5 list_tasks and count_tasks, P6 queue_summary: average of 5 warm runs after 10, milliseconds ==='
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated","aal":"aal2"}', false) \g /dev/null
+do $$
+declare
+  any_h boolean := current_setting('perf.any_hours')::boolean;
+  t0 timestamptz;
+  total numeric;
+  n integer;
+  c integer;
+  j jsonb;
+begin
+  for c in 1..8 loop
+    total := 0;
+    for r in 1..15 loop
+      t0 := clock_timestamp();
+      case c
+        when 1 then select count(*) into n from public.list_tasks('overdue');
+        when 2 then select count(*) into n from public.list_tasks('today');
+        when 3 then select count(*) into n from public.list_tasks('upcoming');
+        when 4 then select count(*) into n from public.list_tasks('done');
+        when 5 then j := public.count_tasks();
+        when 6 then j := public.count_tasks('team');
+        when 7 then j := public.queue_summary('mine');
+        else j := public.queue_summary('team');
+      end case;
+      if r > 10 then total := total + extract(epoch from clock_timestamp() - t0) * 1000; end if;
+    end loop;
+    raise notice '% : % ms%', rpad((array['P5 list_tasks Overdue (a1, 50)', 'P5 list_tasks Today', 'P5 list_tasks Upcoming',
+                                          'P5 list_tasks Done', 'P5 count_tasks Mine', 'P5 count_tasks Team (context)',
+                                          'P6 queue_summary Mine', 'P6 queue_summary Team'])[c], 34),
+      round(total / 5, 2), case when c <= 4 then ' (' || n || ' rows)' when c >= 5 then ' ' || j::text else '' end;
+  end loop;
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+
+\echo '=== P9 open_call_zones: first call on a new backend (cold), then the average of 50 (warm), milliseconds ==='
+\connect
+do $$
+declare
+  t0 timestamptz;
+  cold numeric;
+  a text[];
+begin
+  t0 := clock_timestamp();
+  a := private.open_call_zones(now(), false);
+  cold := extract(epoch from clock_timestamp() - t0) * 1000;
+  t0 := clock_timestamp();
+  for r in 1..50 loop a := private.open_call_zones(now(), false); end loop;
+  raise notice 'P9 open_call_zones: cold % ms, warm % ms (% of % zones in hours)', round(cold, 2),
+    round(extract(epoch from clock_timestamp() - t0) * 1000 / 50, 3), cardinality(a), cardinality(private.call_zone_keys());
+end $$;

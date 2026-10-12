@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import type { RowSelectionState } from "@tanstack/react-table";
 import Link from "next/link";
-import { Plus, Upload, Users } from "lucide-react";
+import { Headset, Plus, Upload, Users } from "lucide-react";
 import { createLead } from "@/app/(app)/leads/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -260,7 +260,13 @@ export function LeadsWorkspace({
             <span className="font-mono text-base font-normal text-muted-foreground">{format.number(total)}</span>
           ) : null}
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Day 4c: the work queue. The default prefetch of a dynamic page stops at its loading skeleton: no data is read
+              and nothing is claimed (claims start on Start), and the skeleton shows at once on a click. */}
+          <Link href="/leads/queue" className={buttonVariants({ variant: "quiet" })}>
+            <Headset aria-hidden="true" strokeWidth={1.75} className="size-4" />
+            {t("workQueue")}
+          </Link>
           {isAdmin ? (
             <Link href="/leads/import" className={buttonVariants({ variant: "quiet" })}>
               <Upload aria-hidden="true" strokeWidth={1.75} className="size-4" />
