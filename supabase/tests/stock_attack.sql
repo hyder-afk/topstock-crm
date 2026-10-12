@@ -195,8 +195,9 @@ begin
   select array_agg(attname::text order by attname) into cols from pg_attribute
    where attrelid = 'public.products'::regclass and attnum > 0 and not attisdropped
      and has_column_privilege('authenticated', attrelid, attname, 'INSERT');
-  if cols is distinct from array['cartons_per_pallet', 'category', 'name', 'pieces_per_carton', 'price_max', 'price_min',
-                                 'reorder_point', 'share_visible', 'transit_eta'] then
+  -- 6c adds import_batch_id (insert only, behind the restrictive products_import_column policy).
+  if cols is distinct from array['cartons_per_pallet', 'category', 'import_batch_id', 'name', 'pieces_per_carton',
+                                 'price_max', 'price_min', 'reorder_point', 'share_visible', 'transit_eta'] then
     raise exception 'FAIL: product insert columns are %', cols;
   end if;
   select array_agg(attname::text order by attname) into cols from pg_attribute
@@ -348,7 +349,8 @@ begin
                             'private.stock_movements:stock_movements_select',
                             'private.stock_reservations:stock_reservations_select',
                             'public.locations:locations_select', 'public.locations:locations_update',
-                            'public.products:products_insert', 'public.products:products_select',
+                            'public.products:products_import_column', 'public.products:products_insert',
+                            'public.products:products_select',
                             'public.products:products_update', 'public.stock_levels:stock_levels_select'] then
     raise exception 'FAIL: stock policies are %', (select array_agg(schemaname || '.' || tablename || ':' || policyname order by schemaname || '.' || tablename || ':' || policyname)
       from pg_policies where tablename in ('products', 'locations', 'stock_levels', 'product_costs', 'inventory_settings',
