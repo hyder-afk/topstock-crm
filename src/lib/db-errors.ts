@@ -12,6 +12,7 @@ export type AppError =
   | "busy"
   | "quota"
   | "type_mismatch"
+  | "blocked" // Day 6's stock records hold this deal (blocked_order, blocked_sales, blocked_reservation)
   | "unavailable"; // anything else: connection, database down, unknown
 
 /** 22023 hints the screens word on their own (design 4 and the Day 4a/4b migrations). */
@@ -35,6 +36,26 @@ export const INVALID_HINTS = [
   "lead_has_files",
   "bad_bucket",
   "timezone",
+  // Day 5 (deals; design 4, error contract)
+  "value",
+  "value_required",
+  "fulfilment",
+  "fulfilment_required",
+  "lost_reason_required",
+  "lost_note_required",
+  "lost_note",
+  "deal_title",
+  "closed",
+  "reopen_first",
+  "dnc",
+  "lead_required",
+  "fields",
+  "owner_required",
+  "stage",
+  "bad_scope",
+  "bad_order",
+  "limit",
+  "deal_has_order",
 ] as const;
 export type InvalidHint = (typeof INVALID_HINTS)[number];
 
@@ -50,6 +71,9 @@ const hintErrors: Record<string, AppError> = {
   quota: "quota",
   too_many_pending: "busy",
   object_mismatch: "type_mismatch",
+  blocked_order: "blocked",
+  blocked_sales: "blocked",
+  blocked_reservation: "blocked",
 };
 
 /** The app's answer for a PostgREST error ({ code, hint }); null or a missing code is "unavailable". */
