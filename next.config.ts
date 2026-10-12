@@ -36,6 +36,11 @@ const nextConfig: NextConfig = {
       ...["/s/:path*", "/s", "/api/share/:path*"].map((source) => ({ source, headers: shareHeaders })),
     ];
   },
+  // Browsers still ask for /favicon.ico now and then (Chromium did after a same-page Cmd+K navigation): the app icon
+  // answers instead of a 404 in the console. Applied before the proxy.
+  async redirects() {
+    return [{ source: "/favicon.ico", destination: "/icon.svg", permanent: true }];
+  },
 };
 
 // Messages are compiled at build time (next-intl's precompile, experimental in 4.14): the lead page's first draw parsed

@@ -198,6 +198,11 @@ test("palette_share_stock_with_opens_the_lead_link_card", async ({ browser }) =>
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/leads/${leadId}\\?tab=stock$`));
   await expect(page.getByRole("region", { name: "Client link" })).toBeVisible();
+  // Chromium asked for /favicon.ico after the same-page navigation: the app icon answers, not a 404.
+  expect((await page.request.get("/favicon.ico", { maxRedirects: 0 })).status()).toBe(308);
+  const icon = await page.request.get("/favicon.ico");
+  expect(icon.status()).toBe(200);
+  expect(icon.headers()["content-type"]).toContain("image/svg+xml");
   expect(errors).toEqual([]);
   await context.close();
 });
