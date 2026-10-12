@@ -1242,7 +1242,7 @@ begin
         select array_agg(x.id order by x.rn) into page
           from (select l.id, row_number() over () as rn
                   from public.list_stage_deals('lead', 'team', case when k = 'owner' then r1 end, false, ord, cur_at, cur_id, 7) l) x;
-        exit when page is null;
+        exit when page is null or cardinality(seen) > 60;  -- a cursor that repeats a row would loop for ever
         seen := seen || page;
         select d.stage_entered_at, d.id into cur_at, cur_id from public.deals d where d.id = page[cardinality(page)];
       end loop;
