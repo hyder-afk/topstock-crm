@@ -12,7 +12,7 @@ test("too_big_rejected_before_upload, empty, type, renamed_exe_rejected", async 
   expect(await checkLocalFile(new File([], "empty.pdf", { type: "application/pdf" }))).toEqual({ ok: false, reason: "empty" });
   expect(await checkLocalFile(new File(["<svg/>"], "x.svg", { type: "image/svg+xml" }))).toEqual({ ok: false, reason: "type" });
   const exe = new File([new Uint8Array([0x4d, 0x5a, 0x90, 0, 3, 0, 0, 0])], "invoice.pdf", { type: "application/pdf" });
-  expect(await checkLocalFile(exe)).toEqual({ ok: false, reason: "mismatch" });
+  expect(await checkLocalFile(exe)).toEqual({ ok: false, reason: "mismatch", mime: "application/pdf" });
 });
 
 test("a real-looking PDF and Word file pass, with their type", async () => {
@@ -21,6 +21,7 @@ test("a real-looking PDF and Word file pass, with their type", async () => {
   expect(await checkLocalFile(new File([makeZip([...DOCX, { name: "word/vbaProject.bin" }])], "offre.docx", { type: W }))).toEqual({
     ok: false,
     reason: "mismatch",
+    mime: W,
   });
 });
 

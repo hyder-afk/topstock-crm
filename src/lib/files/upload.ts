@@ -6,7 +6,10 @@ import { BUCKET, MAX_FILE_BYTES, type FileMime } from "@/lib/files/types";
 // straight to Supabase Storage with XMLHttpRequest, whose upload progress drives a real progress bar (no spinner).
 // The server checks the stored bytes again before the file is ready, and again on every open.
 
-export type LocalCheck = { ok: true; mime: FileMime } | { ok: false; reason: "tooBig" | "empty" | "type" | "mismatch" };
+export type LocalCheck =
+  | { ok: true; mime: FileMime }
+  | { ok: false; reason: "tooBig" | "empty" | "type" }
+  | { ok: false; reason: "mismatch"; mime: FileMime };
 
 /** Size, type (browser type or extension) and the bytes themselves (sniffFile), before any upload. */
 export async function checkLocalFile(file: File): Promise<LocalCheck> {
@@ -17,9 +20,9 @@ export async function checkLocalFile(file: File): Promise<LocalCheck> {
   try {
     const head = new Uint8Array(await file.slice(0, HEAD_BYTES).arrayBuffer());
     const tail = needsTail(mime) ? new Uint8Array(await file.slice(Math.max(0, file.size - TAIL_BYTES)).arrayBuffer()) : undefined;
-    return sniffFile({ mime, size: file.size, head, tail }) ? { ok: true, mime } : { ok: false, reason: "mismatch" };
+    return sniffFile({ mime, size: file.size, head, tail }) ? { ok: true, mime } : { ok: false, reason: "mismatch", mime };
   } catch {
-    return { ok: false, reason: "mismatch" };
+    return { ok: false, reason: "mismatch", mime };
   }
 }
 

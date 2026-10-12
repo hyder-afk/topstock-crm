@@ -191,7 +191,7 @@ test("files_list: rows, sizes, who and when; names as text (xss); the team space
   await expect(panel.getByText("47 kB").or(panel.getByText("47 KB"))).toBeVisible();
   await expect(panel.getByText("Yanis Morel")).toBeVisible();
   await expect(panel.getByText("You").first()).toBeVisible();
-  await expect(panel.getByText("<img src=x onerror=alert(1)>", { exact: false })).toBeVisible();
+  await expect(panel.getByRole("link", { name: /^<img src=x onerror=alert\(1\)>\.pdf/ })).toBeVisible();
   expect(dialogs).toBe(0);
   await expect(panel.getByText(/of 800 MB used$/)).toBeVisible();
   // file_link_has_no_token_in_dom: rows link to the app's own route; no storage link or token anywhere in the page.

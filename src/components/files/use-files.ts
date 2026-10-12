@@ -39,10 +39,10 @@ export function prefetchFiles(queryClient: QueryClient, leadId: string) {
   });
 }
 
-/** "312 KB", "4.2 MB", "10 MB", "800 B" in the reader's language (binary units, as the limits: 10 MB is 10 MiB). */
-export function sizeParts(bytes: number): { value: number; unit: "byte" | "kilobyte" | "megabyte"; digits: number } {
-  if (bytes < 1024) return { value: bytes, unit: "byte", digits: 0 };
-  if (bytes < 1024 * 1024) return { value: Math.round(bytes / 1024), unit: "kilobyte", digits: 0 };
+/** "312 kB", "4.2 MB", "10 MB" in the reader's language (binary units, as the limits: 10 MB is 10 MiB); anything under
+ *  1 kB reads "1 kB" (Intl's short "byte" unit reads "10 byte" in English). */
+export function sizeParts(bytes: number): { value: number; unit: "kilobyte" | "megabyte"; digits: number } {
+  if (bytes < 1024 * 1024) return { value: Math.max(1, Math.round(bytes / 1024)), unit: "kilobyte", digits: 0 };
   const mb = bytes / (1024 * 1024);
   return { value: mb, unit: "megabyte", digits: mb >= 100 || Number.isInteger(Math.round(mb * 10) / 10) ? 0 : 1 };
 }

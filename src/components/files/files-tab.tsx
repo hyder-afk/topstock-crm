@@ -117,7 +117,10 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
         setAnnounce(t("announce.failed", { name: file.name }));
       };
       const local = await checkLocalFile(file);
-      if (!local.ok) return fail(local.reason);
+      if (!local.ok) {
+        if (local.reason === "mismatch") patch(key, { mime: local.mime });
+        return fail(local.reason);
+      }
       patch(key, { mime: local.mime });
       const begun = await beginUpload({ leadId, name: file.name, mime: local.mime, size: file.size }).catch(() => null);
       if (!begun) return fail("connection");
@@ -216,7 +219,8 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
         ) : null}
       </div>
 
-      {/* The drop zone: a real button inside, so it works without a mouse; dropping is an extra. */}
+      {/* The drop zone: a real button inside, so it works without a mouse; dropping is an extra. The file input itself is
+          hidden from assistive technology and the keyboard: the visible button, described by the limits, is the control. */}
       <div
         onDragOver={(e) => {
           if (!e.dataTransfer.types.includes("Files")) return;
@@ -251,8 +255,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
           type="file"
           multiple
           accept={ACCEPT}
-          aria-label={t("choose")}
-          aria-describedby={limitsId}
+          aria-hidden="true"
           className="sr-only"
           tabIndex={-1}
           onChange={(e) => {
@@ -406,15 +409,19 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
   );
 }
 
-/** A name that keeps its end: the stem is cut with an ellipsis, the extension always shows. */
+/** A name that keeps its end: the stem is cut with an ellipsis, the extension always shows. Read as one name (the two
+ *  visible parts are flex items, which screen readers would read with a space between them). */
 function FileName({ name, className }: { name: string; className?: string }) {
   const { stem, ext } = splitName(name);
   return (
     <span className={cn("flex min-w-0", className)} title={name} translate="no">
-      <span dir="auto" className="truncate">
+      <span className="sr-only">{name}</span>
+      <span aria-hidden="true" dir="auto" className="truncate">
         {stem}
       </span>
-      <span className="shrink-0">{ext}</span>
+      <span aria-hidden="true" className="shrink-0">
+        {ext}
+      </span>
     </span>
   );
 }
