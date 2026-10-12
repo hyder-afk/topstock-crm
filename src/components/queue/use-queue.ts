@@ -59,7 +59,9 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   const [summary, setSummary] = useState<QueueSummary | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [claiming, setClaiming] = useState(false);
-  const [pending, setPending] = useState<PendingOutcome[]>([]);
+  // Outcomes kept in this tab whose tries have all failed (or that an earlier visit left): the "not saved" chip. An
+  // outcome still being tried is not counted, so the chip appears only after the last try (0.5, 1 and 2 s).
+  const [stuck, setStuck] = useState<string[]>([]);
   const [saving, setSaving] = useState(0);
   const [lastLogged, setLastLogged] = useState<LoggedEntry | null>(null);
   const [changed, setChanged] = useState<Record<string, string>>({});
@@ -157,6 +159,13 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     [enqueue, setCards, take],
   );
 
+  const removeStuck = useCallback((id: string, add = false) => {
+    setStuck((list) => {
+      const rest = list.filter((x) => x !== id);
+      return add ? [...rest, id] : rest;
+    });
+  }, []);
+
   /** Sends one kept outcome (with the next claim when the screen needs one), trying again on a lost connection. */
   const save = useCallback(
     (item: PendingOutcome, card: QueueCard | null, retry = true) =>
@@ -174,15 +183,17 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         setSaving((n) => n - 1);
         if (!res.ok) {
           if (retryable(res.error)) {
-            setPending(readPending());
+            removeStuck(item.input.requestId, true);
           } else {
-            setPending(removePending(item.input.requestId));
+            removePending(item.input.requestId);
+            removeStuck(item.input.requestId);
             eventRef.current({ kind: "failed", error: res.error, hint: res.hint, leadName: item.leadName });
           }
           if (cardsRef.current.length === 0 && phaseRef.current === "working") refill();
           return;
         }
-        setPending(removePending(item.input.requestId));
+        removePending(item.input.requestId);
+        removeStuck(item.input.requestId);
         const logged = res.data.logged;
         if (card && logged.undo_until) {
           const entry: LoggedEntry = { activityId: logged.activity_id, card, outcome: item.input.outcome as CallOutcome, until: Date.parse(logged.undo_until), result: logged };
@@ -192,7 +203,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         if (res.data.claim) take(res.data.claim);
         else if (res.data.claimError && cardsRef.current.length === 0) setError(res.data.claimError);
       })),
-    [enqueue, nextRequest, refill, take],
+    [enqueue, nextRequest, refill, take, removeStuck],
   );
 
   /** An outcome for the current card: the next card shows at once; the outcome is kept until the database has it. */
@@ -202,7 +213,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       if (!card || card.id !== input.leadId) return;
       lastInput.current = Date.now();
       const item: PendingOutcome = { input, leadName: card.name, at: Date.now() };
-      setPending(addPending(item));
+      addPending(item);
       excludeRef.current = addExcluded(excludeRef.current, card.id);
       setCards((cur) => cur.slice(1));
       void save(item, card);
@@ -285,7 +296,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   useEffect(() => {
     // Read once after mount (sessionStorage is not on the server); a subscription would be heavier for one value.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPending(readPending());
+    setStuck(readPending().map((p) => p.input.requestId));
   }, []);
 
   // Renewal every 4 minutes while visible and in use (a key or a click in the last 10 minutes).
@@ -348,7 +359,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
     summary,
     error,
     claiming,
-    pending,
+    notSaved: stuck.length,
     saving: saving > 0,
     lastLogged,
     changedStatus: current ? (changed[current.id] ?? null) : null,

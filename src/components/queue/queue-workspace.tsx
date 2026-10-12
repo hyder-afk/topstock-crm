@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
 import { ArrowLeft } from "lucide-react";
 import { followUpArgs, noFollowUp, type FollowUp } from "@/components/activity/outcome-pad";
 import { useClientNow } from "@/components/lead/local-time";
@@ -278,7 +278,8 @@ export function QueueWorkspace({
       }
       if (q.phase !== "working" || !current) return;
       if (choice && (event.key === "Enter" || event.key === "Escape") && (!isTyping(target) || inPicker)) {
-        if (event.key === "Enter" && target?.tagName === "BUTTON") return; // the focused button does its own job
+        // Confirm and Cancel (and the pad) do their own job; on a date chip, ↩ confirms the follow-up as chosen.
+        if (event.key === "Enter" && target?.tagName === "BUTTON" && !target.closest("fieldset")) return;
         event.preventDefault();
         if (event.key === "Enter") confirm();
         else setChoice(null);
@@ -493,18 +494,9 @@ export function QueueWorkspace({
       ) : !current ? (
         <QueueCardSkeleton label={t("loading")} />
       ) : (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 [grid-template-areas:'head'_'rail'_'details'] lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:[grid-template-areas:'head_rail'_'details_rail']">
+        <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 [grid-template-areas:'head'_'rail'_'details'] lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:[grid-template-areas:'head_rail'_'details_rail']">
           <AnimatePresence mode="popLayout" initial={false}>
-            <motion.section
-              key={current.id}
-              aria-labelledby={`queue-card-${current.id}`}
-              role="region"
-              initial={reduce ? { opacity: 0 } : { opacity: 0, x: 32 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, x: -32 }}
-              transition={reduce ? { duration: 0.12 } : springs.snappy}
-              className="relative flex min-w-0 flex-col gap-4 rounded-lg bg-card p-4 [grid-area:head] sm:p-6"
-            >
+            <CardShell key={current.id} labelledBy={`queue-card-${current.id}`} reduce={!!reduce}>
               {onlyDnc ? (
                 <p role="note" className="flex items-start gap-2 rounded-md bg-muted p-3 text-sm">
                   <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-status-red" />
@@ -524,7 +516,7 @@ export function QueueWorkspace({
                   changedStatus={q.changedStatus}
                   claiming={q.claiming}
                 />
-            </motion.section>
+            </CardShell>
           </AnimatePresence>
           <aside aria-label={t("padTitle")} className="flex min-w-0 flex-col rounded-lg bg-card p-4 [grid-area:rail] sm:p-5 lg:sticky lg:top-4">
             <QueueRail
@@ -545,7 +537,7 @@ export function QueueWorkspace({
               onlyDnc={onlyDnc}
               noNumber={!dialled}
               stats={stats}
-              notSaved={q.pending.length}
+              notSaved={q.notSaved}
               retrying={q.saving}
               onRetry={q.retryPending}
               disabled={false}
@@ -590,6 +582,31 @@ export function QueueWorkspace({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * The card's frame: out to the left and in from the right (the `snappy` spring; a key mid-flight starts from where the
+ * card is), a short fade with reduced motion. The leaving card is hidden from assistive tech and inert, so only the new
+ * card is announced and focusable.
+ */
+function CardShell({ labelledBy, reduce, children }: { labelledBy: string; reduce: boolean; children: React.ReactNode }) {
+  const present = useIsPresent();
+  return (
+    <motion.section
+      aria-labelledby={labelledBy}
+      role="region"
+      aria-hidden={present ? undefined : true}
+      inert={!present}
+      data-leaving={present ? undefined : ""}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, x: 32 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={reduce ? { opacity: 0 } : { opacity: 0, x: -32 }}
+      transition={reduce ? { duration: 0.12 } : springs.snappy}
+      className="relative flex min-w-0 flex-col gap-4 rounded-lg bg-card p-4 [grid-area:head] sm:p-6"
+    >
+      {children}
+    </motion.section>
   );
 }
 
