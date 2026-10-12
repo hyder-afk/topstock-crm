@@ -37,3 +37,18 @@ with no visible change).
 queue's start screen and card at every width in English light, plus phone and desktop in the other combinations;
 overdue, inline edit and the delete question at 390 and 1440; the follow-up, the empty states, the claims-ended state,
 the worked-by line and all eight skeleton shots. Full-page shots on phones show the dock where the page ends (it is fixed to the screen).
+
+**Re-taken in review round 3** (12 Oct 2026, on the round's head, the shared local stack started from this worktree,
+Next on 3100): the tests "app shell", "tasks page", "work queue" and "tasks, queue and more: route skeletons" ran
+again (4 passed, none of their shots failed on a console error or sideways scroll). Every kept shot except
+`lead-worked-by-*` (unchanged) was replaced by its new version, and four states were added:
+
+| State | Matrix | Shots |
+|---|---|---|
+| `queue-followup-view` (Interested pressed: at 390 the follow-up and Confirm come into view above the dock; at 1440 nothing moves) | English light and French dark at 390 and 1440 | 4 |
+| `queue-not-saved` ("1 outcome not saved · Retry" in the header on the start screen) | English light and French dark at 390 and 1440 | 4 |
+| `more` (time zone on More; from the app-shell test) | English light and French dark at 390 and 1440 kept (14 taken) | 4 |
+| `more-skeleton` (More's route skeleton, data request held) | English light and French dark at 390 and 1440 | 4 |
+
+`leads-queue-skeleton-*` now wraps as the page does: compare `leads-queue-skeleton-fr-dark-390` with
+`queue-start-fr-dark-390`. 168 Day 4c shots plus 14 More shots this run; this folder now keeps 72.

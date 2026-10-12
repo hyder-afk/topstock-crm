@@ -95,3 +95,36 @@ Files: `src/components/queue/use-queue.ts`, `src/components/queue/queue-workspac
 
 Unresolved: none.
 
+
+## Review round 3 (12 Oct 2026)
+
+Files: `src/components/queue/{use-queue.ts,queue-workspace.tsx,queue-rail.tsx}`, `src/components/ui/toast.tsx`,
+`src/components/activity/call-panel.tsx`, `src/components/tasks/{task-row.tsx,tasks-workspace.tsx,lead-picker.tsx,use-tasks.ts}`,
+`src/app/(app)/leads/queue/loading.tsx`, `src/components/shell/timezone-form.tsx`, `messages/*.json`.
+
+```text
+## src/components/queue/queue-workspace.tsx
+- Live regions: one polite region kept mounted across start, working and empty, so "Logged … for …" survives the
+  switch to the empty state; the "Logged" toast is drawn outside the toast live region (quiet), so each outcome is read
+  once; it is read when it also says a card went to a teammate. pass (finding 19)
+- Spoken times: the next lead's time says "their time" (Queue.theirTime). pass
+- Empty state: no role=status on a section holding buttons; its heading (tabIndex -1, aria-labelledby) takes the focus. pass
+- Focus: the restored card after Undo, the error card's Retry (title, then the first card) and Cancel in the follow-up
+  never leave the focus on <body>. pass (findings 9, 14)
+- Keyboard: U and Cmd/Ctrl+Z work on the empty state and the loading card; the page owns U (data-owns-undo) so the
+  lead page's global listener stands aside. pass (findings 4, 5)
+## src/components/queue/queue-rail.tsx
+- Below 1024 the follow-up / Do not contact panel (role=group, named by the outcome) scrolls into view with
+  scroll-margin clear of the fixed dock and takes the focus. pass (finding 15)
+## src/components/tasks/tasks-workspace.tsx, task-row.tsx, lead-picker.tsx
+- Enter on a role=checkbox button never toggles (WAI-ARIA checkbox: Space only; X is the page's key). pass (finding 16)
+- The title count has an sr-only sentence (ICU plural, EN and FR) and a title. pass (finding 22)
+- After picking a lead the chip's remove button takes the focus. pass (findings 10, 17)
+- A row restored while fading out shows its real state (aria-checked). pass (finding 11)
+## src/app/(app)/leads/queue/loading.tsx
+- Skeleton text is aria-hidden and transparent; one sr-only "Loading". pass
+## messages/*.json
+- No U+237D; no-break spaces inside key hints; French narrow no-break spaces (unit-checked). pass
+```
+
+Unresolved: none.

@@ -62,3 +62,20 @@ New and changed UI, checked on the code and on `screens/queue-released-*` and th
 
 Unresolved: none.
 
+
+## Review round 3 (12 Oct 2026)
+
+Changed UI from the review findings, checked on the code and on the re-taken shots (`queue-followup-view-*`,
+`queue-not-saved-*`, `queue-*`, `leads-queue-skeleton-*`, `more-*`, `more-skeleton-*`, `tasks-*`):
+
+| # | Item | Finding | Fix |
+|---|---|---|---|
+| 1 | Instant response | At 390, tapping Interested, Book meeting, Connected or Do not contact only turned the key black: the follow-up and Confirm opened under the pad, below the fold and behind the dock (finding 15) | below 1024 the panel scrolls into view (smooth; instant with reduced motion) with a bottom scroll margin clear of the dock, and takes the focus; Cancel gives the focus back to the card's heading |
+| 4 | Interruptible / spatial | U right after a mistaken key took back the outcome before it, and the restored card took no focus (findings 8, 9) | U waits for the latest outcome's save and takes back that one; the restored card's heading takes the focus |
+| 6 | Restraint | "1 outcome not saved · Retry" lived only in the rail, so it vanished on the empty and start screens (finding 6) | one muted chip with an amber dot under the page title, in every phase |
+| 7 | Calm | The queue's route skeleton was about 58 px short in French at 390 (finding 20), so the page jumped | the intro, scope switch and lunch line carry their own words invisibly on grey bars, so they wrap exactly like the page in both languages |
+| 8 | Reduced motion | New tasks appeared with no entrance (finding 23) | a task added after the list first shows fades in and rises 8 px (`smooth`); with reduced motion the 120 ms fade only |
+| 10 | Typography | Key hints could break between a key and its word ("U" / "annuler", finding 21) | no-break spaces inside each "key word" pair; lines break only at "·" (unit-checked) |
+| 12 | Spatial consistency | — | The Tasks title count stays a quiet DM Mono number beside the h1; its meaning is now said to assistive tech and on hover ("5 tasks due today or overdue", finding 22) |
+
+Unresolved: none (the speed budgets remain Haider's question, README Open risks).
