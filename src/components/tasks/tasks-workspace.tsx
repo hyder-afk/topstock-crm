@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
@@ -242,9 +242,10 @@ export function TasksWorkspace({
   };
 
   // Keys (not while typing, with a modifier, or while a dialog is open): T new task, J/K move, X done, E edit,
-  // D dismiss, Backspace/Delete delete, Enter on a task opens its lead.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
+  // D dismiss, Backspace/Delete delete, Enter on a task opens its lead. Attached once; it always runs the latest handler.
+  const keyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
+  useLayoutEffect(() => {
+    keyHandler.current = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
       if (isTyping(event.target) || document.querySelector("[role=dialog],[role=menu]")) return;
       const key = event.key.toLowerCase();
@@ -282,9 +283,12 @@ export function TasksWorkspace({
         }
       }
     };
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => keyHandler.current(event);
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [rows, actions, router]);
+  }, []);
 
   const tabs = TASK_TABS.map((id) => ({
     id,

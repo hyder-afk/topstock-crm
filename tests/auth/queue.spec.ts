@@ -265,8 +265,8 @@ test("offline_outcome_retried_once: saved once after lost answers; when every tr
   await start(page);
   // The next two saves are cut off (as if the connection dropped), then the network comes back.
   let cut = 2;
-  await page.route("**/leads/queue", async (route) => {
-    if (route.request().method() === "POST" && route.request().headers()["next-action"] && cut > 0) {
+  await page.route("**/api/queue/outcome", async (route) => {
+    if (route.request().method() === "POST" && cut > 0) {
       cut -= 1;
       await route.abort();
     } else {

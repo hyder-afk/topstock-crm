@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, seedLeads, setRole, sql } from "./helpers";
+import { appReady, countryInHours, createUser, fullSession, seedLeads, setRole, sql } from "./helpers";
 
 // Lead page speed in the browser (Day 4 design 8.6, the lead page's part; the queue's in 4c), on a CPU slowed down 4
 // times, each measure 3 times: a cold deep link (largest contentful paint and layout shift), a tab switch, a route change
@@ -170,5 +170,114 @@ test("lead page at 4x CPU slow-down: deep link, tab switch, route change, 1,000-
       expect.soft(value, `${key} run ${i + 1}: ${value} (budget ${round(BUDGET[key])})`).toBeLessThanOrEqual(BUDGET[key]);
     }
   }
+  await context.close();
+});
+
+// Day 4c: the queue at 4x CPU (design 8.6). 30 advances, each a digit key sent inside the page: the time until the
+// next card's heading is painted (from the reserve: ≤ 100 ms p95), the time until that outcome is saved (the "Logged"
+// toast; recorded, it feeds the D3 switch rule: over 400 ms p95 moves claim and log to route handlers), the longest
+// task during an advance (≤ 50 ms), then 10 keys in a row (a key as soon as each card shows): the loading card may show
+// at most once. Leads in a country in calling hours now, or any hours when every zone is closed.
+test("work queue at 4x CPU slow-down: key to next card, key to saved, 10 keys in a row", async ({ browser, browserName }) => {
+  test.skip(browserName !== "chromium", "CPU slow-down needs Chromium");
+  test.setTimeout(900_000);
+  const queueEmail = `queue-perf-${Date.now()}@example.test`;
+  const secret = await createUser(queueEmail, password, true);
+  setRole(queueEmail, "admin");
+  const open = countryInHours(true, 30);
+  sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+       select p.org_id, 'Perf Queue ' || lpad(i::text, 3, '0'), p.id, 'cold', '+33 6 00 00 ' || lpad(i::text, 4, '0'), 'Testville', '${open ?? "FR"}'
+       from public.profiles p, generate_series(1, 60) i where p.id = (select id from auth.users where email = '${queueEmail}')`);
+  const state = await fullSession(browser, queueEmail, password, secret);
+  const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+  await context.addInitScript(() => {
+    const w = window as unknown as { __tasks: number[] };
+    w.__tasks = [];
+    new PerformanceObserver((l) => l.getEntries().forEach((e) => w.__tasks.push(Math.round(e.duration)))).observe({ type: "longtask", buffered: true });
+  });
+  const page = await context.newPage();
+  await page.goto("/leads/queue");
+  await appReady(page);
+  await page.getByRole("button", { name: "Start" }).click();
+  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  const card = page.locator("main section[role=region]:not([data-leaving]) h2");
+  await expect(card).toBeVisible();
+  await page.waitForTimeout(1000);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+
+  const paint: number[] = [];
+  const saved: number[] = [];
+  const longest: number[] = [];
+  for (let i = 0; i < 30; i++) {
+    await page.evaluate(() => ((window as unknown as { __tasks: number[] }).__tasks = []));
+    const t = await page.evaluate(
+      () =>
+        new Promise<{ paint: number; saved: number }>((resolve, reject) => {
+          const heading = () => document.querySelector("main section[role=region]:not([data-leaving]) h2")?.textContent ?? "";
+          const toastText = () => [...document.querySelectorAll("[role=status]")].map((n) => n.textContent ?? "").join("|");
+          const before = heading();
+          const toastBefore = document.querySelector("[aria-live=polite] > div");
+          let painted = -1;
+          const t0 = performance.now();
+          const observer = new MutationObserver(() => {
+            if (painted < 0 && heading() && heading() !== before) {
+              painted = 0;
+              requestAnimationFrame(() => setTimeout(() => (painted = performance.now() - t0), 0));
+            }
+            const toast = document.querySelector("[aria-live=polite] > div");
+            if (toast && toast !== toastBefore && toastText().includes("Logged")) {
+              const done = () => (painted > 0 ? (observer.disconnect(), resolve({ paint: painted, saved: performance.now() - t0 })) : setTimeout(done, 5));
+              done();
+            }
+          });
+          observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+          window.setTimeout(() => reject(new Error("no advance")), 20_000);
+          document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1", key: "1", bubbles: true }));
+        }),
+    );
+    paint.push(round(t.paint));
+    saved.push(round(t.saved));
+    const tasks = await page.evaluate(() => (window as unknown as { __tasks: number[] }).__tasks);
+    longest.push(tasks.length ? Math.max(...tasks) : 0);
+  }
+  // 10 keys in a row: a key as soon as each new card shows; count the times the loading card appeared.
+  const skeletons = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        let seen = 0;
+        let wasBusy = false;
+        const observer = new MutationObserver(() => {
+          const busy = !!document.querySelector("main [aria-busy=true]");
+          if (busy && !wasBusy) seen += 1;
+          wasBusy = busy;
+        });
+        observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+        window.setTimeout(() => resolve(-1), 60_000); // stuck: reported as -1 (fails the budget)
+        let keys = 0;
+        let last = "";
+        const tick = () => {
+          const h = document.querySelector("main section[role=region]:not([data-leaving]) h2")?.textContent ?? "";
+          if (h && h !== last) {
+            last = h;
+            keys += 1;
+            if (keys > 10) {
+              observer.disconnect();
+              return resolve(seen);
+            }
+            document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "Digit1", key: "1", bubbles: true }));
+          }
+          setTimeout(tick, 10);
+        };
+        tick();
+      }),
+  );
+  const p95 = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length * 0.95)];
+  const result = { paintP95Ms: p95(paint), savedP95Ms: p95(saved), longestTaskMs: Math.max(...longest), skeletonsIn10Keys: skeletons, paint, saved };
+  console.log(`QUEUE-PERF ${JSON.stringify(result)}`);
+  expect.soft(result.paintP95Ms, `key to next card p95 ${result.paintP95Ms} ms (budget 100)`).toBeLessThanOrEqual(100);
+  expect.soft(result.longestTaskMs, `longest task ${result.longestTaskMs} ms (budget 50)`).toBeLessThanOrEqual(50);
+  expect.soft(result.skeletonsIn10Keys, "loading card in 10 keys (at most once)").toBeGreaterThanOrEqual(0);
+  expect.soft(result.skeletonsIn10Keys, "loading card in 10 keys (at most once)").toBeLessThanOrEqual(1);
   await context.close();
 });

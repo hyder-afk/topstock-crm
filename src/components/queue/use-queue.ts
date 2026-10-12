@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { claimMore, logOutcomeAndClaim, releaseClaims, renewClaims, skipAndClaim, startQueue, undoOutcome } from "@/app/(app)/leads/queue/actions";
+import { releaseClaims, renewClaims, startQueue, undoOutcome } from "@/app/(app)/leads/queue/actions";
 import { fetchLead } from "@/components/leads/use-leads";
 import type { CallOutcome, LoggedActivity } from "@/lib/activities";
 import type { ActionResult, AppError } from "@/lib/db-errors";
@@ -44,6 +44,30 @@ type Card = QueueCard & { receivedAt: number };
 
 const retryable = (e: AppError) => e === "unavailable" || e === "busy" || e === "rate_limited";
 const wait = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+/**
+ * The key-press path goes to route handlers (design D3's switch rule): JSON in, {ok, data} or {ok: false, error} out.
+ * A lost connection, a server error or an expired session (401: sign in again, then Retry) reads as "unavailable", so
+ * the outcome is kept and tried again; a refused origin as "forbidden".
+ */
+async function postJson<T>(url: string, body: unknown): Promise<ActionResult<T>> {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 403) return { ok: false, error: "forbidden" };
+    if (res.status === 400 || res.status === 413 || res.status === 415) return { ok: false, error: "invalid" };
+    if (!res.ok) return { ok: false, error: "unavailable" };
+    return (await res.json()) as ActionResult<T>;
+  } catch {
+    return { ok: false, error: "unavailable" };
+  }
+}
+const claimMore = (next: ClaimNextInput) => postJson<ClaimAnswer>("/api/queue/next", { next });
+const logOutcomeAndClaim = (body: { log: PendingOutcome["input"]; next: ClaimNextInput | null }) => postJson<QueueOutcomeResult>("/api/queue/outcome", body);
+type QueueOutcomeResult = { logged: LoggedActivity; claim: ClaimAnswer | null; claimError: AppError | null };
+
 async function safe<T>(p: Promise<ActionResult<T>>): Promise<ActionResult<T>> {
   try {
     return await p;
@@ -128,7 +152,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         setClaiming(false);
         return;
       }
-      const res = await safe(claimMore(next));
+      const res = await claimMore(next);
       setClaiming(false);
       if (res.ok) take(res.data);
       else if (cardsRef.current.length === 0) setError(res.error);
@@ -177,7 +201,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         for (const d of delays) {
           if (d) await wait(d);
           const next = phaseRef.current === "working" ? nextRequest() : null;
-          res = await safe(logOutcomeAndClaim({ log: item.input, next }));
+          res = await logOutcomeAndClaim({ log: item.input, next });
           if (res.ok || !retryable(res.error)) break;
         }
         setSaving((n) => n - 1);
@@ -235,7 +259,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         setClaiming(false);
         return;
       }
-      const res = await safe(skipAndClaim({ next }));
+      const res = await claimMore(next);
       setClaiming(false);
       if (res.ok) take(res.data);
       else if (cardsRef.current.length === 0) setError(res.error);

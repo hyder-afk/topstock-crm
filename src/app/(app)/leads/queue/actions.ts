@@ -1,41 +1,15 @@
 "use server";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { getTranslations } from "next-intl/server";
-import type { LoggedActivity, UndoneActivity } from "@/lib/activities";
+import type { UndoneActivity } from "@/lib/activities";
 import { requireSession } from "@/lib/auth";
-import { invalid, toActionFailure, type ActionResult, type AppError } from "@/lib/db-errors";
-import {
-  claimCount,
-  claimNextInput,
-  queueOutcomeInput,
-  releaseInput,
-  skipInput,
-  startQueueInput,
-  undoOutcomeInput,
-  type ClaimAnswer,
-  type ClaimNextInput,
-} from "@/lib/queue";
+import { invalid, toActionFailure, type ActionResult } from "@/lib/db-errors";
+import { releaseInput, startQueueInput, undoOutcomeInput, type ClaimAnswer } from "@/lib/queue";
 
-// The work queue's writes (Day 4 design 4.2 and D3). Each action: Zod strictObject first, then requireSession()
-// (two-factor sessions only), then the database functions with their arguments named one by one. A key press is ONE
-// dispatch (logOutcomeAndClaim: the outcome, then the next card), because Next.js runs a client's server actions one at
-// a time. Answers carry codes only, never database text. The database decides scope, claims and who may change a lead.
-
-async function claimNext(supabase: SupabaseClient, next: ClaimNextInput): Promise<ActionResult<ClaimAnswer>> {
-  const count = claimCount(next.keep.length);
-  if (count === 0) return invalid("bounds");
-  const { data, error } = await supabase.rpc("claim_next_lead", {
-    p_scope: next.scope,
-    p_keep: next.keep,
-    p_exclude: next.exclude,
-    p_count: count,
-    p_any_hours: next.anyHours,
-    p_skip_lunch: next.skipLunch,
-  });
-  if (error) return toActionFailure(error);
-  return { ok: true, data: data as ClaimAnswer };
-}
+// The work queue's writes that are not on the key-press path (Day 4 design 4.2): Start, Undo, renewal and release. Each
+// action: Zod strictObject first, then requireSession() (two-factor sessions only), then the database functions with
+// their arguments named one by one. The outcome-and-next-card call and the next-card call are POST route handlers
+// (/api/queue/outcome, /api/queue/next: design D3's switch rule, measured). Answers carry codes only, never database
+// text. The database decides scope, claims and who may change a lead.
 
 /** Start or a reload: the caller's own claims still eligible come back first (renewed), then up to 2 cards in all. */
 export async function startQueue(input: unknown): Promise<ActionResult<ClaimAnswer>> {
@@ -53,57 +27,6 @@ export async function startQueue(input: unknown): Promise<ActionResult<ClaimAnsw
   });
   if (error) return toActionFailure(error);
   return { ok: true, data: data as ClaimAnswer };
-}
-
-export type QueueOutcomeResult = { logged: LoggedActivity; claim: ClaimAnswer | null; claimError: AppError | null };
-
-/**
- * Saves an outcome from the queue (log_activity with p_from_queue: the caller's claim on that lead goes), then claims
- * the next card when the screen asks for one. A replayed request id saves nothing twice. When the outcome cannot be
- * saved, no card is claimed (the screen keeps the outcome and tries again).
- */
-export async function logOutcomeAndClaim(input: unknown): Promise<ActionResult<QueueOutcomeResult>> {
-  const parsed = queueOutcomeInput.safeParse(input);
-  if (!parsed.success) return invalid("outcome");
-  const { log: v, next } = parsed.data;
-  const { supabase } = await requireSession();
-  const t = await getTranslations("Outcomes.taskTitle");
-  const taskTitle =
-    v.outcome === "wrong_number" ? t("rightNumber", { lead: v.leadName }) : v.outcome === "meeting_booked" ? t("meeting", { lead: v.leadName }) : t("followUp", { lead: v.leadName });
-  const { data, error } = await supabase.rpc("log_activity", {
-    p_company: v.leadId,
-    p_type: "call",
-    p_outcome: v.outcome,
-    p_body: v.body.trim() === "" ? null : v.body,
-    p_contact: v.contactId,
-    p_dialled: v.dialled,
-    p_follow_up_date: v.followUpDate,
-    p_follow_up_at: v.followUpAt,
-    p_task_title: taskTitle,
-    p_request_id: v.requestId,
-    p_from_queue: true,
-  });
-  if (error) return toActionFailure(error);
-  const logged = data as LoggedActivity;
-  if (!next) return { ok: true, data: { logged, claim: null, claimError: null } };
-  const claimed = await claimNext(supabase, next);
-  return { ok: true, data: { logged, claim: claimed.ok ? claimed.data : null, claimError: claimed.ok ? null : claimed.error } };
-}
-
-/** Skip: nothing is written; the skipped lead's claim goes (it is not in `keep`) and the next card is claimed. */
-export async function skipAndClaim(input: unknown): Promise<ActionResult<ClaimAnswer>> {
-  const parsed = skipInput.safeParse(input);
-  if (!parsed.success) return invalid("bounds");
-  const { supabase } = await requireSession();
-  return claimNext(supabase, parsed.data.next);
-}
-
-/** Claims the next card(s) without an outcome (the buffer ran dry, or a retried outcome left the screen short). */
-export async function claimMore(input: unknown): Promise<ActionResult<ClaimAnswer>> {
-  const parsed = claimNextInput.safeParse(input);
-  if (!parsed.success) return invalid("bounds");
-  const { supabase } = await requireSession();
-  return claimNext(supabase, parsed.data);
 }
 
 /** Undo in the queue: the outcome is taken back (undo_activity), then the lead is claimed again to show it once more. */

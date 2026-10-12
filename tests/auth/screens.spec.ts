@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
+import { ageStepUp, appReady, countryInHours, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -141,7 +141,7 @@ test("home, signed in", async ({ browser }) => {
 test("app shell: leads and more in full, the other sections in brief", async ({ browser }) => {
   await shoot(browser, "full", "/leads", "leads");
   await shoot(browser, "full", "/more", "more");
-  for (const section of ["pipeline", "inventory", "tasks", "analytics"]) {
+  for (const section of ["pipeline", "inventory", "analytics"]) {
     await shoot(browser, "full", `/${section}`, section, undefined, lightMatrix);
   }
 });
@@ -505,3 +505,173 @@ test("lead import: choose, match, results, undo, done, discard, confirm it's you
   clean();
 });
 
+
+
+// Day 4c: the Tasks page, the work queue and the lead page's "on this lead" line, at every width in both themes and both
+// languages for the main views, the usual matrix for the states; then the two route skeletons. The screenshot user (an
+// admin, Inès Garnier, zone Europe/Paris) gets made-up tasks and leads; calling hours follow the real clock, so the
+// queue's leads are in a country in hours now (or the shots use "Show leads outside calling hours").
+test("tasks page: today with rows, overdue, inline edit, delete question, team", async ({ browser }) => {
+  test.setTimeout(1_500_000);
+  const me = sql(`select id from auth.users where email = '${withFactor}'`);
+  sql(`update public.profiles set timezone = 'Europe/Paris' where id = '${me}'`);
+  const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+                    select org_id, 'Maison Tâches', id, 'warm', '04 78 00 00 01', 'Lyon', 'FR' from public.profiles where id = '${me}' returning id`);
+  const dnc = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+                   select org_id, 'Comptoir Silence Tâches', id, 'do_not_contact', '01 23 45 67 00', 'Paris', 'FR' from public.profiles where id = '${me}' returning id`);
+  const gb = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+                  select org_id, 'Brixton Textiles Tâches', id, 'cold', '07700 900124', 'London', 'GB' from public.profiles where id = '${me}' returning id`);
+  sql(`update public.tasks set cancelled_at = now() where assignee_id = '${me}' and done_at is null and cancelled_at is null;
+       insert into public.tasks (org_id, company_id, title, kind, due_date, due_at, assignee_id, created_by)
+       select p.org_id, v.company, v.title, v.kind, v.due_date, v.due_at, p.id, p.id
+       from public.profiles p, (values
+         ('${lead}'::uuid, 'Send the spring price list', 'todo', (now() at time zone 'Europe/Paris')::date, null::timestamptz),
+         ('${gb}'::uuid, 'Call back about the denim lot', 'call', null::date, date_trunc('day', now() at time zone 'Europe/Paris') at time zone 'Europe/Paris' + interval '23 hours 30 minutes'),
+         (null::uuid, 'Renew the warehouse insurance', 'todo', (now() at time zone 'Europe/Paris')::date, null::timestamptz),
+         ('${dnc}'::uuid, 'Close the account', 'todo', (now() at time zone 'Europe/Paris')::date, null::timestamptz),
+         ('${lead}'::uuid, 'Chase the unpaid invoice', 'todo', (now() at time zone 'Europe/Paris')::date - 2, null::timestamptz),
+         ('${lead}'::uuid, 'Showroom visit with Amélie', 'meeting', null::date, now() + interval '3 days'),
+         (null::uuid, 'Plan the summer catalogue', 'todo', null::date, null::timestamptz)
+       ) as v (company, title, kind, due_date, due_at)
+       where p.id = '${me}';`);
+  const rows = async (page: Page) => {
+    await appReady(page);
+    await expect(page.getByRole("tabpanel").getByRole("listitem").first()).toBeVisible();
+    await page.waitForTimeout(250);
+  };
+  await shoot(browser, "full", "/tasks", "tasks", rows, fullMatrix);
+  await shoot(browser, "full", "/tasks?tab=overdue", "tasks-overdue", rows);
+  await shoot(browser, "full", "/tasks?tab=upcoming", "tasks-upcoming", rows, lightMatrix);
+  await shoot(browser, "full", "/tasks?tab=done", "tasks-done-empty", async (page) => {
+    await appReady(page);
+    await expect(page.getByRole("tabpanel").getByText(/^(Nothing done yet\.|Rien de terminé pour l’instant\.)$/)).toBeVisible();
+  }, lightMatrix);
+  await shoot(browser, "full", "/tasks", "tasks-edit", async (page) => {
+    await rows(page);
+    await page.locator("[data-task-check]").first().focus();
+    await page.keyboard.press("e");
+    await expect(page.getByRole("form", { name: /^(Edit task|Modifier la tâche)$/ })).toBeVisible();
+    await page.waitForTimeout(250);
+  });
+  await shoot(browser, "full", "/tasks", "tasks-delete", async (page) => {
+    await rows(page);
+    await page.locator("[data-task-check]").first().focus();
+    await page.keyboard.press("Backspace");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(400);
+  }, matrix, undefined, { fullPage: false });
+  await shoot(browser, "full", "/tasks?scope=team", "tasks-team", rows, lightMatrix);
+});
+
+test("work queue: start screen, a card, a follow-up open, no leads of one's own", async ({ browser }) => {
+  test.setTimeout(1_500_000);
+  const me = sql(`select id from auth.users where email = '${withFactor}'`);
+  const open = countryInHours(true, 60);
+  sql(`update public.companies set lead_status = 'disqualified' where owner_id = '${me}' and name like 'File %';
+       delete from private.queue_claims where user_id = '${me}';`);
+  const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, email, city, country, last_activity_at)
+                    select org_id, 'File Maison Verdane', id, 'warm', '+33 4 78 12 34 56', 'achats@verdane.example.com', 'Lyon', '${open ?? "FR"}', now() - interval '3 days'
+                    from public.profiles where id = '${me}' returning id`);
+  sql(`insert into public.contacts (org_id, company_id, first_name, last_name, title, email, phone)
+       select org_id, id, 'Amélie', 'Laurent', 'Head buyer', 'amelie@verdane.example.com', '+33 6 12 34 56 78' from public.companies where id = '${lead}';
+       insert into public.activities (org_id, company_id, user_id, type, outcome, body, created_at)
+       select c.org_id, c.id, '${me}', v.type, v.outcome, v.body, now() - v.ago
+       from public.companies c, (values
+         ('call', 'no_answer', null, interval '3 days'),
+         ('note', null, 'Prefers WhatsApp in the morning. Pays by transfer, 30 days.', interval '2 days'),
+         ('call', 'interested', 'Wants 300 denim jackets, grade A. Call back with the container date.', interval '1 day')
+       ) as v (type, outcome, body, ago) where c.id = '${lead}';
+       insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+       select p.org_id, 'File Durand SARL ' || i, p.id, 'cold', '+33 4 72 00 00 0' || i, 'Lyon', '${open ?? "FR"}' from public.profiles p, generate_series(1, 4) i where p.id = '${me}';`);
+  const startQueue = async (page: Page) => {
+    await appReady(page);
+    await page.getByRole("button", { name: /^(Start|Commencer)/ }).click();
+    if (!open) await page.getByRole("button", { name: /^(Show leads outside calling hours|Afficher les prospects hors des heures d’appel)$/ }).click();
+    await expect(page.locator("main section[role=region]:not([data-leaving]) h2")).toBeVisible();
+    await page.waitForTimeout(400);
+  };
+  await shoot(browser, "full", "/leads/queue", "queue-start", async (page) => {
+    await appReady(page);
+    await expect(page.getByText(/(to call now|à appeler maintenant)/)).toBeVisible();
+  }, fullMatrix);
+  await shoot(browser, "full", "/leads/queue", "queue-card", startQueue, fullMatrix);
+  await shoot(browser, "full", "/leads/queue", "queue-followup", async (page) => {
+    await startQueue(page);
+    await page.keyboard.press("Digit5");
+    await expect(page.getByRole("group", { name: /^(Follow-up|Relance)$/ })).toBeVisible();
+    await page.waitForTimeout(300);
+  });
+  // A second admin with no leads of their own: "No leads are assigned to you" with "Work unassigned leads".
+  const empty = `screens-q-${Date.now()}@example.test`;
+  const emptySecret = await createUser(empty, password, true);
+  setRole(empty, "admin");
+  states.queueEmpty = await fullSession(browser, empty, password, emptySecret);
+  await shoot(browser, "queueEmpty", "/leads/queue", "queue-none-mine", async (page) => {
+    await appReady(page);
+    await page.getByRole("button", { name: /^(Start|Commencer)/ }).click();
+    await expect(page.getByRole("heading", { name: /^(No leads are assigned to you\.|Aucun prospect ne vous est attribué\.)$/ })).toBeVisible();
+  }, lightMatrix);
+  sql(`delete from private.queue_claims where user_id = '${me}'`);
+});
+
+test("lead page: a teammate on this lead in the queue", async ({ browser }) => {
+  const me = sql(`select id from auth.users where email = '${withFactor}'`);
+  const mate = `screens-mate-${Date.now()}@example.test`;
+  await createUser(mate, password, false);
+  sql(`update public.profiles set first_name = 'Henri', last_name = 'Test' where id = (select id from auth.users where email = '${mate}')`);
+  const lead = sql(`insert into public.companies (org_id, name, owner_id, lead_status, phone, city, country)
+                    select org_id, 'Atelier Occupé', id, 'warm', '04 78 99 00 11', 'Lyon', 'FR' from public.profiles where id = '${me}' returning id`);
+  // A live claim by the teammate (written as the database owner, so the claim guard leaves its fields as given).
+  sql(`insert into private.queue_claims (company_id, org_id, user_id, claimed_at, expires_at)
+       select '${lead}', org_id, id, now(), now() + interval '9 minutes' from public.profiles where id = (select id from auth.users where email = '${mate}')`);
+  await shoot(browser, "full", `/leads/${lead}`, "lead-worked-by", async (page) => {
+    await appReady(page);
+    await expect(page.getByText(/(Henri is on this lead in the queue|Henri travaille ce prospect dans la file d’appels)/)).toBeVisible();
+  }, lightMatrix);
+  sql(`delete from private.queue_claims where company_id = '${lead}'`);
+});
+
+// The route skeletons (loading.tsx) of the Tasks page and the queue, block for block with the real pages: opened from the
+// app (the dock's Tasks at desktop width; the leads screen's Work queue), the page's own data request held back while the
+// shot is taken (prefetches pass), then let through.
+test("tasks and queue: route skeletons", async ({ browser }) => {
+  for (const { locale, scheme } of [
+    { locale: "en", scheme: "light" },
+    { locale: "fr", scheme: "dark" },
+  ] as const) {
+    for (const { route, from, link, width } of [
+      { route: "tasks", from: "/more", link: /^(Tasks|Tâches)$/, width: 1440 },
+      { route: "tasks", from: "/more", link: /^(Tasks|Tâches)$/, width: 1024 },
+      { route: "leads/queue", from: "/leads", link: /^(Work queue|File d’appels)$/, width: 1440 },
+      { route: "leads/queue", from: "/leads", link: /^(Work queue|File d’appels)$/, width: 390 },
+    ]) {
+      const context = await browser.newContext({ storageState: states.full, viewport: { width, height: width < 600 ? 844 : 900 }, colorScheme: scheme });
+      await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
+      const page = await context.newPage();
+      const errors: string[] = [];
+      page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.goto(from);
+      await appReady(page);
+      await page.waitForLoadState("networkidle");
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await page.route(new RegExp(`/${route}(\\?|$)`), async (r) => {
+        const headers = r.request().headers();
+        if (headers.rsc && !headers["next-router-prefetch"]) await held;
+        await r.continue();
+      });
+      await page.getByRole("link", { name: link }).first().click();
+      await expect(page).toHaveURL(new RegExp(`/${route}$`));
+      await expect(page.locator("main [aria-busy=true]")).toBeVisible();
+      await page.waitForTimeout(300);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      await page.screenshot({ path: `${dir}/${route.replace("/", "-")}-skeleton-${locale}-${scheme}-${width}.png` });
+      release();
+      await expect(page.locator("main h1").first()).toBeVisible();
+      await appReady(page);
+      expect(errors, `${route} skeleton ${locale} ${scheme} ${width}`).toEqual([]);
+      await context.close();
+    }
+  }
+});

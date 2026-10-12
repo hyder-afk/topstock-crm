@@ -95,7 +95,6 @@ export const queueOutcomeInput = z.strictObject({
 });
 export type QueueOutcomeInput = z.input<typeof queueOutcomeInput>;
 
-export const skipInput = z.strictObject({ next: claimNextInput });
 export const undoOutcomeInput = z.strictObject({ activityId: uuid, leadId: uuid });
 /** Leads to let go (null: all of the caller's claims). */
 export const releaseInput = z.strictObject({ ids: z.array(uuid).max(3).nullable() });
@@ -236,3 +235,8 @@ export function emptyReason(summary: QueueSummary | null, scope: QueueScope, min
   if (summary && summary.waiting_by_zone.length > 0) return "outsideHours";
   return "allDone";
 }
+
+/** POST /api/queue/next: the next card(s) (after a Skip, or when the reserve ran dry). */
+export const nextBody = z.strictObject({ next: claimNextInput });
+/** The outcome route reads at most this much (a 10,000-character note can be 40 KB of UTF-8). */
+export const OUTCOME_MAX_BYTES = 64 * 1024;

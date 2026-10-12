@@ -305,6 +305,29 @@ test("cross_origin_release_403: the release route takes same-origin JSON only, a
   expect(same.status()).toBe(200);
   expect(await same.json()).toEqual({ released: 1 });
   expect(live()).toBe("0");
+  // The key-press routes (design D3's switch): another site's page gets 403 and nothing is written or claimed.
+  const before = sql(`select count(*) from public.activities where company_id = '${lead}'`);
+  const outcome = {
+    log: { leadId: lead, type: "call", outcome: "no_answer", body: "", contactId: null, dialled: "lead", followUpDate: null, followUpAt: null, leadName: "x", requestId: crypto.randomUUID() },
+    next: null,
+  };
+  const foreignOutcome = await context.request.post("/api/queue/outcome", { headers: { origin: "https://evil.example", "content-type": "application/json" }, data: outcome });
+  expect(foreignOutcome.status()).toBe(403);
+  const foreignNext = await context.request.post("/api/queue/next", {
+    headers: { origin: "https://evil.example", "content-type": "application/json" },
+    data: { next: { scope: "mine", keep: [], exclude: [], anyHours: true, skipLunch: false } },
+  });
+  expect(foreignNext.status()).toBe(403);
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe(before);
+  expect(sql(`select count(*) from private.queue_claims where user_id = '${userId(adminEmail)}'`)).toBe("0");
+  // A field the route does not know is refused (no mass assignment), answered with a code.
+  const extraField = await context.request.post("/api/queue/outcome", { headers: { origin, "content-type": "application/json" }, data: { ...outcome, userId: userId(repEmail) } });
+  expect(await extraField.json()).toEqual({ ok: false, error: "invalid", hint: "outcome" });
+  // The same request from this site is saved (proves the refusals above were the origin's).
+  const sameOutcome = await context.request.post("/api/queue/outcome", { headers: { origin, "content-type": "application/json" }, data: outcome });
+  expect(sameOutcome.status()).toBe(200);
+  expect(((await sameOutcome.json()) as { ok: boolean }).ok).toBe(true);
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe(String(Number(before) + 1));
   await context.close();
 });
 

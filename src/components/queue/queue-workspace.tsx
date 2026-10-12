@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
@@ -262,9 +262,11 @@ export function QueueWorkspace({
 
   // Keys: on the start screen ↩ starts; while working, digits (by position), S, N, C, U and Cmd/Ctrl+Z; with a follow-up
   // open, ↩ confirms and Esc cancels. Quiet while typing (except ↩/Esc in the follow-up's date and time fields), during
-  // IME composition and while a dialog is open.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
+  // IME composition and while a dialog is open. The listener is attached once and always runs the latest handler (set
+  // before the browser paints), so a key pressed the moment a new card shows acts on that card, never the one before.
+  const keyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
+  useLayoutEffect(() => {
+    keyHandler.current = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing) return;
       if (document.querySelector("[role=dialog],[role=menu]")) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -306,9 +308,12 @@ export function QueueWorkspace({
         if (number) document.querySelector<HTMLAnchorElement>(`a[href="${CSS.escape(callHref(number, current.country))}"]`)?.click();
       }
     };
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => keyHandler.current(event);
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [q, current, choice, confirm, pick, skip, start, dialled]);
+  }, []);
 
   const scopes: QueueScope[] = canWide ? ["mine", "mine_unassigned", "team"] : ["mine"];
   const scopeLabel = (s: QueueScope) => t(`scope.${s === "mine_unassigned" ? "mineUnassigned" : s}`);
