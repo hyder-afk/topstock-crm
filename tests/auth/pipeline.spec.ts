@@ -111,9 +111,10 @@ test.beforeAll(async ({ browser }) => {
   admin = userId(adminEmail);
   org = sql(`select org_id from public.profiles where id = '${admin}'`);
   sql(`update public.profiles set first_name = 'Ada', last_name = 'Morel' where id = '${admin}'`);
-  // The local stack is reused: clear earlier runs' made-up deals so this run's cards are in the first page of each column.
+  // The local stack is reused: clear earlier specs' made-up deals (every test user's but this run's) so this run's cards
+  // are in the first page of each column.
   sql(`delete from public.deals where org_id = '${org}'
-         and created_by in (select id from auth.users where email like 'pipe-admin-%' and email <> '${adminEmail}')`);
+         and created_by in (select id from auth.users where email like '%@example.test' and email <> '${adminEmail}')`);
   adminState = await fullSession(browser, adminEmail, password, secret);
 });
 

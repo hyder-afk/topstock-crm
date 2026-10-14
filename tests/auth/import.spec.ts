@@ -31,7 +31,7 @@ const profileOf = (email: string) => `(select id from auth.users where email = '
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   // A clean slate: no leads, no imports, and nobody else called "Haider/Henri/Kais Test" (the owners in the files).
-  sql(`delete from public.companies; delete from public.import_batches;
+  sql(`delete from public.deals; delete from public.companies; delete from public.import_batches;
        update public.profiles set last_name = 'Earlier run'
        where last_name = 'Test' and first_name in ('Haider', 'Henri', 'Kais')`);
   adminSecret = await createUser(adminEmail, password, true);
