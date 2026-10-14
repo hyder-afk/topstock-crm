@@ -5,7 +5,7 @@ section 8.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity and outcome attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day5a|day5b|all] [numbers...]  (about 60 s per mutation;
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day5a|day5b|day5c|all] [numbers...]  (about 60 s per mutation;
 default: all sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set;
 exits 1 when a row does not behave as listed. --anchors [--set ...] only checks that every edit applies (its text is
 found exactly once where it is aimed), without running anything. A protection with two layers is also removed together with its second layer (one
@@ -18,6 +18,7 @@ mutations of those edit the Day 4b migration), and Day 5a redefines the audit tr
 earlier mutation of those edits the Day 5a copy: a Region names the function inside the file, because the Day 5a
 migration holds the same text in other functions too). Day 5b recreates log_activity, undo_activity and get_lead (Day 4b)
 and the activities insert policy (Day 4a), so every earlier mutation aimed inside those now edits the Day 5b copy.
+Day 5c (the Home figures) only adds functions, so no earlier row moves.
 """
 import pathlib
 import subprocess
@@ -30,6 +31,7 @@ MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
 MIG_5A = ROOT / "supabase/migrations/20261015090000_deals_pipeline.sql"
 MIG_5B = ROOT / "supabase/migrations/20261015120000_deal_links.sql"
+MIG_5C = ROOT / "supabase/migrations/20261015150000_home_dashboard.sql"
 
 
 class Region:
@@ -74,6 +76,21 @@ RELIVE_5B = [
     (Region(MIG_4A, "create policy activities_insert on public.activities for insert to authenticated with check (", ";\n"),
      INSERT_POLICY_5B),
 ]
+# Day 5c: the Home figures. Mine and Team are separate statements, so a Region names the branch a row aims at.
+HOME_WINDOW = Region(MIG_5C, "create function private.home_window(")
+OPEN_DEALS_ORG = Region(MIG_5C, "  else\n    return query\n      select d.id, s.key", "\n  end if;\n")
+SUMMARY = Region(MIG_5C, "create function public.home_summary(")
+SUMMARY_TEAM_CLOSED = Region(MIG_5C, "  -- K2, K3 and the Lost line: closed deals in scope.\n  if v_team then\n", "\n  else\n")
+SUMMARY_MINE_CLOSED = Region(MIG_5C, "     where d.status <> 'open' and d.owner_id = v_me and d.status = 'won' and d.closed_at >= w.month_start;",
+                             "\n  end if;\n")
+ATTENTION = Region(MIG_5C, "create function public.home_attention(")
+RECENT = Region(MIG_5C, "create function public.home_recent_activity(")
+RECENT_TEAM = Region(MIG_5C, "  if p_scope = 'team' then\n    return query\n      select f.item_id", "\n  else\n")
+RECENT_MINE = Region(MIG_5C, "  else\n    return query\n      select f.item_id", "\n  end if;\n")
+TODAY_TASKS = Region(MIG_5C, "create function public.home_today_tasks(")
+SCOPE_5C = ("  if p_scope = 'team' and not (select private.is_manager_or_admin()) then\n"
+            "    raise exception 'only managers and admins see the team''s figures' using errcode = '42501', hint = 'scope';\n"
+            "  end if;\n")
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -1083,8 +1100,55 @@ MUTATIONS_5B = [
 ]
 
 
+MUTATIONS_5C = [
+    ("home_summary: no scope check (a rep asking for the team gets the org's figures)",
+     [(SUMMARY, SCOPE_5C, "")]),
+    ("Month start in UTC, not the profile zone",
+     [(HOME_WINDOW, "(w.today - (extract(day from w.today)::integer - 1))::timestamp at time zone p_tz",
+       "date_trunc('month', p_at at time zone 'UTC') at time zone 'UTC'")]),
+    ("Day end = day start + 24 h (a 23 or 25 hour day)",
+     [(HOME_WINDOW, "(w.today + 1)::timestamp at time zone p_tz,", "w.today::timestamp at time zone p_tz + interval '24 hours',")]),
+    ("Win rate counts Opened by mistake",
+     [(SUMMARY_TEAM_CLOSED, "d.status = 'lost' and d.lost_reason <> 'mistake'", "d.status = 'lost'"),
+      (SUMMARY_MINE_CLOSED, "d.status = 'lost' and d.lost_reason <> 'mistake'", "d.status = 'lost'")]),
+    ("The feed selects the entry's text",
+     [(RECENT_MINE, "a.type, a.outcome, null::text as to_stage,\n                  null::text as value",
+       "a.type, a.outcome, null::text as to_stage,\n                  a.body as value")]),
+    ("home_summary runs as its owner (SECURITY DEFINER: past the row rules)",
+     [(SUMMARY, ") returns jsonb\nlanguage plpgsql stable set search_path = ''",
+       ") returns jsonb\nlanguage plpgsql stable security definer set search_path = ''")]),
+    ("Tasks due ignores Mine (the org's tasks in Team)",
+     [(SUMMARY, "   where t.assignee_id = v_me and t.done_at is null and t.cancelled_at is null;",
+       "   where t.done_at is null and t.cancelled_at is null;")]),
+    ("Stalled ignores the lead's last activity (Team)",
+     [(OPEN_DEALS_ORG, "greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))\n               < now()",
+       "d.stage_entered_at\n               < now()")]),
+    ("Calls today from midnight UTC (Mine)",
+     [(SUMMARY, "where a.user_id = v_me and a.created_at >= w.day_start and a.type = 'call';",
+       "where a.user_id = v_me and a.created_at >= (now() at time zone 'UTC')::date::timestamp at time zone 'UTC' and a.type = 'call';")]),
+    ("Win rate shown from 3 closed deals",
+     [(SUMMARY, ">= 5\n         then round(", ">= 3\n         then round(")]),
+    ("home_attention: no scope check", [(ATTENTION, SCOPE_5C, "")]),
+    ("home_attention: closing soon means 30 days",
+     [(ATTENTION, "x.expected_close between v_today and v_today + 7)", "x.expected_close between v_today and v_today + 30)")]),
+    ("home_attention: close date passed not first",
+     [(ATTENTION, "row_number() over (order by (o.expected_close < v_today) is true desc,\n                                       ",
+       "row_number() over (order by ")]),
+    ("home_recent_activity: no scope check", [(RECENT, SCOPE_5C, "")]),
+    ("home_recent_activity: undo pairs shown (Team)",
+     [(RECENT_TEAM, "and h.kind <> 'undo'\n              and not exists (select 1 from public.deal_stage_history u where u.undoes = h.id)",
+       "and true")]),
+    ("home_today_tasks: everyone's tasks",
+     [(TODAY_TASKS, "     where t.assignee_id = v_me and t.done_at is null", "     where t.done_at is null")]),
+    ("home_low_stock stub callable by anon",
+     [("    grant execute on function public.home_low_stock(integer) to authenticated;",
+       "    grant execute on function public.home_low_stock(integer) to authenticated, anon;")]),
+]
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
-        "day5a": (MIG_5A, MUTATIONS_5A), "day5b": (MIG_5B, MUTATIONS_5B)}
+        "day5a": (MIG_5A, MUTATIONS_5A), "day5b": (MIG_5B, MUTATIONS_5B),
+        "day5c": (MIG_5C, MUTATIONS_5C)}
 
 
 def run_set(name: str, only: set) -> int:
