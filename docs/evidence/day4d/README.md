@@ -367,6 +367,19 @@ main merged into `day4d-local` with one conflict, `docs/log.md`: both sides adde
 
 | c7fd6a2 | **auth-journey chromium**: (1) the S2 spike's clean-up hit the same storage delete guard (fixed in 86b305c); (2) `phone_390_files`: after a deep link the Files tab ended 1.5 px past the tab strip (376 > 374.5). Reproduced locally on Chrome Headless Shell 156. The strip snaps each tab to its start (`snap-mandatory`), so the old scroll position (tab end + 8 px) was snapped again by the browser to a tab start that cut the tab | `revealTab` in `src/components/ui/tabs.tsx` scrolls the strip to the first tab start from which the tab shows whole, in fractional pixels. The arrow keys use it too, so they never scroll the page. files.spec and lead-page.spec on Chrome 156: 38 passed, plus 5 that need storage-api (CI only) |
 
+| 86b305c | **rls green**: every suite passed on the real storage schema (`files_attack` and `files_concurrency` included), advisors 0 ERROR (WARN `set_user_role` accepted; INFO `unindexed_foreign_keys` 4, `unused_index` 3), SQL lint passed (only the known `list_leads` "maybe unmodified" warnings). **quality, semgrep, scan green.** auth-journey chromium: 147 passed; only `phone_390_files` failed (the tab strip, fixed in 5e73b7e); the storage test passed. auth-journey webkit: the storage test got past the open check and failed in `ageStepUp` with `refresh_token_already_used` | 5a2e06d: the storage test signs in a session of its own (the shared admin state's refresh token was used by an earlier test) |
+| 15fb7a6, 5a2e06d | Every job ended in 1 to 2 seconds without a runner (runner id 0), in all three workflows. That points to GitHub Actions minutes or the spending limit on the account, not the code | Haider checks GitHub billing (see the log). CI for 5e73b7e and 5a2e06d runs once Actions can start jobs again |
+
+### Spikes S1 to S5 as CI measured them (86b305c)
+
+| Spike | Result in CI | Reading |
+|---|---|---|
+| S1 (db.yml) | `storage.buckets` has `allowed_mime_types` and `file_size_limit`; 74 storage migrations had run; bucket `lead-files` public=f, limit=10485760, types=5; `storage.objects` policies `lead_files_delete`, `lead_files_insert`, `lead_files_select` | The project migrations ran after storage-api's own. The bucket and policies come from our migration, so no fallback is needed |
+| S2 | `has_aal2` and `has_recent_aal2` inside storage policies: status 200, the probe row was seen | storage-api passes the user's aal claims to the policies, so the bucket policies' aal2 checks work |
+| S3 | Range on a signed link: 206, `bytes 0-4/15`, tail read 206 | Range is honoured; the server-side sniff can read just the head and the zip directory |
+| S4 | Object metadata keys `cacheControl, contentLength, eTag, httpStatusCode, lastModified, mimetype, size`; helpers read `15 application/pdf`; the insert policy does not see the size (`insert_policy_sees_size` false) | Size and type are checked at finish (the built design), not in the insert policy |
+| S5 | A signed upload link made before Cancel still stored bytes (put 200, object stored) | The policy is not checked again at upload time. Accepted residual risk 7 as designed: the stray object counts against the team's space and is cleaned by the stale-upload sweep |
+
 CI results on the final head, and spikes S1 to S5 as CI measured them, are recorded below once known.
 
 ## Rebase points (resolved by the merge above)
