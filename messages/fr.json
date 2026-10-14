@@ -106,7 +106,7 @@
     "you": "Vous",
     "noName": "Pas encore de nom",
     "account": "Compte {id}",
-    "userId": "ID utilisateur {id}",
+    "userId": "ID utilisateur <mono>{id}</mono>",
     "created": "Compte créé le {date}",
     "noNameHint": "Son nom s’affichera ici dès qu’il aura été ajouté dans Plus > Votre nom.",
     "role": {

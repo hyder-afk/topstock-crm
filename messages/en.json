@@ -106,7 +106,7 @@
     "you": "You",
     "noName": "No name yet",
     "account": "Account {id}",
-    "userId": "User ID {id}",
+    "userId": "User ID <mono>{id}</mono>",
     "created": "Account created {date}",
     "noNameHint": "Their name shows here once they add it under More > Your name.",
     "role": {

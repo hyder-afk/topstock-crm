@@ -16,7 +16,9 @@ export default async function TeamPage() {
     getTranslations("Team"),
     getFormatter(),
     getLocale(),
-    supabase.from("profiles").select("id, first_name, last_name, role, created_at").order("created_at").limit(500),
+    // The whole organisation (a handful of people); sortPeople orders it. Plain select and filters only, so the local
+    // REST stand-in (scripts/local-auth) serves it as PostgREST does.
+    supabase.from("profiles").select("id, first_name, last_name, role, created_at"),
   ]);
   const people = result.error ? null : toPeople(result.data);
   const sorted = people ? sortPeople(people, claims.sub, locale) : null;

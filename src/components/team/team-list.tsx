@@ -150,8 +150,15 @@ export function TeamList({
                   <p className="text-sm text-muted-foreground">
                     {name ? null : (
                       <>
-                        <span className="font-mono" translate="no">
-                          {t("userId", { id: shortId(p.id) })}
+                        <span>
+                          {t.rich("userId", {
+                            id: shortId(p.id),
+                            mono: (chunks) => (
+                              <span className="font-mono" translate="no">
+                                {chunks}
+                              </span>
+                            ),
+                          })}
                         </span>
                         <span aria-hidden="true"> · </span>
                       </>
