@@ -44,7 +44,7 @@ function KpiCard({
       <span className={KPI_NUMBER_CLASS} data-kpi-number="">
         {number}
       </span>
-      <span className={cn(KPI_SUB_CLASS, "truncate")}>{sub}</span>
+      <span className={cn(KPI_SUB_CLASS, "line-clamp-2 xl:line-clamp-1")}>{sub}</span>
     </Link>
   );
 }

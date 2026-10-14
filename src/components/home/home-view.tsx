@@ -30,7 +30,9 @@ export function HomeView({
   teamPromise,
   canAssign,
   stepUpSeconds,
+  initialDeal,
 }: {
+  initialDeal: string | null;
   teamPromise: Promise<TeamMember[]>;
   canAssign: boolean;
   stepUpSeconds: number;
@@ -45,12 +47,18 @@ export function HomeView({
   const data = query.data;
   const [firstVisit] = useState(decideFirstVisit);
   useEffect(() => markHomeVisited(), []);
-  const [dealId, setDealId] = useState<string | null>(null);
-  const [sheetLoaded, setSheetLoaded] = useState(false);
-  const openDeal = useCallback((id: string) => {
-    setSheetLoaded(true);
+  // The deal sheet over Home is in the URL (?deal=), so it survives a reload and can be shared, like the board's.
+  const [dealId, setDealId] = useState<string | null>(initialDeal);
+  const [sheetLoaded, setSheetLoaded] = useState(initialDeal !== null);
+  const showDeal = useCallback((id: string | null) => {
+    if (id) setSheetLoaded(true);
     setDealId(id);
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("deal", id);
+    else url.searchParams.delete("deal");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
   }, []);
+  const openDeal = useCallback((id: string) => showDeal(id), [showDeal]);
   const retry = useCallback(() => void query.refetch(), [query]);
 
   const loading = !data && query.isPending;
@@ -109,7 +117,7 @@ export function HomeView({
       </div>
       {sheetLoaded ? (
         <Suspense fallback={null}>
-          <HomeDealSheet dealId={dealId} onClose={() => setDealId(null)} teamPromise={teamPromise} canAssign={canAssign} stepUpSeconds={stepUpSeconds} />
+          <HomeDealSheet dealId={dealId} onClose={() => showDeal(null)} teamPromise={teamPromise} canAssign={canAssign} stepUpSeconds={stepUpSeconds} />
         </Suspense>
       ) : null}
     </FirstVisitContext.Provider>

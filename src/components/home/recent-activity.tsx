@@ -36,7 +36,7 @@ function Line({ row }: { row: RecentRow }) {
     return <>{[name, row.type ? tType(row.type) : null, outcome, lead].filter(Boolean).join(" · ")}</>;
   }
   if (row.kind === "won") {
-    return <>{t("won", { name, lead })}{row.value ? <span className="font-mono"> · {formatMoney(row.value, locale)}</span> : null}</>;
+    return <>{t("won", { name, lead })}{row.value ? <> · <span className="font-mono">{formatMoney(row.value, locale)}</span></> : null}</>;
   }
   if (row.kind === "move") return <>{t("move", { name, lead, stage: row.to_stage ? tStage(row.to_stage) : "" })}</>;
   return <>{t(row.kind, { name, lead })}</>;
@@ -72,7 +72,7 @@ export function RecentActivity({
             const at = new Date(row.at);
             const body = (
               <>
-                <span className="min-w-0 flex-1 truncate text-sm">
+                <span className="line-clamp-2 min-w-0 flex-1 text-sm md:line-clamp-1">
                   <Line row={row} />
                 </span>
                 <time

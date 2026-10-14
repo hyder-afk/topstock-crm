@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import { z } from "zod";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { HomeScopeProvider, HomeScopeSwitch } from "@/components/home/home-scope";
 import { HomeBodySkeleton } from "@/components/home/home-skeleton";
@@ -15,9 +16,11 @@ import { fetchTeam } from "@/lib/leads-server";
 // the dashboard. The greeting is the likely largest paint, so the profile is awaited and the greeting renders at once;
 // the figures start here as a promise (D32) and stream under the cards' skeleton, unless the dock already warmed them
 // in the query cache. Managers and admins see the Team by default (D28) and the scope this device remembers; reps see
-// their own figures. A profile read that fails keeps the greeting without a name (the add-name link is hidden then).
-export default async function Home() {
+// their own figures. ?deal=<id> opens that deal's sheet over Home. A profile read that fails keeps the greeting without a name (the add-name link is hidden then).
+export default async function Home({ searchParams }: PageProps<"/">) {
   const { supabase, claims } = await requireSession();
+  const query = await searchParams;
+  const deal = z.uuid().safeParse(Array.isArray(query.deal) ? query.deal[0] : query.deal); // ?deal= opens the deal sheet
   const store = await cookies();
   const [t, format, profile] = await Promise.all([
     getTranslations("Home"),
@@ -54,7 +57,7 @@ export default async function Home() {
           </Link>
         )}
         <Suspense fallback={<HomeBodySkeleton />}>
-          <HomeView teamPromise={teamPromise} canAssign={canSwitch} stepUpSeconds={stepUpSecondsLeft(claims)} />
+          <HomeView initialDeal={deal.success ? deal.data : null} teamPromise={teamPromise} canAssign={canSwitch} stepUpSeconds={stepUpSecondsLeft(claims)} />
         </Suspense>
         <p className="mt-6 text-sm text-muted-foreground" translate="no">
           {t("tagline")}

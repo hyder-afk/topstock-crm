@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { rememberScope, rememberedScope } from "@/components/home/use-home";
 import type { HomeData, HomeScope } from "@/lib/home";
@@ -46,7 +46,9 @@ export function HomeScopeProvider({
   const setScope = useCallback(
     (s: HomeScope) => {
       if (!canSwitch) return;
-      setScopeState(s);
+      // A transition: a tap that lands while the cards are still hydrating lets them hydrate first, instead of throwing
+      // away the server's HTML (React's recoverable hydration error).
+      startTransition(() => setScopeState(s));
       rememberScope(s);
     },
     [canSwitch],

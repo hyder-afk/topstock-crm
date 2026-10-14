@@ -28,7 +28,7 @@ export function HomeCard({
       className={cn("flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4 sm:p-6", className)}
     >
       <div className="flex min-h-7 items-center justify-between gap-3">
-        <h2 id={labelId} tabIndex={-1} className="truncate text-lg font-bold outline-none">
+        <h2 id={labelId} tabIndex={-1} className="truncate rounded-sm text-lg font-bold">
           {title}
         </h2>
         {action}
