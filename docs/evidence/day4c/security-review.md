@@ -69,3 +69,26 @@ What the finder checked, in short:
   GET routes read-only, aal2, Zod, no-store.
 - Client: no `dangerouslySetInnerHTML` or `eval`; `callHref` keeps digits and `+` only; `sessionStorage` holds only
   unsent outcomes and the caller's own counts. Scripts and `db.yml` add local test steps only.
+
+## `/security-review` on the PR head again (PR #15, head c06aed2, 14 Oct 2026)
+
+Run on the delta since the run above (`git diff 55a8de8..c06aed2`: the four CI-fix commits 875e8be, 5ff57c8, 13a5652,
+c06aed2), with the whole PR as context, as the advisor asked. Same method: a finder pass, a false-positive filter per
+finding, confidence 8 or more kept.
+
+**Result: no findings.** The delta is client code, tests and docs only; the release route, `src/lib/http.ts`, the
+proxy and the migrations are unchanged.
+
+What was checked, in short:
+- The release beacon: fixed same-origin URL, body only `{ ids }` (at most 3 card ids), Blob type `application/json`;
+  the keepalive request is the fallback with the same body.
+- The route still applies every check to the beacon: `assertSameOrigin` (Origin, or `Sec-Fetch-Site: same-origin`),
+  `apiSession()` (aal2), `readJsonBody` (JSON only, 32 KB on the header and the bytes read), Zod `strictObject` with
+  UUIDs (max 3), `release_claims` (own claims only), codes only and `no-store`.
+- CSRF: a cross-site beacon or form post fails the origin check (403), and a form cannot send JSON (415). At worst a
+  forged request could release the victim's own claims, with nothing read back.
+- The tel:/mailto:/sms: click listener only reads the href's scheme and stores a timestamp; ignoring a beforeunload
+  within 1 s of it affects only when claims end (pagehide still releases; otherwise they expire in 10 minutes), not access.
+- Focus and scroll changes use a static `data-queue-panel` selector; no user data reaches a selector or the DOM.
+- No `dangerouslySetInnerHTML`, `innerHTML` or `eval` in `src`; no user text in PostgREST filters; no new logging,
+  secrets or env access.
