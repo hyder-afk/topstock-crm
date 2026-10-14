@@ -52,8 +52,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The whole suite with the evidence screenshots runs on Chromium (about 30 minutes with Day 4c's 138 tests).
           - browser: chromium
-            timeout: 30
+            timeout: 45
           - browser: webkit
             timeout: 45
     timeout-minutes: ${{ matrix.timeout }}
