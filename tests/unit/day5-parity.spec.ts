@@ -15,6 +15,7 @@ import {
   openStageKeys,
   stageKeys,
 } from "@/lib/deals";
+import { ATTENTION_SHOWN, CLOSING_SOON_DAYS, RECENT_SHOWN, TODAY_SHOWN, WIN_RATE_DAYS, WIN_RATE_MIN_CLOSED, homeScopes } from "@/lib/home";
 import { DEAL_VALUE_MAX } from "@/lib/money";
 
 // The pipeline's lists and limits against the Day 5a and 5b migrations (Day 5 design 8.4): a stage, reason, shipping
@@ -96,4 +97,37 @@ test("page sizes and the open and move limits", () => {
 
 test("log_activity opens deals from Interested and Book meeting only", () => {
   expect(quoted(between(links, "or p_outcome not in (", ")"))).toEqual(["interested", "meeting_booked"]);
+});
+
+// ---- Day 5c: the Home figures against 20261015150000_home_dashboard.sql ---------------------------------------------
+test.describe("Home figures (Day 5c)", () => {
+  const home = read("20261015150000_home_dashboard.sql");
+  test("win rate: 90 days, shown from 5 closed deals, Opened by mistake left out", () => {
+    expect(WIN_RATE_DAYS).toBe(90);
+    expect(WIN_RATE_MIN_CLOSED).toBe(5);
+    expect(home.match(/closed_at >= now\(\) - interval '90 days'/g)?.length).toBe(2); // Team and Mine
+    expect(home).toContain(">= 5\n         then round(");
+    expect(home.match(/d\.status = 'lost' and d\.lost_reason <> 'mistake'/g)?.length).toBe(2);
+    expect(lostReasons).toContain("mistake");
+  });
+  test("closing soon is 7 days; the Lost line covers the Won window's 30 days", () => {
+    expect(CLOSING_SOON_DAYS).toBe(7);
+    expect(home).toContain("x.expected_close between v_today and v_today + 7");
+    expect(home).toContain("o.expected_close between w.today and w.today + 7");
+    expect(WON_WINDOW_DAYS).toBe(30);
+    expect(home.match(/d\.closed_at >= now\(\) - interval '30 days'/g)?.length).toBe(2);
+  });
+  test("the app's row counts fit the functions' bounds", () => {
+    expect(home).toContain("p_limit not between 1 and 20 then\n    raise exception 'between 1 and 20 deals'");
+    for (const n of [ATTENTION_SHOWN, RECENT_SHOWN, TODAY_SHOWN]) expect(n >= 1 && n <= 20).toBe(true);
+    expect([ATTENTION_SHOWN, RECENT_SHOWN, TODAY_SHOWN]).toEqual([5, 8, 6]);
+    expect(home).toContain("public.home_attention(p_scope text default 'team', p_limit integer default 5)");
+    expect(home).toContain("public.home_recent_activity(p_scope text default 'team', p_limit integer default 8)");
+    expect(home).toContain("public.home_today_tasks(p_limit integer default 6)");
+  });
+  test("scopes and reached outcomes match", () => {
+    expect([...homeScopes]).toEqual(["team", "mine"]);
+    expect(home.match(/p_scope not in \('team', 'mine'\)/g)?.length).toBe(3);
+    expect(home.match(/'connected',\s+'interested',\s+'meeting_booked',\s+'not_interested',\s+'do_not_contact'/g)?.length).toBe(2);
+  });
 });
