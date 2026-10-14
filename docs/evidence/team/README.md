@@ -1,0 +1,133 @@
+# Team screen: admins change roles (More > Team), 12 to 14 Oct 2026
+
+Why: go-live parts A and K (`docs/go-live.md`) say admins change roles on a screen, never with SQL. Haider's decision
+(12 Oct): Henri and Kais get hand-made accounts with a temporary password, sign in, enrol TOTP, choose their own
+password at `/set-password`; the auth trigger makes them `rep`; Haider then makes them admin here.
+
+Local branch `team-local`, cut from `origin/main` a7aa89e. Self-contained: no migration, no new database function, no
+new dependency, no change to shared components beyond one new body key in the step-up dialog. Days 4c/4d/5/6 are not
+in it. `docs/go-live.md` is not on `main` yet: 92cf4b3 adds it exactly as on the go-live kit branch (59a231d), so the
+Team clicks on top of it (5be4799) rebase cleanly whichever merges first.
+
+## What changed
+
+- **Rules** (`src/lib/team.ts`): `roleChangeInput` = Zod `strictObject({ userId: uuid, role: enum(admin, manager,
+  rep) })`; `roleChangeError` turns a refusal of `set_user_role` into a code (SQLSTATE and hint only, never the
+  database's message); `errorMessageKey`; `sortPeople` (you first, names A to Z by the locale's collation, then people
+  without a name, oldest first); `toPeople` (rows checked with Zod before they reach the screen).
+- **Server action** (`src/app/(app)/more/team/actions.ts`): Zod first, `requireSession()` (aal2), a pre-check that the
+  code is fresher than 10 minutes minus 30 s (it can only refuse earlier than the database, never allow), then
+  `rpc("set_user_role", { target_user, new_role })` with named args. Answers are codes only (`step_up`, `last_admin`,
+  `forbidden`, `not_found`, `invalid`, `unavailable`). `set_user_role` answers 42501 without a hint for three causes;
+  after such a refusal the action reads the caller's own role once more to tell "not an admin" from "last admin".
+- **Page** (`src/app/(app)/more/team/page.tsx`): `requireAdmin()` (404 for everyone else), reads `public.profiles`
+  (RLS keeps it to the caller's organisation), dates written once on the server with Intl in the person's time zone;
+  error block with Try again (focus goes to the title, never to `<body>`), empty state, the Roles card with plain
+  EN/FR descriptions.
+- **List** (`src/components/team/team-list.tsx`): each person's name (or **No name yet**), a **You** marker, the
+  account date, the role button (44 px) with a menu of the three roles and what each may do; the confirmation names the
+  person and the new role and warns when you step yourself down ("You will lose the admin screens…"); then
+  `useStepUp` ("Confirm it’s you") if the code is older than 10 minutes; the row shows the new role at once and goes
+  back if the database refuses, with the reason under the row (also the button's `aria-describedby`); one polite live
+  region says saving, saved, refused and cancelled; the focus returns to that row's role button after every path.
+  Stepping yourself down lands you on More, drawn again without the Team row.
+- **More** (`src/app/(app)/more/page.tsx`, `src/components/team/team-entry.tsx`): an Administration > Team row for
+  admins only (server component; others never get it in the HTML). `more/loading.tsx` keeps its place.
+- **Skeleton** (`src/app/(app)/more/team/loading.tsx`): back link, title, sentence (3 lines on phones), three rows with
+  the 44 px button (and the description column from 1280), the Roles card. No spinner.
+- **Words**: `messages/en.json` and `messages/fr.json` (`Team.*`, `StepUp.bodyRole`), French with narrow no-break
+  spaces before `: ; ? !` and typographic apostrophes (unit test).
+- **Go-live**: part A asks Claude to confirm that More > Team is live in the go-live commit; part K has the exact
+  clicks (More > Team > the person > Role > Admin > Confirm > code).
+
+### What identifies someone without a name
+
+`public.profiles` holds `id`, `org_id`, `first_name`, `last_name`, `role`, `language`, `timezone`, `created_at`,
+`updated_at`. No email: that is in `auth.users`, which would need the service key or a new SECURITY DEFINER function
+(both ruled out). Chosen: **No name yet**, the first 8 characters of the user id (`User ID c9b5074f`, the start of the
+UID the Supabase dashboard lists under Authentication > Users, which is where Haider creates the accounts) and the day
+the account was created, plus a hint that the name appears once they add it under More > Your name. Language and time
+zone were left out (they do not tell people apart).
+
+### Database
+
+No migration: admins (all three users) already read their organisation's `profiles` (`profiles_select`, plus the
+restrictive `require_mfa`), and `set_user_role` (core schema) already does everything: admin and
+`has_recent_aal2(600)`, same organisation, never the last admin, an audit row. Its cases already live in
+`supabase/tests/rls_attack.sql` (rep promoting self, aal1, code 660 s old, no code time, applied, last admin, other
+organisation, audit row), so no db test was added (reused, not duplicated).
+
+## Check results (14 Oct 2026, head ed2ad60 plus the evidence commit)
+
+```text
+lint        npm run lint                                   exit 0 (0 errors; 2 warnings, pre-existing, import/leads virtualizers)
+typecheck   npm run typecheck                              exit 0
+unit        playwright -c playwright.unit.config.ts        exit 0, 333 passed (tests/unit/team.spec.ts: 12)
+db          copy of scripts/db-test.sh on port 54401       exit 0: rls_attack, import_attack, import_concurrency,
+                                                           activity_attack, activity_concurrency, outcome_attack,
+                                                           outcome_concurrency all passed; advisors: no ERROR
+                                                           (WARN set_user_role SECURITY DEFINER, accepted Day 1;
+                                                           INFO unindexed_foreign_keys 2, unused_index 2)
+e2e         team.spec.ts (Chromium, local auth stack)      exit 0, 5 passed (twice, after the fix)
+e2e         team-screens.spec.ts (Chromium)                exit 0, 4 passed, 50 shots, no console error, no sideways scroll
+e2e         shell.spec.ts + day4-chunks.spec.ts (More)     exit 0, 21 passed, 1 skipped (as on main)
+gitleaks    git --log-opts=origin/main..HEAD               exit 0, no leaks found
+npm audit   --omit=dev                                     exit 0, found 0 vulnerabilities
+```
+
+Not run locally (CI only): WebKit (`team.spec.ts` is in the WebKit project's `testMatch`), Semgrep, `journey.spec.ts`
+(needs Mailpit).
+
+E2E tests (`tests/auth/team.spec.ts`, people in an organisation made for the run, titles with a run id):
+`admin_promotes_rep_with_fresh_code` (the More > Team path, keyboard into the menu, confirmation text, no step-up,
+focus back on the row, announcement, role and audit row in the database), `rep_cannot_see_or_reach_team` (no row on
+More, 404 on the page, the admin's own server-action request replayed with the rep's session answers `forbidden`, role
+and audit log unchanged; with `org_id` added it answers `invalid`), `stale_code_asks_for_a_code` (Cancel keeps the
+role and focus; a fresh code saves it; the row keeps the new role after the page is drawn again),
+`last_admin_refused` (row goes back, says why, button described by it, focus back), `demoting_yourself` (at 390:
+44 px confirmation buttons, lands on More without Team).
+
+Found and fixed in this round (ed2ad60): after "Confirm it’s you" the saved role was shown as the old one. The code
+check renews the session cookies, Next.js draws the page again, and that drawing (read before the change) replaced the
+row. The database was right. A role set on the screen now stays until the server's list shows it, and the list is
+refreshed after a save.
+
+Evidence: `security-review.md`, `apple-design-audit.md`, `web-design-guidelines.md`, `screens/` (50 shots, see its
+README).
+
+## Docs used
+
+Context7 pages consulted (14 Oct, this round):
+- **next-intl** (`/amannn/next-intl`): `docs/usage/translations.mdx`, rich text with `t.rich` and tag functions (the
+  monospace user id inside the translated "User ID <mono>{id}</mono>").
+- **Next.js** (`/vercel/next.js`): `docs/01-app/02-guides/data-security.mdx` (a page's check does not protect its
+  Server Actions; re-check authn and authz inside the action), `forms.mdx`, and `action-handler.ts` (Origin vs Host
+  check on every Server Action request).
+- **supabase-js** (`/supabase/supabase-js`): `PostgrestClient.rpc` (object args sent as a POST body, so named args),
+  `PostgrestError` (`code`, `hint`, `details`, `message`; an aborted request has an empty code, which maps to
+  `unavailable`).
+- **Radix Primitives** (`/websites/radix-ui_primitives`): `dropdown-menu.md` (`RadioGroup` `value` /
+  `onValueChange`, `RadioItem`), `dialog.md` and `alert-dialog.md` (controlled `open` / `onOpenChange`,
+  `onCloseAutoFocus`, Escape returns focus).
+
+## Deviations and choices
+
+- No role badge colours: roles are words on a quiet button (DESIGN.md keeps status colours for dots and labelled
+  badges; a role is not a status).
+- Confirm is the neutral button, not Signal Red: a role change is not the page's primary action.
+- The profiles read has no `.order()` or `.limit()`: the organisation is a handful of people, `sortPeople` orders it,
+  and the local REST stand-in (`scripts/local-auth/gateway.mjs`) serves only `select` plus `eq` filters.
+- `/security-review` was applied by hand to this branch's diff (the skill reads the primary checkout, which is on
+  another branch); see `security-review.md`.
+
+## Open risks
+
+- **Two admins demoting each other at the same instant** can leave an organisation with no admin: `set_user_role`
+  (core schema, unchanged here) locks only the target's row before counting admins. Needs a small migration (lock the
+  organisation's admin rows before counting) and a concurrency test; recommended before go-live. Details in
+  `security-review.md`.
+- The role button's name for someone without a name says "Account c9b5074f" while the row shows "User ID c9b5074f"
+  (same characters; kept).
+- `docs/go-live.md` comes from the unmerged go-live kit branch; if that branch changes parts A or K before merging,
+  the rebase needs a look at those two paragraphs.
+- WebKit and Semgrep run only in CI.

@@ -413,7 +413,7 @@ list from the moment you create it, as a rep). Signed in as yourself:
    start of the UID shown for them in account B > **Authentication** > **Users**.
 3. On their row, press **Role** (the button that says **Rep**) > **Admin**.
 4. Check the confirmation names the right person and says "becomes an admin", then press **Confirm**.
-5. If it asks "Confirm it's you", type the 6-digit code from your authenticator app.
+5. If it asks "Confirm it’s you", type the 6-digit code from your authenticator app.
 6. The row now says **Admin**. Do the same for the second person.
 
 If it says "You are the last admin", you tried to change your own role: leave yours as Admin.
