@@ -105,7 +105,7 @@ e2e         team.spec.ts (Chromium, local auth stack)      before the focus fix:
                                                            at toBeFocused (More's title "inactive"); after: exit 0, 5 passed
 e2e         team-screens.spec.ts + shell.spec.ts +         exit 0, 25 passed, 1 skipped (as on main); 50 shots, no console
             day4-chunks.spec.ts (Chromium)                 error, no sideways scroll
-gitleaks    git --log-opts=origin/main..HEAD               see docs/log.md (run on the final head)
+gitleaks    git --log-opts=origin/main..HEAD               exit 0, no leaks found (13 commits to f9a92bb)
 npm audit   --omit=dev                                     exit 0, found 0 vulnerabilities
 ```
 
