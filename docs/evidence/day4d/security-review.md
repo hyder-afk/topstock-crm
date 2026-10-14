@@ -141,3 +141,28 @@ does; an API request always carries a signed JWT with a subject.
    file is ready replace the object, but the file then no longer opens (round 2 finding 1: version, size and type
    bound at finish); an overwrite in the seconds between `open_file`'s check and the browser fetching the 60-second
    link would be served. Only the uploader (or someone holding their aal2 session) can do it, only to their own file.
+
+## `/security-review` on the PR head (PR #16, head c7fd6a2, 14 Oct 2026)
+
+Run on `git diff origin/main...HEAD` (main 5f1a966) with the command's method: a finder pass, a false-positive filter
+per finding, confidence 8 or more kept. **Result: no findings.**
+
+Candidates tried and dropped (each confidence 2 or less):
+- Finishing an upload through the REST API without the server's sniff. Refused: the database still matches size, type and version, every open sniffs again, and the bucket takes only the five types.
+- Overwriting a ready file through a signed upload link made while it was pending. Refused: `open_file` requires the version recorded at finish, and clients cannot write `object_version`.
+- CSRF or an open redirect on the open route. Refused: the route is a GET that needs Sec-Fetch-Site same-origin or none, its only side effect is an audit row, and links are pinned to our Supabase origin.
+- XSS through inline serving. Refused: only PDF, PNG and JPEG open inline, from the Storage origin.
+
+What was checked:
+- Server-built paths and the path-shape check.
+- Trigger order and the organisation binding.
+- RLS and `require_mfa`.
+- The status moves, and step-up on delete (no way around it).
+- The three Storage policies (no update policy), with S3 turned off.
+- DEFINER functions only in `private`.
+- INVOKER RPCs revoked from anon.
+- Server actions: Zod, then aal2.
+- Signed-link lifetimes and headers.
+- No `service_role` or `dangerouslySetInnerHTML` in client code.
+
+After this run, Semgrep (CI) found invisible bidi characters written as raw characters in the file-name regex (`src/lib/files/name.ts`), and the same characters in the migration's name check. Both now use `\u` escapes. A check over every code point gives the same set as before; `files_attack` still refuses a name containing U+202E; the parity test passes. No behaviour changed.

@@ -5,9 +5,10 @@ import { EXTENSION_TYPES, FILE_NAME_MAX, FILE_TYPES, type FileMime } from "@/lib
 // (files_name_check, private.file_name_ok); the server cleans every name first, so a real file never meets that refusal.
 // The stored path never uses the name (it is built from ids and the type), so a name is only ever text on screen.
 
-/** The characters the database refuses in a name: the same code point ranges as the migration's regex. */
+/** The characters the database refuses in a name: the same code point ranges as the migration's regex (written as
+ * escapes, never as the characters themselves). */
 export const UNSAFE_NAME =
-  /[\u0001-\u001F\u007F-\u009F؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿￹-￻\u{E0000}-\u{E007F}/\\"]/u;
+  /[\u0001-\u001F\u007F-\u009F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB\u{E0000}-\u{E007F}/\\"]/u;
 const UNSAFE_ALL = new RegExp(UNSAFE_NAME.source, "gu");
 
 /** The extension of a name, lower case, without the dot ("" when none). */

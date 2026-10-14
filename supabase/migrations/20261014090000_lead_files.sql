@@ -60,7 +60,7 @@ $$;
 create function private.file_name_ok(p_name text) returns boolean
 language sql immutable set search_path = '' as $$
   select coalesce(char_length(p_name) between 1 and 180 and p_name !~
-    '[\u0001-\u001F\u007F-\u009F؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿￹-￻\U000E0000-\U000E007F/\\"]', false)
+    '[\u0001-\u001F\u007F-\u009F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB\U000E0000-\U000E007F/\\"]', false)
 $$;
 
 -- The team's space (800 MiB on the free plan's 1 GiB). A function, so a test can lower it for one run.
@@ -96,7 +96,7 @@ alter table public.files
   drop column contact_id,                                       -- files belong to the lead (0 rows, checked above)
   add column company_id uuid not null references public.companies (id) on delete restrict,   -- no orphaned bytes
   add column name text not null constraint files_name_check check (char_length(name) between 1 and 180 and name !~
-    '[\u0001-\u001F\u007F-\u009F؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿￹-￻\U000E0000-\U000E007F/\\"]'),
+    '[\u0001-\u001F\u007F-\u009F\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF\uFFF9-\uFFFB\U000E0000-\U000E007F/\\"]'),
   add column status text not null default 'pending' constraint files_status_check check (status in ('pending', 'ready', 'deleting')),
   add column ready_at timestamptz,
   -- storage.objects.version of the object checked at finish (server-set by the update guard; no client grant). storage-api
