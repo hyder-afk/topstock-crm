@@ -304,5 +304,106 @@ begin
   end loop;
   raise notice '% : % ms', rpad('P6 get_lead (a lead with deals)', 46), round(total / 5, 2);
 end $$;
+
+-- Part 2 (Day 5b; design 8.6 P5): log_activity "Interested" with p_open_deal (the call, its follow-up task and a deal at
+-- Lead in one transaction) and undo_activity taking back both (the deal removed while untouched), on the lead with
+-- 10,008 entries and on a typical lead, as the admin. The same outcome without a deal is timed alongside as this run's
+-- baseline (design: P5 within +10% of Day 4b's P4/P4b). Each round is rolled back, so the 30-an-hour open limit and the
+-- database stay as they were.
+-- perf_day4.sql's two probe leads (a separate session, so found again by their 'Probe' contacts).
+select set_config('perf.heavy', (select k.company_id::text from public.contacts k where k.first_name = 'Probe'
+                                  order by (select count(*) from public.activities a where a.company_id = k.company_id) desc
+                                  limit 1), false),
+       set_config('perf.typical', (select k.company_id::text from public.contacts k where k.first_name = 'Probe'
+                                    order by (select count(*) from public.activities a where a.company_id = k.company_id)
+                                    limit 1), false) \g /dev/null
+select set_config('perf.heavy_contact', (select id::text from public.contacts
+                                          where company_id = current_setting('perf.heavy')::uuid and first_name = 'Probe'), false),
+       set_config('perf.typical_contact', (select id::text from public.contacts
+                                            where company_id = current_setting('perf.typical')::uuid and first_name = 'Probe'), false) \g /dev/null
+select 'P5 leads: ' || (select count(*) from public.activities where company_id = current_setting('perf.heavy')::uuid)
+       || ' and ' || (select count(*) from public.activities where company_id = current_setting('perf.typical')::uuid)
+       || ' entries' as p5_leads;
+create function pg_temp.p5_round(lead uuid, contact uuid, with_deal boolean) returns void
+language plpgsql as $$
+declare
+  t0 timestamptz;
+  r jsonb;
+  u jsonb;
+  ms_log numeric;
+  ms_undo numeric;
+begin
+  begin
+    t0 := clock_timestamp();
+    r := public.log_activity(p_company => lead, p_type => 'call', p_outcome => 'interested', p_body => 'Timing probe',
+                             p_contact => contact, p_dialled => 'contact', p_follow_up_date => current_date + 1,
+                             p_task_title => 'Follow up', p_request_id => gen_random_uuid(),
+                             p_open_deal => with_deal, p_deal_title => case when with_deal then 'Probe deal' end,
+                             p_deal_value => case when with_deal then 6800.50 end);
+    ms_log := extract(epoch from clock_timestamp() - t0) * 1000;
+    if r ->> 'task_id' is null or (with_deal and not coalesce((r -> 'deal' ->> 'opened')::boolean, false)) then
+      raise exception 'FAIL: P5 log_activity did not do all its work: %', r;
+    end if;
+    t0 := clock_timestamp();
+    u := public.undo_activity((r ->> 'activity_id')::uuid);
+    ms_undo := extract(epoch from clock_timestamp() - t0) * 1000;
+    if not (u ->> 'task_deleted')::boolean or (with_deal and u ->> 'deal' is distinct from 'removed') then
+      raise exception 'FAIL: P5 undo_activity did not undo everything: %', u;
+    end if;
+    raise exception 'undo' using errcode = 'TS001';
+  exception when sqlstate 'TS001' then null;
+  end;
+  perform set_config('perf.p5', ms_log::text, false);
+  perform set_config('perf.p5b', ms_undo::text, false);
+end;
+$$;
+
+\echo '=== P5 plan check: 5 runs to settle, then run 6 with inner statements slower than 1 ms logged (auto_explain) ==='
+set role authenticated;
+do $$
+begin
+  perform pg_temp.as_perf('00000000-0000-0000-0000-0000000000a1');
+  for r in 1..5 loop
+    perform pg_temp.p5_round(current_setting('perf.heavy')::uuid, current_setting('perf.heavy_contact')::uuid, true);
+  end loop;
+end $$;
+reset role;
+set auto_explain.log_min_duration = 1;
+set role authenticated;
+\echo '--- P5 run 6: log_activity Interested with p_open_deal, then undo_activity, the lead with 10,008 entries'
+select pg_temp.p5_round(current_setting('perf.heavy')::uuid, current_setting('perf.heavy_contact')::uuid, true);
+reset role;
+set auto_explain.log_min_duration = -1;
+
+\echo '=== P5 timings: average of 5 warm runs after 10, milliseconds ==='
+set role authenticated;
+do $$
+declare
+  a numeric;
+  b numeric;
+  lead uuid;
+  contact uuid;
+begin
+  perform pg_temp.as_perf('00000000-0000-0000-0000-0000000000a1');
+  for k in 1..2 loop
+    lead := case k when 1 then current_setting('perf.heavy')::uuid else current_setting('perf.typical')::uuid end;
+    contact := case k when 1 then current_setting('perf.heavy_contact')::uuid else current_setting('perf.typical_contact')::uuid end;
+    for d in 0..1 loop
+      a := 0;
+      b := 0;
+      for r in 1..15 loop
+        perform pg_temp.p5_round(lead, contact, d = 1);
+        if r > 10 then
+          a := a + current_setting('perf.p5')::numeric;
+          b := b + current_setting('perf.p5b')::numeric;
+        end if;
+      end loop;
+      raise notice '% : log_activity % ms, undo_activity % ms%',
+        rpad(case k when 1 then 'The lead with 10,008 entries' else 'A typical lead' end
+             || case d when 1 then ', with a deal' else ', no deal' end, 44),
+        round(a / 5, 2), round(b / 5, 2), case d when 1 then ' (budget 15 / 18 ms)' else ' (baseline)' end;
+    end loop;
+  end loop;
+end $$;
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
