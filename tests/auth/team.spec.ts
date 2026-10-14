@@ -182,6 +182,10 @@ test("stale_code_asks_for_a_code: Cancel keeps the role, a fresh code saves it",
   await expect(roleButton(page, rep, "Manager")).toBeFocused();
   await expect.poll(() => roleOf(repEmail)).toBe("manager");
   await settled(page);
+  // "Confirm it's you" renewed the session cookies, so the server drew the page again meanwhile (with the role read
+  // before the change): the row keeps the new role.
+  await expect(roleButton(page, rep, "Manager")).toBeVisible();
+  await expect(roleButton(page, rep, "Rep")).toHaveCount(0);
   expect(errors).toEqual([]);
   await context.close();
 });

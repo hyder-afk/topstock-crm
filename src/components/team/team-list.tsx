@@ -40,14 +40,16 @@ export function TeamList({
   const t = useTranslations("Team");
   const router = useRouter();
   const stepUp = useStepUp(stepUpSeconds, "bodyRole");
-  const fromPeople = (list: Person[]) => Object.fromEntries(list.map((p) => [p.id, p.role])) as Record<string, Role>;
-  const [roleOf, setRoleOf] = useState(() => fromPeople(people));
-  // Fresh server data (after a refresh) replaces the local roles (React's adjust-during-render pattern).
+  // Roles set here that the server data does not show yet (saving, or saved before the next refresh). The page can be
+  // drawn again by the server at any moment, for instance after "Confirm it's you" renews the session cookies, so a
+  // local role is dropped only once the server data shows that role (React's adjust-during-render pattern).
+  const [local, setLocal] = useState<Record<string, Role>>({});
   const [base, setBase] = useState(people);
   if (base !== people) {
     setBase(people);
-    setRoleOf(fromPeople(people));
+    setLocal((l) => Object.fromEntries(Object.entries(l).filter(([id, r]) => people.some((p) => p.id === id && p.role !== r))));
   }
+  const unset = (id: string) => setLocal((l) => Object.fromEntries(Object.entries(l).filter(([k]) => k !== id)));
   const [pending, setPending] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [asking, setAsking] = useState<Ask | null>(null);
@@ -83,8 +85,7 @@ export function TeamList({
       focusRow(person.id);
       return;
     }
-    const previous = roleOf[person.id];
-    setRoleOf((r) => ({ ...r, [person.id]: role }));
+    setLocal((l) => ({ ...l, [person.id]: role }));
     setRowError((e) => ({ ...e, [person.id]: "" }));
     setPending(person.id);
     announce(t("announce.saving", { who: who(person) }));
@@ -111,8 +112,10 @@ export function TeamList({
         return;
       }
       announce(t("announce.saved", { who: who(person), role }));
+      // The server's list catches up; the local role stays shown until it does.
+      router.refresh();
     } else {
-      setRoleOf((r) => ({ ...r, [person.id]: previous }));
+      unset(person.id);
       const text =
         result.error === "step_up" ? t("announce.cancelled") : t(`errors.${errorMessageKey(result.error, person.id === me)}`, { who: who(person) });
       setRowError((e) => ({ ...e, [person.id]: result.error === "step_up" ? "" : text }));
@@ -129,7 +132,7 @@ export function TeamList({
       <ul className="flex flex-col overflow-hidden rounded-lg bg-card">
         {people.map((p) => {
           const name = displayName(p);
-          const role = roleOf[p.id] ?? p.role;
+          const role = local[p.id] ?? p.role;
           const error = rowError[p.id];
           return (
             <li key={p.id} className="border-b border-border last:border-b-0">
