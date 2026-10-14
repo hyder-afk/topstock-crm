@@ -407,3 +407,108 @@ begin
 end $$;
 reset role;
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+
+-- Part 3 (Day 5c; design 8.6 P7, P8): the Home figures on the same seed (30,015 leads, 300,000 entries, 15,000 tasks,
+-- 10,000 deals, 40,000 history rows) plus 450 calls today across the three perf people (150 each), as the admin (Team)
+-- and a rep (Mine). P7 import week: every lead created in the last 7 days (in a transaction rolled back after its timing,
+-- so perf_import.sql sees the leads as they were). Each case 10 times to settle its plans, then the average of 5 timed
+-- runs; run 6 of home_summary Team logs every inner statement with its time (auto_explain, nested statements): those
+-- are the K-part timings, and the plan check (per-person ordered index scans for calls and the feed, no Sort over
+-- activities).
+set session_replication_role = replica;
+insert into public.activities (org_id, company_id, type, outcome, user_id, created_at, updated_at)
+select l.org_id, l.id, 'call', (array['no_answer', 'voicemail', 'connected', 'interested', 'not_interested'])[g % 5 + 1], p.id,
+       now() - g * interval '20 seconds', now()
+  from generate_series(1, 450) g
+  join perf_leads5 l on l.n = 1 + (g * 389) % 30015
+  join perf_people5 p on p.k = g % 3;
+set session_replication_role = origin;
+vacuum analyze public.activities;
+select 'P7 seed: ' || (select count(*) from public.activities where created_at >= date_trunc('day', now() at time zone 'Europe/Paris') at time zone 'Europe/Paris' and type = 'call')
+       || ' calls today (Paris), ' || (select count(*) from public.tasks where done_at is null) || ' open tasks';
+
+\echo '=== P7/P8 plan check: 5 runs to settle, then run 6 of home_summary Team with every inner statement and its time ==='
+set auto_explain.log_min_duration = -1;
+set role authenticated;
+select pg_temp.as_perf('00000000-0000-0000-0000-0000000000a1') \g /dev/null
+do $$
+begin
+  for r in 1..5 loop
+    perform public.home_summary('team');
+    perform public.home_attention('team');
+    perform count(*) from public.home_recent_activity('team');
+  end loop;
+end $$;
+reset role;
+set auto_explain.log_min_duration = 0;
+set role authenticated;
+\echo '--- P7 run 6: home_summary team (admin), each inner statement timed'
+select (public.home_summary('team') -> 'open' ->> 'count') as open_deals;
+\echo '--- P8 run 6: home_attention team, home_recent_activity team'
+select jsonb_array_length(public.home_attention('team') -> 'items') as attention_items;
+select count(*) as recent_rows from public.home_recent_activity('team');
+reset role;
+set auto_explain.log_min_duration = -1;
+
+\echo '=== P7/P8 timings: average of 5 warm runs after 10, milliseconds ==='
+set role authenticated;
+do $$
+declare
+  t0 timestamptz;
+  total numeric;
+  n integer;
+  j jsonb;
+  admin constant text := '00000000-0000-0000-0000-0000000000a1';
+  rep constant text := '00000000-0000-0000-0000-0000000000b4';
+begin
+  for c in 1..7 loop
+    perform pg_temp.as_perf(case when c in (2, 6) then rep else admin end);
+    for r in 1..15 loop
+      t0 := clock_timestamp();
+      case c
+        when 1 then j := public.home_summary('team');
+        when 2 then j := public.home_summary('mine');
+        when 3 then j := public.home_attention('team');
+        when 4 then select count(*) into n from public.home_recent_activity('team');
+        when 5 then select count(*) into n from public.home_recent_activity('mine');
+        when 6 then j := public.home_today_tasks();
+        else j := public.home_low_stock();
+      end case;
+      if r = 11 then total := 0; end if;
+      if r > 10 then total := total + extract(epoch from clock_timestamp() - t0) * 1000; end if;
+    end loop;
+    raise notice '% : % ms%', rpad((array['P7 home_summary team (admin)', 'P7 home_summary mine (rep)',
+                                        'P8 home_attention team', 'P8 home_recent_activity team',
+                                        '   home_recent_activity mine', '   home_today_tasks (rep; 4c stand-in)',
+                                        '   home_low_stock (stub)'])[c], 46),
+      round(total / 5, 2),
+      (array[' (budget 30 ms)', ' (budget 25 ms)', ' (budget 10 ms)', ' (budget 5 ms)', '', ' (4c P5: 15 ms)', ''])[c];
+  end loop;
+end $$;
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+
+\echo '=== P7 import week: every lead created in the last 7 days (rolled back), average of 5 warm runs after 10 ==='
+begin;
+update public.companies set created_at = now() - ((hashtext(id::text) & 2147483647) % 604800) * interval '1 second',
+       import_batch_id = null;
+analyze public.companies;
+set local role authenticated;
+do $$
+declare
+  t0 timestamptz;
+  total numeric := 0;
+  j jsonb;
+begin
+  perform pg_temp.as_perf('00000000-0000-0000-0000-0000000000a1');
+  for r in 1..15 loop
+    t0 := clock_timestamp();
+    j := public.home_summary('team');
+    if r > 10 then total := total + extract(epoch from clock_timestamp() - t0) * 1000; end if;
+  end loop;
+  raise notice '% : % ms (budget 45 ms; % new leads)', rpad('P7 home_summary team, import week', 46), round(total / 5, 2),
+    j -> 'new_leads' ->> 'count';
+end $$;
+rollback;
+analyze public.companies;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
