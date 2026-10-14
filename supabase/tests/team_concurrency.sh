@@ -5,9 +5,11 @@
 #  1. demote_each_other_keeps_an_admin: two admins, each demoting the other at the same moment. The second waits for the
 #     first (the organisation's admin rows are locked before anyone counts them), then is refused (it is no longer an
 #     admin, and the other is the last one). One admin is left, never none.
-#  2. demote_each_other_no_deadlock: three admins, two demoting each other at once. The admin rows are locked in id order
-#     before the target's row, so the second session queues instead of dying in a deadlock (40P01); it is then refused
-#     with 42501 because it was demoted meanwhile, and the other two admins stay.
+#  2. demoted_admin_cannot_demote: three admins, two demoting each other at once. The second session queues behind the
+#     first on the admin rows, is checked again once it gets them, and is refused with 42501 because it was demoted
+#     meanwhile; the other two admins stay. (The admin rows are locked in id order, before the target, so two calls
+#     never take them in opposite orders; each call takes them all at its start, so no test can interleave two calls
+#     between those locks, and a deadlock answer, 40P01, would fail this case.)
 #  3. demoted_admin_cannot_promote: an admin promotes a rep while another admin is demoting them. Once the demotion
 #     commits, the promotion is refused (the caller is checked again after the wait) and the rep stays a rep.
 # Usage: team_concurrency.sh "<libpq connection string>" (after the migrations). Used by scripts/db-test.sh and the CI
@@ -58,7 +60,7 @@ wait $pa || fail "demote_each_other_keeps_an_admin: the first session failed: $(
 grep -q '42501' "$TMP_TC/1b.err" || fail "demote_each_other_keeps_an_admin: the second session failed with: $(cat "$TMP_TC/1b.err")"
 [ "$(admins "$org1")" = "$X1" ] || fail "demote_each_other_keeps_an_admin: admins left '$(admins "$org1")' (expected $X1)"
 
-# 2. Three admins, two demote each other: no deadlock ------------------------------------------------------------------
+# 2. Three admins, two demote each other: the one demoted first cannot act ---------------------------------------------
 X2=00000000-0000-0000-0000-0000000007a2
 Y2=00000000-0000-0000-0000-0000000007b2
 Z2=00000000-0000-0000-0000-0000000007c2
@@ -69,12 +71,12 @@ select pg_sleep(2) \g /dev/null
 commit;" > /dev/null 2>"$TMP_TC/2a.err" & pa=$!
 sleep 0.5
 rb=0; as_user "$Y2" "select public.set_user_role('$X2', 'manager') \g /dev/null" > /dev/null 2>"$TMP_TC/2b.err" || rb=$?
-wait $pa || fail "demote_each_other_no_deadlock: the first session failed: $(cat "$TMP_TC/2a.err")"
-[ $rb != 0 ] || fail "demote_each_other_no_deadlock: an admin demoted meanwhile still demoted another (admins left: '$(admins "$org2")')"
-grep -q '40P01' "$TMP_TC/2b.err" && fail "demote_each_other_no_deadlock: deadlock: $(cat "$TMP_TC/2b.err")"
-grep -q '42501' "$TMP_TC/2b.err" || fail "demote_each_other_no_deadlock: the second session failed with: $(cat "$TMP_TC/2b.err")"
-[ "$(admins "$org2")" = "$X2 $Z2" ] || fail "demote_each_other_no_deadlock: admins left '$(admins "$org2")' (expected $X2 $Z2)"
-[ "$(role_of "$Y2")" = "manager" ] || fail "demote_each_other_no_deadlock: $Y2 is '$(role_of "$Y2")' (expected manager)"
+wait $pa || fail "demoted_admin_cannot_demote: the first session failed: $(cat "$TMP_TC/2a.err")"
+[ $rb != 0 ] || fail "demoted_admin_cannot_demote: an admin demoted meanwhile still demoted another (admins left: '$(admins "$org2")')"
+grep -q '40P01' "$TMP_TC/2b.err" && fail "demoted_admin_cannot_demote: deadlock: $(cat "$TMP_TC/2b.err")"
+grep -q '42501' "$TMP_TC/2b.err" || fail "demoted_admin_cannot_demote: the second session failed with: $(cat "$TMP_TC/2b.err")"
+[ "$(admins "$org2")" = "$X2 $Z2" ] || fail "demoted_admin_cannot_demote: admins left '$(admins "$org2")' (expected $X2 $Z2)"
+[ "$(role_of "$Y2")" = "manager" ] || fail "demoted_admin_cannot_demote: $Y2 is '$(role_of "$Y2")' (expected manager)"
 
 # 3. A demoted admin's promotion is refused after the wait ------------------------------------------------------------
 X3=00000000-0000-0000-0000-0000000007a3

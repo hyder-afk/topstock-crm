@@ -696,7 +696,7 @@ TEAM_RECHECK = ("  if not private.is_admin() then\n"
 MUTATIONS_TEAM = [
     ("Role change: the organisation's admin rows not locked (two admins demote each other and none is left)",
      [(TEAM_LOCK, "")]),
-    ("Role change: the target locked before the admin rows (two admins demoting each other deadlock)",
+    ("Role change: the target locked first and the caller checked before the admin rows (a demoted admin still acts)",
      [(TEAM_LOCK + "  -- The caller", "  -- The caller"), (TEAM_TARGET, TEAM_TARGET + TEAM_LOCK)]),
     ("Role change: the caller not checked again after the wait (an admin demoted meanwhile still acts)",
      [(TEAM_RECHECK, "  select org_id")]),
