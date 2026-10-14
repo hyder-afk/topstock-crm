@@ -652,7 +652,10 @@ test.describe("with storage-api (CI)", () => {
 
   test("upload_pdf_progress_then_open, signed_url_dead_after_60s, deleted_file_url_404", async ({ browser }) => {
     test.setTimeout(300_000);
-    const { context, page, errors } = await open(browser, adminState);
+    // A session of its own: ageStepUp below refreshes it, and the shared admin state's refresh token was already used
+    // by an earlier test (WebKit CI: "refresh_token_already_used").
+    const state = await fullSession(browser, adminEmail, password, adminSecret);
+    const { context, page, errors } = await open(browser, state);
     await gotoFiles(page, lead);
     await filesPanel(page).locator("input[type=file]").setInputFiles({ name: "Catalogue été.pdf", mimeType: "application/pdf", buffer: pdfBytes(2_000_000) });
     const progress = filesPanel(page).getByRole("progressbar", { name: "Uploading Catalogue été.pdf" });
