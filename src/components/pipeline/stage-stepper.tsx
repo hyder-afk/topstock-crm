@@ -50,7 +50,7 @@ export function StageStepper({
                 group.current?.querySelector<HTMLElement>(`[data-step="${next}"]`)?.focus();
               }}
               className={cn(
-                "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-sm px-1 text-xs font-bold transition-[background-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-60 sm:text-[13px]",
+                "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-sm px-1 text-xs font-bold transition-[background-color,color,scale] duration-150 active:scale-[0.97] disabled:opacity-60 sm:text-[13px]",
                 on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >

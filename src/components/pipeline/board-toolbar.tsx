@@ -50,7 +50,7 @@ export function BoardToolbar({
   const format = useFormatter();
   const chip = (on: boolean) =>
     cn(
-      "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+      "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm transition-[background-color,color,scale] duration-150 active:scale-[0.97] sm:min-h-9",
       on ? "bg-primary text-primary-foreground" : "bg-card text-foreground hover:bg-muted",
     );
   return (
@@ -81,7 +81,7 @@ export function BoardToolbar({
                 aria-checked={scope === s}
                 onClick={() => onScope(s)}
                 className={cn(
-                  "min-h-11 rounded-sm px-3 text-sm font-bold transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-8",
+                  "min-h-11 rounded-sm px-3 text-sm font-bold transition-[background-color,color,scale] duration-150 active:scale-[0.97] sm:min-h-8",
                   scope === s ? "bg-pill text-foreground shadow-[0_1px_2px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                 )}
               >

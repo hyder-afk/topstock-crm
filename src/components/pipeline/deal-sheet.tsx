@@ -106,7 +106,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
         type="button"
         onClick={onClose}
         aria-label={t("sheet.close")}
-        className="-mr-2 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+        className="-mr-2 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97]"
       >
         <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
       </button>
@@ -241,6 +241,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
         <Field label={t("fields.contact")}>
           <select
+            name="contact"
             className="min-h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
             value={deal.contact_id ?? ""}
             disabled={!deal.can_edit || !leadQuery.data}
@@ -268,7 +269,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                   disabled={!editable}
                   onClick={() => !on && void saveField(deal, flows, toast, t, ["fulfilment"], { fulfilment: f }, (d) => d.fulfilment === deal.fulfilment)}
                   className={cn(
-                    "min-h-11 rounded-sm px-1 text-xs leading-4 font-bold transition-[background-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-60 sm:text-[13px]",
+                    "min-h-11 rounded-sm px-1 text-xs leading-4 font-bold transition-[background-color,color,scale] duration-150 active:scale-[0.97] disabled:opacity-60 sm:text-[13px]",
                     on ? "bg-pill text-foreground shadow-[0_1px_2px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -282,6 +283,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
         {canAssign ? (
           <Field label={t("fields.owner")}>
             <select
+              name="owner"
               className="min-h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
               value={deal.owner_id ?? ""}
               disabled={!deal.can_edit}
@@ -465,6 +467,7 @@ function InlineText({
       </label>
       <Input
         id={id}
+        name={id}
         value={text}
         placeholder={placeholder}
         disabled={disabled}
@@ -522,6 +525,7 @@ function InlineMoney({ deal, disabled, flows }: { deal: DealDetail; disabled: bo
         <Input
           ref={ref}
           id={id}
+          name="deal_value"
           data-deal-value
           inputMode="decimal"
           autoComplete="off"
@@ -560,7 +564,7 @@ function CloseDate({ deal, disabled, flows }: { deal: DealDetail; disabled: bool
   const set = (v: string | null) => void saveField(deal, flows, toast, t, ["expected_close"], { expectedClose: v }, (d) => d.expected_close === deal.expected_close);
   const chip = (on: boolean) =>
     cn(
-      "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-60 sm:min-h-9",
+      "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,scale] duration-150 active:scale-[0.97] disabled:opacity-60 sm:min-h-9",
       on ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
     );
   return (
@@ -587,6 +591,7 @@ function CloseDate({ deal, disabled, flows }: { deal: DealDetail; disabled: bool
       {picking ? (
         <input
           type="date"
+          name="expected_close"
           aria-label={t("closeChips.pick")}
           defaultValue={deal.expected_close ?? ""}
           disabled={disabled}
@@ -605,7 +610,7 @@ function SheetMenu({ deal, flows, onDeleted }: { deal: DealDetail; flows: SheetF
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={t("sheet.more")}
-        className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+        className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97]"
       >
         <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />
       </DropdownMenuTrigger>

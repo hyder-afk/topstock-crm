@@ -62,7 +62,7 @@ function ClosedList({ kind, scope, owner, onOpenDeal }: { kind: "won" | "lost"; 
           <DialogTitle className="text-xl font-bold">{t(`closedTitle.${kind}`)}</DialogTitle>
           <DialogDescription className="sr-only">{t(`closedTitle.${kind}`)}</DialogDescription>
         </div>
-        <DialogClose aria-label={tC("dismiss")} className="-mr-2 grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]">
+        <DialogClose aria-label={tC("dismiss")} className="-mr-2 grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97]">
           <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
         </DialogClose>
       </div>

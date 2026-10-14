@@ -150,7 +150,7 @@ function DealRow({ deal, onOpenDeal, onReopen }: { deal: DealCard; onOpenDeal: (
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={t("rowMenu")}
-            className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+            className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97]"
           >
             <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-4" />
           </DropdownMenuTrigger>

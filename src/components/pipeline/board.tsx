@@ -646,7 +646,7 @@ function Pipeline({
               ref={scrollerRef}
               className={cn(
                 "-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-8 sm:px-8 lg:mx-0 lg:grid lg:grid-cols-[repeat(4,minmax(220px,1fr))] lg:gap-3 lg:overflow-visible lg:px-0 xl:gap-4",
-                dragging ? "snap-none" : "snap-x snap-mandatory lg:snap-none",
+                dragging ? "snap-none select-none" : "snap-x snap-mandatory lg:snap-none",
               )}
             >
               {columns.map((c) => (

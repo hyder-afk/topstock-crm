@@ -19,7 +19,7 @@ export function DealChip({ lead, onShow }: { lead: LeadDetail; onShow: () => voi
       type="button"
       onClick={onShow}
       aria-label={`${text}. ${t("chipLabel")}`}
-      className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-card px-2.5 text-sm transition-[background-color,transform] duration-150 hover:bg-muted active:scale-[0.97] sm:min-h-8"
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-card px-2.5 text-sm transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97] sm:min-h-8"
     >
       <Handshake aria-hidden="true" strokeWidth={1.75} className="size-4 text-muted-foreground" />
       <span>{text}</span>
@@ -50,6 +50,7 @@ export function ComposerDealChip({
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("aboutLabel")}>
       {deals.length > 1 ? (
         <select
+          name="about_deal"
           aria-label={t("aboutChoose")}
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value || null)}
@@ -69,7 +70,7 @@ export function ComposerDealChip({
             type="button"
             onClick={() => onChange(null)}
             aria-label={t("aboutRemove")}
-            className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
+            className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
           >
             <span aria-hidden="true">×</span>
           </button>

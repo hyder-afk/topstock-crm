@@ -1185,7 +1185,7 @@
     },
     "fields": {
       "title": "What’s being sold",
-      "titlePlaceholder": "e.g. Denim jackets, 2 pallets",
+      "titlePlaceholder": "e.g. Denim jackets, 2 pallets…",
       "value": "Value (excl. VAT)",
       "expectedClose": "Expected close",
       "fulfilment": "How it ships",

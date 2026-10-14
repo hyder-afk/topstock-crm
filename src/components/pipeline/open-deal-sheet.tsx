@@ -179,6 +179,7 @@ function OpenDealForm({
             <div className="flex flex-col gap-1">
               <Input
                 id={`${id}-lead`}
+                name="lead_search"
                 role="combobox"
                 aria-expanded={results.data ? results.data.length > 0 : false}
                 aria-controls={`${id}-results`}
@@ -250,7 +251,7 @@ function OpenDealForm({
           <label htmlFor={`${id}-title`} className="text-sm font-bold">
             {tD("fields.title")}
           </label>
-          <Input id={`${id}-title`} value={title} dir="auto" autoComplete="off" placeholder={tD("fields.titlePlaceholder")} onChange={(e) => setTitle(e.target.value)} aria-invalid={titleBad || undefined} aria-describedby={`${id}-title-err`} />
+          <Input id={`${id}-title`} name="deal_title" value={title} dir="auto" autoComplete="off" placeholder={tD("fields.titlePlaceholder")} onChange={(e) => setTitle(e.target.value)} aria-invalid={titleBad || undefined} aria-describedby={`${id}-title-err`} />
           <p id={`${id}-title-err`} className="min-h-5 text-sm text-status-red">
             {titleBad ? tHint("deal_title") : null}
           </p>
@@ -260,7 +261,7 @@ function OpenDealForm({
             <label htmlFor={`${id}-value`} className="text-sm font-bold">
               {tD("fields.value")}
             </label>
-            <Input id={`${id}-value`} inputMode="decimal" autoComplete="off" value={valueText} onChange={(e) => setValueText(e.target.value)} aria-invalid={valueBad || undefined} aria-describedby={`${id}-value-err`} className="font-mono" />
+            <Input id={`${id}-value`} name="deal_value" inputMode="decimal" autoComplete="off" value={valueText} onChange={(e) => setValueText(e.target.value)} aria-invalid={valueBad || undefined} aria-describedby={`${id}-value-err`} className="font-mono" />
             <p id={`${id}-value-err`} className="min-h-5 text-sm text-status-red">
               {valueBad ? tD("edit.valueInvalid") : value ? <span className="text-muted-foreground">{formatMoney(value, locale, { cents: true })}</span> : null}
             </p>
@@ -269,7 +270,7 @@ function OpenDealForm({
             <label htmlFor={`${id}-close`} className="text-sm font-bold">
               {tD("fields.expectedClose")}
             </label>
-            <input id={`${id}-close`} type="date" value={close} onChange={(e) => setClose(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground" />
+            <input id={`${id}-close`} name="expected_close" type="date" value={close} onChange={(e) => setClose(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground" />
           </div>
         </div>
         {detail.data && detail.data.contacts.length > 0 ? (
@@ -277,7 +278,7 @@ function OpenDealForm({
             <label htmlFor={`${id}-contact`} className="text-sm font-bold">
               {tD("fields.contact")}
             </label>
-            <select id={`${id}-contact`} value={contactId} onChange={(e) => setContactId(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+            <select id={`${id}-contact`} name="contact" value={contactId} onChange={(e) => setContactId(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
               <option value="">{tD("fields.noContact")}</option>
               {detail.data.contacts.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -291,7 +292,7 @@ function OpenDealForm({
           <label htmlFor={`${id}-ships`} className="text-sm font-bold">
             {tD("fields.fulfilment")}
           </label>
-          <select id={`${id}-ships`} value={ships} onChange={(e) => setShips(e.target.value as Fulfilment | "")} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+          <select id={`${id}-ships`} name="fulfilment" value={ships} onChange={(e) => setShips(e.target.value as Fulfilment | "")} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
             <option value="">{tF("undecided")}</option>
             {fulfilments.map((f) => (
               <option key={f} value={f}>
@@ -305,7 +306,7 @@ function OpenDealForm({
             <label htmlFor={`${id}-owner`} className="text-sm font-bold">
               {tD("fields.owner")}
             </label>
-            <select id={`${id}-owner`} value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+            <select id={`${id}-owner`} name="owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
               {team.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.id === meId ? t("ownerMe") : personName(m)}

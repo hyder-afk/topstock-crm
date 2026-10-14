@@ -131,7 +131,7 @@ export const DealCardView = memo(function DealCardView({
             if (lastPointer.current === "touch") e.preventDefault();
           }}
           className={cn(
-            "group relative min-h-[120px] rounded-lg border border-border bg-card text-left transition-[background-color,opacity] duration-150",
+            "group relative min-h-[120px] rounded-lg border border-border bg-card text-left transition-[background-color,opacity,scale] duration-150 motion-reduce:transition-none",
             "hover:bg-[color-mix(in_oklab,var(--card)_94%,var(--foreground))]",
             "has-[[data-deal-main]:active]:scale-[0.97]",
             isDragging && "opacity-40",
@@ -186,7 +186,7 @@ export const DealCardView = memo(function DealCardView({
                     tabIndex={-1}
                     onClick={() => handlers?.onNext(card)}
                     aria-label={next === "won" ? t("markWon") : t("nextToLabel", { stage: tStage(next) })}
-                    className="pointer-events-auto -my-1.5 min-h-8 rounded-md px-2 text-[12px] whitespace-nowrap text-muted-foreground transition-[background-color,color,opacity,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] max-lg:min-h-11 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
+                    className="pointer-events-auto -my-1.5 min-h-8 rounded-md px-2 text-[12px] whitespace-nowrap text-muted-foreground transition-[background-color,color,opacity,scale] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] max-lg:min-h-11 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
                   >
                     {next === "won" ? t("markWon") : t("nextTo", { stage: tStage(`short.${next}`) })}
                   </button>
@@ -196,7 +196,7 @@ export const DealCardView = memo(function DealCardView({
                     <DropdownMenuTrigger
                       tabIndex={-1}
                       aria-label={t("moreActions", { name: card.company_name })}
-                      className="pointer-events-auto -my-1.5 grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-[background-color,color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] max-lg:size-11"
+                      className="pointer-events-auto -my-1.5 grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-[background-color,color,scale] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] max-lg:size-11"
                     >
                       <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-4" />
                     </DropdownMenuTrigger>

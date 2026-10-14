@@ -91,7 +91,7 @@ function LoseForm({ card, onConfirm, onCancel }: { card: DealCard; onConfirm: (r
                   focusReason(next);
                 }}
                 className={cn(
-                  "flex min-h-11 items-center gap-2 rounded-md border px-3 text-left text-sm transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]",
+                  "flex min-h-11 items-center gap-2 rounded-md border px-3 text-left text-sm transition-[background-color,border-color,scale] duration-150 active:scale-[0.98]",
                   reason === r ? "border-foreground bg-muted font-bold" : "border-border hover:bg-muted/60",
                 )}
               >

@@ -1185,7 +1185,7 @@
     },
     "fields": {
       "title": "Ce qui est vendu",
-      "titlePlaceholder": "ex. Vestes en jean, 2 palettes",
+      "titlePlaceholder": "ex. Vestes en jean, 2 palettes…",
       "value": "Montant (HT)",
       "expectedClose": "Clôture prévue",
       "fulfilment": "Expédition",

@@ -115,7 +115,7 @@ function WinForm({ card, onConfirm, onCancel }: { card: DealCard; onConfirm: (va
                 data-ships={f}
                 tabIndex={ships === f || (ships === null && f === fulfilments[0]) ? 0 : -1}
                 className={cn(
-                  "flex min-h-[72px] flex-col items-start gap-1 rounded-md border p-3 text-left transition-[background-color,border-color,transform] duration-150 active:scale-[0.98]",
+                  "flex min-h-[72px] flex-col items-start gap-1 rounded-md border p-3 text-left transition-[background-color,border-color,scale] duration-150 active:scale-[0.98]",
                   ships === f ? "border-foreground bg-muted" : "border-border hover:bg-muted/60",
                 )}
               >
