@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { Keyboard, Languages, LogOut, Monitor, Moon, Search, Sun, Upload, type LucideIcon } from "lucide-react";
+import { Headset, Keyboard, Languages, LogOut, Monitor, Moon, Search, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { sections } from "@/lib/nav";
-import { goKeys } from "@/lib/shortcuts";
+import { goKeys, queueGoKey } from "@/lib/shortcuts";
 
 // The command menu (Cmd/Ctrl+K): jump to a section, switch appearance or language, show shortcuts, sign out.
 // Searching leads joins it when leads exist (Day 3).
@@ -80,16 +80,23 @@ export function CommandPalette({
               ))}
             </Group>
 
-            {isAdmin ? (
-              <Group heading={t("actions")}>
+            <Group heading={t("actions")}>
+              <Item
+                value="start work queue call next"
+                icon={Headset}
+                label={t("startQueue")}
+                keys={["G", queueGoKey.toUpperCase()]}
+                onSelect={() => run(() => router.push("/leads/queue"))}
+              />
+              {isAdmin ? (
                 <Item
                   value="import leads csv spreadsheet importer prospects"
                   icon={Upload}
                   label={t("importLeads")}
                   onSelect={() => run(() => router.push("/leads/import"))}
                 />
-              </Group>
-            ) : null}
+              ) : null}
+            </Group>
 
             <Group heading={t("appearance")}>
               <Item value="theme light" icon={Sun} label={t("themeLight")} onSelect={() => run(() => setTheme("light"))} />

@@ -1,9 +1,10 @@
 #!/bin/bash
 # Leads list speed at Release 1 size: throwaway PostgreSQL 16 + auth shim + migrations + 30k fake leads, then timings
 # and query plans of the list and count functions as a signed-in rep (supabase/tests/perf_leads.sql), then 300k
-# activities and 15k tasks with the Day 4 timeline, lead page and outcome timings (supabase/tests/perf_day4.sql), then
-# the lead import at 30k
-# and 50k rows as an admin, with those activities and tasks in place (supabase/tests/perf_import.sql). Local only.
+# activities and 15k tasks with the Day 4 timeline, lead page, outcome, queue and task timings
+# (supabase/tests/perf_day4.sql), then the lead import at 30k and 50k rows as an admin, with those activities and tasks
+# in place (supabase/tests/perf_import.sql), then three queue sessions at once (supabase/tests/perf_queue_concurrency.sh).
+# Local only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
@@ -22,3 +23,4 @@ for f in "$ROOT"/supabase/migrations/*.sql; do $PSQL -f "$f"; done
 $PSQL -f "$ROOT/supabase/tests/perf_leads.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_day4.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_import.sql" 2>&1
+bash "$ROOT/supabase/tests/perf_queue_concurrency.sh" "host=$WORK port=54327 user=postgres dbname=postgres" 2>&1

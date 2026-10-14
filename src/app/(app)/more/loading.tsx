@@ -44,6 +44,21 @@ export default async function Loading() {
       </div>
 
       <div className="flex flex-col gap-3">
+        <div className={`h-7 w-40 ${bar}`} />
+        <div className="flex flex-col gap-4 rounded-lg bg-card p-4 sm:p-6">
+          <div className="flex flex-col gap-2">
+            <div className={`h-5 w-24 ${bar}`} />
+            <div className="h-11 w-full max-w-md rounded-md border border-border bg-background" />
+            <div className={`h-5 w-80 max-w-full ${bar}`} />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className={`h-11 w-40 rounded-md ${bar}`} />
+            <div className="min-h-6" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
         <div className={`h-7 w-24 ${bar}`} />
         <div className="flex flex-wrap items-center gap-3 rounded-lg bg-card p-4 sm:p-6">
           {/* Language and appearance switches (measured: 91 px and 188-211 px wide, 52 px tall on phones). */}
