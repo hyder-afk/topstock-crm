@@ -6,9 +6,120 @@
   "Home": {
     "tagline": "Small start. Same grade. Big orders.",
     "hello": "Hello",
-    "emptyTitle": "Your day at a glance",
-    "emptyBody": "Today’s tasks, meetings and your pipeline will show here once they’re in the CRM.",
-    "addName": "Add your first name to the greeting"
+    "addName": "Add your first name to the greeting",
+    "title": "Home",
+    "calmLine": "You have {tasks, plural, one {# task} other {# tasks}} today and {meetings, plural, one {# meeting} other {# meetings}}.",
+    "calmTasks": "You have {tasks, plural, one {# task} other {# tasks}} today.",
+    "calmMeetings": "You have {meetings, plural, one {# meeting} other {# meetings}} today.",
+    "nothingToday": "Nothing due today.",
+    "loadFailed": "Couldn’t load",
+    "retry": "Retry",
+    "updatedAgo": "Updated {ago}",
+    "refreshFailed": "Couldn’t refresh. These figures are from {ago}.",
+    "loading": "Loading Home…",
+    "scope": {
+      "label": "Figures for",
+      "team": "Team",
+      "mine": "Mine",
+      "heading": "{title} · Team"
+    },
+    "kpi": {
+      "rowLabel": "Key figures",
+      "rowFailed": "Couldn’t load the figures",
+      "open": {
+        "label": "Open pipeline",
+        "deals": "{count, plural, one {# deal} other {# deals}}",
+        "stalled": "{count} stalled",
+        "noValue": "{count} without a value",
+        "empty": "No open deals yet. Mark a lead Interested to open one."
+      },
+      "won": {
+        "label": "Won this month",
+        "deals": "{count, plural, =0 {No deals won yet} one {# deal} other {# deals}}"
+      },
+      "calls": {
+        "label": "Calls today",
+        "reached": "{count} reached",
+        "empty": "No calls yet today"
+      },
+      "tasks": {
+        "label": "Tasks due",
+        "overdue": "{count} overdue",
+        "empty": "Nothing due"
+      }
+    },
+    "today": {
+      "title": "Today",
+      "overdueDays": "Overdue · {days, plural, one {# day} other {# days}}",
+      "overdue": "Overdue",
+      "allDay": "Today",
+      "more": "+{count} more",
+      "openTasks": "Open Tasks",
+      "empty": "Nothing due today.",
+      "addTask": "Add a task",
+      "markDone": "Mark “{title}” done",
+      "done": "Task done",
+      "undo": "Undo",
+      "failed": "Couldn’t update the task. Try again.",
+      "kind": {
+        "todo": "To do",
+        "call": "Call",
+        "meeting": "Meeting"
+      }
+    },
+    "queue": {
+      "title": "Work queue",
+      "counts": "{now} to call now · {later} later today",
+      "nobody": "Nobody to call right now.",
+      "newLeads": "{count, plural, =0 {No new leads this week} one {# new lead this week} other {# new leads this week}}",
+      "imported": "(+{count} imported)",
+      "start": "Start calling",
+      "failed": "Couldn’t load the queue count"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "stalled": "Stalled · no move or contact for {days, plural, one {# day} other {# days}}",
+      "closePassed": "Close date passed {date}",
+      "closing": "Closes {date}",
+      "seeAll": "See all {count} on the board",
+      "empty": "All deals are moving.",
+      "noValue": "No value"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "barLabel": "Open value by stage",
+      "deals": "{count, plural, one {# deal} other {# deals}}",
+      "winRate": "Win rate {rate}% · {won} won, {lost} lost in 90 days",
+      "winRateEmpty": "Not enough closed deals yet",
+      "lost": "Lost (30 days): {count}",
+      "lostNone": "Nothing lost in the last 30 days",
+      "empty": "No deals yet. Deals open when a lead says they’re interested.",
+      "open": "Open the pipeline"
+    },
+    "recent": {
+      "title": "Recent activity",
+      "empty": "No calls or notes yet today.",
+      "someone": "Someone",
+      "aLead": "a lead",
+      "won": "{name} won {lead}",
+      "lost": "{name} lost {lead}",
+      "move": "{name} moved {lead} to {stage}",
+      "open": "{name} opened a deal on {lead}",
+      "reopen": "{name} reopened {lead}"
+    },
+    "lowStock": {
+      "title": "Low stock",
+      "notReady": "Stock alerts will show here once inventory is set up.",
+      "allGood": "All products are above their reorder level.",
+      "summary": "{low} low · {out} out",
+      "dealsWaiting": "{count, plural, one {# deal waiting} other {# deals waiting}}",
+      "available": "{available} available · reorder at {reorder}",
+      "inTransit": "+{count} In Transit",
+      "eta": "ETA {date}",
+      "low": "Low",
+      "out": "Out of stock",
+      "open": "Open inventory"
+    }
   },
   "Settings": {
     "language": "Language",

@@ -35,6 +35,8 @@ const namespaces = [
   "LostReasons",
   "Fulfilment",
   "Palette",
+  // Day 5c: the Home dashboard.
+  "Home",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

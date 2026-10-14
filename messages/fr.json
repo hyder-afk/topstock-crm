@@ -6,9 +6,120 @@
   "Home": {
     "tagline": "Small start. Same grade. Big orders.",
     "hello": "Bonjour",
-    "emptyTitle": "Votre journée en un coup d’œil",
-    "emptyBody": "Les tâches du jour, les rendez-vous et votre pipeline s’afficheront ici dès qu’ils seront dans le CRM.",
-    "addName": "Ajoutez votre prénom à l’accueil"
+    "addName": "Ajoutez votre prénom à l’accueil",
+    "title": "Accueil",
+    "calmLine": "Vous avez {tasks, plural, one {# tâche} other {# tâches}} aujourd’hui et {meetings, plural, one {# rendez-vous} other {# rendez-vous}}.",
+    "calmTasks": "Vous avez {tasks, plural, one {# tâche} other {# tâches}} aujourd’hui.",
+    "calmMeetings": "Vous avez {meetings, plural, one {# rendez-vous} other {# rendez-vous}} aujourd’hui.",
+    "nothingToday": "Rien de prévu aujourd’hui.",
+    "loadFailed": "Chargement impossible",
+    "retry": "Réessayer",
+    "updatedAgo": "Mis à jour {ago}",
+    "refreshFailed": "Actualisation impossible. Ces chiffres datent de {ago}.",
+    "loading": "Chargement de l’accueil…",
+    "scope": {
+      "label": "Chiffres de",
+      "team": "Équipe",
+      "mine": "Moi",
+      "heading": "{title} · Équipe"
+    },
+    "kpi": {
+      "rowLabel": "Chiffres clés",
+      "rowFailed": "Chargement des chiffres impossible",
+      "open": {
+        "label": "Pipeline en cours",
+        "deals": "{count, plural, one {# affaire} other {# affaires}}",
+        "stalled": "{count, plural, one {# bloquée} other {# bloquées}}",
+        "noValue": "{count} sans montant",
+        "empty": "Aucune affaire en cours. Marquez un prospect Intéressé pour en ouvrir une."
+      },
+      "won": {
+        "label": "Gagné ce mois-ci",
+        "deals": "{count, plural, =0 {Aucune affaire gagnée} one {# affaire} other {# affaires}}"
+      },
+      "calls": {
+        "label": "Appels aujourd’hui",
+        "reached": "{count, plural, one {# joint} other {# joints}}",
+        "empty": "Aucun appel aujourd’hui"
+      },
+      "tasks": {
+        "label": "Tâches à faire",
+        "overdue": "{count} en retard",
+        "empty": "Rien à faire"
+      }
+    },
+    "today": {
+      "title": "Aujourd’hui",
+      "overdueDays": "En retard · {days, plural, one {# jour} other {# jours}}",
+      "overdue": "En retard",
+      "allDay": "Aujourd’hui",
+      "more": "+{count} de plus",
+      "openTasks": "Ouvrir Tâches",
+      "empty": "Rien de prévu aujourd’hui.",
+      "addTask": "Ajouter une tâche",
+      "markDone": "Marquer « {title} » comme faite",
+      "done": "Tâche faite",
+      "undo": "Annuler",
+      "failed": "La tâche n’a pas pu être mise à jour. Réessayez.",
+      "kind": {
+        "todo": "À faire",
+        "call": "Appel",
+        "meeting": "Rendez-vous"
+      }
+    },
+    "queue": {
+      "title": "File d’appels",
+      "counts": "{now} à appeler maintenant · {later} plus tard aujourd’hui",
+      "nobody": "Personne à appeler pour l’instant.",
+      "newLeads": "{count, plural, =0 {Aucun nouveau prospect cette semaine} one {# nouveau prospect cette semaine} other {# nouveaux prospects cette semaine}}",
+      "imported": "(+{count} importés)",
+      "start": "Commencer les appels",
+      "failed": "Chargement du nombre d’appels impossible"
+    },
+    "attention": {
+      "title": "À surveiller",
+      "stalled": "Bloquée · aucun mouvement ni contact depuis {days, plural, one {# jour} other {# jours}}",
+      "closePassed": "Date de clôture dépassée ({date})",
+      "closing": "Clôture le {date}",
+      "seeAll": "Voir les {count} sur le pipeline",
+      "empty": "Toutes les affaires avancent.",
+      "noValue": "Sans montant"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "barLabel": "Montant en cours par étape",
+      "deals": "{count, plural, one {# affaire} other {# affaires}}",
+      "winRate": "Taux de réussite {rate} % · {won} gagnées, {lost} perdues en 90 jours",
+      "winRateEmpty": "Pas encore assez d’affaires conclues",
+      "lost": "Perdues (30 jours) : {count}",
+      "lostNone": "Aucune affaire perdue ces 30 derniers jours",
+      "empty": "Aucune affaire pour l’instant. Elles s’ouvrent quand un prospect se dit intéressé.",
+      "open": "Ouvrir le pipeline"
+    },
+    "recent": {
+      "title": "Activité récente",
+      "empty": "Aucun appel ni note aujourd’hui.",
+      "someone": "Quelqu’un",
+      "aLead": "un prospect",
+      "won": "{name} a gagné {lead}",
+      "lost": "{name} a perdu {lead}",
+      "move": "{name} a passé {lead} en {stage}",
+      "open": "{name} a ouvert une affaire sur {lead}",
+      "reopen": "{name} a rouvert {lead}"
+    },
+    "lowStock": {
+      "title": "Stock bas",
+      "notReady": "Les alertes de stock s’afficheront ici dès que l’inventaire sera configuré.",
+      "allGood": "Tous les produits sont au-dessus de leur seuil de réapprovisionnement.",
+      "summary": "{low} bas · {out} épuisés",
+      "dealsWaiting": "{count, plural, one {# affaire en attente} other {# affaires en attente}}",
+      "available": "{available} disponibles · seuil {reorder}",
+      "inTransit": "+{count} en transit",
+      "eta": "Arrivée prévue le {date}",
+      "low": "Bas",
+      "out": "Épuisé",
+      "open": "Ouvrir l’inventaire"
+    }
   },
   "Settings": {
     "language": "Langue",
