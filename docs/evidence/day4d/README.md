@@ -342,6 +342,17 @@ migration, 4c's `REDEFINED_IN_4C` rows keep editing the Day 4c one.
 | E2E local, Chromium (shared stack idle, restarted for this worktree) | `files.spec.ts` 12 passed, 5 skipped (Storage cases, CI only), `lead-page.spec.ts` 26 passed, `queue.spec.ts` 20 passed, `tasks.spec.ts` 12 passed: **70 passed, 5 skipped, 0 failed**, exit 0. Build with the uncommitted `turbopack.root` line (removed before the commit); the stack left running idle for this worktree |
 | gitleaks (`origin/main..HEAD`) | no leaks found (80 commits), exit 0 |
 
+## Merge of main after PR #15 (14 Oct 2026)
+
+PR #15 merged into main as 5f1a966. Between 959e2b8 (merged above) and 61aee60, PR #15 gained CI fixes only:
+- the queue follow-up scrolls into view at every width;
+- Cancel gives the focus to the card heading;
+- the claim release is not sent when a tel:/mailto: link is followed;
+- the Chromium CI limit went to 45 minutes;
+- two tests were hardened (the timeline menu and the reduced-motion bead).
+
+main merged into `day4d-local` with one conflict, `docs/log.md`: both sides added rows, and all are kept in date order. No migration and no file that Day 4d changes was touched, so the database checks above still hold. Lint, typecheck and 378 unit tests pass after the merge. The full e2e suite runs in CI on the PR.
+
 ## Rebase points (resolved by the merge above)
 
 - `private.lead_import_untouched` (redefined here with `files`): "-- REBASE: re-copy after 4c merges". 4c adds
