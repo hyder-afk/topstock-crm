@@ -22,6 +22,8 @@ export const CLAIM_MS = CLAIM_MINUTES * 60_000;
 export const CLAIM_MARGIN_MS = 20_000;
 /** How often the page checks whether the cards on screen are still held. */
 export const CLAIM_CHECK_MS = 15_000;
+/** A beforeunload this soon after a tel:/mailto: click is the link, not the tab closing (Chromium fires it for both). */
+export const EXTERNAL_LINK_MS = 1_000;
 export const RENEW_EVERY_MS = 4 * 60_000;
 /** "In use": a key or a click in the last 10 minutes. A closed laptop holds its leads 10 minutes at most. */
 export const ACTIVE_WINDOW_MS = 10 * 60_000;

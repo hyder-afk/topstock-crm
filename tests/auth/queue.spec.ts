@@ -317,6 +317,32 @@ test("pagehide_releases_claims: closing the tab lets the claims go", async ({ br
   await context.close();
 });
 
+test("call_keeps_claims: Call and the C key follow the tel: link and the claims stay (Chromium fires beforeunload)", async ({ browser, browserName }) => {
+  // Chromium fires beforeunload when a tel: link is followed, although the page stays. WebKit has no tel: handler in a
+  // test browser and its tab-close path is covered by pagehide_releases_claims.
+  test.skip(browserName !== "chromium", "beforeunload on a tel: link is Chromium's behaviour");
+  fresh(adminEmail);
+  makeLeads(adminEmail, ["Appel Un", "Appel Deux", "Appel Trois"]);
+  // A context without the test guard that stops tel: navigation: the link is really followed, as on a rep's laptop.
+  const context = await browser.newContext({ storageState: adminState, baseURL: baseURL(), viewport: { width: 1440, height: 900 }, timezoneId: "Europe/Paris" });
+  const page = await context.newPage();
+  await openQueue(page);
+  await start(page);
+  await expect.poll(() => claims(adminEmail)).toBe("2");
+  await page.evaluate(() => {
+    (window as unknown as { unloads: number }).unloads = 0;
+    window.addEventListener("beforeunload", () => (window as unknown as { unloads: number }).unloads++);
+  });
+  await card(page).locator("a[href^='tel:']").first().click();
+  await page.keyboard.press("KeyC");
+  // The browser did treat both as leaving (so the test reproduces the bug), and the page is still the queue.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { unloads: number }).unloads)).toBe(2);
+  await page.waitForTimeout(3_000);
+  await expect(card(page)).toHaveCount(1);
+  expect(claims(adminEmail)).toBe("2");
+  await context.close();
+});
+
 test("rep_sees_only_mine, and the lead page says who is on a lead", async ({ browser }) => {
   fresh(adminEmail, repEmail);
   const [repLead] = makeLeads(repEmail, ["Malo Prospect"]);

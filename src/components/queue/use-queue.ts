@@ -12,6 +12,7 @@ import {
   ACTIVE_WINDOW_MS,
   CLAIM_CHECK_MS,
   CLAIM_MS,
+  EXTERNAL_LINK_MS,
   RENEW_EVERY_MS,
   RETRY_DELAYS_MS,
   addExcluded,
@@ -549,8 +550,19 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
   // from the browser's page cache, the claims are gone: start again from the start screen.
   // Safari can close a tab without its pagehide reaching the page, and drops keepalive requests sent while it closes:
   // beforeunload sends too (once per page life), and a beacon goes first, with the keepalive request as the fallback.
+  // Chromium also fires beforeunload when a tel: or mailto: link is followed (the Call button, the C key), although the
+  // page stays: a beforeunload within a second of such a click is not a goodbye, so the claims stay while the rep calls.
   useEffect(() => {
     let sent = false;
+    let externalAt = -Infinity;
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as Element | null)?.closest?.("a[href]");
+      if (a && /^(tel|mailto|sms):/i.test(a.getAttribute("href") ?? "")) externalAt = performance.now();
+    };
+    const onBeforeUnload = () => {
+      if (performance.now() - externalAt < EXTERNAL_LINK_MS) return;
+      onHide();
+    };
     const onHide = () => {
       if (sent) return;
       const ids = cardsRef.current.map((c) => c.id).slice(0, 3);
@@ -580,12 +592,14 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       setCards(() => []);
       setPhase("start");
     };
+    document.addEventListener("click", onClick, true);
     window.addEventListener("pagehide", onHide);
-    window.addEventListener("beforeunload", onHide);
+    window.addEventListener("beforeunload", onBeforeUnload);
     window.addEventListener("pageshow", onShow);
     return () => {
+      document.removeEventListener("click", onClick, true);
       window.removeEventListener("pagehide", onHide);
-      window.removeEventListener("beforeunload", onHide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
       window.removeEventListener("pageshow", onShow);
       // Leaving the queue inside the app: let the claims go.
       const ids = cardsRef.current.map((c) => c.id).slice(0, 3);
