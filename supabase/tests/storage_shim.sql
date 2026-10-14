@@ -34,6 +34,17 @@ create unique index bucketid_objname on storage.objects (bucket_id, name);
 alter table storage.buckets enable row level security;
 alter table storage.objects enable row level security;
 grant all on storage.buckets, storage.objects to anon, authenticated, service_role;
+-- As storage-api does (storage.protect_delete): a direct SQL delete from its tables is refused unless the session sets
+-- storage.allow_delete_query (the Storage API sets it for its own deletes), so tests that delete directly say so.
+create function storage.protect_delete() returns trigger language plpgsql as $$
+begin
+  if coalesce(current_setting('storage.allow_delete_query', true), 'false') <> 'true' then
+    raise exception 'Direct deletion from storage tables is not allowed. Use the Storage API instead.' using errcode = '42501';
+  end if;
+  return null;
+end $$;
+create trigger protect_buckets_delete before delete on storage.buckets for each statement execute function storage.protect_delete();
+create trigger protect_objects_delete before delete on storage.objects for each statement execute function storage.protect_delete();
 create function storage.foldername(name text) returns text[]
 language plpgsql as $$
 declare

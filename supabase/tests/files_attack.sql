@@ -10,6 +10,10 @@
 -- superuser with a user's claims (only the triggers: a guard on its own), and helpers that undo what they try.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- storage-api refuses a direct SQL delete from its tables unless the session allows it (storage.protect_delete; the
+-- Storage API sets this for its own deletes). This test deletes objects directly to stand in for storage-api, so it
+-- allows them for its session only. Row level security still decides every delete made as a user.
+set storage.allow_delete_query = 'true';
 
 -- Helpers (temporary functions do not survive into a new psql session, so they are defined again here) -------------
 create function pg_temp.as_user(sub text, aal text, totp_age_s integer default null) returns void

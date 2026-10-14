@@ -81,7 +81,7 @@ test("S2: the claims storage-api gives the bucket policies (aal, amr)", async ()
     expect(aal.sees_probe, "storage-api must pass aal to the policies (uploads depend on it)").toBe(true);
   } finally {
     sql(`drop policy if exists spike_aal on storage.objects; drop policy if exists spike_amr on storage.objects;
-         delete from storage.objects where bucket_id in ('spike-aal', 'spike-amr'); delete from storage.buckets where id in ('spike-aal', 'spike-amr');`);
+         set storage.allow_delete_query = 'true'; delete from storage.objects where bucket_id in ('spike-aal', 'spike-amr'); delete from storage.buckets where id in ('spike-aal', 'spike-amr');`);
   }
 });
 
@@ -122,7 +122,7 @@ test("S4: metadata keys, and whether they exist when the insert policy runs", as
     atInsert = res.status;
   } finally {
     sql(`drop policy if exists spike_meta_insert on storage.objects; drop policy if exists spike_meta_select on storage.objects;
-         delete from storage.objects where bucket_id = 'spike-meta'; delete from storage.buckets where id = 'spike-meta';`);
+         set storage.allow_delete_query = 'true'; delete from storage.objects where bucket_id = 'spike-meta'; delete from storage.buckets where id = 'spike-meta';`);
   }
   record("S4", {
     upload_status: put.status,
@@ -193,11 +193,11 @@ test("S5: a signed upload link after the upload was cancelled", async () => {
       policy_rechecked_at_upload: putStatus !== null && putStatus >= 400,
     });
   } finally {
-    // Test-only clean-up of the probe's row and object (the bytes left in CI's container do not matter). Newer storage
-    // versions may refuse a direct delete from storage.objects; a leftover probe object harms nothing.
+    // Test-only clean-up of the probe's row and object (the bytes left in CI's container do not matter). storage-api
+    // refuses a direct delete unless the session allows it (storage.protect_delete); a leftover probe object harms nothing.
     sql(`delete from public.files where id = '${begun.id}'`);
     try {
-      sql(`delete from storage.objects where bucket_id = 'lead-files' and name = '${begun.path}'`);
+      sql(`set storage.allow_delete_query = 'true'; delete from storage.objects where bucket_id = 'lead-files' and name = '${begun.path}'`);
     } catch {
       test.info().annotations.push({ type: "S5 clean-up", description: "probe object left in place" });
     }

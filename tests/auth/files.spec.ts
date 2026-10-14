@@ -663,10 +663,16 @@ test.describe("with storage-api (CI)", () => {
     await expect(link).toBeVisible({ timeout: 30_000 });
     const id = sql(`select id from public.files where company_id = '${lead}' and name = 'Catalogue été.pdf' and status = 'ready'`);
     expect(id).toMatch(uuid);
-    // Open: a new tab lands on Storage's signed link (the route's 303), with the PDF.
-    const [popup] = await Promise.all([page.waitForEvent("popup"), link.click()]);
-    await popup.waitForLoadState();
-    expect(new URL(popup.url()).origin).toBe(new URL(env("SUPABASE_LOCAL_URL")).origin);
+    // Open: a new tab follows the route's 303 to Storage's signed link. The tab's request is checked rather than its
+    // final address: a test WebKit saves a PDF as a download (the tab then has no address), Chromium shows it.
+    const storageOrigin = new URL(env("SUPABASE_LOCAL_URL")).origin;
+    const [popup, landed] = await Promise.all([
+      page.waitForEvent("popup"),
+      context.waitForEvent("request", (r) => new URL(r.url()).origin === storageOrigin && r.url().includes("/storage/v1/object/sign/")),
+      link.click(),
+    ]);
+    expect(landed.isNavigationRequest()).toBe(true);
+    expect(new URL(landed.url()).pathname).toContain("/lead-files/");
     await popup.close();
     expect(sql(`select count(*) from public.audit_log where action = 'file_access' and record_id = '${id}'`)).toBe("1");
     // The link itself, read from the redirect (it is in no page): it works now, not after 60 s.
