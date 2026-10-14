@@ -4,9 +4,10 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { animate, motion, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { project, springs } from "@/lib/motion";
+import { prefetchHome } from "@/components/home/use-home";
 import { prefetchPipeline } from "@/lib/prefetch";
 import { sectionForPath, sections, type SectionId } from "@/lib/nav";
 import { goKeys } from "@/lib/shortcuts";
@@ -15,6 +16,10 @@ import { cn } from "@/lib/utils";
 const BEAD = 56; // px, the red bead that marks the current section
 
 type Slot = { id: SectionId; x: number };
+
+// Cache-first sections (Day 5 design D32): hovering or focusing their dock link warms their data, so the route change
+// renders from the query cache.
+const warm: Partial<Record<SectionId, (qc: QueryClient) => void>> = { home: prefetchHome, pipeline: prefetchPipeline };
 
 // The floating dock (Master Plan 4): bottom-centre on every width, a Signal Red bead sits over the current section.
 // Tap a section, or drag the bead along the bar and let go: it snaps to the nearest section (velocity-projected) and
@@ -141,8 +146,8 @@ export function Dock() {
               }}
               aria-current={active === s.id ? "page" : undefined}
               // Day 5b (design D32): the pipeline's data goes into the cache on hover or focus, so the route renders at once.
-              onPointerEnter={s.id === "pipeline" ? () => prefetchPipeline(queryClient) : undefined}
-              onFocus={s.id === "pipeline" ? () => prefetchPipeline(queryClient) : undefined}
+              onPointerEnter={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
+              onFocus={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
               title={tShortcut("tooltip", { key: goKeys[s.id].toUpperCase() })}
               className={cn(
                 "group flex min-w-0 flex-col items-center justify-end gap-0.5 rounded-lg pb-2 text-[0.6875rem] tracking-[0.01em] transition-colors duration-150",

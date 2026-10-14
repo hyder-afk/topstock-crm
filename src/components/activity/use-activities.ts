@@ -76,6 +76,7 @@ export function refreshLead(queryClient: QueryClient, leadId: string) {
   void queryClient.invalidateQueries({ queryKey: leadTasksKey(leadId) });
   void queryClient.invalidateQueries({ queryKey: leadKey(leadId) });
   void queryClient.invalidateQueries({ queryKey: ["leads"] });
+  void queryClient.invalidateQueries({ queryKey: ["home"] }); // Home's calls, tasks and feed (Day 5c)
 }
 
 // The last entry this tab logged, for U and Cmd/Ctrl+Z (design 5.3: toast 10 s, keys and the entry menu 2 minutes).
