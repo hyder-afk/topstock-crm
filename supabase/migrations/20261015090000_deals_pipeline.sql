@@ -23,9 +23,9 @@
 -- lead_required, fields, rate_limited, undo_expired, bad_cursor, bad_order, bad_scope, stage, limit; 42501 step_up,
 -- not_editable, stage, source, lead_not_editable, scope, blocked_<code>; P0002 for a deal or lead that is missing or not
 -- visible (the same answer for both); 23503 deal_has_order (Day 6).
--- REBASE: this migration recreates two functions from their merged bodies: private.task_guard (Day 4a) and
--- private.audit_row (Day 4b). Day 4c/4d may redefine them; each block is marked "-- REBASE" and listed in
--- docs/evidence/day5a/README.md ("Rebase points").
+-- REBASE: this migration recreates two functions from their merged bodies: private.task_guard (Day 4a; Day 4c left it
+-- as it was) and private.audit_row (re-copied from Day 4c's merged body at the 4c rebase, 14 Oct). Day 4d may redefine
+-- them; each block is marked "-- REBASE" and listed in docs/evidence/day5a/README.md ("Rebase points").
 
 -- ===========================================================================
 -- Part 1. Stages (gap G4, D9)
@@ -127,7 +127,8 @@ create unique index deals_creator_request_idx on public.deals (created_by, reque
 drop index public.activities_deal_idx;
 create index activities_deal_idx on public.activities (deal_id, created_at desc, id desc) where deal_id is not null;
 
--- REBASE: re-copy from the latest merged body after 4c/4d merge. The task guard as Day 4a merged it, with one change:
+-- REBASE: re-copy from the latest merged body after 4d merge (4c did not change it). The task guard as Day 4a merged
+-- it, with one change:
 -- deal_id joins the referential exception (a deleted deal empties the link one trigger level down, spike S5).
 create or replace function private.task_guard() returns trigger
 language plpgsql set search_path = '' as $$
@@ -737,14 +738,15 @@ grant insert (company_id, contact_id, title, value, expected_close, fulfilment, 
       update (title, value, expected_close, fulfilment, contact_id, owner_id, stage_id, lost_reason, lost_note)
   on public.deals to authenticated;
 
--- REBASE: re-copy from the latest merged body after 4c/4d merge. The audit trigger as Day 4b merged it, plus deals:
+-- REBASE: re-copy from the latest merged body after 4d merge. The audit trigger as Day 4c merged it (call_zone and
+-- queue_rank hidden, has_contact_phone not diffed), plus deals:
 -- the version number is never diffed (it moves on every change); a lost note change records its lengths, not the text;
 -- a new or deleted deal carries lost_note_len instead of the text. Stage, status, value, fulfilment, owner, close time
 -- and stage clock stay audited with old and new values. Stage history is its own record and is not audited.
 create or replace function private.audit_row() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
-  hidden constant text[] := array['search_text', 'email_key', 'phone_key', 'name_key'];
+  hidden constant text[] := array['search_text', 'email_key', 'phone_key', 'name_key', 'call_zone', 'queue_rank'];
   is_activity constant boolean := tg_table_name = 'activities';
   is_deal constant boolean := tg_table_name = 'deals';
   rec jsonb := (case when tg_op = 'DELETE' then to_jsonb(old) else to_jsonb(new) end) - hidden;
@@ -762,7 +764,7 @@ begin
       from jsonb_each(to_jsonb(new)) n
       join jsonb_each(to_jsonb(old)) o using (key)
      where n.value is distinct from o.value
-       and n.key not in ('updated_at', 'last_activity_at', 'next_action_at', 'phone_wrong_at')
+       and n.key not in ('updated_at', 'last_activity_at', 'next_action_at', 'phone_wrong_at', 'has_contact_phone')
        and not n.key = any (hidden)
        and not (is_activity and n.key = 'body')
        and not (is_deal and n.key in ('version', 'lost_note'));

@@ -567,11 +567,57 @@ begin
 exception when sqlstate 'TS001' then perform pg_temp.su();
 end $$;
 
--- claim_card_open_deal_count (design 8.1) waits for the Day 4c rebase: claim_next_lead does not exist on this branch.
-do $$ begin
-  if to_regproc('public.claim_next_lead') is not null then
-    raise exception 'FAIL: claim_next_lead exists: add claim_card_open_deal_count (design 8.1) at the 4c rebase';
+-- 8. claim_card_open_deal_count (design 8.1, 3.2): the work queue's card (Day 4c's private.queue_card, which
+-- claim_next_lead returns) says how many open deals the caller sees on the lead and the newest in stage, under deals RLS.
+do $$
+declare
+  r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
+  r2 constant uuid := '00000000-0000-0000-0000-0000000005a2';
+  admin constant uuid := '00000000-0000-0000-0000-00000000000a';
+  lead uuid := pg_temp.new_lead(r1, 'warm');
+  empty uuid := pg_temp.new_lead(r1, 'cold');
+  old_deal uuid := pg_temp.su_deal(lead, r1);
+  won_deal uuid := pg_temp.su_deal(lead, r1);
+  new_deal uuid;
+  c jsonb;
+begin
+  update public.deals set stage_entered_at = now() - interval '20 days' where id = old_deal;
+  update public.deals set stage_id = (select id from public.pipeline_stages s where s.key = 'won'
+                                       and s.org_id = (select org_id from public.companies where id = lead)),
+                          status = 'won', closed_at = now(), value = 10, fulfilment = 'from_stock', version = 1
+   where id = won_deal;
+  perform pg_temp.act(r1);
+  new_deal := (public.open_deal(lead, 'Newer', 18400) -> 'deal' ->> 'id')::uuid;
+  perform public.move_deal(new_deal, 'negotiations', 0);
+  if position('private.queue_card(' in (select p.prosrc from pg_proc p where p.oid = to_regproc('public.claim_next_lead'))) = 0 then
+    raise exception 'FAIL: claim_next_lead no longer builds its cards with private.queue_card';
   end if;
+  c := private.queue_card(lead, null, false) -> 'open_deal';
+  if (c ->> 'count')::integer <> 2 or (c -> 'latest' ->> 'id')::uuid <> new_deal or c -> 'latest' ->> 'stage' <> 'negotiations'
+     or c -> 'latest' ->> 'value' <> '18400.00' then
+    raise exception 'FAIL: claim_card_open_deal_count for the owner %', c;
+  end if;
+  c := private.queue_card(empty, null, false) -> 'open_deal';
+  if (c ->> 'count')::integer <> 0 or c -> 'latest' <> 'null'::jsonb then
+    raise exception 'FAIL: claim_card_open_deal_count on a lead with none %', c;
+  end if;
+  -- another rep sees none of r1's deals (deals RLS), whatever the card says about the lead
+  perform pg_temp.act(r2);
+  c := private.queue_card(lead, null, false) -> 'open_deal';
+  if (c ->> 'count')::integer <> 0 or c -> 'latest' <> 'null'::jsonb then
+    raise exception 'FAIL: claim_card_open_deal_count respects deals RLS %', c;
+  end if;
+  perform pg_temp.act(admin);
+  if (private.queue_card(lead, null, false) -> 'open_deal' ->> 'count')::integer <> 2 then
+    raise exception 'FAIL: claim_card_open_deal_count for an admin';
+  end if;
+  perform pg_temp.su();
+  perform pg_temp.invariants('queue card deals');
+  raise exception 'undo' using errcode = 'TS001';
+exception when sqlstate 'TS001' then perform pg_temp.su();
+end $$;
+
+do $$ begin
   perform pg_temp.invariants('the end of deal_links_attack');
 end $$;
 \echo 'deal_links_attack: all checks passed'

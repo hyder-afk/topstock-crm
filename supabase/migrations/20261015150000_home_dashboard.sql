@@ -6,7 +6,6 @@
 --    Work queue and Needs attention cards count, in the caller's profile zone (a 23 or 25 hour day stays one day);
 --  - home_attention: open deals that are stalled, past their close date or closing within 7 days, worst first;
 --  - home_recent_activity: the latest entries and deal changes, never an entry's text or a lost note;
---  - home_today_tasks: the caller's overdue and today's tasks for the Today card;
 --  - home_low_stock: a stub answering null until Day 6 (section 10), created only when Day 6 has not made it already.
 -- House rules (design section 3): set search_path = '' everywhere; every function is SECURITY INVOKER with static SQL
 -- (Mine and Team are separate statements chosen by IF, each with a fixed index condition; no format(), no EXECUTE), so
@@ -14,10 +13,9 @@
 -- (42501 'scope'), anything else than team or mine is 22023 'bad_scope'. No custom setting is read; "today" and "this
 -- month" come from the server clock and the caller's profile zone (private.caller_zone, Day 4b), never the browser.
 -- Leakproof rule (Day 5a): deals.value is summed, never compared.
--- REBASE: re-copy after 4c/4d merge. Day 4c (not on this branch) adds public.count_tasks and public.list_tasks. At the
--- 4c rebase: the tasks part of home_summary calls count_tasks('mine') instead of its own counts, and home_today_tasks is
--- removed (the /api/home route calls list_tasks('overdue' / 'today', 'mine', 6) instead). Both blocks are marked
--- "-- REBASE" and listed in docs/evidence/day5c/README.md ("Rebase points").
+-- Tasks come from Day 4c (on main since the 4c rebase, 14 Oct): the tasks part of home_summary calls
+-- public.count_tasks('mine'), and the Today card reads public.list_tasks('overdue' / 'today', 'mine', limit 6) through
+-- the Home route (docs/evidence/day5c/README.md, "Rebase points").
 
 -- ===========================================================================
 -- Part 1. The caller's day and month (design 5.8 variables)
@@ -200,16 +198,16 @@ begin
      where a.user_id = v_me and a.created_at >= w.day_start and a.type = 'call';
   end if;
 
-  -- K5 and K6: always the caller's own open tasks (Day 4c's buckets in the profile zone).
-  -- REBASE: re-copy after 4c/4d merge. Day 4c's public.count_tasks('mine') gives overdue and today; keep the meetings
-  -- count here.
+  -- K5 and K6: always the caller's own open tasks. Overdue and today are Day 4c's count_tasks('mine') (its buckets in
+  -- the profile zone); the meetings of the day are counted here (open meetings due between the day's start and end).
   select jsonb_build_object(
-           'overdue', count(*) filter (where t.due_date < w.today or t.due_at < now()),
-           'today', count(*) filter (where t.due_date = w.today or (t.due_at >= now() and t.due_at < w.day_end)),
-           'meetings', count(*) filter (where t.kind = 'meeting' and t.due_at >= w.day_start and t.due_at < w.day_end))
+           'overdue', (k.v ->> 'overdue')::integer,
+           'today', (k.v ->> 'today')::integer,
+           'meetings', (select count(*) from public.tasks t
+                         where t.assignee_id = v_me and t.done_at is null and t.cancelled_at is null
+                           and t.kind = 'meeting' and t.due_at >= w.day_start and t.due_at < w.day_end))
     into v_tasks
-    from public.tasks t
-   where t.assignee_id = v_me and t.done_at is null and t.cancelled_at is null;
+    from public.count_tasks('mine') as k (v);
 
   -- K7: leads created in the last 7 days, and how many of them came from an import.
   select jsonb_build_object('count', count(*), 'imported', count(*) filter (where c.import_batch_id is not null))
@@ -363,49 +361,6 @@ begin
 end;
 $$;
 
--- REBASE: re-copy after 4c/4d merge. A stand-in for Day 4c's list_tasks('overdue' / 'today', 'mine', 6), which is not
--- on this branch: remove this function at the 4c rebase (and its grant, tests and mutation rows). The caller's open
--- tasks that are overdue or due today (Day 4c's buckets in the profile zone), overdue first, then today's meetings by
--- time, then the rest by when they are due (an all-day task at the start of its day); overdue_days counts whole days in
--- the profile zone (0: earlier today). total and overdue count them all.
-create function public.home_today_tasks(p_limit integer default 6) returns jsonb
-language plpgsql stable set search_path = '' as $$
-declare
-  v_me constant uuid := (select auth.uid());
-  v_tz text;
-  w record;
-  v jsonb;
-begin
-  if v_me is null or not (select private.has_aal2()) then
-    raise exception 'two-factor sign-in required' using errcode = '42501';
-  end if;
-  if p_limit is null or p_limit not between 1 and 20 then
-    raise exception 'between 1 and 20 tasks' using errcode = '22023', hint = 'limit';
-  end if;
-  v_tz := private.caller_zone();
-  select * into w from private.home_window(now(), v_tz);
-  with t as materialized (
-    select t.id, t.title, t.kind, t.due_date, t.due_at, t.company_id, c.name as company_name,
-           (t.due_date < w.today or t.due_at < now()) is true as overdue,
-           case when (t.due_date < w.today or t.due_at < now()) is true
-                then w.today - coalesce(t.due_date, (t.due_at at time zone v_tz)::date) end as overdue_days,
-           coalesce(t.due_at, t.due_date::timestamp at time zone v_tz) as sort_at
-      from public.tasks t
-      left join public.companies c on c.id = t.company_id
-     where t.assignee_id = v_me and t.done_at is null and t.cancelled_at is null
-       and (t.due_date <= w.today or t.due_at < w.day_end))
-  select jsonb_build_object(
-           'total', (select count(*) from t),
-           'overdue', (select count(*) from t where t.overdue),
-           'items', coalesce((select jsonb_agg(to_jsonb(x) order by x.overdue desc, (x.kind = 'meeting') desc, x.sort_at, x.id)
-                                from (select * from t
-                                       order by t.overdue desc, (t.kind = 'meeting') desc, t.sort_at, t.id
-                                       limit p_limit) x), '[]'::jsonb))
-    into v;
-  return v;
-end;
-$$;
-
 -- ===========================================================================
 -- Part 4. Low stock before Day 6 (D30; contract in design section 10)
 -- ===========================================================================
@@ -439,8 +394,7 @@ begin
   foreach f in array array[
     'public.home_summary(text)',
     'public.home_attention(text, integer)',
-    'public.home_recent_activity(text, integer)',
-    'public.home_today_tasks(integer)'
+    'public.home_recent_activity(text, integer)'
   ] loop
     execute format('revoke all on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);

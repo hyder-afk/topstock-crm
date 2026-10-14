@@ -170,7 +170,7 @@ begin
   for f in select p.oid, p.oid::regprocedure::text as sig, p.prosecdef, p.proconfig, p.prosrc
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where (n.nspname = 'public' and p.proname in ('home_summary', 'home_attention', 'home_recent_activity',
-                                                         'home_today_tasks', 'home_low_stock'))
+                                                         'home_low_stock'))
                or (n.nspname = 'private' and p.proname in ('home_window', 'home_open_deals')) loop
     if f.prosecdef or not (f.proconfig @> array['search_path=""'])
        or not has_function_privilege('authenticated', f.oid, 'EXECUTE')
@@ -181,9 +181,10 @@ begin
   end loop;
   select count(*) into n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
    where (s.nspname = 'public' and p.proname in ('home_summary', 'home_attention', 'home_recent_activity',
-                                                'home_today_tasks', 'home_low_stock'))
+                                                'home_low_stock', 'home_today_tasks'))
       or (s.nspname = 'private' and p.proname in ('home_window', 'home_open_deals'));
-  perform pg_temp.eq('Home functions', n, 7);
+  -- Six: the 5c stand-in home_today_tasks is gone since the 4c rebase (the Today card reads Day 4c's list_tasks).
+  perform pg_temp.eq('Home functions', n, 6);
   -- recent_activity_has_no_body: the feed's columns are fixed by its return type, and none is an entry's text or a note.
   perform pg_temp.eq('home_recent_activity columns',
     (select array_to_string(p.proargnames[2:], ',') from pg_proc p where p.oid = 'public.home_recent_activity(text, integer)'::regprocedure),
@@ -247,14 +248,13 @@ declare
 begin
   perform pg_temp.act('00000000-0000-0000-0000-0000000005c0', 'aal1', null);
   foreach stmt in array array['select public.home_summary(''mine'')', 'select public.home_attention(''mine'')',
-                              'select * from public.home_recent_activity(''mine'')', 'select public.home_today_tasks()'] loop
+                              'select * from public.home_recent_activity(''mine'')'] loop
     perform pg_temp.expect_error(stmt, '42501');
   end loop;
   perform pg_temp.su();
   perform set_config('role', 'anon', false);
   foreach stmt in array array['select public.home_summary(''mine'')', 'select public.home_attention(''mine'')',
-                              'select * from public.home_recent_activity(''mine'')', 'select public.home_today_tasks()',
-                              'select public.home_low_stock()'] loop
+                              'select * from public.home_recent_activity(''mine'')', 'select public.home_low_stock()'] loop
     perform pg_temp.expect_error(stmt, '42501');  -- permission denied: anon has no EXECUTE
   end loop;
   perform pg_temp.su();
@@ -277,8 +277,7 @@ begin
   end loop;
   foreach stmt in array array['select public.home_attention(''mine'', 0)', 'select public.home_attention(''mine'', 21)',
                               'select public.home_attention(''mine'', null)', 'select * from public.home_recent_activity(''mine'', 0)',
-                              'select * from public.home_recent_activity(''mine'', 21)', 'select public.home_today_tasks(0)',
-                              'select public.home_today_tasks(21)'] loop
+                              'select * from public.home_recent_activity(''mine'', 21)'] loop
     perform pg_temp.expect_error(stmt, '22023', 'limit');
   end loop;
   -- Mine is always allowed, for a rep too; a manager may ask for the team.
@@ -439,9 +438,13 @@ begin
     perform pg_temp.eq('zone ' || z, s ->> 'zone', z);
     perform pg_temp.eq('today in ' || z, (s ->> 'today')::date, w.today);
   end loop;
-  -- A zone the database does not know falls back to Paris (Day 4b caller_zone).
+  -- A zone the database does not know falls back to Paris (Day 4b caller_zone). Day 4c's check_profile_timezone refuses
+  -- such a zone on save, so the row is written with triggers off (a zone saved before 4c, or one a later time zone
+  -- database drops, can still be unknown).
   perform pg_temp.su();
+  set local session_replication_role = replica;
   update public.profiles set timezone = 'Mars/Olympus' where id = hugo;
+  set local session_replication_role = origin;
   perform pg_temp.act(hugo);
   perform pg_temp.eq('unknown zone', public.home_summary('mine') ->> 'zone', 'Europe/Paris');
   perform pg_temp.su();
@@ -636,7 +639,9 @@ begin
 exception when sqlstate 'TS001' then perform pg_temp.su(); perform pg_temp.raw(false);
 end $$;
 
--- 9. Today's tasks (stand-in for Day 4c's list_tasks; REBASE: removed at the 4c rebase) ---------------------------------
+-- 9. Today's tasks after the 4c rebase: K5/K6 are Day 4c's count_tasks('mine') plus the day's meetings, always the
+-- caller's own (an admin who may read every task gets none of a rep's), and the Today card's two reads are Day 4c's
+-- list_tasks('overdue' / 'today', 'mine', 6) in that order (the route puts the day's meetings first).
 do $$
 declare
   hugo constant uuid := '00000000-0000-0000-0000-0000000005c1';
@@ -644,7 +649,7 @@ declare
   t date := (now() at time zone 'Europe/Paris')::date;
   w record;
   overdue_old uuid; overdue_new uuid; today_all_day uuid; meeting uuid; call_later uuid;
-  r jsonb;
+  k jsonb;
 begin
   select * into w from private.home_window(now(), 'Europe/Paris');
   perform pg_temp.raw(true);
@@ -653,29 +658,30 @@ begin
   today_all_day := pg_temp.task(hugo, t);
   call_later := pg_temp.task(hugo, null, now() + (w.day_end - now()) * 3 / 4, 'call');
   meeting := pg_temp.task(hugo, null, now() + (w.day_end - now()) / 2, 'meeting');
-  perform pg_temp.task(hugo, t + 1);                       -- tomorrow: not listed
-  perform pg_temp.task(hugo, null, w.day_end, 'meeting');  -- tomorrow's first instant: not listed
+  perform pg_temp.task(hugo, t + 1);                       -- tomorrow: not counted
+  perform pg_temp.task(hugo, null, w.day_end, 'meeting');  -- tomorrow's first instant: not counted
   perform pg_temp.task(hugo, t, null, 'todo', true);       -- done
   perform pg_temp.task(hugo, t, null, 'todo', false, true);-- dismissed
   perform pg_temp.task(hiro, t);                           -- someone else's
   perform pg_temp.raw(false);
   perform pg_temp.act(hugo);
-  r := public.home_today_tasks();
-  perform pg_temp.eq('today total', (r ->> 'total')::integer, 5);
-  perform pg_temp.eq('today overdue', (r ->> 'overdue')::integer, 2);
-  perform pg_temp.eq('today order',
-    (select array_agg((i ->> 'id')::uuid order by n) from jsonb_array_elements(r -> 'items') with ordinality x (i, n)),
-    array[overdue_old, overdue_new, meeting, today_all_day, call_later]);
-  perform pg_temp.eq('overdue days',
-    (select array_agg((i ->> 'overdue_days')::integer order by n) from jsonb_array_elements(r -> 'items') with ordinality x (i, n)),
-    array[5, 1, null, null, null]::integer[]);
-  perform pg_temp.eq('today limit', jsonb_array_length(public.home_today_tasks(2) -> 'items'), 2);
-  perform pg_temp.eq('today limit total', (public.home_today_tasks(2) ->> 'total')::integer, 5);
+  k := public.home_summary('mine') -> 'tasks';
+  perform pg_temp.eq('tasks overdue', (k ->> 'overdue')::integer, 2);
+  perform pg_temp.eq('tasks today', (k ->> 'today')::integer, 3);
+  perform pg_temp.eq('tasks meetings', (k ->> 'meetings')::integer, 1);
+  perform pg_temp.eq('tasks = count_tasks', (k ->> 'overdue') || '/' || (k ->> 'today'),
+                     (public.count_tasks('mine') ->> 'overdue') || '/' || (public.count_tasks('mine') ->> 'today'));
+  perform pg_temp.eq('Today overdue list', (select array_agg(x.id order by x.sort_at, x.id)
+                                               from public.list_tasks('overdue', 'mine', null, null, 6) x),
+                     array[overdue_old, overdue_new]);
+  perform pg_temp.eq('Today list', (select array_agg(x.id order by x.sort_at, x.id) from public.list_tasks('today', 'mine', null, null, 6) x),
+                     array[today_all_day, meeting, call_later]);
   perform pg_temp.act(hiro);
-  perform pg_temp.eq('Hiro today', (public.home_today_tasks() ->> 'total')::integer, 1);
-  -- Always the caller's own: an admin, who may read every task in the org, gets none of these.
+  perform pg_temp.eq('Hiro today', (public.home_summary('mine') -> 'tasks' ->> 'today')::integer, 1);
+  -- Always the caller's own: an admin, who may read every task in the org, counts none of these (Team or Mine).
   perform pg_temp.act('00000000-0000-0000-0000-0000000005c0');
-  perform pg_temp.eq('Hana today (always her own)', (public.home_today_tasks() ->> 'total')::integer, 0);
+  perform pg_temp.eq('Hana tasks, Team (always her own)', public.home_summary('team') -> 'tasks',
+                     jsonb_build_object('overdue', 0, 'today', 0, 'meetings', 0));
   perform pg_temp.su();
   raise exception 'undo' using errcode = 'TS001';
 exception when sqlstate 'TS001' then perform pg_temp.su(); perform pg_temp.raw(false);

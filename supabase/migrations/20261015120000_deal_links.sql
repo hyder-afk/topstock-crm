@@ -12,12 +12,11 @@
 -- House rules as Day 5a: set search_path = '' everywhere; SECURITY INVOKER with static SQL; constant messages; no custom
 -- setting is read. Error hints added here: 22023 state (a deal with the wrong outcome, or a link and an open together),
 -- bounds (p_open_deal null), deal_title, value; P0002 "deal not found on this lead".
--- REBASE: re-copy after 4c/4d merge. This migration recreates three Day 4b functions from their merged bodies:
--- public.log_activity (dropped and recreated with four new parameters), public.undo_activity and public.get_lead. Day 4c
--- redefines log_activity (p_from_queue releases the queue claim) and get_lead (queue fields), and adds
--- claim_next_lead, whose cards gain open_deal {count, latest} in 5b (design 3.2): that part waits for the 4c rebase
--- (claim_next_lead does not exist on this branch). Each block is marked "-- REBASE" and listed in
--- docs/evidence/day5b/README.md ("Rebase points").
+-- REBASE: re-copy after 4d merge. This migration recreates four functions from their merged bodies: public.log_activity
+-- (Day 4c's, dropped and recreated with four new parameters), public.undo_activity (Day 4b's; 4c left it as it was),
+-- public.get_lead (Day 4c's, with the queue's worked_by) and private.queue_card (Day 4c's: claim_next_lead's cards gain
+-- open_deal {count, latest}, design 3.2). They were re-copied from main at the 4c rebase (14 Oct). Each block is marked
+-- "-- REBASE" and listed in docs/evidence/day5b/README.md ("Rebase points").
 
 -- ===========================================================================
 -- Part 1. Entries name a deal again (gap G9; threat 17)
@@ -56,9 +55,10 @@ language sql stable set search_path = '' as $$
   where a.id = p_id
 $$;
 
--- REBASE: re-copy after 4c/4d merge. Day 4b's log_activity as merged, plus Day 5b: p_deal (the entry names a deal of
--- this lead), p_open_deal with p_deal_title and p_deal_value (Interested or Book meeting opens a deal, step 7b), and
--- the deal part of the answer: {deal_id, deal: {id, opened: true, open_deal_count} | {opened: false, reason} | null}.
+-- REBASE: re-copy after 4d merge. Day 4c's log_activity as merged (the lead locked FOR NO KEY UPDATE, the queue's
+-- digit rule for a working number, p_from_queue releasing the caller's claim), plus Day 5b: p_deal (the entry names a
+-- deal of this lead), p_open_deal with p_deal_title and p_deal_value (Interested or Book meeting opens a deal, step 7b),
+-- and the deal part of the answer: {deal_id, deal: {id, opened: true, open_deal_count} | {opened: false, reason} | null}.
 drop function public.log_activity(uuid, text, text, text, uuid, text, date, timestamptz, text, uuid, boolean);
 create function public.log_activity(
   p_company uuid,
@@ -237,8 +237,11 @@ begin
     elsif p_contact is not null then
       perform 1 from public.contacts k where k.id = p_contact for key share;
     end if;
+    -- (4c: FOR NO KEY UPDATE, not FOR UPDATE: it still makes outcomes on one lead take turns, and it no longer blocks
+    -- the key-share lock a foreign key check takes, so a teammate claiming this lead in the queue never waits for the
+    -- call being saved, nor deadlocks with its claim release in step 9.)
     select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
-      into v_lead from public.companies c where c.id = p_company for update;
+      into v_lead from public.companies c where c.id = p_company for no key update;
     v_editable := found;
     if not v_editable then
       select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
@@ -358,12 +361,13 @@ begin
     end if;
   end if;
   -- The task this entry makes: the follow-up or the meeting (the caller's), or after a wrong number with no other
-  -- working number, "find the right number" for today, for the owner when the caller may assign it. Made even when the
-  -- caller may not change the lead: they had the conversation.
+  -- working number (one with at least one digit, not marked wrong: the queue's own rule), "find the right number" for
+  -- today, for the owner when the caller may assign it. Made even when the caller may not change the lead: they had
+  -- the conversation.
   if p_outcome = 'wrong_number' then
-    if not ((v_lead.phone is not null and v_lead.phone_wrong_at is null and p_dialled <> 'lead')
+    if not ((coalesce(v_lead.phone ~ '[0-9]', false) and v_lead.phone_wrong_at is null and p_dialled <> 'lead')
             or exists (select 1 from public.contacts k
-                        where k.company_id = p_company and k.phone is not null and k.phone_wrong_at is null
+                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null
                           and not (p_dialled = 'contact' and k.id = p_contact))) then
       v_task_kind := 'todo';
       v_due_date := v_today;
@@ -418,14 +422,18 @@ begin
           v_completed, v_cancelled, v_deal);
   delete from private.activity_undo u where u.user_id = caller and u.created_at < now() - interval '10 minutes';
 
-  -- 9. (4c: when p_from_queue, the caller's claim on this lead is released here.)
+  -- 9. From the queue: the caller's claim on this lead is released (the next card is claimed by claim_next_lead).
+  if p_from_queue then
+    perform pg_advisory_xact_lock(hashtextextended('queue_claim:' || p_company::text, 0));
+    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;
+  end if;
   return private.logged_activity(v_id, false)
          || jsonb_build_object('deal_id', p_deal, 'deal', v_deal_answer);
 end;
 $$;
 
--- REBASE: re-copy after 4c/4d merge. Day 4b's undo_activity as merged, plus Day 5b: the deal the call opened is removed
--- while untouched (answer 'deal': 'removed' | 'kept' | null), after the lead lock.
+-- REBASE: re-copy after 4d merge. Day 4b's undo_activity as merged (Day 4c did not change it), plus Day 5b: the deal
+-- the call opened is removed while untouched (answer 'deal': 'removed' | 'kept' | null), after the lead lock.
 create or replace function public.undo_activity(p_id uuid) returns jsonb
 language plpgsql volatile set search_path = '' as $$
 declare
@@ -529,7 +537,7 @@ begin
 end;
 $$;
 
--- REBASE: re-copy after 4c/4d merge. Day 4b's get_lead as merged (same signature), plus Day 5b: deals {open_count,
+-- REBASE: re-copy after 4d merge. Day 4c's get_lead as merged (same signature, worked_by), plus Day 5b: deals {open_count,
 -- latest_open {id, title, stage, value, stage_entered_at, is_stalled, version}} under deals RLS, and can_open_deal.
 create or replace function public.get_lead(p_id uuid) returns jsonb
 language sql stable set search_path = '' as $$
@@ -561,6 +569,11 @@ language sql stable set search_path = '' as $$
                'id', k.id, 'first_name', k.first_name, 'last_name', k.last_name, 'title', k.title,
                'email', k.email, 'phone', k.phone, 'phone_wrong_at', k.phone_wrong_at) order by k.created_at, k.id)
       from public.contacts k where k.company_id = c.id), '[]'::jsonb),
+    -- 4c: a teammate working this lead in the queue right now ("Henri is on this lead until 10:24"); never the caller.
+    'worked_by', (select jsonb_build_object('first_name', w.first_name, 'until', q.expires_at)
+                    from private.queue_claims q
+                    join public.profiles w on w.id = q.user_id
+                   where q.company_id = c.id and q.expires_at > now() and q.user_id <> (select auth.uid())),
     -- Day 5b (design 3.2): the lead's open deals the caller sees (deals RLS) and the newest in stage; whether the caller
     -- may open one (an editor, and the lead is not Do not contact).
     'deals', (select jsonb_build_object(
@@ -577,6 +590,71 @@ language sql stable set search_path = '' as $$
   left join public.profiles o on o.id = c.owner_id
   cross join lateral (select (select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()) as can_edit) e
   cross join lateral (select private.caller_zone() as tz offset 0) z  -- offset 0: worked out once, not once per task
+  where c.id = p_id
+$$;
+
+-- REBASE: re-copy after 4d merge. Day 4c's private.queue_card as merged (one card of claim_next_lead), plus Day 5b:
+-- open_deal {count, latest: {id, stage, value}} (value as a decimal string, as every deal answer). create or replace keeps
+-- 4c's grant (execute for authenticated only).
+create or replace function private.queue_card(p_id uuid, p_reason text, p_skip_lunch boolean) returns jsonb
+language sql stable set search_path = '' as $$
+  select jsonb_build_object(
+    'id', c.id, 'name', c.name, 'lead_status', c.lead_status,
+    'owner', case when o.id is null then null
+                  else jsonb_build_object('id', o.id, 'first_name', o.first_name, 'last_name', o.last_name) end,
+    'phone', c.phone, 'phone_wrong', c.phone_wrong_at is not null, 'email', c.email, 'city', c.city,
+    'country', c.country, 'timezone', c.timezone, 'call_zone', c.call_zone,
+    'local_time_open', private.call_zone_open(c.call_zone, now(), p_skip_lunch),
+    'next_action_at', c.next_action_at, 'last_activity_at', c.last_activity_at,
+    'reason', coalesce(p_reason, case c.queue_rank
+                                   when 0 then 'negotiation'
+                                   when 1 then 'warm'
+                                   when 2 then case when c.lead_status = 'cool_off' then 'returning' else 'retry' end
+                                   else case when c.last_activity_at is null then 'first_call' else 'retry' end
+                                 end),
+    'attempts', private.call_attempts(c.id),
+    'claimed_until', (select q.expires_at from private.queue_claims q
+                       where q.company_id = c.id and q.user_id = (select auth.uid())),
+    'can_edit', (select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()),
+    'contacts', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', k.id, 'first_name', k.first_name, 'last_name', k.last_name, 'title', k.title, 'email', k.email,
+               'phone', k.phone, 'phone_wrong', k.phone_wrong_at is not null) order by k.created_at, k.id)
+        from (select x.* from public.contacts x where x.company_id = c.id order by x.created_at, x.id limit 10) k),
+      '[]'::jsonb),
+    'recent', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', a.id, 'type', a.type, 'outcome', a.outcome, 'body', left(a.body, 500),
+               'truncated', char_length(a.body) > 500, 'created_at', a.created_at, 'user_first_name', p.first_name)
+               order by a.created_at desc, a.id desc)
+        from (select x.id, x.type, x.outcome, x.body, x.created_at, x.user_id from public.activities x
+               where x.company_id = c.id order by x.created_at desc, x.id desc limit 3) a
+        left join public.profiles p on p.id = a.user_id),
+      '[]'::jsonb),
+    'my_open_tasks', coalesce((
+      select jsonb_agg(jsonb_build_object('id', t.id, 'title', t.title, 'kind', t.kind, 'due_date', t.due_date,
+                                          'due_at', t.due_at) order by t.n)
+        from (select x.id, x.title, x.kind, x.due_date, x.due_at,
+                     row_number() over (order by coalesce(x.due_at, x.due_date::timestamp at time zone z.tz) nulls last,
+                                                 x.id) as n
+                from public.tasks x
+               where x.company_id = c.id and x.assignee_id = (select auth.uid())
+                 and x.done_at is null and x.cancelled_at is null
+               order by n
+               limit 3) t),
+      '[]'::jsonb),
+    -- Day 5b (design 3.2, 7.9): the lead's open deals the caller sees (deals RLS) and the newest in stage, for the card's
+    -- "Deal open: Negotiations · €18,400" line and the Open a deal switch's default (on only when there is none).
+    'open_deal', (select jsonb_build_object(
+                           'count', count(*),
+                           'latest', (array_agg(jsonb_build_object('id', d.id, 'stage', s.key, 'value', d.value::text)
+                                                order by d.stage_entered_at desc, d.id desc))[1])
+                    from public.deals d
+                    join public.pipeline_stages s on s.id = d.stage_id
+                   where d.company_id = c.id and d.status = 'open'))
+  from public.companies c
+  left join public.profiles o on o.id = c.owner_id
+  cross join lateral (select private.caller_zone() as tz offset 0) z  -- worked out once
   where c.id = p_id
 $$;
 

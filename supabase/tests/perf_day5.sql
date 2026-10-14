@@ -471,7 +471,8 @@ begin
         when 3 then j := public.home_attention('team');
         when 4 then select count(*) into n from public.home_recent_activity('team');
         when 5 then select count(*) into n from public.home_recent_activity('mine');
-        when 6 then j := public.home_today_tasks();
+        when 6 then select count(*) into n from (select id from public.list_tasks('overdue', 'mine', null, null, 6)
+                                                 union all select id from public.list_tasks('today', 'mine', null, null, 6)) x;
         else j := public.home_low_stock();
       end case;
       if r = 11 then total := 0; end if;
@@ -479,7 +480,7 @@ begin
     end loop;
     raise notice '% : % ms%', rpad((array['P7 home_summary team (admin)', 'P7 home_summary mine (rep)',
                                         'P8 home_attention team', 'P8 home_recent_activity team',
-                                        '   home_recent_activity mine', '   home_today_tasks (rep; 4c stand-in)',
+                                        '   home_recent_activity mine', '   Today: list_tasks overdue + today (rep)',
                                         '   home_low_stock (stub)'])[c], 46),
       round(total / 5, 2),
       (array[' (budget 30 ms)', ' (budget 25 ms)', ' (budget 10 ms)', ' (budget 5 ms)', '', ' (4c P5: 15 ms)', ''])[c];
