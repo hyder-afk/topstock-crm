@@ -4,8 +4,10 @@ Why: go-live parts A and K (`docs/go-live.md`) say admins change roles on a scre
 (12 Oct): Henri and Kais get hand-made accounts with a temporary password, sign in, enrol TOTP, choose their own
 password at `/set-password`; the auth trigger makes them `rep`; Haider then makes them admin here.
 
-Local branch `team-local`, cut from `origin/main` a7aa89e. Self-contained: no migration, no new database function, no
-new dependency, no change to shared components beyond one new body key in the step-up dialog. Days 4c/4d/5/6 are not
+Local branch `team-local`, cut from `origin/main` a7aa89e. Self-contained: one migration (verifier round: it replaces
+`set_user_role` so two admins cannot demote each other to none), no new database function, no new dependency, no
+change to shared components beyond one new body key in the step-up dialog and a small `ArrivalFocus` helper in
+`src/components/shell`. Days 4c/4d/5/6 are not
 in it. `docs/go-live.md` is not on `main` yet: 92cf4b3 adds it exactly as on the go-live kit branch (59a231d), so the
 Team clicks on top of it (5be4799) rebase cleanly whichever merges first.
 
@@ -29,8 +31,13 @@ Team clicks on top of it (5be4799) rebase cleanly whichever merges first.
   person and the new role and warns when you step yourself down ("You will lose the admin screens…"); then
   `useStepUp` ("Confirm it’s you") if the code is older than 10 minutes; the row shows the new role at once and goes
   back if the database refuses, with the reason under the row (also the button's `aria-describedby`); one polite live
-  region says saving, saved, refused and cancelled; the focus returns to that row's role button after every path.
-  Stepping yourself down lands you on More, drawn again without the Team row.
+  region says saving, saved, refused and cancelled; the focus returns to that row's role button after confirm, cancel,
+  Escape, a refusal and "Confirm it’s you". Stepping yourself down lands you on More, drawn again without the Team row,
+  with the focus on More's title (`ArrivalFocus`; the role button is gone with the page). Each row has its own save
+  (a number and a busy state; an older call's answer is ignored); a role set here stays shown until the page draws a
+  list read after the database answered (the page passes the server's time it read the list, the action returns the
+  server's time of the answer), whatever role that list shows; a lost answer puts the row back and reads the list
+  again, since the database may have saved it ("Couldn’t confirm the change just now…").
 - **More** (`src/app/(app)/more/page.tsx`, `src/components/team/team-entry.tsx`): an Administration > Team row for
   admins only (server component; others never get it in the HTML). `more/loading.tsx` keeps its place.
 - **Skeleton** (`src/app/(app)/more/team/loading.tsx`): back link, title, sentence (3 lines on phones), three rows with
@@ -51,13 +58,61 @@ zone were left out (they do not tell people apart).
 
 ### Database
 
-No migration: admins (all three users) already read their organisation's `profiles` (`profiles_select`, plus the
-restrictive `require_mfa`), and `set_user_role` (core schema) already does everything: admin and
-`has_recent_aal2(600)`, same organisation, never the last admin, an audit row. Its cases already live in
+Reading: admins (all three users) already read their organisation's `profiles` (`profiles_select`, plus the
+restrictive `require_mfa`); no change. `set_user_role` (core schema) already checked admin and
+`has_recent_aal2(600)`, same organisation, never the last admin, and wrote an audit row; those cases live in
 `supabase/tests/rls_attack.sql` (rep promoting self, aal1, code 660 s old, no code time, applied, last admin, other
-organisation, audit row), so no db test was added (reused, not duplicated).
+organisation, audit row).
 
-## Check results (14 Oct 2026, head ed2ad60 plus the evidence commit)
+Verifier round: `supabase/migrations/20261021090000_role_change_lock.sql` replaces `set_user_role` (same signature,
+SECURITY DEFINER, `search_path = ''`, constant messages, grants re-stated). It locked only the target's row before
+counting admins, so two admins demoting each other at the same moment both counted two and both committed (the new
+test failed exactly that way on the old function: "both demotions committed (admins left: '')"). Now, after the admin
+and fresh-code check, it locks every admin row of the organisation in id order, checks again that the caller is an
+admin (one demoted while the call waited is refused), then locks the target and counts. The timestamp is after every
+migration on the other open branches (up to 20261020090000); none of them touches this function.
+`supabase/tests/team_concurrency.sh` (in `scripts/db-test.sh` and the CI `db` job): `demote_each_other_keeps_an_admin`,
+`demoted_admin_cannot_demote` (a deadlock answer 40P01 also fails it), `demoted_admin_cannot_promote`. Mutation set
+`team` in `scripts/db-mutations.py` (run in a throwaway worktree, db-test copy on port 54416):
+
+| # | Protection removed | Result |
+|---|---|---|
+| 1 | The organisation's admin rows not locked (two admins demote each other and none is left) | caught (`demote_each_other_keeps_an_admin`) |
+| 2 | The target locked first and the caller checked before the admin rows (a demoted admin still acts) | caught (`demoted_admin_cannot_demote`) |
+| 3 | The caller not checked again after the wait | caught (`demoted_admin_cannot_demote`) |
+| 4 | No last-admin count | caught (`rls_attack.sql` "removed the last admin") |
+
+The id order of the admin locks is by design: each call takes all of them at its start, so no test can interleave two
+calls between those locks (dropping `order by id` would not be seen by a test, so it is not listed as a row).
+
+## Check results after the verifier round (14 Oct 2026, code head 6d07187)
+
+```text
+lint        npm run lint                                   exit 0 (0 errors; 2 warnings, pre-existing, import/leads virtualizers)
+typecheck   npm run typecheck                              exit 0
+unit        playwright -c playwright.unit.config.ts        exit 0, 342 passed (tests/unit/team.spec.ts: 21; the 9 new
+                                                           "local roles" tests failed 6 of 9 first on stubs with the
+                                                           old rules, then passed)
+db          copy of scripts/db-test.sh on port 54415       before the migration: exit 1, "FAIL: demote_each_other_keeps_an_admin:
+                                                           both demotions committed (admins left: '')"; after: exit 0,
+                                                           rls_attack, import_attack, import_concurrency, activity_attack,
+                                                           activity_concurrency, outcome_attack, outcome_concurrency,
+                                                           team_concurrency all passed; advisors: no ERROR (WARN
+                                                           set_user_role SECURITY DEFINER, accepted Day 1; INFO
+                                                           unindexed_foreign_keys 2, unused_index 2)
+mutations   db-mutations.py --set team (worktree, 54416)   exit 0, 4 of 4 caught
+e2e         team.spec.ts (Chromium, local auth stack)      before the focus fix: exit 1, 4 passed, demoting_yourself failed
+                                                           at toBeFocused (More's title "inactive"); after: exit 0, 5 passed
+e2e         team-screens.spec.ts + shell.spec.ts +         exit 0, 25 passed, 1 skipped (as on main); 50 shots, no console
+            day4-chunks.spec.ts (Chromium)                 error, no sideways scroll
+gitleaks    git --log-opts=origin/main..HEAD               see docs/log.md (run on the final head)
+npm audit   --omit=dev                                     exit 0, found 0 vulnerabilities
+```
+
+The local build needs `turbopack.root` set to `/home/user` because this worktree's `node_modules` is a symlink to the
+main checkout's; it was added for the build only and reverted (not committed).
+
+## Check results (14 Oct 2026, head ed2ad60 plus the evidence commit; before the verifier round)
 
 ```text
 lint        npm run lint                                   exit 0 (0 errors; 2 warnings, pre-existing, import/leads virtualizers)
@@ -85,7 +140,7 @@ More, 404 on the page, the admin's own server-action request replayed with the r
 and audit log unchanged; with `org_id` added it answers `invalid`), `stale_code_asks_for_a_code` (Cancel keeps the
 role and focus; a fresh code saves it; the row keeps the new role after the page is drawn again),
 `last_admin_refused` (row goes back, says why, button described by it, focus back), `demoting_yourself` (at 390:
-44 px confirmation buttons, lands on More without Team).
+44 px confirmation buttons, lands on More without Team, the focus on More's title).
 
 Found and fixed in this round (ed2ad60): after "Confirm it’s you" the saved role was shown as the old one. The code
 check renews the session cookies, Next.js draws the page again, and that drawing (read before the change) replaced the
@@ -97,7 +152,16 @@ README).
 
 ## Docs used
 
-Context7 pages consulted (14 Oct, this round):
+Context7 pages consulted in the verifier round (14 Oct):
+- **Next.js** (`/vercel/next.js`): `docs/01-app/03-api-reference/04-functions/use-router.mdx` (`router.replace`,
+  `router.refresh` keeps client state) and `docs/03-architecture/accessibility.mdx` (the route announcer reads the
+  title or the h1; nothing moves the focus on a client navigation, hence `ArrivalFocus`).
+- **PostgreSQL 16** (`/websites/postgresql_16`): `transaction-iso.html` 13.2.1 (under Read Committed a `SELECT FOR
+  UPDATE` that waited re-checks its WHERE on the updated row: a demoted admin's row drops out of the lock set, and a
+  new statement sees the committed role) and `explicit-locking.html` (deadlocks from rows locked in opposite orders;
+  hence one id order).
+
+Context7 pages consulted (14 Oct, first round):
 - **next-intl** (`/amannn/next-intl`): `docs/usage/translations.mdx`, rich text with `t.rich` and tag functions (the
   monospace user id inside the translated "User ID <mono>{id}</mono>").
 - **Next.js** (`/vercel/next.js`): `docs/01-app/02-guides/data-security.mdx` (a page's check does not protect its
@@ -122,10 +186,10 @@ Context7 pages consulted (14 Oct, this round):
 
 ## Open risks
 
-- **Two admins demoting each other at the same instant** can leave an organisation with no admin: `set_user_role`
-  (core schema, unchanged here) locks only the target's row before counting admins. Needs a small migration (lock the
-  organisation's admin rows before counting) and a concurrency test; recommended before go-live. Details in
-  `security-review.md`.
+- ~~Two admins demoting each other at the same instant~~: fixed in the verifier round by the migration above. Haider
+  decides whether it ships with this screen (builder recommends yes, before go-live): it changes a core-schema function.
+- More's skeleton always draws the Administration block (verifier note 7): kept while every user is an admin; when
+  roles diverge, non-admins will see that block's place close once More loads.
 - The role button's name for someone without a name says "Account c9b5074f" while the row shows "User ID c9b5074f"
   (same characters; kept).
 - `docs/go-live.md` comes from the unmerged go-live kit branch; if that branch changes parts A or K before merging,

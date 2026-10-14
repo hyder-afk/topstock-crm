@@ -5,8 +5,9 @@ organisation made for the run: Inès Garnier (admin, the signed-in person), Malo
 and one account without a name yet (rep). Each shot waits for the real screen (not the skeleton, except the skeleton
 shots) and fails on any console error or sideways scroll.
 
-**Current set: taken on 14 Oct 2026 on ed2ad60** (branch `team-local`). Run: `team-screens.spec.ts`, Chromium,
-4 tests passed, 50 shots, no console error, no sideways scroll.
+**Current set: taken on 14 Oct 2026 on 6d07187** (branch `team-local`, verifier round). Run: `team-screens.spec.ts`,
+Chromium, 4 tests passed, 50 shots, no console error (cancelled prefetches filtered with `isCancelledPrefetch`, each
+page `settled()` before it closes, as `lead-page.spec.ts`), no sideways scroll.
 
 | State | Matrix | Shots |
 |---|---|---|
