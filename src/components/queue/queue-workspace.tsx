@@ -188,7 +188,12 @@ export function QueueWorkspace({
     advanced.current = false;
     const active = document.activeElement;
     if (active && active !== document.body && isTyping(active)) return;
-    requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: false }));
+    // The heading takes the focus on the next frame unless the person moved it meanwhile (N pressed as the card
+    // appeared: the note keeps it, so the rest of the typing never turns into keys).
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      if (now === active || !now || now === document.body || !now.isConnected) headingRef.current?.focus({ preventScroll: false });
+    });
   }, [currentId, q.phase]);
   // Back on the start screen (Done for now, Back to start, the claims ended): Start has the focus, so ↩ starts again.
   // The empty state: its heading has the focus (the card or the title that held it is gone or says less).
@@ -290,6 +295,10 @@ export function QueueWorkspace({
   // Cancel the follow-up or the Do not contact question: if the focus was inside it (phones move it there), it goes
   // back to the card's heading instead of the page.
   const cancelChoice = useCallback(() => {
+    // The focus goes to the card's heading before the panel (and the Cancel button in it) goes away, so it never drops
+    // to the page; the frame after is a fallback in case something else took it and then vanished.
+    const active = document.activeElement;
+    if (!active || active === document.body || active.closest("[data-queue-panel]")) headingRef.current?.focus();
     setChoice(null);
     requestAnimationFrame(() => {
       const active = document.activeElement;
