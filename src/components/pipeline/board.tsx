@@ -138,6 +138,13 @@ function BoardError() {
   );
 }
 
+// dnd-kit options as constants (stable identities: see the sensors in Pipeline).
+const MOUSE_OPTIONS = { activationConstraint: { distance: 6 } };
+const TOUCH_OPTIONS = { activationConstraint: { delay: 250, tolerance: 8 } };
+const KEYBOARD_CODES = { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] };
+const MEASURING = { droppable: { strategy: MeasuringStrategy.WhileDragging } };
+const AUTO_SCROLL = { threshold: { x: 0.15, y: 0.2 }, acceleration: 12 };
+
 function Pipeline({
   first,
   team,
@@ -179,11 +186,12 @@ function Pipeline({
   const query = useBoard(key, isFirstKey ? first : undefined, extraPages);
   const board = query.data;
   const [now, setNow] = useState(() => query.dataUpdatedAt || Date.now());
-  const [seenUpdate, setSeenUpdate] = useState(query.dataUpdatedAt);
-  if (seenUpdate !== query.dataUpdatedAt) {
-    // One "now" for the whole board, refreshed with each refetch (design 5.5).
-    setSeenUpdate(query.dataUpdatedAt);
-    setNow(query.dataUpdatedAt || now);
+  const [wasFetching, setWasFetching] = useState(query.isFetching);
+  if (wasFetching !== query.isFetching) {
+    // One "now" for the whole board, refreshed when a fetch lands (design 5.5). Not on every cache write: an optimistic
+    // move moves dataUpdatedAt too, and a new "now" re-renders every card on the board (day5-perf).
+    setWasFetching(query.isFetching);
+    if (!query.isFetching) setNow(query.dataUpdatedAt || now);
   }
 
   const flows = useDealFlows(stepUpSeconds, order);
@@ -370,6 +378,21 @@ function Pipeline({
     }),
     [menuFor, askWin, askLose, moveCard, openSheet, router, actions, openDelete],
   );
+  // The cards read one handlers object that never changes (each call goes to this render's handlers), so a move, a
+  // focus change or a drag over a column does not re-render every memoised card through the context (day5-perf).
+  const latestHandlers = useRef(handlers);
+  useLayoutEffect(() => {
+    latestHandlers.current = handlers;
+  }, [handlers]);
+  const stableHandlers = useMemo<BoardHandlers>(
+    () => ({
+      onFocusCard: (id) => latestHandlers.current.onFocusCard(id),
+      onNext: (card) => latestHandlers.current.onNext(card),
+      menu: (card) => latestHandlers.current.menu(card),
+      onKey: (card, action) => latestHandlers.current.onKey(card, action),
+    }),
+    [],
+  );
 
   // ---- Page keys: N new deal; U and Cmd/Ctrl+Z undo the last move (before the call panel's own Undo key) -------------
   useEffect(() => {
@@ -423,11 +446,10 @@ function Pipeline({
 
   // ---- Drag ----------------------------------------------------------------------------------------------------------
   const columnJump = useMemo(() => makeColumnJump(() => window.matchMedia(phoneQuery).matches), []);
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: columnJump, keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] } }),
-  );
+  // The sensor options keep their identity across renders: dnd-kit rebuilds its context when a sensor's options object
+  // changes, and that re-renders every draggable card on each board render (day5-perf).
+  const keyboardOptions = useMemo(() => ({ coordinateGetter: columnJump, keyboardCodes: KEYBOARD_CODES }), [columnJump]);
+  const sensors = useSensors(useSensor(MouseSensor, MOUSE_OPTIONS), useSensor(TouchSensor, TOUCH_OPTIONS), useSensor(KeyboardSensor, keyboardOptions));
   const facts = useCallback(
     (id: string) => {
       const c = board ? findCard(board, id)?.card : null;
@@ -544,7 +566,7 @@ function Pipeline({
   ) : null;
 
   return (
-    <BoardHandlersContext.Provider value={handlers}>
+    <BoardHandlersContext.Provider value={stableHandlers}>
       <div className="flex min-w-0 flex-col gap-5 pt-2">
         <BoardToolbar
           total={board.open_total}
@@ -626,8 +648,8 @@ function Pipeline({
           id="pipeline-board"
           sensors={online ? sensors : undefined}
           collisionDetection={pointerFirst}
-          measuring={{ droppable: { strategy: MeasuringStrategy.WhileDragging } }}
-          autoScroll={{ threshold: { x: 0.15, y: 0.2 }, acceleration: 12 }}
+          measuring={MEASURING}
+          autoScroll={AUTO_SCROLL}
           accessibility={{ announcements, screenReaderInstructions: instructions }}
           onDragStart={onDragStart}
           onDragOver={onDragOver}

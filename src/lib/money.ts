@@ -83,15 +83,22 @@ export function subMoney(a: string | null, b: string | null): string {
  * A value for display: euros through Intl ("12 400 €" in French, "€12,400" in English). Cards and totals drop the cents
  * (design 7.2); `cents: true` keeps them when there are any (the deal sheet, the Win dialog).
  */
+// Building an Intl.NumberFormat costs far more than formatting with one, and a board formats hundreds of values per
+// render: one formatter per locale and digits, kept for the page's life (a handful at most).
+const formatters = new Map<string, Intl.NumberFormat>();
+function moneyFormat(locale: string, digits: 0 | 2): Intl.NumberFormat {
+  const key = `${locale}|${digits}`;
+  let f = formatters.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR", minimumFractionDigits: digits, maximumFractionDigits: digits });
+    formatters.set(key, f);
+  }
+  return f;
+}
+
 export function formatMoney(value: string, locale: string, opts: { cents?: boolean } = {}): string {
-  const n = Number(value);
   const hasCents = toCents(value) % HUNDRED !== ZERO;
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: opts.cents && hasCents ? 2 : 0,
-    maximumFractionDigits: opts.cents && hasCents ? 2 : 0,
-  }).format(n);
+  return moneyFormat(locale, opts.cents && hasCents ? 2 : 0).format(Number(value));
 }
 
 /** A stored value as a person edits it in their language ("12400,5" → "12 400,50" in French; "12,400.50" in English). */

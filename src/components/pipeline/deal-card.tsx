@@ -117,7 +117,7 @@ export const DealCardView = memo(function DealCardView({
     listeners?.onKeyDown?.(e);
   };
 
-  const menuActions = handlers?.menu(card);
+  const hasMenu = !!handlers;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -172,9 +172,9 @@ export const DealCardView = memo(function DealCardView({
               <span className="line-clamp-1 min-h-5 text-[13px] leading-5 text-muted-foreground">{card.title ?? card.contact_name ?? t("untitled")}</span>
               <span className="flex min-h-8 items-center gap-2">
                 {card.value !== null ? (
-                  <span className="font-mono text-sm font-medium tabular-nums">{formatMoney(card.value, locale)}</span>
+                  <span className="shrink-0 font-mono text-sm font-medium whitespace-nowrap tabular-nums">{formatMoney(card.value, locale)}</span>
                 ) : (
-                  <span className="text-[13px] text-muted-foreground underline decoration-dotted underline-offset-4">{t("addValue")}</span>
+                  <span className="shrink-0 text-[13px] whitespace-nowrap text-muted-foreground underline decoration-dotted underline-offset-4">{t("addValue")}</span>
                 )}
                 {card.fulfilment === "direct_from_source" ? (
                   <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground">{t("supplierStock")}</span>
@@ -186,12 +186,12 @@ export const DealCardView = memo(function DealCardView({
                     tabIndex={-1}
                     onClick={() => handlers?.onNext(card)}
                     aria-label={next === "won" ? t("markWon") : t("nextToLabel", { stage: tStage(next) })}
-                    className="pointer-events-auto -my-1.5 min-h-8 rounded-md px-2 text-[12px] whitespace-nowrap text-muted-foreground transition-[background-color,color,opacity,scale] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] max-lg:min-h-11 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
+                    className="pointer-events-auto -my-1.5 min-h-8 min-w-0 truncate rounded-md px-2 text-[12px] whitespace-nowrap text-muted-foreground transition-[background-color,color,opacity,scale] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] max-lg:min-h-11 lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
                   >
                     {next === "won" ? t("markWon") : t("nextTo", { stage: tStage(`short.${next}`) })}
                   </button>
                 ) : null}
-                {menuActions ? (
+                {hasMenu ? (
                   <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                     <DropdownMenuTrigger
                       tabIndex={-1}
@@ -208,7 +208,7 @@ export const DealCardView = memo(function DealCardView({
                         document.querySelector<HTMLElement>(`[data-deal-main="${CSS.escape(card.id)}"]`)?.focus();
                       }}
                     >
-                      <DealMenuItems card={card} kind="dropdown" actions={menuActions} />
+                      <CardMenu card={card} kind="dropdown" />
                     </DropdownMenuContent>
                   </DropdownMenu>
                 ) : null}
@@ -224,14 +224,20 @@ export const DealCardView = memo(function DealCardView({
           </div>
         </motion.article>
       </ContextMenuTrigger>
-      {menuActions ? (
+      {hasMenu ? (
         <ContextMenuContent aria-label={t("menu.label")}>
-          <DealMenuItems card={card} kind="context" actions={menuActions} />
+          <CardMenu card={card} kind="context" />
         </ContextMenuContent>
       ) : null}
     </ContextMenu>
   );
 });
+
+/** The card's menu items, built when the menu opens (the board's handlers as they are now, not when the card drew). */
+function CardMenu({ card, kind }: { card: Card; kind: "context" | "dropdown" }) {
+  const handlers = useContext(BoardHandlersContext);
+  return handlers ? <DealMenuItems card={card} kind={kind} actions={handlers.menu(card)} /> : null;
+}
 
 /** The dragged copy under the pointer (DragOverlay): lifted 3% with the floating-layer shadow. */
 export function DealCardGhost({ card }: { card: Card }) {

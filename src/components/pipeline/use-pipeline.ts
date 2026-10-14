@@ -148,6 +148,14 @@ function optimistic(qc: QueryClient, card: DealCard, to: StageKey, patch: Partia
   qc.setQueryData<DealCard[]>(leadDealsKey(card.company_id), (old) => (old ? old.map((c) => (c.id === card.id ? { ...c, ...moved } : c)) : old));
 }
 
+/** Whether every board in the cache that holds the deal shows it in `to` already (the optimistic write survived). */
+function placedIn(qc: QueryClient, id: string, to: StageKey): boolean {
+  return qc.getQueriesData<Board>({ queryKey: ["pipeline", "board"] }).every(([, board]) => {
+    const at = board ? findCard(board, id) : null;
+    return !at || at.column === to;
+  });
+}
+
 function refreshAround(qc: QueryClient, card: Pick<DealCard, "id" | "company_id">) {
   void qc.invalidateQueries({ queryKey: ["home"] });
   void qc.invalidateQueries({ queryKey: ["pipeline", "summary"] });
@@ -245,7 +253,13 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
       const patch: Partial<DealCard> =
         ch.kind === "win" ? { value: ch.value, fulfilment: ch.fulfilment } : ch.kind === "lose" ? { lost_reason: ch.reason } : {};
       const from = card.stage;
-      let snap: Snapshot | null = null;
+      // The move shows at once, in the same render as the focus and the settle (design 7.5: painted within 100 ms):
+      // the snapshot and the optimistic write happen here, in the event, not after an awaited cancel. onMutate then
+      // waits for the cancel of any board fetch in flight and puts the move back if that cancel restored an older board.
+      pending.set(id, (pending.get(id) ?? 0) + 1);
+      const snap = snapshot(qc, card);
+      const cancelled = qc.cancelQueries({ queryKey: ["pipeline", "board"] });
+      optimistic(qc, card, to, patch, order);
 
       const send = async (): Promise<MoveResult> => {
         if ((generation.get(id) ?? 0) !== gen) throw new Superseded();
@@ -268,10 +282,8 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
         scope: { id: `deal-${id}` },
         mutationFn: send,
         onMutate: async () => {
-          pending.set(id, (pending.get(id) ?? 0) + 1);
-          await qc.cancelQueries({ queryKey: ["pipeline", "board"] });
-          snap = snapshot(qc, card);
-          optimistic(qc, card, to, patch, order);
+          await cancelled;
+          if (!placedIn(qc, id, to)) optimistic(qc, card, to, patch, order);
           return snap;
         },
         onSuccess: (r) => {
