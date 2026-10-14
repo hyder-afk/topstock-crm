@@ -673,6 +673,9 @@ begin
   perform pg_temp.eq('today limit total', (public.home_today_tasks(2) ->> 'total')::integer, 5);
   perform pg_temp.act(hiro);
   perform pg_temp.eq('Hiro today', (public.home_today_tasks() ->> 'total')::integer, 1);
+  -- Always the caller's own: an admin, who may read every task in the org, gets none of these.
+  perform pg_temp.act('00000000-0000-0000-0000-0000000005c0');
+  perform pg_temp.eq('Hana today (always her own)', (public.home_today_tasks() ->> 'total')::integer, 0);
   perform pg_temp.su();
   raise exception 'undo' using errcode = 'TS001';
 exception when sqlstate 'TS001' then perform pg_temp.su(); perform pg_temp.raw(false);
