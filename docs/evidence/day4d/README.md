@@ -3,8 +3,8 @@
 Design: `docs/evidence/day4/design.md` (sections 1, 2 with D1 to D17 and the spikes in 2.4, 3.4, 4.3, 5.7, 6 rows 17 to
 28 for files, 7.6, 8, 10 "4d Files" items 3 to 7, 11 with Haider's answer to question 6). Local branch `day4d-local`,
 cut from `main` at a7aa89e (Day 4a and 4b merged). Day 4c (PR #15 branch `claude/busy-darwin-xech8m`, 959e2b8) was
-merged into this branch on 12 Oct 2026 (merge commit d0d98b0, no rebase): see "Rebase onto Day 4c (merge)". Not pushed;
-no PR yet (it opens once PR #15 is merged).
+merged into this branch on 12 Oct 2026 (merge commit d0d98b0, no rebase): see "Rebase onto Day 4c (merge)". After PR #15
+merged (5f1a966), main was merged in and the branch opened as PR #16 on `claude/busy-darwin-xech8m`: see "PR #16".
 
 ## What changed
 
@@ -352,6 +352,17 @@ PR #15 merged into main as 5f1a966. Between 959e2b8 (merged above) and 61aee60, 
 - two tests were hardened (the timeline menu and the reduced-motion bead).
 
 main merged into `day4d-local` with one conflict, `docs/log.md`: both sides added rows, and all are kept in date order. No migration and no file that Day 4d changes was touched, so the database checks above still hold. Lint, typecheck and 378 unit tests pass after the merge. The full e2e suite runs in CI on the PR.
+
+## PR #16 (14 Oct 2026)
+
+| Head | What happened | Fix and proof |
+|---|---|---|
+| c7fd6a2 (opened) | `/security-review` on the head: **no findings** (security-review.md) | — |
+| c7fd6a2 | **semgrep** blocked: `generic.unicode.security.bidi.contains-bidirectional-characters` in `src/lib/files/name.ts`. The refused bidi and invisible characters were written raw inside the name regex | 8b93817: written as `\u` escapes, also in the migration's two name checks. Same code points (checked over every code point); `files_attack` still refuses a U+202E name; parity test passes |
+| c7fd6a2, 8b93817 | **rls** failed in "Files attack test": `duplicate key value violates unique constraint "users_email_partial_key"`, `repg@test.invalid` (files_attack.sql:172). `outcome_attack` (repg) and `queue_attack` (reph) already create those emails, and real Supabase allows one account per email. The local stand-in had no such index, so `db-test.sh` passed. Section 0 (bucket, policies, grants on the real storage schema) had passed before that line, so spike S1's fallback is not needed | The files fixtures use `filesg@` and `filesh@`. `shim.sql` gets Supabase's unique email index, so local runs catch this. Reproduced first: with the index, the old fixture fails on the same line; with the new fixture, all 11 suites pass and the advisors report 0 ERROR |
+| (same push) | The advisor could not read job logs or artifacts | Every db.yml test step runs through `scripts/ci-report.sh`, which posts the failing output as an error annotation. Spike S1's rows and spikes S2 to S5 (ci.yml) are also posted as notice annotations, which can be read through the API |
+
+CI results on the final head, and spikes S1 to S5 as CI measured them, are recorded below once known.
 
 ## Rebase points (resolved by the merge above)
 

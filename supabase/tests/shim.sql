@@ -12,6 +12,8 @@ create table auth.users (
   raw_user_meta_data jsonb default '{}'::jsonb,
   created_at timestamptz default now()
 );
+-- As on Supabase (users_email_partial_key): one account per email, so two suites' fixtures cannot share an address.
+create unique index users_email_partial_key on auth.users (email);
 create function auth.jwt() returns jsonb language sql stable as $$
   select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
 $$;

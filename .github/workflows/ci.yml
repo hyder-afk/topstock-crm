@@ -121,6 +121,10 @@ jobs:
           name: storage-spikes
           path: test-results/spikes/
           retention-days: 30
+      # The same results as annotations (readable through the API, unlike the artifact).
+      - name: Storage spikes S2 to S5 as annotations
+        if: always() && matrix.browser == 'chromium' && hashFiles('test-results/spikes/day4d.json') != ''
+        run: jq -r 'to_entries[] | select(.key != "recorded_at") | "::notice title=Spike \(.key)::\(.value | tojson)"' test-results/spikes/day4d.json
       # Home and the command menu at 1280/1440/1728 in this engine (shell.spec).
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success()

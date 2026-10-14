@@ -168,8 +168,8 @@ end $$;
 -- Fixtures (superuser, no claims: the guards and the org/owner trigger leave rows as given) --------------------------
 do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('00000000-0000-0000-0000-0000000000f4', 'repg@test.invalid', '{"first_name":"Gil"}'),
-  ('00000000-0000-0000-0000-0000000000f5', 'reph@test.invalid', '{"first_name":"Hal"}');
+  ('00000000-0000-0000-0000-0000000000f4', 'filesg@test.invalid', '{"first_name":"Gil"}'),
+  ('00000000-0000-0000-0000-0000000000f5', 'filesh@test.invalid', '{"first_name":"Hal"}');
 do $$
 declare
   main_org uuid := (select id from public.orgs where name = 'TopStock Wholesale');
