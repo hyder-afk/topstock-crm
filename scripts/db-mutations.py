@@ -5,7 +5,7 @@ section 8.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity and outcome attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|all] [numbers...]  (about 40 s per mutation; default: all
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|team|all] [numbers...]  (about 40 s per mutation; default: all
 sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
 when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
 mutation each way). A row marked SURVIVES is such a layer that no test can see on its own, because the other layer stops
@@ -24,6 +24,7 @@ MIG_3A = ROOT / "supabase/migrations/20261010090000_leads_are_companies.sql"
 MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
+MIG_TEAM = ROOT / "supabase/migrations/20261021090000_role_change_lock.sql"
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -684,7 +685,29 @@ MUTATIONS_4B = [
 ]
 
 
-SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B)}
+# Team screen (verifier finding 2): set_user_role as the role-change lock migration redefines it. Rows 1 to 3 remove the
+# new protections one at a time (supabase/tests/team_concurrency.sh); row 4 removes the last-admin count it keeps
+# (rls_attack.sql).
+TEAM_LOCK = "  perform 1 from public.profiles where org_id = caller_org and role = 'admin' order by id for update;\n"
+TEAM_TARGET = "  select org_id, role into target_org, old_role from public.profiles where id = target_user for update;\n"
+TEAM_RECHECK = ("  if not private.is_admin() then\n"
+                "    raise exception 'admin with a two-factor code from the last 10 minutes required' using errcode = '42501';\n"
+                "  end if;\n  select org_id")
+MUTATIONS_TEAM = [
+    ("Role change: the organisation's admin rows not locked (two admins demote each other and none is left)",
+     [(TEAM_LOCK, "")]),
+    ("Role change: the target locked before the admin rows (two admins demoting each other deadlock)",
+     [(TEAM_LOCK + "  -- The caller", "  -- The caller"), (TEAM_TARGET, TEAM_TARGET + TEAM_LOCK)]),
+    ("Role change: the caller not checked again after the wait (an admin demoted meanwhile still acts)",
+     [(TEAM_RECHECK, "  select org_id")]),
+    ("Role change: no last-admin count",
+     [("     and (select count(*) from public.profiles where org_id = caller_org and role = 'admin') <= 1 then",
+       "     and false then")]),
+]
+
+
+SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
+        "team": (MIG_TEAM, MUTATIONS_TEAM)}
 
 
 def run_set(name: str, only: set) -> int:
