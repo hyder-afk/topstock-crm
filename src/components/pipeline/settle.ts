@@ -29,5 +29,5 @@ export function settle(from: SettleFrom, reduce: boolean) {
   const dx = from.left - now.left;
   const dy = from.top - now.top;
   if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-  animate(el, { x: [dx, 0], y: [dy, 0], scale: [1.03, 1] }, springs.smooth);
+  animate(el, { x: [dx, 0], y: [dy, 0], scale: [1.03, 1] }, springs.settle);
 }

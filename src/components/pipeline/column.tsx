@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef } from "react";
+import { memo, useCallback, useId, useRef } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useDroppable } from "@dnd-kit/core";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
@@ -11,6 +11,43 @@ import { VIRTUALISE_FROM, type BoardColumnKey, type DealCard } from "@/lib/deals
 import { formatMoney } from "@/lib/money";
 import { springs } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+
+type CardListProps = {
+  cards: DealCard[];
+  now: number;
+  stallDays: number | null;
+  showOwner: boolean;
+  tabStopId: string | null;
+  dimId: string | null;
+  still: boolean;
+};
+const sameCards = (a: DealCard[], b: DealCard[]) => a.length === b.length && a.every((c, i) => c === b[i]);
+
+// A column's cards when not virtualised. Memoised on the cards themselves (the column's array is rebuilt on every board
+// render), so a move re-renders the two columns it touches and not the others: each motion.li that re-renders is
+// measured for its layout animation (day5-perf).
+const CardList = memo(
+  function CardList({ cards, now, stallDays, showOwner, tabStopId, dimId, still }: CardListProps) {
+    return (
+      <ul role="list" className="flex flex-col gap-2">
+        {cards.map((c) => (
+          <motion.li key={c.id} layout={still ? false : "position"} transition={springs.smooth}>
+            <DealCardView card={c} now={now} stallDays={stallDays} showOwner={showOwner} tabStop={c.id === tabStopId} dim={c.id === dimId} />
+          </motion.li>
+        ))}
+      </ul>
+    );
+  },
+  (a, b) =>
+    a.now === b.now &&
+    a.stallDays === b.stallDays &&
+    a.showOwner === b.showOwner &&
+    a.still === b.still &&
+    sameCards(a.cards, b.cards) &&
+    // a tab stop or a dimmed card moving within this list re-renders it; elsewhere it does not concern it
+    (a.tabStopId === b.tabStopId || (!a.cards.some((c) => c.id === a.tabStopId || c.id === b.tabStopId))) &&
+    (a.dimId === b.dimId || (!a.cards.some((c) => c.id === a.dimId || c.id === b.dimId))),
+);
 
 // One column of the board (Day 5 design 7.1 and 7.3): a section labelled by its h2, with "9 deals, €48,200, 2 stalled"
 // as its description; a drop target as a whole (unmounted cards never matter). From tablet width it scrolls on its own
@@ -158,7 +195,7 @@ export function Column({
                   className="absolute inset-x-0 top-0 pb-2"
                   style={{ transform: `translateY(${row.start}px)` }}
                 >
-                  <motion.div layout={reduce ? false : "position"} transition={springs.smooth}>
+                  <motion.div layout={reduce || dragging ? false : "position"} transition={springs.smooth}>
                     {card(c)}
                   </motion.div>
                 </li>
@@ -166,13 +203,7 @@ export function Column({
             })}
           </ul>
         ) : (
-          <ul role="list" className="flex flex-col gap-2">
-            {cards.map((c) => (
-              <motion.li key={c.id} layout={reduce || dragging ? false : "position"} transition={springs.smooth}>
-                {card(c)}
-              </motion.li>
-            ))}
-          </ul>
+          <CardList cards={cards} now={now} stallDays={stallDays} showOwner={showOwner} tabStopId={tabStopId} dimId={dimId} still={!!reduce || dragging} />
         )}
         {canShowMore || hiddenCount > 0 || loadMoreFailed ? (
           <div className="flex flex-col items-center gap-1 pt-3 pb-1 text-xs text-muted-foreground">
