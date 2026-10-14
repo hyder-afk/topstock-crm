@@ -141,7 +141,7 @@ export function Column({
         data-column-scroll={column}
         className={cn(
           "flex-1 px-2 pb-2",
-          !phone && "overflow-y-auto overscroll-contain md:h-[calc(100dvh-var(--board-top,300px)-152px)] md:min-h-[360px] md:flex-none",
+          !phone && "overflow-y-auto overscroll-contain md:h-[calc(100dvh-var(--board-top,300px)-216px)] md:min-h-[360px] md:flex-none",
         )}
       >
         {cards.length === 0 ? (

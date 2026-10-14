@@ -472,7 +472,7 @@ function CallPanel({
                   <span className="flex items-center gap-2">
                     <Kbd aria-hidden="true">D</Kbd>
                     <span aria-hidden="true" className={cn("relative h-6 w-10 rounded-full transition-colors duration-150", openDeal ? "bg-primary" : "bg-border")}>
-                      <span className={cn("absolute top-0.5 size-5 rounded-full bg-card shadow-sm transition-transform duration-150 motion-reduce:transition-none", openDeal ? "translate-x-[18px]" : "translate-x-0.5")} />
+                      <span className={cn("absolute top-0.5 size-5 rounded-full bg-card shadow-sm transition-[translate] duration-150 motion-reduce:transition-none", openDeal ? "translate-x-[18px]" : "translate-x-0.5")} />
                     </span>
                   </span>
                 </button>
