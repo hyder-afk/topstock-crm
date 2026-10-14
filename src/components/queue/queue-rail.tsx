@@ -44,16 +44,17 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
   if (p.noNumber) disabled.wrong_number = true;
   if (p.disabled) disabled.do_not_contact = true;
 
-  // Below 1024 the follow-up (5, 6, 0) and the Do not contact question open under the pad, which can be below the fold
-  // and behind the dock on a phone: they are scrolled into view (clear of the dock) and take the focus, so the tap
-  // visibly opens them and Confirm is in reach. At desktop width the rail is beside the card: nothing moves.
+  // The follow-up (5, 6, 0) and the Do not contact question open under the pad, which can be below the fold (on a phone,
+  // and on a laptop screen 900 px tall, more so in French): they are scrolled into view, clear of the dock, so Confirm
+  // is in reach. Below 1024 they also take the focus, so the tap visibly opens them; at desktop width the focus stays
+  // where it was (the keys go on working: Enter confirms, Escape cancels).
   const panelRef = useRef<HTMLDivElement>(null);
   const choice = p.choice;
   useEffect(() => {
     const panel = panelRef.current;
-    if (!choice || !panel || window.matchMedia("(min-width: 1024px)").matches) return;
+    if (!choice || !panel) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    panel.focus({ preventScroll: true });
+    if (!window.matchMedia("(min-width: 1024px)").matches) panel.focus({ preventScroll: true });
     panel.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [choice]);
 
@@ -67,6 +68,7 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
         {expanded ? (
           <div
             ref={panelRef}
+            data-queue-panel
             tabIndex={-1}
             role="group"
             aria-label={tOut(p.choice ?? "connected")}

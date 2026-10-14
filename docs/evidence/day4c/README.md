@@ -266,6 +266,17 @@ card: a key arrives every ~100 ms and one save-and-claim round trip takes ~300â€
 from the second key on. Key to saved is no budget (the D3 rule, already applied); it stays around 400â€“520 ms on this
 VM with the `psql`-per-call REST stand-in.
 
+## CI fixes on PR #15
+
+CI found four failures that the local runs missed. Each was fixed at its root; no test was skipped or loosened.
+
+- **WebKit, typing a note (875e8be).** After Start, the heading's focus was queued for the next frame. In WebKit that frame came after the test pressed N, so the focus left the note mid-typing. The heading now takes the focus only if nobody moved it in the meantime.
+- **WebKit, claims released on close (5ff57c8).** Safari can close a tab without firing pagehide, and it drops keepalive requests sent while closing. The release now goes as a same-origin beacon, with the keepalive request as fallback, on both beforeunload and pagehide.
+- **Chromium 156, follow-up below the fold on a laptop screen.** At 1440 x 900 the follow-up panel ends at the bottom edge, and in French the chips wrap further, so Confirm was off screen. The panel was only scrolled into view below 1024. It now scrolls into view at every width, clear of the dock. On desktop the focus stays where it was, so Enter and Escape keep working. Shots `queue-followup-view-*` re-taken.
+- **Chromium 156, focus after Cancel on a phone.** Tapping Cancel removed the panel, and the Cancel button in it, before the frame that moved the focus to the heading. In between, the focus sat on the page. Cancel now moves the focus to the card heading first, then closes the panel; the frame stays as a fallback.
+
+Reproduced locally with the exact CI browser (Chrome Headless Shell 156.0.8078.4): the screens test failed before the fix and both tests pass after it. queue.spec and tasks.spec: 32 passed on Chromium 156. WebKit is not installed in the cloud container, so the WebKit leg is checked in CI.
+
 ## Deviations from the design
 
 1. **D3's switch rule applied** (measured above): the outcome-plus-next-card call and the next-card call are POST

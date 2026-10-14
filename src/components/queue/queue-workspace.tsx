@@ -295,6 +295,10 @@ export function QueueWorkspace({
   // Cancel the follow-up or the Do not contact question: if the focus was inside it (phones move it there), it goes
   // back to the card's heading instead of the page.
   const cancelChoice = useCallback(() => {
+    // The focus goes to the card's heading before the panel (and the Cancel button in it) goes away, so it never drops
+    // to the page; the frame after is a fallback in case something else took it and then vanished.
+    const active = document.activeElement;
+    if (!active || active === document.body || active.closest("[data-queue-panel]")) headingRef.current?.focus();
     setChoice(null);
     requestAnimationFrame(() => {
       const active = document.activeElement;
