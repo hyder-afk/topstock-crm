@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
 import { changeRole } from "@/app/(app)/more/team/actions";
 import { useStepUp } from "@/components/auth/step-up-dialog";
+import { focusOnArrival } from "@/components/shell/arrival-focus";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import {
@@ -15,7 +16,21 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { displayName, errorMessageKey, roles, shortId, type Person, type Role, type RoleChangeResult } from "@/lib/team";
+import {
+  displayName,
+  errorMessageKey,
+  isSaving,
+  reconcile,
+  refreshAfter,
+  roles,
+  settleSave,
+  shortId,
+  startSave,
+  type LocalRoles,
+  type Person,
+  type Role,
+  type RoleChangeResult,
+} from "@/lib/team";
 import { cn } from "@/lib/utils";
 
 type Ask = { person: Person; role: Role };
@@ -25,14 +40,17 @@ const noFocus = () => !document.activeElement || document.activeElement === docu
 // The organisation's people with their roles (More > Team). Changing a role: the menu, a confirmation naming the person
 // and the new role, "Confirm it's you" when the last code is older than the window, then the server action. The row
 // shows the new role at once and goes back if the database refuses; the result is announced, and the focus comes back
-// to that row's role button.
+// to that row's role button (or, when you step yourself down, to More's title).
 export function TeamList({
   people,
+  readAt,
   created,
   me,
   stepUpSeconds,
 }: {
   people: Person[];
+  /** The server's time just before `people` was read. */
+  readAt: number;
   created: Record<string, string>;
   me: string;
   stepUpSeconds: number;
@@ -40,17 +58,24 @@ export function TeamList({
   const t = useTranslations("Team");
   const router = useRouter();
   const stepUp = useStepUp(stepUpSeconds, "bodyRole");
-  // Roles set here that the server data does not show yet (saving, or saved before the next refresh). The page can be
-  // drawn again by the server at any moment, for instance after "Confirm it's you" renews the session cookies, so a
-  // local role is dropped only once the server data shows that role (React's adjust-during-render pattern).
-  const [local, setLocal] = useState<Record<string, Role>>({});
-  const [base, setBase] = useState(people);
-  if (base !== people) {
-    setBase(people);
-    setLocal((l) => Object.fromEntries(Object.entries(l).filter(([id, r]) => people.some((p) => p.id === id && p.role !== r))));
+  // Roles set here that the server's list may not show yet, per row: while saving, then until the page draws a list
+  // read after the database answered (whatever role it shows). The page can be drawn again by the server at any moment,
+  // for instance after "Confirm it's you" renews the session cookies, with a list read before the save: that one leaves
+  // the local role (rules in src/lib/team.ts; React's adjust-during-render pattern).
+  const [local, setLocal] = useState<LocalRoles>({});
+  const [base, setBase] = useState(readAt);
+  if (base !== readAt) {
+    setBase(readAt);
+    setLocal((l) => reconcile(l, { readAt }));
   }
-  const unset = (id: string) => setLocal((l) => Object.fromEntries(Object.entries(l).filter(([k]) => k !== id)));
-  const [pending, setPending] = useState<string | null>(null);
+  // The latest list's time, read when a save answers (the closure of apply() would hold an older one).
+  const listReadAt = useRef(readAt);
+  useEffect(() => {
+    listReadAt.current = readAt;
+  }, [readAt]);
+  // Each save gets a new number, and each row remembers its latest: an older call's answer is ignored.
+  const seqs = useRef(0);
+  const latest = useRef(new Map<string, number>());
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [asking, setAsking] = useState<Ask | null>(null);
   // What the dialog shows; kept while it closes so its words do not vanish during the exit.
@@ -85,9 +110,10 @@ export function TeamList({
       focusRow(person.id);
       return;
     }
-    setLocal((l) => ({ ...l, [person.id]: role }));
+    const seq = ++seqs.current;
+    latest.current.set(person.id, seq);
+    setLocal((l) => startSave(l, person.id, role, seq));
     setRowError((e) => ({ ...e, [person.id]: "" }));
-    setPending(person.id);
     announce(t("announce.saving", { who: who(person) }));
     const call = async (): Promise<RoleChangeResult> => {
       try {
@@ -102,20 +128,25 @@ export function TeamList({
     if (!result.ok && result.error === "step_up") {
       result = (await stepUp.requireFresh()) ? await call() : result;
     }
-    setPending(null);
+    if (latest.current.get(person.id) !== seq) return;
+    const outcome = result;
+    setLocal((l) => settleSave(l, person.id, seq, outcome.ok ? { ok: true, at: outcome.at } : { ok: false }, { readAt: listReadAt.current }));
+    const leftAdmin = result.ok && person.id === me && role !== "admin";
+    // After a save the server's list catches up (the local role stays shown until it does). After a lost answer the
+    // database may have saved the change all the same: the row goes back, then shows what the database holds.
+    if (refreshAfter(result) && !leftAdmin) router.refresh();
     if (result.ok) {
-      if (person.id === me && role !== "admin") {
+      if (leftAdmin) {
         announce(t("announce.savedSelf", { role }));
-        // The admin screens are gone for this person: back to More, drawn again without the Team row.
+        // The admin screens are gone for this person: back to More, drawn again without the Team row, with the focus on
+        // its title (the role button that had it is gone).
+        focusOnArrival("more-title");
         router.replace("/more");
         router.refresh();
         return;
       }
       announce(t("announce.saved", { who: who(person), role }));
-      // The server's list catches up; the local role stays shown until it does.
-      router.refresh();
     } else {
-      unset(person.id);
       const text =
         result.error === "step_up" ? t("announce.cancelled") : t(`errors.${errorMessageKey(result.error, person.id === me)}`, { who: who(person) });
       setRowError((e) => ({ ...e, [person.id]: result.error === "step_up" ? "" : text }));
@@ -132,7 +163,7 @@ export function TeamList({
       <ul className="flex flex-col overflow-hidden rounded-lg bg-card">
         {people.map((p) => {
           const name = displayName(p);
-          const role = local[p.id] ?? p.role;
+          const role = local[p.id]?.role ?? p.role;
           const error = rowError[p.id];
           return (
             <li key={p.id} className="border-b border-border last:border-b-0">
@@ -179,7 +210,7 @@ export function TeamList({
                 <RoleMenu
                   role={role}
                   label={t("roleMenu", { who: who(p), role: t(`role.${role}`) })}
-                  busy={pending === p.id}
+                  busy={isSaving(local, p.id)}
                   describedBy={error ? `role-error-${p.id}` : undefined}
                   triggerRef={(el) => {
                     if (el) triggers.current.set(p.id, el);

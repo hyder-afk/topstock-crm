@@ -11,7 +11,8 @@ export type Role = (typeof roles)[number];
 export const roleChangeInput = z.strictObject({ userId: z.uuid(), role: z.enum(roles) });
 
 export type RoleChangeError = "step_up" | "last_admin" | "forbidden" | "not_found" | "invalid" | "unavailable";
-export type RoleChangeResult = { ok: true } | { ok: false; error: RoleChangeError };
+/** `at`: the server's time when the database answered (compared with the time the page read its list). */
+export type RoleChangeResult = { ok: true; at: number } | { ok: false; error: RoleChangeError };
 
 /**
  * The screen's answer for a refusal of set_user_role. Only the SQLSTATE and the hint are read, never the database's
@@ -94,4 +95,58 @@ export function toPeople(rows: unknown): Person[] | null {
   const parsed = z.array(profileRow).safeParse(rows);
   if (!parsed.success) return null;
   return parsed.data.map((r) => ({ id: r.id, firstName: r.first_name, lastName: r.last_name, role: r.role, createdAt: r.created_at }));
+}
+
+/**
+ * Roles set on the screen that the server's list may not show yet, per person. `savedAt` is null while the change is
+ * being saved, then the server's time the database answered. `seq` tells this save from a later one on the same row.
+ */
+export type LocalRole = { role: Role; seq: number; savedAt: number | null };
+export type LocalRoles = Record<string, LocalRole>;
+/** The server's list as the page drew it: the server's time just before the people were read. */
+export type ServerList = { readAt: number };
+
+export function startSave(local: LocalRoles, id: string, role: Role, seq: number): LocalRoles {
+  return { ...local, [id]: { role, seq, savedAt: null } };
+}
+
+/**
+ * A save's answer. Only the row's latest save counts (an older call's answer is ignored). A refusal goes back to the
+ * server's role. A saved role is kept until the page draws a list read after the database answered, unless the list
+ * already on screen was read after it.
+ */
+export function settleSave(
+  local: LocalRoles,
+  id: string,
+  seq: number,
+  outcome: { ok: true; at: number } | { ok: false },
+  list: ServerList,
+): LocalRoles {
+  const mine = local[id];
+  if (!mine || mine.seq !== seq) return local;
+  if (!outcome.ok || list.readAt > outcome.at) return without(local, id);
+  return { ...local, [id]: { ...mine, savedAt: outcome.at } };
+}
+
+/**
+ * A new list from the server: a saved role is dropped once the list was read after the database answered, whatever role
+ * it shows (a colleague may have changed it again since). A list read earlier (the page drawn again after "Confirm it's
+ * you" renewed the session) leaves it. A role still being saved always stays.
+ */
+export function reconcile(local: LocalRoles, list: ServerList): LocalRoles {
+  const kept = Object.entries(local).filter(([, r]) => r.savedAt === null || list.readAt <= r.savedAt);
+  return kept.length === Object.keys(local).length ? local : Object.fromEntries(kept);
+}
+
+function without(local: LocalRoles, id: string): LocalRoles {
+  return Object.fromEntries(Object.entries(local).filter(([k]) => k !== id));
+}
+
+export function isSaving(local: LocalRoles, id: string) {
+  return local[id]?.savedAt === null;
+}
+
+/** Read the list again after a save, and after a lost answer: the database may have saved the change all the same. */
+export function refreshAfter(result: RoleChangeResult) {
+  return result.ok || result.error === "unavailable";
 }

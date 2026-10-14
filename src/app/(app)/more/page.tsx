@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { ChevronRight } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { SettingsBar } from "@/components/settings-bar";
+import { ArrivalFocus } from "@/components/shell/arrival-focus";
 import { ProfileForm } from "@/components/shell/profile-form";
 import { TeamEntry } from "@/components/team/team-entry";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,11 @@ export default async function MorePage() {
   const phoneOnly = sections.filter((s) => !s.phone);
   return (
     <div className="flex flex-col gap-8 pt-4">
-      <h1 className="text-3xl font-bold sm:text-4xl">{nav("more")}</h1>
+      <h1 id="more-title" tabIndex={-1} className="text-3xl font-bold outline-none sm:text-4xl">
+        {nav("more")}
+      </h1>
+      {/* Stepping yourself down on Team lands here: the focus goes to this title, never to the page body. */}
+      <ArrivalFocus target="more-title" />
 
       <section aria-labelledby="more-sections" className="flex flex-col gap-3 lg:hidden">
         <h2 id="more-sections" className="text-lg font-bold">

@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, setRole, sql } from "./helpers";
+import { ageStepUp, appReady, createUser, fullSession, isCancelledPrefetch, setRole, settled, sql, trackRequests } from "./helpers";
 
 // Evidence screenshots of More > Team: the list at every CLAUDE.md width in light and dark, English and French; the
 // role menu, the confirmation (yours, with the warning), "Confirm it's you", the last-admin refusal, the route skeleton
@@ -59,15 +59,18 @@ async function shoot(
       const context = await browser.newContext({ storageState: storage, viewport: { width, height: width < 600 ? 844 : 900 }, colorScheme: scheme });
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
+      trackRequests(page);
       const errors: string[] = [];
-      page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
-      page.on("pageerror", (e) => errors.push(e.message));
+      // As tests/auth/lead-page.spec.ts open(): a prefetch the page cancelled itself is not an error.
+      page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(`${m.text()} (${m.location().url})`));
+      page.on("pageerror", (e) => !isCancelledPrefetch(e.message) && errors.push(e.message));
       await page.goto(path);
       await expect(page.locator("main h1").first()).toBeVisible();
       await appReady(page);
       if (act) await act(page, context);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
       await page.screenshot({ path: `${dir}/${name}-${locale}-${scheme}-${width}.png`, fullPage });
+      await settled(page);
       expect(errors, `${name} ${locale} ${scheme} ${width}`).toEqual([]);
       await context.close();
     }

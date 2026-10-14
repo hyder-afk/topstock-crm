@@ -10,15 +10,23 @@ import { roles, sortPeople, toPeople } from "@/lib/team";
 // Everyone else gets the standard 404, and the database refuses them too (public.set_user_role).
 // The list reads public.profiles (row level security keeps it to the caller's organisation); profiles holds no email,
 // so someone without a name yet is told apart by the start of their user id and the day their account was created.
+// The whole organisation (a handful of people); sortPeople orders it. Plain select and filters only, so the local REST
+// stand-in (scripts/local-auth) serves it as PostgREST does. `readAt` is the server's time just before the read: a role
+// saved on the screen stays shown until a list read after the save arrives (compared with the time the action returns,
+// on the same clock).
+async function readPeople(supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"]) {
+  const readAt = Date.now();
+  const result = await supabase.from("profiles").select("id, first_name, last_name, role, created_at");
+  return { result, readAt };
+}
+
 export default async function TeamPage() {
   const { supabase, claims, timezone } = await requireAdmin();
-  const [t, format, locale, result] = await Promise.all([
+  const [t, format, locale, { result, readAt }] = await Promise.all([
     getTranslations("Team"),
     getFormatter(),
     getLocale(),
-    // The whole organisation (a handful of people); sortPeople orders it. Plain select and filters only, so the local
-    // REST stand-in (scripts/local-auth) serves it as PostgREST does.
-    supabase.from("profiles").select("id, first_name, last_name, role, created_at"),
+    readPeople(supabase),
   ]);
   const people = result.error ? null : toPeople(result.data);
   const sorted = people ? sortPeople(people, claims.sub, locale) : null;
@@ -49,7 +57,7 @@ export default async function TeamPage() {
       ) : sorted.length === 0 ? (
         <EmptyState icon={UsersRound} title={t("empty.title")} body={t("empty.body")} />
       ) : (
-        <TeamList people={sorted} created={created} me={claims.sub} stepUpSeconds={stepUpSecondsLeft(claims)} />
+        <TeamList people={sorted} readAt={readAt} created={created} me={claims.sub} stepUpSeconds={stepUpSecondsLeft(claims)} />
       )}
 
       <section aria-labelledby="team-roles" className="flex flex-col gap-3">

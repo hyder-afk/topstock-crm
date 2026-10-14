@@ -212,7 +212,7 @@ test("last_admin_refused: the only admin cannot step down; the row goes back and
   await context.close();
 });
 
-test("demoting_yourself: with another admin, you become a manager and land on More without Team", async ({ browser }) => {
+test("demoting_yourself: with another admin, you become a manager and land on More without Team, focus on its title", async ({ browser }) => {
   setRole(repEmail, "admin");
   const { context, page, errors } = await open(browser, adminState, 390);
   await gotoTeam(page);
@@ -227,6 +227,8 @@ test("demoting_yourself: with another admin, you become a manager and land on Mo
   await dialog.getByRole("button", { name: "Confirm" }).click();
   await expect(page).toHaveURL(/\/more$/);
   await expect(page.getByRole("heading", { name: "Your name" })).toBeVisible();
+  // The role button that had the focus is gone with the Team page: the focus lands on More's title, never on <body>.
+  await expect(page.getByRole("heading", { level: 1, name: "More" })).toBeFocused();
   await expect(page.getByRole("link", { name: /^Team/ })).toHaveCount(0);
   expect(roleOf(adminEmail)).toBe("manager");
   setRole(adminEmail, "admin");

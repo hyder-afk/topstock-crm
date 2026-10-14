@@ -2,7 +2,20 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { createTranslator } from "use-intl/core";
-import { errorMessageKey, roleChangeError, roleChangeInput, shortId, sortPeople, toPeople, type Person } from "@/lib/team";
+import {
+  errorMessageKey,
+  isSaving,
+  reconcile,
+  refreshAfter,
+  roleChangeError,
+  roleChangeInput,
+  settleSave,
+  shortId,
+  sortPeople,
+  startSave,
+  toPeople,
+  type Person,
+} from "@/lib/team";
 
 // The Team screen's rules: the action's input, how a refusal of set_user_role becomes a message, the order of the list,
 // and its words in both languages.
@@ -128,5 +141,83 @@ test.describe("Team words", () => {
     expect(e("count", { count: 3 })).toBe("3 people");
     expect(f("count", { count: 1 })).toBe("1 personne");
     expect(f("count", { count: 3 })).toBe("3 personnes");
+  });
+});
+
+// The screen's local roles (verifier findings 3, 4 and 5). Times are the server's clock in milliseconds: `readAt` is when
+// the page read the list, `at` when the database answered the save.
+test.describe("local roles while saving and after", () => {
+  const bob = "11111111-1111-4111-8111-111111111111";
+  const cleo = "22222222-2222-4222-8222-222222222222";
+  const list = (readAt: number, bobRole: "admin" | "manager" | "rep", cleoRole: "admin" | "manager" | "rep" = "rep") => ({
+    readAt,
+    people: [
+      { id: bob, role: bobRole },
+      { id: cleo, role: cleoRole },
+    ],
+  });
+
+  test("a saved role stays through a list read before the save answered (the redraw after Confirm it's you)", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = settleSave(local, bob, 1, { ok: true, at: 1_000 }, list(900, "rep"));
+    local = reconcile(local, list(950, "rep"));
+    expect(local[bob]?.role).toBe("manager");
+  });
+
+  test("the first list read after the save replaces the local role, whatever it shows (a colleague changed it back)", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = settleSave(local, bob, 1, { ok: true, at: 1_000 }, list(900, "rep"));
+    local = reconcile(local, list(1_100, "rep"));
+    expect(local[bob]).toBeUndefined();
+  });
+
+  test("a list read after the save that shows the saved role drops it too", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = settleSave(local, bob, 1, { ok: true, at: 1_000 }, list(900, "rep"));
+    expect(reconcile(local, list(1_100, "manager"))[bob]).toBeUndefined();
+  });
+
+  test("while a save is in flight no list drops its local role", () => {
+    const local = startSave({}, bob, "manager", 1);
+    expect(reconcile(local, list(5_000, "manager"))[bob]?.role).toBe("manager");
+    expect(reconcile(local, list(5_000, "rep"))[bob]?.role).toBe("manager");
+  });
+
+  test("a save answered after a list already read after it is dropped at once", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = settleSave(local, bob, 1, { ok: true, at: 1_000 }, list(1_050, "manager"));
+    expect(local[bob]).toBeUndefined();
+  });
+
+  test("each row has its own saving state: one row finishing does not unlock another", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = startSave(local, cleo, "admin", 2);
+    local = settleSave(local, bob, 1, { ok: true, at: 1_000 }, list(900, "rep"));
+    expect(isSaving(local, bob)).toBe(false);
+    expect(isSaving(local, cleo)).toBe(true);
+    expect(local[cleo]?.role).toBe("admin");
+  });
+
+  test("an older call's answer never touches a newer save on the same row", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = startSave(local, bob, "admin", 2);
+    local = settleSave(local, bob, 1, { ok: false }, list(900, "rep"));
+    expect(local[bob]).toEqual({ role: "admin", seq: 2, savedAt: null });
+    local = settleSave(local, bob, 1, { ok: true, at: 1_000 }, list(900, "rep"));
+    expect(isSaving(local, bob)).toBe(true);
+  });
+
+  test("a refusal goes back to the server's role", () => {
+    let local = startSave({}, bob, "manager", 1);
+    local = settleSave(local, bob, 1, { ok: false }, list(900, "rep"));
+    expect(local[bob]).toBeUndefined();
+  });
+
+  test("the list is read again after a save, and after a lost answer (the change may have been saved)", () => {
+    expect(refreshAfter({ ok: true, at: 1 })).toBe(true);
+    expect(refreshAfter({ ok: false, error: "unavailable" })).toBe(true);
+    for (const error of ["step_up", "last_admin", "forbidden", "not_found", "invalid"] as const) {
+      expect(refreshAfter({ ok: false, error })).toBe(false);
+    }
   });
 });

@@ -14,7 +14,8 @@ export async function changeRole(input: unknown): Promise<RoleChangeResult> {
   const codeFresh = stepUpSecondsLeft(claims) > 0;
   if (!codeFresh) return { ok: false, error: "step_up" };
   const { error } = await supabase.rpc("set_user_role", { target_user: parsed.data.userId, new_role: parsed.data.role });
-  if (!error) return { ok: true };
+  // The server's time once the database answered: the screen keeps the new role until it draws a list read after it.
+  if (!error) return { ok: true, at: Date.now() };
   let isAdmin: boolean | null = null;
   if (error.code === "42501" && !error.hint) {
     // Which of the function's three 42501 refusals it was: the caller's role now (their own row, readable by them).

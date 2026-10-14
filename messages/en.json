@@ -140,7 +140,7 @@
       "last_admin_self": "You are the last admin. Make someone else an admin first.",
       "forbidden": "Only admins can change roles.",
       "not_found": "This person is no longer in your team. Reload the page.",
-      "unavailable": "Couldn’t change the role just now. Try again.",
+      "unavailable": "Couldn’t confirm the change just now. The role shown is the one saved; try again if it isn’t the one you chose.",
       "load": "Couldn’t load the team just now.",
       "retry": "Try again"
     },

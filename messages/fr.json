@@ -140,7 +140,7 @@
       "last_admin_self": "Vous êtes le dernier admin. Nommez d’abord un autre admin.",
       "forbidden": "Seuls les admins peuvent changer les rôles.",
       "not_found": "Cette personne ne fait plus partie de votre équipe. Rechargez la page.",
-      "unavailable": "Impossible de changer le rôle pour le moment. Réessayez.",
+      "unavailable": "Impossible de confirmer le changement pour le moment. Le rôle affiché est celui enregistré ; réessayez si ce n’est pas celui choisi.",
       "load": "Impossible de charger l’équipe pour le moment.",
       "retry": "Réessayer"
     },
