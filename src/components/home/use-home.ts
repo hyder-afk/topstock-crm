@@ -21,7 +21,10 @@ export const queueSummaryKey = ["queue", "summary"] as const;
 
 export async function fetchHomeClient(scope: HomeScope): Promise<HomeData> {
   const res = await fetch(`/api/home?scope=${scope}`, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(String(res.status));
+  if (!res.ok) {
+    await res.text().catch(() => ""); // read the error body, so the request completes (and the connection is freed)
+    throw new Error(String(res.status));
+  }
   return (await res.json()) as HomeData;
 }
 
@@ -43,7 +46,10 @@ export function useQueueSummary() {
     queryKey: queueSummaryKey,
     queryFn: async (): Promise<QueueSummary> => {
       const res = await fetch("/api/queue/summary", { headers: { accept: "application/json" } });
-      if (!res.ok) throw new Error(String(res.status));
+      if (!res.ok) {
+        await res.text().catch(() => ""); // read the error body, so the request completes
+        throw new Error(String(res.status));
+      }
       return (await res.json()) as QueueSummary;
     },
     staleTime: HOME_STALE_MS,

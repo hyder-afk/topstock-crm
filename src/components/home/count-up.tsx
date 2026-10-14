@@ -65,7 +65,8 @@ export function CountUp({
     const from = first ? (firstVisit && !reduced ? 0 : value) : (shown.current as number);
     shown.current = value;
     if (from === value || reduced) {
-      node.nodeValue = format(value);
+      const text = format(value);
+      if (node.nodeValue !== text) node.nodeValue = text; // React already wrote it; never touch the text needlessly
       return;
     }
     node.nodeValue = format(from); // before paint: no flash of the final value
