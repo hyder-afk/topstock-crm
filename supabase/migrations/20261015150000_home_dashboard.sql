@@ -40,7 +40,9 @@ $$;
 -- ===========================================================================
 -- The caller's open deals (p_owner) or the org's (p_owner null), with their stage, value, stall state and close date.
 -- Stalled is Day 5a's one rule (deal_cards): neither a stage move nor any activity on the lead for the stage's limit,
--- elapsed in hours. over_days: whole days past that limit (stalled deals only). Each branch walks one board index.
+-- elapsed in hours. quiet_since is when the deal last moved or its lead was last contacted; the lead is read only when
+-- the stage clock alone is past the limit (CASE evaluates the lookup lazily), as pipeline_summary does. over_days: whole
+-- days past the limit (meaningful for stalled deals only). Each branch walks one board index.
 create function private.home_open_deals(p_owner uuid)
 returns table (id uuid, stage text, stage_position smallint, value numeric, expected_close date, is_stalled boolean,
                over_days integer)
@@ -49,24 +51,30 @@ begin
   if p_owner is not null then
     return query
       select d.id, s.key, s.position::smallint, d.value, d.expected_close,
-             greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))
-               < now() - make_interval(hours => 24 * s.stall_days),
-             floor(extract(epoch from now() - make_interval(hours => 24 * s.stall_days)
-                   - greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))) / 86400)::integer
+             q.quiet_since < now() - make_interval(hours => 24 * s.stall_days),
+             floor(extract(epoch from now() - make_interval(hours => 24 * s.stall_days) - q.quiet_since) / 86400)::integer
         from public.deals d
         join public.pipeline_stages s on s.id = d.stage_id
-        join public.companies c on c.id = d.company_id
+        cross join lateral (
+          select case when d.stage_entered_at < now() - make_interval(hours => 24 * s.stall_days)
+                      then greatest(d.stage_entered_at,
+                                    coalesce((select c.last_activity_at from public.companies c where c.id = d.company_id),
+                                             '-infinity'::timestamptz))
+                      else d.stage_entered_at end as quiet_since) q
        where d.status = 'open' and d.owner_id = p_owner;
   else
     return query
       select d.id, s.key, s.position::smallint, d.value, d.expected_close,
-             greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))
-               < now() - make_interval(hours => 24 * s.stall_days),
-             floor(extract(epoch from now() - make_interval(hours => 24 * s.stall_days)
-                   - greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))) / 86400)::integer
+             q.quiet_since < now() - make_interval(hours => 24 * s.stall_days),
+             floor(extract(epoch from now() - make_interval(hours => 24 * s.stall_days) - q.quiet_since) / 86400)::integer
         from public.deals d
         join public.pipeline_stages s on s.id = d.stage_id
-        join public.companies c on c.id = d.company_id
+        cross join lateral (
+          select case when d.stage_entered_at < now() - make_interval(hours => 24 * s.stall_days)
+                      then greatest(d.stage_entered_at,
+                                    coalesce((select c.last_activity_at from public.companies c where c.id = d.company_id),
+                                             '-infinity'::timestamptz))
+                      else d.stage_entered_at end as quiet_since) q
        where d.status = 'open' and d.org_id = (select private.current_org_id());
   end if;
 end;
@@ -358,7 +366,8 @@ $$;
 -- REBASE: re-copy after 4c/4d merge. A stand-in for Day 4c's list_tasks('overdue' / 'today', 'mine', 6), which is not
 -- on this branch: remove this function at the 4c rebase (and its grant, tests and mutation rows). The caller's open
 -- tasks that are overdue or due today (Day 4c's buckets in the profile zone), overdue first, then today's meetings by
--- time, then the rest by when they are due (an all-day task at the start of its day). total and overdue count them all.
+-- time, then the rest by when they are due (an all-day task at the start of its day); overdue_days counts whole days in
+-- the profile zone (0: earlier today). total and overdue count them all.
 create function public.home_today_tasks(p_limit integer default 6) returns jsonb
 language plpgsql stable set search_path = '' as $$
 declare
@@ -378,6 +387,8 @@ begin
   with t as materialized (
     select t.id, t.title, t.kind, t.due_date, t.due_at, t.company_id, c.name as company_name,
            (t.due_date < w.today or t.due_at < now()) is true as overdue,
+           case when (t.due_date < w.today or t.due_at < now()) is true
+                then w.today - coalesce(t.due_date, (t.due_at at time zone v_tz)::date) end as overdue_days,
            coalesce(t.due_at, t.due_date::timestamp at time zone v_tz) as sort_at
       from public.tasks t
       left join public.companies c on c.id = t.company_id

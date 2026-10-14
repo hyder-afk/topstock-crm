@@ -666,6 +666,9 @@ begin
   perform pg_temp.eq('today order',
     (select array_agg((i ->> 'id')::uuid order by n) from jsonb_array_elements(r -> 'items') with ordinality x (i, n)),
     array[overdue_old, overdue_new, meeting, today_all_day, call_later]);
+  perform pg_temp.eq('overdue days',
+    (select array_agg((i ->> 'overdue_days')::integer order by n) from jsonb_array_elements(r -> 'items') with ordinality x (i, n)),
+    array[5, 1, null, null, null]::integer[]);
   perform pg_temp.eq('today limit', jsonb_array_length(public.home_today_tasks(2) -> 'items'), 2);
   perform pg_temp.eq('today limit total', (public.home_today_tasks(2) ->> 'total')::integer, 5);
   perform pg_temp.act(hiro);
