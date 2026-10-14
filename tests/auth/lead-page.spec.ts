@@ -516,7 +516,7 @@ test("timeline_pages_keyset (60 entries), deals_stock_empty_states and keyboard 
   await page.getByRole("tab", { name: "Timeline" }).focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "Deals" })).toBeFocused();
-  await expect(page.getByRole("tabpanel")).toContainText("Deals open from this page once the pipeline is ready.");
+  await expect(page.getByRole("tabpanel")).toContainText("No deals yet. Open one when this lead is interested.");
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tabpanel")).toContainText("once inventory is set up");
   await page.keyboard.press("End");
