@@ -123,7 +123,9 @@ test.describe("Home figures (Day 5c)", () => {
     expect([ATTENTION_SHOWN, RECENT_SHOWN, TODAY_SHOWN]).toEqual([5, 8, 6]);
     expect(home).toContain("public.home_attention(p_scope text default 'team', p_limit integer default 5)");
     expect(home).toContain("public.home_recent_activity(p_scope text default 'team', p_limit integer default 8)");
-    expect(home).toContain("public.home_today_tasks(p_limit integer default 6)");
+    // Today reads Day 4c's list_tasks (since the 4c rebase), whose limit is 1 to 100.
+    expect(home).not.toContain("home_today_tasks");
+    expect(read("20261013090000_tasks_queue.sql")).toContain("p_limit is null or p_limit not between 1 and 100 then");
   });
   test("scopes and reached outcomes match", () => {
     expect([...homeScopes]).toEqual(["team", "mine"]);

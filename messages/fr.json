@@ -65,13 +65,13 @@
         "todo": "À faire",
         "call": "Appel",
         "meeting": "Rendez-vous"
-      }
+      },
+      "theirTime": "{time} chez lui"
     },
     "queue": {
       "title": "File d’appels",
       "counts": "{now} à appeler maintenant · {later} plus tard aujourd’hui",
       "nobody": "Personne à appeler pour l’instant.",
-      "notReady": "Les chiffres s’afficheront ici dès que la file d’appels sera en place.",
       "newLeads": "{count, plural, =0 {Aucun nouveau prospect cette semaine} one {# nouveau prospect cette semaine} other {# nouveaux prospects cette semaine}}",
       "imported": "(+{count} importés)",
       "start": "Commencer les appels",

@@ -9,10 +9,12 @@ import { CardError, HomeCard, RowSkeletons } from "@/components/home/home-card";
 import { homeKey } from "@/components/home/use-home";
 import { useToast } from "@/components/ui/toast";
 import type { HomeData, HomeScope, HomeToday, TodayTask } from "@/lib/home";
+import { primaryZone } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 // Today (Day 5 design 7.10): overdue first ("Overdue · 2 days" in the red token, with the word), then meetings with
-// their times (DM Mono, in the profile zone), then the rest. Ticking a check marks the task done at once (Undo in the
+// their times (DM Mono, in the profile zone, plus the lead's own time when its zone differs: the dual zone label of Day
+// 4b/4c), then the rest. Ticking a check marks the task done at once (Undo in the
 // toast) through the lead page's setTaskDone (set_task_done, Day 4b). Six rows, then "+3 more · Open Tasks".
 // Tasks are always the caller's own, whatever the scope.
 
@@ -28,6 +30,12 @@ function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undef
     : task.due_at
       ? format.dateTime(new Date(task.due_at), { hour: "2-digit", minute: "2-digit", timeZone: zone })
       : t("allDay");
+  // A meeting with a lead in another zone also shows the lead's time (Day 4c's list_tasks gives the lead's calling zone).
+  const theirZone = task.company_call_zone ? primaryZone(task.company_call_zone) : null;
+  const theirs =
+    !task.overdue && task.kind === "meeting" && task.due_at && theirZone && zone && theirZone !== zone
+      ? format.dateTime(new Date(task.due_at), { hour: "2-digit", minute: "2-digit", timeZone: theirZone })
+      : null;
   return (
     <li className={ROW}>
       <button
@@ -61,6 +69,7 @@ function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undef
         )}
       >
         {when}
+        {theirs ? <span className="block font-mono text-muted-foreground">{t("theirTime", { time: theirs })}</span> : null}
       </span>
     </li>
   );
@@ -130,7 +139,7 @@ export function TodayCard({
       ) : today.items.length === 0 ? (
         <div className="flex flex-col items-start gap-1">
           <p className="text-sm text-muted-foreground">{t("empty")}</p>
-          {/* REBASE: re-copy after 4c/4d merge. Day 4c's Tasks page has Add a task; until then /tasks is a placeholder. */}
+          {/* Day 4c's Tasks page opens with its quick add at the top (T focuses it). */}
           <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm font-bold underline underline-offset-4">
             {t("addTask")}
           </Link>

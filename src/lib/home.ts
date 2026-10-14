@@ -94,12 +94,73 @@ export const todayTask = z.object({
   due_at: z.string().nullable(),
   company_id: z.uuid().nullable(),
   company_name: z.string().nullable(),
+  /** The lead's calling zone (Day 4c list_tasks), for a meeting's "their time" label. */
+  company_call_zone: z.string().nullable(),
   overdue: z.boolean(),
   overdue_days: z.number().int().nonnegative().nullable(),
 });
 export const todayPart = z.object({ total: count, overdue: count, items: z.array(todayTask).max(20) });
 export type TodayTask = z.infer<typeof todayTask>;
 export type HomeToday = z.infer<typeof todayPart>;
+
+/** One row of Day 4c's list_tasks (only the columns the Today card reads; unknown columns are dropped). */
+export const listTaskRow = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  kind: z.enum(["todo", "call", "meeting"]),
+  due_date: z.iso.date().nullable(),
+  due_at: z.string().nullable(),
+  company_id: z.uuid().nullable(),
+  company_name: z.string().nullable(),
+  company_call_zone: z.string().nullable(),
+});
+export type ListTaskRow = z.infer<typeof listTaskRow>;
+export const listTaskRows = z.array(listTaskRow).max(100);
+/** Day 4c's count_tasks answer. */
+export const taskCounts = z.object({ overdue: count, today: count, upcoming: count });
+
+/** The calendar date (YYYY-MM-DD) of an instant in a zone; null for a zone the browser or server does not know. */
+export function dateInZone(at: Date, zone: string): string | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(at);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whole days an overdue task is late, counted in the person's profile zone (0: earlier today), from the database's own
+ * "today" there (home_summary.today); null when that day or the zone is not known.
+ */
+export function overdueDays(task: Pick<ListTaskRow, "due_date" | "due_at">, today: string | null, zone: string | null): number | null {
+  if (!today || !zone) return null;
+  const due = task.due_date ?? (task.due_at ? dateInZone(new Date(task.due_at), zone) : null);
+  if (!due) return null;
+  const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86_400_000);
+  return Number.isFinite(days) && days >= 0 ? days : null;
+}
+
+/**
+ * The Today card from Day 4c's reads (design 7.10): overdue first (oldest first, as list_tasks orders them), then the
+ * day's meetings by time, then the rest by when they are due; at most `shown` rows. total and overdue come from
+ * count_tasks('mine'), so "+3 more" counts every task, not only the rows read.
+ */
+export function buildToday(
+  overdue: ListTaskRow[],
+  today: ListTaskRow[],
+  counts: z.infer<typeof taskCounts>,
+  day: { today: string; zone: string } | null,
+  shown = TODAY_SHOWN,
+): HomeToday {
+  const meetingsFirst = [...today.filter((t) => t.kind === "meeting"), ...today.filter((t) => t.kind !== "meeting")];
+  const items = [
+    ...overdue.map((t) => ({ ...t, overdue: true, overdue_days: overdueDays(t, day?.today ?? null, day?.zone ?? null) })),
+    ...meetingsFirst.map((t) => ({ ...t, overdue: false, overdue_days: null })),
+  ].slice(0, shown);
+  return { total: counts.overdue + counts.today, overdue: counts.overdue, items };
+}
 
 /**
  * The Day 6 contract for the Low stock card (design section 10): exactly {low, out, deals_waiting, items[≤ 5]}. Unknown
@@ -127,8 +188,6 @@ export type LowStockCard = z.infer<typeof lowStockCard>;
 /** Day 4c's queue_summary counts the Work queue card shows (loaded after paint, `['queue','summary']`). */
 export const queueSummary = z.object({ callable_now: count, later_today: count });
 export type QueueSummary = z.infer<typeof queueSummary>;
-/** What GET /api/queue/summary answers: the counts, or {ready:false} before the work queue exists (Day 4c). */
-export type QueueAnswer = QueueSummary | { ready: false };
 
 export type Part<T> = { ok: true; data: T } | { ok: false };
 export type HomeData = {

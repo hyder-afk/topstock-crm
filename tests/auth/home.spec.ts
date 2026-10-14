@@ -241,12 +241,21 @@ test("attention_opens_deal_sheet and refetch_after_move", async ({ browser }) =>
 });
 
 test("queue_card_loads_after_paint", async ({ browser }) => {
-  // Before Day 4c (this branch): no queue_summary yet; the card says so calmly and Start calling still shows.
+  // Day 4c's queue_summary (on main since the 4c rebase), unmocked: the card shows what GET /api/queue/summary answers
+  // (the counts, or "Nobody to call right now." outside calling hours), and Start calling carries 4c's "G Q" key.
   const plain = await open(browser, adminState);
   await gotoHome(plain.page);
   const queue = card(plain.page, /^Work queue/);
-  await expect(queue).toContainText("Counts will show here once the work queue is set up.");
+  const res = await plain.page.request.get("/api/queue/summary");
+  expect(res.status()).toBe(200);
+  const real = (await res.json()) as { callable_now: number; later_today: number };
+  await expect(queue).toContainText(
+    real.callable_now + real.later_today === 0
+      ? "Nobody to call right now."
+      : `${real.callable_now.toLocaleString("en")} to call now · ${real.later_today.toLocaleString("en")} later today`,
+  );
   await expect(queue.getByRole("link", { name: "Start calling" })).toHaveAttribute("href", "/leads/queue");
+  await expect(queue.getByRole("link", { name: "Start calling" })).toHaveAttribute("aria-keyshortcuts", "G Q");
   await expect(queue).toContainText("No new leads this week");
   expect(plain.errors).toEqual([]);
   await plain.context.close();

@@ -5,13 +5,15 @@ import { useFormatter, useTranslations } from "next-intl";
 import { HomeCard } from "@/components/home/home-card";
 import { useQueueSummary } from "@/components/home/use-home";
 import { buttonVariants } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import type { HomeSummary } from "@/lib/home";
+import { queueGoKey } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
-// Work queue (Day 5 design 7.10): "412 to call now · 1,030 later today" (DM Mono) from Day 4c's queue_summary, loaded
-// after paint (['queue', 'summary']); the week's new leads from home_summary (org-wide); the red Start calling. The
-// button works whether or not the count loaded. REBASE: re-copy after 4c/4d merge. The work queue page and its "G Q"
-// shortcut come with Day 4c; wire this card to 4c's queue card pieces then (the Kbd hint joins the button).
+// Work queue (Day 5 design 7.10): "412 to call now · 1,030 later today" (DM Mono) from Day 4c's queue_summary (its
+// GET /api/queue/summary, the caller's own leads), loaded after paint (['queue', 'summary']); the week's new leads from
+// home_summary (org-wide); the red Start calling with Day 4c's "G Q" hint. The button works whether or not the count
+// loaded.
 
 export function QueueCard({ newLeads }: { newLeads: HomeSummary["new_leads"] | null }) {
   const t = useTranslations("Home.queue");
@@ -26,8 +28,6 @@ export function QueueCard({ newLeads }: { newLeads: HomeSummary["new_leads"] | n
           <p role="status" className="text-sm text-muted-foreground">
             {t("failed")}
           </p>
-        ) : "ready" in queue.data ? (
-          <p className="text-sm text-muted-foreground">{t("notReady")}</p>
         ) : queue.data.callable_now + queue.data.later_today === 0 ? (
           <p className="text-sm text-muted-foreground">{t("nobody")}</p>
         ) : (
@@ -44,9 +44,14 @@ export function QueueCard({ newLeads }: { newLeads: HomeSummary["new_leads"] | n
       </div>
       <Link
         href="/leads/queue"
+        aria-keyshortcuts={`G ${queueGoKey.toUpperCase()}`}
         className={cn(buttonVariants({ variant: "brand", width: "full" }), "mt-auto min-h-14 sm:min-h-11 lg:w-fit")}
       >
-        {t("start")}
+        <span>{t("start")}</span>
+        <span aria-hidden="true" className="ms-2 hidden gap-1 sm:inline-flex">
+          <Kbd className="border-transparent bg-brand-foreground/10 text-brand-foreground">G</Kbd>
+          <Kbd className="border-transparent bg-brand-foreground/10 text-brand-foreground">{queueGoKey.toUpperCase()}</Kbd>
+        </span>
       </Link>
     </HomeCard>
   );
