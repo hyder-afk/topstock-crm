@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
@@ -59,11 +59,34 @@ export function DealSheet({
   team: TeamMember[];
   canAssign: boolean;
 }) {
+  // Focus goes back where it was when the sheet opened (a card, a Deals tab row, the Summary card), or to that deal's
+  // card or row when the opener is gone, never to <body>. Read before Radix moves focus into the sheet (its focus
+  // scope runs in an effect, after this layout effect).
+  const opener = useRef<{ el: HTMLElement | null; id: string } | null>(null);
+  useLayoutEffect(() => {
+    if (dealId && opener.current?.id !== dealId) {
+      const active = document.activeElement;
+      opener.current = { el: active instanceof HTMLElement && active !== document.body ? active : null, id: dealId };
+    }
+  }, [dealId]);
+  const returnFocus = (event: Event) => {
+    const o = opener.current;
+    opener.current = null;
+    if (!o) return;
+    const target =
+      (o.el?.isConnected ? o.el : null) ??
+      document.querySelector<HTMLElement>(`[data-deal-main="${CSS.escape(o.id)}"], [data-deal-row="${CSS.escape(o.id)}"]`);
+    if (target) {
+      event.preventDefault();
+      target.focus({ preventScroll: true });
+    }
+  };
   return (
     <Dialog open={!!dealId} onOpenChange={(open) => (open ? null : onClose())}>
       {dealId ? (
         <DialogContent
           aria-describedby={undefined}
+          onCloseAutoFocus={returnFocus}
           className={cn(
             "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-12px)] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pb-[env(safe-area-inset-bottom)]",
             "lg:inset-y-3 lg:right-3 lg:left-auto lg:mx-0 lg:max-h-none lg:w-[440px] lg:rounded-[24px]",

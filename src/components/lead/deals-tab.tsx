@@ -131,6 +131,7 @@ function DealRow({ deal, onOpenDeal, onReopen }: { deal: DealCard; onOpenDeal: (
     <li className="flex min-h-[72px] items-center gap-2">
       <button
         type="button"
+        data-deal-row={deal.id}
         onClick={() => onOpenDeal(deal.id)}
         className="flex min-h-[72px] min-w-0 flex-1 flex-col items-start justify-center gap-1 rounded-md px-1 text-left transition-colors hover:bg-muted/60"
       >
