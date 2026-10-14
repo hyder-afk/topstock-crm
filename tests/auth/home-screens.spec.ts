@@ -32,7 +32,7 @@ const some = [
   { locale: "en", scheme: "light" },
   { locale: "fr", scheme: "dark" },
 ] as const;
-// Day 4c's queue_summary is not on this branch (the card says the count could not load); the shots show the card as it
+// Day 4c's queue_summary is not on this branch (the card says the counts come with the work queue); the shots show the card as it
 // will look with 4c's contract, mocked, except the one shot named home-queue-before-4c.
 const queueMock = { callable_now: 412, later_today: 1030 };
 
@@ -56,7 +56,7 @@ async function shoot(
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
       const errors: string[] = [];
-      page.on("console", (m) => m.type() === "error" && !/status of 502/.test(m.text()) && errors.push(`${m.text()} (${m.location().url})`));
+      page.on("console", (m) => m.type() === "error" && errors.push(`${m.text()} (${m.location().url})`));
       page.on("pageerror", (e) => errors.push(e.message));
       if (o.queue !== false) {
         await page.route("**/api/queue/summary", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(queueMock) }));

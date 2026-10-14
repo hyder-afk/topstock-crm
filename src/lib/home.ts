@@ -127,6 +127,8 @@ export type LowStockCard = z.infer<typeof lowStockCard>;
 /** Day 4c's queue_summary counts the Work queue card shows (loaded after paint, `['queue','summary']`). */
 export const queueSummary = z.object({ callable_now: count, later_today: count });
 export type QueueSummary = z.infer<typeof queueSummary>;
+/** What GET /api/queue/summary answers: the counts, or {ready:false} before the work queue exists (Day 4c). */
+export type QueueAnswer = QueueSummary | { ready: false };
 
 export type Part<T> = { ok: true; data: T } | { ok: false };
 export type HomeData = {

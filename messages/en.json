@@ -71,6 +71,7 @@
       "title": "Work queue",
       "counts": "{now} to call now · {later} later today",
       "nobody": "Nobody to call right now.",
+      "notReady": "Counts will show here once the work queue is set up.",
       "newLeads": "{count, plural, =0 {No new leads this week} one {# new lead this week} other {# new leads this week}}",
       "imported": "(+{count} imported)",
       "start": "Start calling",

@@ -38,14 +38,10 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
   const page = await context.newPage();
   trackRequests(page);
   const errors: string[] = [];
-  page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && !queue502(m.text()) && errors.push(m.text()));
+  page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => !isCancelledPrefetch(e.message) && errors.push(e.message));
   return { context, page, errors };
 }
-// Day 4c's queue_summary is not on this branch: /api/queue/summary answers 502 and the browser logs the failed fetch.
-// That one line is expected until the 4c rebase (README "Rebase points"); every other console error counts.
-const queue502 = (text: string) => /Failed to load resource: the server responded with a status of 502/.test(text);
-
 async function gotoHome(page: Page) {
   await settled(page);
   await page.goto("/");
@@ -245,11 +241,11 @@ test("attention_opens_deal_sheet and refetch_after_move", async ({ browser }) =>
 });
 
 test("queue_card_loads_after_paint", async ({ browser }) => {
-  // Before Day 4c (this branch): the count cannot load; the card says so and Start calling still works.
+  // Before Day 4c (this branch): no queue_summary yet; the card says so calmly and Start calling still shows.
   const plain = await open(browser, adminState);
   await gotoHome(plain.page);
   const queue = card(plain.page, /^Work queue/);
-  await expect(queue).toContainText("Couldn’t load the queue count");
+  await expect(queue).toContainText("Counts will show here once the work queue is set up.");
   await expect(queue.getByRole("link", { name: "Start calling" })).toHaveAttribute("href", "/leads/queue");
   await expect(queue).toContainText("No new leads this week");
   expect(plain.errors).toEqual([]);

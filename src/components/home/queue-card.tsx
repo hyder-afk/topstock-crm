@@ -26,6 +26,8 @@ export function QueueCard({ newLeads }: { newLeads: HomeSummary["new_leads"] | n
           <p role="status" className="text-sm text-muted-foreground">
             {t("failed")}
           </p>
+        ) : "ready" in queue.data ? (
+          <p className="text-sm text-muted-foreground">{t("notReady")}</p>
         ) : queue.data.callable_now + queue.data.later_today === 0 ? (
           <p className="text-sm text-muted-foreground">{t("nobody")}</p>
         ) : (

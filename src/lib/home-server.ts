@@ -48,9 +48,13 @@ export async function fetchHome(supabase: SupabaseClient, scope: HomeScope): Pro
   };
 }
 
-/** The work queue's counts for the Work queue card (Day 4c's queue_summary, the caller's own leads), or null. */
-export async function fetchQueueSummary(supabase: SupabaseClient): Promise<QueueSummary | null> {
-  const { data, error } = await supabase.rpc("queue_summary", { p_scope: "mine", p_skip_lunch: false });
+/**
+ * The work queue's counts for the Work queue card (Day 4c's queue_summary, the caller's own leads); "not_ready" while
+ * the function does not exist (this branch, before the 4c rebase: PostgREST answers 404 / PGRST202); null on failure.
+ */
+export async function fetchQueueSummary(supabase: SupabaseClient): Promise<QueueSummary | "not_ready" | null> {
+  const { data, error, status } = await supabase.rpc("queue_summary", { p_scope: "mine", p_skip_lunch: false });
+  if (error && (status === 404 || error.code === "PGRST202" || error.code === "42883")) return "not_ready";
   if (error) return null;
   const parsed = queueSummary.safeParse(data);
   return parsed.success ? parsed.data : null;

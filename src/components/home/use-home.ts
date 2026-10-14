@@ -8,7 +8,7 @@ import {
   homeScopes,
   type HomeData,
   type HomeScope,
-  type QueueSummary,
+  type QueueAnswer,
 } from "@/lib/home";
 
 // Home's data in the query cache (Day 5 design 7.10, D31, D32). ['home', scope] holds every part: seeded from the
@@ -44,13 +44,13 @@ export function useHome(scope: HomeScope, initial: HomeData | undefined) {
 export function useQueueSummary() {
   return useQuery({
     queryKey: queueSummaryKey,
-    queryFn: async (): Promise<QueueSummary> => {
+    queryFn: async (): Promise<QueueAnswer> => {
       const res = await fetch("/api/queue/summary", { headers: { accept: "application/json" } });
       if (!res.ok) {
         await res.text().catch(() => ""); // read the error body, so the request completes
         throw new Error(String(res.status));
       }
-      return (await res.json()) as QueueSummary;
+      return (await res.json()) as QueueAnswer;
     },
     staleTime: HOME_STALE_MS,
     refetchOnWindowFocus: true,
