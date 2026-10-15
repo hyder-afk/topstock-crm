@@ -337,8 +337,12 @@ const pickers: Picker[] = [
     name: "time-picker",
     path: () => "/tasks",
     trigger: async (page, l) => {
-      await page.getByRole("button", { name: m(l, "Tasks.chips.today"), exact: true }).click();
-      return page.getByLabel(m(l, "Tasks.quickAdd.time"), { exact: true });
+      // The time waits for a day: Today is the usual default; pressed again it would clear it.
+      const field = page.getByLabel(m(l, "Tasks.quickAdd.time"), { exact: true });
+      const today = page.getByRole("button", { name: m(l, "Tasks.chips.today"), exact: true });
+      if ((await today.getAttribute("aria-pressed")) !== "true") await today.click();
+      await expect(field).toBeEnabled();
+      return field;
     },
     open: async (page, trigger) => {
       await trigger.focus();
@@ -384,10 +388,16 @@ const pickers: Picker[] = [
   },
 ];
 
-async function clipShot(page: Page, file: string, parts: Locator[]) {
-  const boxes = [];
+type Box = { x: number; y: number; width: number; height: number };
+async function boxOf(part: Locator) {
+  return part.first().boundingBox({ timeout: 10_000 });
+}
+// The trigger's box is measured while closed: an open Select or dialog hides the rest of the page from the
+// accessibility tree (Radix), so a role-based locator for the trigger would no longer resolve.
+async function clipShot(page: Page, file: string, parts: (Locator | Box)[]) {
+  const boxes: Box[] = [];
   for (const p of parts) {
-    const box = await p.first().boundingBox();
+    const box = "x" in p ? p : await boxOf(p);
     if (box) boxes.push(box);
   }
   expect(boxes.length).toBeGreaterThan(0);
@@ -406,18 +416,21 @@ for (const picker of pickers) {
         for (const width of [390, 1440]) {
           const { context, page, errors } = await openPage(browser, { path: picker.path(), locale, scheme, width });
           const trigger = await picker.trigger(page, locale);
-          await trigger.scrollIntoViewIfNeeded();
+          // In the middle of the screen, clear of the floating dock (it would sit over a trigger near the bottom).
+          await trigger.evaluate((el) => el.scrollIntoView({ block: "center" }));
           await expect(trigger).toBeVisible();
           expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
           const base = `${dir}/${picker.name}-${locale}-${scheme}-${width}`;
           await page.mouse.move(0, 0);
-          await clipShot(page, `${base}-closed.png`, [trigger]);
+          const closedBox = await boxOf(trigger);
+          expect(closedBox).not.toBeNull();
+          await clipShot(page, `${base}-closed.png`, [closedBox!]);
           const panel = await picker.open(page, trigger, locale);
           await expect(panel.first()).toBeVisible();
           // The open animation (settle-in, transform + opacity) finishes before the shot.
           await page.waitForTimeout(300);
           expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-          await clipShot(page, `${base}-open.png`, [trigger, panel]);
+          await clipShot(page, `${base}-open.png`, [closedBox!, panel]);
           await settled(page);
           expect(errors, `${picker.name} ${locale} ${scheme} ${width}`).toEqual([]);
           await context.close();
