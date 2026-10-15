@@ -136,3 +136,92 @@ again, and the pre-merge head 931af08 built from a scratch copy, both on the sam
 - **Possibly from the merge, not proven:** the skeleton without a hover was 118 to 190 ms in both merged runs against 93
   to 111 ms in the one pre-merge run (the baseline had 124 and 129 ms with one 1,989 ms outlier). The difference is about
   the size of this measure's run-to-run spread; flagged to Haider rather than investigated (decision A: Day 7 polish).
+
+
+## Quiet re-run (15 Oct 2026)
+
+Why: the merge run above was compared on a different browser from the baseline and partly overlapped other jobs.
+This re-run uses the baseline's own browser and command line on a quiet machine, with three runs on each head taken
+in turn. Nothing was tuned and no app or test code was changed.
+
+**Browser actually used by the baseline: Chromium 141.0.7390.37** (`PW_CHROMIUM_PATH=/opt/pw-browsers/chromium`, the
+full Playwright build `chromium-1194` run headless). The text above says "Chromium 156", but the command that produced
+the accepted figures (`e2e-perf4.log`, copied as `perf-browser-final.log`, 14 Oct 20:58 UTC) set
+`PW_CHROMIUM_PATH=/opt/pw-browsers/chromium`. The merge run above used Chrome Headless Shell 156.0.8078.4, a different
+browser. This re-run uses the baseline's browser.
+
+**Method.** The command line was the baseline's: `set -a; . /tmp/topstock-auth/env; set +a;
+PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PERF=1 npx playwright test -c playwright.auth.config.ts --project=chromium
+tests/auth/day5-perf.spec.ts`, run from the 6008f4b worktree, so both heads ran the same test code. Each head ran as a
+production build (`next build`, then `next start -p 3100`) against the shared local stack (Postgres 54330, gateway
+54321, merged-head schema):
+- **A** = 6008f4b, built in place.
+- **B** = pre-merge 931af08, built from a `git archive` copy. Its `node_modules` is a hard-linked copy, because Turbopack
+  refuses a symlinked `node_modules`. `package-lock.json` is the same on both heads.
+
+Every run had a fresh `next start`. The order was A, B, A, B, A, B, with each pipeline run followed by a Home run on
+the same head (see `day5c/perf.md`). Before each run the script waited until no other Playwright, `next build`, db-test,
+mutation, db-perf or extra Postgres job was running; none was found. The 4-vCPU VM ran only this script. The 1-minute load
+before each run, below, includes the tail of the previous run (the browser and server of this script).
+
+| Run | Head | `uptime` before (load 1 / 5 / 15 min) |
+|---|---|---|
+| 1 | A 6008f4b | 0.76 / 0.74 / 0.98 |
+| 1 | B 931af08 | 1.58 / 1.27 / 1.14 |
+| 2 | A | 1.00 / 1.45 / 1.30 |
+| 2 | B | 0.95 / 1.36 / 1.30 |
+| 3 | A | 0.55 / 1.02 / 1.18 |
+| 3 | B | 1.61 / 1.44 / 1.31 |
+
+Figures are min / median / max over the 9 samples per head (3 runs × 3 samples). For move p95 and extra JavaScript
+there is one value per run, so 3 values. Baseline figures are min / median / max of its 3 samples.
+
+| Measure | Accepted baseline (ee5312c) | A: 6008f4b (merged) | B: 931af08 (pre-merge) | Budget | Reading |
+|---|---|---|---|---|---|
+| Cold deep link `/pipeline`: LCP | 1,088 / 1,316 / 1,560 ms | 1,184 / 1,308 / 1,888 | 1,012 / 1,196 / 1,688 | ≤ 2,000 (met) | within baseline (same median; one slow first sample per run on both heads) |
+| Cold deep link: CLS | 0 / 0 / 0 | 0 / 0.003 / 0.004 | 0 / 0.002 / 0.007 | ≤ 0.05 (met) | worse on both heads (not the merge) |
+| Extra JavaScript for the pipeline | 53.6 KB | 56.3 / 56.3 / 56.3 | 56.3 / 56.3 / 56.3 | ≤ 60 (met) | worse on both heads: code that landed before 931af08, not the merge (byte count, the environment does not change it) |
+| Press feedback | 24.2 / 36.4 / 42.8 ms | 31.6 / 40.4 / 57.2 | 31.7 / 38.2 / 55.7 | ≤ 100 (met) | slightly worse on both heads (not the merge) |
+| Pipeline → Home after the dock hover | 17.8 / 25.3 / 39.7 ms | 18.4 / 25.0 / 36.0 | 16.4 / 21.2 / 37.3 | ≤ 200 (met) | within baseline |
+| Move painted, p95 of 30 moves | 584.5 ms (one run) | 594.2 / 619.8 / 667.9 | 592.9 / 598.5 / 652.2 | ≤ 100 (missed, as accepted) | worse on both heads (+2 to 14 %, not the merge) |
+| Move painted, median of 30 moves | ~410 ms | 412.5 / 444.6 / 446.5 | 431.8 / 434.2 / 456.8 | | worse on both heads (not the merge) |
+| Drag frame time p95 | 22.7 / 23.2 / 23.5 ms | 23.7 / 24.1 / 25.9 | 23.1 / 24.1 / 26.0 | ≤ 16.7 (missed, as accepted) | worse on both heads (not the merge) |
+| Drag: longest task | 68 / 74 / 96 ms | 107 / 128 / 168 | 97 / 124 / 195 | ≤ 50 (missed, as accepted) | worse on both heads (not the merge) |
+| Settle after pointer up | 668.8 / 690.8 / 709.5 ms | 733.9 / 782.0 / 837.0 | 714.7 / 745.8 / 831.0 | ≤ 450 (missed, as accepted) | worse on both heads (not the merge; A's median is 36 ms above B's, but the two ranges overlap almost fully) |
+| Home → Pipeline after the dock hover | 1,645 / 2,109 / 2,168 ms | 1,712 / 2,052 / 2,647 | 1,552 / 2,143 / 2,456 | ≤ 200 (missed, as accepted) | within baseline (same median; max higher on both heads) |
+| Without a hover: time to the skeleton | 124.4 / 129.1 / 1,989.1 ms | 108.5 / 133.9 / 220.0 | 113.9 / 164.9 / 213.2 | ≤ 100 (missed, as accepted) | worse on both heads (not the merge; pre-merge median is the higher one) |
+
+Per-run figures (run 1 / 2 / 3; drag, settle, press, routes and skeleton list their three samples per run):
+- A: LCP 1,728·1,184·1,308 / 1,888·1,260·1,192 / 1,460·1,516·1,224. Move p95 594.2 / 667.9 / 619.8. Drag p95
+  24.1·25.9·24.0 / 23.7·24.0·23.7 / 25.1·24.7·25.0. Longest task 141·134·111 / 168·127·107 / 128·117·133. Settle
+  782.0·829.6·763.1 / 837.0·786.2·788.2 / 733.9·740.9·746.6. Home → Pipeline 2,052·1,754·1,712 / 2,079·2,127·2,186 /
+  2,045·1,950·2,647. Skeleton 132.2·161.7·133.1 / 215.3·159.7·220.0 / 133.9·123.5·108.5.
+- B: LCP 1,660·1,196·1,144 / 1,688·1,156·1,084 / 1,564·1,244·1,012. Move p95 598.5 / 592.9 / 652.2. Drag p95
+  25.7·24.1·24.1 / 26.0·25.1·25.2 / 23.4·23.1·23.6. Longest task 195·128·97 / 124·135·113 / 98·155·116. Settle
+  741.7·808.7·750.2 / 766.3·735.6·721.4 / 831.0·745.8·714.7. Home → Pipeline 2,217·2,223·2,132 / 1,972·1,552·2,346 /
+  2,456·2,129·2,143. Skeleton 164.9·187.5·113.9 / 199.6·115.5·123.4 / 213.2·195.2·131.1.
+
+Each run failed only on the budgets listed as missed above. No other error appeared. Logs are in the session scratchpad
+(`quiet/day5-perf-{A,B}-{1,2,3}.log`, `quiet/summary.txt`).
+
+**Plain reading.**
+- **Worse only after the merge: none.** On every measure the merged head and the pre-merge head fall in the same range.
+  The earlier "possibly from the merge" skeleton figure does not hold: on a quiet machine the pre-merge median is 165 ms
+  and the merged median is 134 ms.
+- **Within the baseline:** LCP, Pipeline → Home after the hover, and Home → Pipeline after the hover (same medians as
+  the baseline). Every budget the baseline met is still met.
+- **Worse than the baseline on both heads,** so the cause is the environment or code that landed before 931af08, not
+  Day 4d:
+  - drag frame p95: about +1 ms
+  - longest drag task: about 125 against 74 ms median
+  - settle: about 750 to 780 against 691 ms
+  - move p95: 593 to 668 against 585 ms
+  - skeleton: about 134 to 165 against 129 ms
+  - press feedback: slightly higher, still under budget
+  - a small CLS: up to 0.007, still under budget
+  - extra JavaScript: 56.3 against 53.6 KB, still under budget
+- The extra JavaScript is a byte count, so its rise is code, not the environment. For the timings, this run cannot tell
+  environment drift from code between ee5312c and 931af08: that would need ee5312c built and run on the same machine,
+  which was not done here. One sign that the machine behaves differently from the baseline's: each drag now records 317
+  to 367 frames against 210 to 246 in the baseline, on both heads.
+- The measures that are worse than the accepted figures go back to Haider. They are not caused by the merge.
