@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useFormatter, useNow, useTranslations } from "next-intl";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -269,19 +269,23 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
 
   // "Show older files" stays one button (it becomes Try again under the error), so it keeps the focus while it loads or
   // fails; when the last page arrives and it goes, the focus moves to the first file that arrived (verifier 4d round 2
-  // finding 10).
+  // finding 10). The move happens in the commit that shows the page: waiting two frames after the fetch raced the
+  // render, so the button could still hold the focus at the check and then leave with it (WebKit e2e, PR #17).
+  const olderFrom = useRef<number | null>(null);
   const loadOlder = async () => {
     if (files.isFetchingNextPage) return;
-    const before = rows.length;
+    olderFrom.current = rows.length;
     const result = await files.fetchNextPage();
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (document.activeElement && document.activeElement !== document.body) return;
-        const first = result.hasNextPage ? null : listRef.current?.children[before]?.querySelector<HTMLElement>("a, button");
-        (first ?? headingRef.current)?.focus();
-      }),
-    );
+    if (result.isError) olderFrom.current = null;
   };
+  useLayoutEffect(() => {
+    const before = olderFrom.current;
+    if (before === null || rows.length <= before) return;
+    olderFrom.current = null;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const first = files.hasNextPage ? null : listRef.current?.children[before]?.querySelector<HTMLElement>("a, button");
+    (first ?? headingRef.current)?.focus();
+  }, [rows.length, files.hasNextPage]);
 
   /** The row's own button (Actions, or Retry while stuck deleting) for a file still listed, else the heading. */
   const rowTarget = useCallback(
