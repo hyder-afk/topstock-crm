@@ -9,7 +9,7 @@ const names = [
   "100% + 50% & co #3.xlsx",
   "naïve café ½ – Œuvre.docx",
   "a%20b %C2%B0.pdf",
-  'devis "spécial".pdf',
+  "devis l'Été [v2] ; final=oui.pdf",
 ];
 
 test("download_name_round_trips: Storage decodes the exact file name", () => {

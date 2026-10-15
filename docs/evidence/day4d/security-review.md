@@ -169,3 +169,17 @@ What was checked:
 - No `service_role` or `dangerouslySetInnerHTML` in client code.
 
 After this run, Semgrep (CI) found invisible bidi characters written as raw characters in the file-name regex (`src/lib/files/name.ts`), and the same characters in the migration's name check. Both now use `\u` escapes. A check over every code point gives the same set as before; `files_attack` still refuses a name containing U+202E; the parity test passes. No behaviour changed.
+
+## `/security-review` on the download-name fix (PR #16, f875fed..492178e, 15 Oct 2026)
+
+**No findings.** Checked: `signedLink` (src/lib/files/stored.ts) still compares the signed link's origin with
+`NEXT_PUBLIC_SUPABASE_URL` before anything else, and `withDownloadName` (src/lib/files/link.ts) changes only the query
+of a copy of that checked URL, so scheme, host, port and path cannot move (no open redirect, no SSRF). Re-encoding the
+query leaves the token byte-for-byte the same (a JWT uses only `[A-Za-z0-9-_.]`). `searchParams.set("download", …)`
+uses a fixed key and percent-encodes `&`, `=`, `#`, `?`, `+`, `%`, CR and LF, so a name cannot add or replace a
+parameter. Control, bidi, `/`, `\` and `"` are refused in names twice (src/lib/files/name.ts and the database), and
+storage-api builds `Content-Disposition` from a quote-escaped ASCII fallback plus RFC 8187 `filename*`, so no header
+splitting. The signed token never covered `download` (storage-api `getSignedObject` verifies the token against the path
+only); a link holder can only rename their own download. Nothing is logged; the link still exists only in the 303
+`Location` header (`private, no-store`, `no-referrer`). `checkStoredFile` passes no name, so the server's own read is
+unchanged.
