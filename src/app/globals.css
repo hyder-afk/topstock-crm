@@ -87,6 +87,11 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     touch-action: manipulation;
+    /* Safe areas (Day 7c PWA basics; the viewport has viewport-fit=cover): the notch side in landscape and the status
+       bar when opened from the home screen. The bottom inset is added by the dock, the sheets and the toasts. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
   }
   h1,
   h2,
