@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { CardError, Dot, HomeCard, RowSkeletons } from "@/components/home/home-card";
 import type { AttentionItem, HomeAttention } from "@/lib/home";
 import { formatMoney } from "@/lib/money";
+import { useKeepFocus } from "@/lib/use-keep-focus";
 
 // Needs attention (Day 5 design 7.10, home_attention): up to 5 open deals, worst first: close date passed (the red
 // token, with the words), stalled ("● Stalled · no move or contact for 16 days", amber dot plus words), closing within 7
@@ -64,8 +66,11 @@ export function AttentionCard({
   onOpenDeal: (id: string) => void;
 }) {
   const t = useTranslations("Home.attention");
+  // A row that leaves after a refetch (the deal moved on) hands the focus to its neighbour or the heading, never <body>.
+  const cardRef = useRef<HTMLElement>(null);
+  useKeepFocus(cardRef, attention);
   return (
-    <HomeCard labelId="home-attention" title={title} className="col-span-12 lg:col-span-7" busy={loading}>
+    <HomeCard ref={cardRef} labelId="home-attention" title={title} className="col-span-12 lg:col-span-7" busy={loading}>
       {loading ? (
         <RowSkeletons count={3} />
       ) : !attention ? (

@@ -53,6 +53,7 @@ import { formatMoney } from "@/lib/money";
 import { appendPage, applyMove, cardsOf, findCard, sortLoaded } from "@/lib/pipeline-cache";
 import { boardKey } from "@/lib/prefetch";
 import { isTyping } from "@/lib/shortcuts";
+import { useKeepFocus } from "@/lib/use-keep-focus";
 import { cn } from "@/lib/utils";
 
 // The pipeline board (Day 5 design 7.1 to 7.8). The server page hands over a promise of the first paint; the board
@@ -195,7 +196,7 @@ function Pipeline({
   }
 
   const flows = useDealFlows(stepUpSeconds, order);
-  const { actions, openWin, openLose, openReopen, openDelete } = flows;
+  const { actions, openWin, openLose, openReopen, reopenFromHistory, openDelete } = flows;
   const [sheetId, setSheetId] = useState<string | null>(initialDeal);
   const [openNew, setOpenNew] = useState(initialNew);
   const [closedList, setClosedList] = useState<"won" | "lost" | null>(null);
@@ -204,12 +205,17 @@ function Pipeline({
   const [pending, setPending] = useState<{ id: string; to: "won" | "lost"; from: SettleFrom | null } | null>(null);
   const [settleFrom, setSettleFrom] = useState<SettleFrom | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
-  const [focusRequest, setFocusRequest] = useState<{ id: string; token: number } | null>(null);
+  // A card to focus after commit (it may have just moved), or a column's heading when a lost or deleted card left an
+  // empty column.
+  const [focusRequest, setFocusRequest] = useState<{ id: string; token: number; column?: BoardColumnKey } | null>(null);
   const [shown, setShown] = useState<Partial<Record<BoardColumnKey, number>>>({});
   const [loadingMore, setLoadingMore] = useState<Partial<Record<BoardColumnKey, boolean>>>({});
   const [moreFailed, setMoreFailed] = useState<Partial<Record<BoardColumnKey, boolean>>>({});
   const tokens = useRef(0);
   const boardRef = useRef<HTMLDivElement>(null);
+  // Safety net: a focused card that leaves under the keyboard (a colleague's change, a refetch) hands the focus to the
+  // card now at its place, or the one before, instead of <body>.
+  useKeepFocus(boardRef, board);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   // The command menu's "New deal" and "Show stalled deals" while already here (the URL changes, the page stays).
@@ -271,9 +277,27 @@ function Pipeline({
   }, [settleFrom, reduce]);
   useEffect(() => {
     if (!focusRequest) return;
-    const el = document.querySelector<HTMLElement>(`[data-deal-main="${CSS.escape(focusRequest.id)}"]`);
+    const el = focusRequest.id
+      ? document.querySelector<HTMLElement>(`[data-deal-main="${CSS.escape(focusRequest.id)}"]`)
+      : focusRequest.column
+        ? document.querySelector<HTMLElement>(`[data-column-heading="${focusRequest.column}"]`)
+        : null;
     if (el) el.focus({ preventScroll: false });
   }, [focusRequest, board]);
+
+  // Where the focus goes when a card leaves the board (lost or deleted, design 7.8: never <body>): the next card in its
+  // column, else the one before, else the column's heading. Worked out while the card is still there.
+  const latestColumns = useRef(columns);
+  useLayoutEffect(() => {
+    latestColumns.current = columns;
+  }, [columns]);
+  const focusAfterLeaving = useCallback((card: DealCard) => {
+    const col = latestColumns.current.find((c) => c.cards.some((x) => x.id === card.id));
+    if (!col) return { id: "", column: undefined };
+    const i = col.cards.findIndex((x) => x.id === card.id);
+    const next = col.cards[i + 1] ?? col.cards[i - 1];
+    return next ? { id: next.id, column: undefined } : { id: "", column: col.key };
+  }, []);
 
   const settleNext = (id: string, from: { left: number; top: number } | null) => {
     tokens.current += 1;
@@ -313,14 +337,24 @@ function Pipeline({
   const askLose = useCallback(
     (card: DealCard, from: SettleFrom | null) => {
       if (card.status !== "open") return;
+      const after = focusAfterLeaving(card);
       setPending({ id: card.id, to: "lost", from });
       openLose(card, (ok) => {
         setPending(null);
         if (!ok && from) settleNext(card.id, from);
-        if (!ok) setFocusRequest({ id: card.id, token: tokens.current + 1 });
+        // Cancel: back to the card. Lost: the card leaves the board, so its neighbour (or the column) takes the focus.
+        setFocusRequest(ok ? { ...after, token: tokens.current + 1 } : { id: card.id, token: tokens.current + 1 });
       });
     },
-    [openLose],
+    [openLose, focusAfterLeaving],
+  );
+  // Delete: the card stays until the database answers; then its neighbour (or the column) takes the focus.
+  const askDelete = useCallback(
+    (card: DealCard) => {
+      const after = focusAfterLeaving(card);
+      openDelete(card, (ok) => setFocusRequest(ok ? { ...after, token: tokens.current + 1 } : { id: card.id, token: tokens.current + 1 }));
+    },
+    [openDelete, focusAfterLeaving],
   );
 
   const menuFor = useCallback(
@@ -330,7 +364,8 @@ function Pipeline({
         move: (to) => moveCard(card, to, rectOf(card.id), true),
         win: () => askWin(card, null),
         lose: () => askLose(card, null),
-        reopen: () => openReopen(card, "negotiations"),
+        // Reopen goes back to the stage the deal was closed from (design 7.6); focus follows the card.
+        reopen: () => void reopenFromHistory(card, () => setFocusRequest({ id: card.id, token: tokens.current + 1 })),
         editValue: () => {
           openSheet(card.id);
           requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-deal-value]")?.focus()));
@@ -338,10 +373,10 @@ function Pipeline({
         openLead: () => router.push(`/leads/${card.company_id}`),
         copyLink: () => void navigator.clipboard?.writeText(`${window.location.origin}/pipeline?deal=${card.id}`),
         undo: last && last.id === card.id ? () => void actions.undo(last) : null,
-        remove: () => openDelete(card),
+        remove: () => askDelete(card),
       };
     },
-    [moveCard, askWin, askLose, openReopen, openSheet, router, actions, openDelete],
+    [moveCard, askWin, askLose, reopenFromHistory, openSheet, router, actions, askDelete],
   );
 
   const handlers = useMemo<BoardHandlers>(
@@ -370,13 +405,13 @@ function Pipeline({
           case "undo":
             return void actions.undo();
           case "delete":
-            return card.can_edit ? openDelete(card) : undefined;
+            return card.can_edit ? askDelete(card) : undefined;
           default:
             return;
         }
       },
     }),
-    [menuFor, askWin, askLose, moveCard, openSheet, router, actions, openDelete],
+    [menuFor, askWin, askLose, moveCard, openSheet, router, actions, askDelete],
   );
   // The cards read one handlers object that never changes (each call goes to this render's handlers), so a move, a
   // focus change or a drag over a column does not re-render every memoised card through the context (day5-perf).

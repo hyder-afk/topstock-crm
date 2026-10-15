@@ -156,7 +156,7 @@ export function Column({
       )}
     >
       <header className="sticky top-0 z-[2] flex min-h-14 flex-col justify-center gap-0.5 rounded-t-lg px-3 pt-3 pb-2">
-        <h2 id={headingId} className="flex items-baseline gap-2 text-sm font-bold">
+        <h2 id={headingId} tabIndex={-1} data-column-heading={column} className="flex items-baseline gap-2 rounded-sm text-sm font-bold">
           <span className="min-w-0 break-words">{over && dragging ? (column === "won" ? t("dropWon") : t("dropHere")) : title}</span>
           <span className="font-mono text-xs font-medium text-muted-foreground tabular-nums">{format.number(count)}</span>
         </h2>

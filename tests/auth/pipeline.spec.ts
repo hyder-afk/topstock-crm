@@ -414,3 +414,70 @@ test("phone_390_stepper_moves_and_tabs_sync", async ({ browser }) => {
   expect(errors).toEqual([]);
   await context.close();
 });
+
+// Verifier round (findings 3 and 4): a card that leaves the board hands the focus to its neighbour, never <body>; the
+// card menu's Reopen starts at the stage the deal was closed from.
+test("lose_and_delete_focus_stays_in_column, reopen_menu_defaults_to_closing_stage", async ({ browser }) => {
+  // This run's earlier deals in Qualified and Negotiations are cleared: the three cards are Qualified's only ones (a
+  // virtualised column draws only its first rows), and one card is Negotiations' only card.
+  sql(`delete from public.deals d using public.pipeline_stages s
+        where s.id = d.stage_id and s.key in ('qualified', 'negotiations') and d.org_id = '${org}' and d.created_by = '${admin}'`);
+  const a = makeDeal({ stage: "qualified", title: `Focus A ${run}`, hoursInStage: 1 });
+  const b = makeDeal({ stage: "qualified", title: `Focus B ${run}`, hoursInStage: 2 });
+  const c = makeDeal({ stage: "qualified", title: `Focus C ${run}`, hoursInStage: 3 });
+  const only = makeDeal({ stage: "negotiations", title: `Focus Only ${run}` });
+  // A won deal closed from Qualified (its history says so).
+  const won = makeDeal({ stage: "won", title: `Focus Won ${run}`, value: "700" });
+  sql(`update public.deals set version = 1 where id = '${won}';
+       insert into public.deal_stage_history (org_id, deal_id, actor_id, kind, from_stage, to_stage, value_after, version_after, created_at)
+       values ('${org}', '${won}', '${admin}', 'won', 'qualified', 'won', 700, 1, now() - interval '1 hour')`);
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  const qualified = column(page, "qualified");
+  const order = async () => qualified.locator("[data-deal-main]").evaluateAll((els) => els.map((e) => e.getAttribute("data-deal-main")));
+  await expect(mainOf(page, c)).toBeVisible();
+  const before = (await order()).filter((id) => id === a || id === b || id === c);
+  expect(before).toHaveLength(3);
+  // Lose the middle one with the keyboard (5): the card after it takes the focus.
+  const middle = before[1]!;
+  const all = await order();
+  const after = all[all.indexOf(middle) + 1]!;
+  await mainOf(page, middle).focus();
+  await page.keyboard.press("5");
+  const lose = page.getByRole("dialog", { name: /lost\?/ });
+  await expect(lose).toBeVisible();
+  await lose.getByRole("radio", { name: "Price" }).click();
+  await lose.getByRole("button", { name: "Mark as lost" }).click();
+  await expect.poll(() => sql(`select status from public.deals where id = '${middle}'`)).toBe("lost");
+  await expect(mainOf(page, middle)).toHaveCount(0);
+  await expect(mainOf(page, after)).toBeFocused();
+  // Delete with the Delete key (one's own untouched deal under 2 minutes old: no code): its neighbour takes the focus.
+  const now = await order();
+  const target = now.includes(before[0]!) ? before[0]! : before[2]!;
+  const neighbour = now[now.indexOf(target) + 1] ?? now[now.indexOf(target) - 1];
+  await mainOf(page, target).focus();
+  await page.keyboard.press("Delete");
+  await page.getByRole("dialog", { name: "Delete this deal?" }).getByRole("button", { name: "Delete deal" }).click();
+  await expect.poll(() => sql(`select count(*) from public.deals where id = '${target}'`)).toBe("0");
+  await expect(mainOf(page, target)).toHaveCount(0);
+  await expect(mainOf(page, neighbour!)).toBeFocused();
+  // The only card of a column: Lose hands the focus to the column's heading.
+  await mainOf(page, only).focus();
+  await page.keyboard.press("5");
+  await expect(lose).toBeVisible();
+  await lose.getByRole("radio", { name: "Price" }).click();
+  await lose.getByRole("button", { name: "Mark as lost" }).click();
+  await expect(mainOf(page, only)).toHaveCount(0);
+  await expect(page.locator('[data-column-heading="negotiations"]')).toBeFocused();
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  // Reopen from the card menu: the stage it was won from is chosen first (not Negotiations).
+  await mainOf(page, won).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Reopen…" }).click();
+  const reopen = page.getByRole("dialog", { name: "Reopen this deal" });
+  await expect(reopen).toBeVisible();
+  await expect(reopen.getByRole("radio", { name: "Qualified" })).toBeChecked();
+  await reopen.getByRole("button", { name: "Cancel" }).click();
+  expect(sql(`select status from public.deals where id = '${won}'`)).toBe("won");
+  expect(errors).toEqual([]);
+  await context.close();
+});

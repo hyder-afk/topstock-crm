@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal, Plus } from "lucide-react";
@@ -44,7 +44,7 @@ export function DealsTab({
   lead: LeadDetail;
   onOpenDeal: (id: string) => void;
   onNewDeal: () => void;
-  onReopen: (deal: DealCard) => void;
+  onReopen: (deal: DealCard, done?: (ok: boolean) => void) => void;
 }) {
   const t = useTranslations("LeadPage.deals");
   const tLead = useTranslations("LeadPage");
@@ -55,6 +55,21 @@ export function DealsTab({
   const deals = q.data ?? [];
   const open = deals.filter((d) => d.status === "open");
   const closed = deals.filter((d) => d.status !== "open");
+  // A reopened deal moves from Closed to Open, and its row menu goes with the closed row: once the list shows it open,
+  // its row takes the focus (in a layout effect, so the focus never rests on <body> in between).
+  const reopened = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const id = reopened.current;
+    if (!id || !q.data?.some((d) => d.id === id && d.status === "open")) return;
+    reopened.current = null;
+    document.querySelector<HTMLElement>(`[data-deal-row="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+  }, [q.data]);
+  const reopen = (deal: DealCard) => {
+    reopened.current = deal.id;
+    onReopen(deal, (ok) => {
+      if (!ok && reopened.current === deal.id) reopened.current = null;
+    });
+  };
 
   const action = canOpen ? (
     <Button variant="neutral" className="min-h-11 max-sm:w-full sm:min-h-9" onClick={onNewDeal}>
@@ -86,8 +101,8 @@ export function DealsTab({
       ) : (
         <>
           {cannot && !canOpen ? <p className="text-sm text-muted-foreground">{cannot}</p> : null}
-          {open.length ? <DealRows title={t("openSection")} deals={open} onOpenDeal={onOpenDeal} onReopen={onReopen} /> : null}
-          {closed.length ? <DealRows title={t("closedSection")} deals={closed} onOpenDeal={onOpenDeal} onReopen={onReopen} /> : null}
+          {open.length ? <DealRows title={t("openSection")} deals={open} onOpenDeal={onOpenDeal} onReopen={reopen} /> : null}
+          {closed.length ? <DealRows title={t("closedSection")} deals={closed} onOpenDeal={onOpenDeal} onReopen={reopen} /> : null}
         </>
       )}
     </Card>

@@ -12,15 +12,35 @@ import { cn } from "@/lib/utils";
 
 // "Why was {lead} lost?" (Day 5 design 7.6): the eight reasons as a radio group, a note (required for Other; the counter
 // shows from 450 of 500), Mark as lost (Cmd/Ctrl+Enter). Cancel after a drop on the Lost band springs the card back.
-export function LoseDialog({ card, onConfirm, onCancel }: { card: DealCard | null; onConfirm: (reason: LostReason, note: string | null) => void; onCancel: () => void }) {
+export function LoseDialog({
+  card,
+  onConfirm,
+  onCancel,
+  onCloseAutoFocus,
+}: {
+  card: DealCard | null;
+  onConfirm: (reason: LostReason, note: string | null) => void;
+  onCancel: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
   return (
     <Dialog open={!!card} onOpenChange={(open) => (open ? null : onCancel())}>
-      {card ? <LoseForm key={card.id} card={card} onConfirm={onConfirm} onCancel={onCancel} /> : null}
+      {card ? <LoseForm key={card.id} card={card} onConfirm={onConfirm} onCancel={onCancel} onCloseAutoFocus={onCloseAutoFocus} /> : null}
     </Dialog>
   );
 }
 
-function LoseForm({ card, onConfirm, onCancel }: { card: DealCard; onConfirm: (reason: LostReason, note: string | null) => void; onCancel: () => void }) {
+function LoseForm({
+  card,
+  onConfirm,
+  onCancel,
+  onCloseAutoFocus,
+}: {
+  card: DealCard;
+  onConfirm: (reason: LostReason, note: string | null) => void;
+  onCancel: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
   const t = useTranslations("Deals.lose");
   const tR = useTranslations("LostReasons");
   const tErr = useTranslations("Errors.hint");
@@ -45,6 +65,7 @@ function LoseForm({ card, onConfirm, onCancel }: { card: DealCard; onConfirm: (r
   return (
     <DialogContent
       className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto sm:w-[min(520px,calc(100%-32px))]")}
+      onCloseAutoFocus={onCloseAutoFocus}
       onOpenAutoFocus={(e) => {
         e.preventDefault();
         groupRef.current?.querySelector<HTMLElement>("[role=radio]")?.focus();

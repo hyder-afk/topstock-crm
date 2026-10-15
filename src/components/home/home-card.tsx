@@ -13,7 +13,9 @@ export function HomeCard({
   children,
   busy,
   labelId,
+  ref,
 }: {
+  ref?: React.Ref<HTMLElement>;
   title: string;
   action?: React.ReactNode;
   className?: string;
@@ -23,6 +25,7 @@ export function HomeCard({
 }) {
   return (
     <section
+      ref={ref}
       aria-labelledby={labelId}
       aria-busy={busy || undefined}
       className={cn("flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4 sm:p-6", className)}

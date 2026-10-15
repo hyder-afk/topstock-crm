@@ -30,6 +30,7 @@ import {
 import { personName, type TeamMember } from "@/lib/leads";
 import { formatMoney, moneyInputText, parseMoney } from "@/lib/money";
 import { dealKey, fetchDealClient } from "@/lib/prefetch";
+import { rememberFocus, returnFocus, type FocusReturn } from "@/lib/focus-return";
 import { cn } from "@/lib/utils";
 
 // The deal sheet (Day 5 design 7.6): ?deal=<id> (written with replaceState), so it deep-links from the board and the lead
@@ -60,33 +61,27 @@ export function DealSheet({
   canAssign: boolean;
 }) {
   // Focus goes back where it was when the sheet opened (a card, a Deals tab row, the Summary card), or to that deal's
-  // card or row when the opener is gone, never to <body>. Read before Radix moves focus into the sheet (its focus
-  // scope runs in an effect, after this layout effect).
-  const opener = useRef<{ el: HTMLElement | null; id: string } | null>(null);
+  // card or row when the opener is gone, else to the row now at the opener's place or the one before, else the card's
+  // heading: never to <body> (a move can take the deal out of Home's Needs attention while the sheet is open). Read
+  // before Radix moves focus into the sheet (its focus scope runs in an effect, after this layout effect).
+  const opener = useRef<{ from: FocusReturn; id: string } | null>(null);
   useLayoutEffect(() => {
-    if (dealId && opener.current?.id !== dealId) {
-      const active = document.activeElement;
-      opener.current = { el: active instanceof HTMLElement && active !== document.body ? active : null, id: dealId };
-    }
+    if (dealId && opener.current?.id !== dealId) opener.current = { from: rememberFocus(document.activeElement), id: dealId };
   }, [dealId]);
-  const returnFocus = (event: Event) => {
+  const onCloseAutoFocus = (event: Event) => {
     const o = opener.current;
     opener.current = null;
+    event.preventDefault(); // always: Radix would otherwise focus <body> when the opener is gone
     if (!o) return;
-    const target =
-      (o.el?.isConnected ? o.el : null) ??
-      document.querySelector<HTMLElement>(`[data-deal-main="${CSS.escape(o.id)}"], [data-deal-row="${CSS.escape(o.id)}"]`);
-    if (target) {
-      event.preventDefault();
-      target.focus({ preventScroll: true });
-    }
+    const own = document.querySelector<HTMLElement>(`[data-deal-main="${CSS.escape(o.id)}"], [data-deal-row="${CSS.escape(o.id)}"]`);
+    returnFocus(o.from, own);
   };
   return (
     <Dialog open={!!dealId} onOpenChange={(open) => (open ? null : onClose())}>
       {dealId ? (
         <DialogContent
           aria-describedby={undefined}
-          onCloseAutoFocus={returnFocus}
+          onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
             "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-12px)] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pb-[env(safe-area-inset-bottom)]",
             "lg:inset-y-3 lg:right-3 lg:left-auto lg:mx-0 lg:max-h-none lg:w-[440px] lg:rounded-[24px]",
@@ -250,7 +245,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                 void flows.actions.undo(
                   last && last.historyId === undo.history_id
                     ? last
-                    : { id: deal.id, historyId: undo.history_id, fromStage: undo.to_stage, toStage: deal.stage, version: deal.version, until: Date.parse(undo.until), leadId: deal.lead.id, lostReason: deal.lost_reason },
+                    : { id: deal.id, historyId: undo.history_id, fromStage: undo.to_stage, toStage: deal.stage, version: deal.version, at: Date.now(), until: Date.parse(undo.until), leadId: deal.lead.id, lostReason: deal.lost_reason },
                 );
               }}
             >

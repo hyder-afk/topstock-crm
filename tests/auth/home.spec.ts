@@ -217,21 +217,56 @@ test("attention_opens_deal_sheet and refetch_after_move", async ({ browser }) =>
   await expect(rows.nth(1)).toContainText(`Atelier Nordlys ${run}`);
   await expect(rows.nth(1)).toContainText("Stalled · no move or contact for 20 days");
   await expect(rows.nth(2)).toContainText("Closes");
+  await expect(rows.nth(2)).toContainText(`Comptoir Brécy ${run}`);
+
+  // 1. Home's refetch lands after the sheet closed (held until then): focus first comes back to the row that opened the
+  // sheet; when that row leaves, the row now at its place takes it (never the page body).
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let holding = false;
+  await page.route("**/api/home**", async (route) => {
+    if (holding) await held;
+    await route.continue();
+  });
   await rows.nth(1).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText(`Atelier Nordlys ${run}`);
   await expect(page).toHaveURL((u) => u.pathname === "/" && u.searchParams.get("deal") === stalledDeal);
   // A move from the sheet: Home refetches (the deal is no longer stalled, so it leaves Needs attention).
+  holding = true;
   await sheet.getByRole("radio", { name: /^Nego/ }).click();
   await expect.poll(() => sql(`select s.key from public.deals d join public.pipeline_stages s on s.id = d.stage_id where d.id = '${stalledDeal}'`)).toBe("negotiations");
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await expect(page).toHaveURL((u) => u.pathname === "/" && !u.searchParams.has("deal"));
-  // Focus came back to the row that opened the sheet (or its replacement), never the page body.
-  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  await expect(rows.nth(1)).toBeFocused();
+  holding = false;
+  release();
   await expect(rows).toHaveCount(2);
   await expect(attention).not.toContainText(`Atelier Nordlys ${run}`);
+  await expect(rows.nth(1)).toBeFocused();
+  await expect(rows.nth(1)).toContainText(`Comptoir Brécy ${run}`);
+  await page.unroute("**/api/home**");
+
+  // 2. Home's refetch lands while the sheet is still open (the row is gone before it closes): the row now at the
+  // opener's place takes the focus. The deal is made stalled again in Negotiations first (21 days there).
+  sql(`set session_replication_role = replica;
+       update public.deals set stage_entered_at = now() - interval '30 days' where id = '${stalledDeal}'`);
+  await settled(page);
+  await gotoHome(page);
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(1)).toContainText(`Atelier Nordlys ${run}`);
+  await rows.nth(1).click();
+  await expect(sheet).toContainText(`Atelier Nordlys ${run}`);
+  // To Lead (not back to Qualified: a move back within 2 minutes is the same Undo, which restores the stalled clock).
+  await sheet.getByRole("radio", { name: /^Lead/ }).click();
+  // (The modal sheet hides the page from the accessibility tree, so the rows are counted by their markup here.)
+  await expect(page.locator('section[aria-labelledby="home-attention"] [data-deal-row]')).toHaveCount(2);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(rows.nth(1)).toBeFocused();
+  await expect(rows.nth(1)).toContainText(`Comptoir Brécy ${run}`);
   // ?deal= opens the sheet over Home on arrival.
   await settled(page);
   await page.goto(`/?deal=${stalledDeal}`);

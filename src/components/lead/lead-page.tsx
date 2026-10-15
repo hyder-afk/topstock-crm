@@ -27,7 +27,7 @@ import { DealsTab } from "@/components/lead/deals-tab";
 import { useDealFlows } from "@/components/pipeline/deal-flows";
 import { DealSheet } from "@/components/pipeline/deal-sheet";
 import { OpenDealSheet } from "@/components/pipeline/open-deal-sheet";
-import { reopenStage, type DealCard } from "@/lib/deals";
+import type { DealCard } from "@/lib/deals";
 import { fetchLeadDealsClient, leadDealsKey } from "@/lib/prefetch";
 import type { TimelineFilter, TimelinePage } from "@/lib/activities";
 import { LEAD_TABS, personName, type LeadDetail, type LeadStatus, type LeadTab, type TeamMember } from "@/lib/leads";
@@ -125,8 +125,10 @@ export function LeadPage({
     else url.searchParams.delete("deal");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
   }, []);
+  // Reopen from the Deals tab: the stage the deal was closed from (design 7.6, from its history), then the focus goes
+  // to the deal's row in the Open section (its row menu went with the closed row).
   const reopenDeal = useCallback(
-    (deal: DealCard) => dealFlows.openReopen(deal, reopenStage([])),
+    (deal: DealCard, done?: (ok: boolean) => void) => void dealFlows.reopenFromHistory(deal, done),
     [dealFlows],
   );
 
