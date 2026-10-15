@@ -122,8 +122,9 @@ db                  scripts/db-test.sh copy, port 54495,   all ten suites pass: 
                                                            INFO unindexed_foreign_keys 4 (2 from 4c, accepted), unused_index 2)
 mutations           db-mutations.py --set team (scratch)   4 rows run, 4 caught; every row of all five sets still applies once
 gitleaks            git --log-opts=origin/main..HEAD       no leaks found (14 commits)
-e2e                 team.spec.ts, team-screens.spec.ts     not run: the shared local auth stack on 3100 was busy with
-                                                           another builder's Playwright run (Day 5a); run before the PR
+e2e                 team.spec.ts, team-screens.spec.ts     not run: the shared local auth stack on 3100 (server and
+                                                           gateway) runs the Day 5a checkout's build and was in use by
+                                                           its Playwright run; run on this branch's build before the PR
 ```
 
 ## Check results after the verifier round (14 Oct 2026, code head 6d07187)
