@@ -19,6 +19,7 @@ import { followUpRule, type CallOutcome } from "@/lib/activities";
 import { countryName } from "@/lib/countries";
 import type { LeadStatus } from "@/lib/leads";
 import { springs } from "@/lib/motion";
+import { parseMoney } from "@/lib/money";
 import { callHref } from "@/lib/phone";
 import { emptyReason, firstOpening, queueKeyFor, readSkipLunch, writeSkipLunch, type QueueScope, type QueueSummary } from "@/lib/queue";
 import { isTyping } from "@/lib/shortcuts";
@@ -71,6 +72,7 @@ export function QueueWorkspace({
   const tOut = useTranslations("Outcomes");
   const tErr = useTranslations("Errors");
   const tStatus = useTranslations("Leads.status");
+  const tStage = useTranslations("Stages");
   const format = useFormatter();
   const locale = useLocale();
   const toast = useToast();
@@ -88,6 +90,10 @@ export function QueueWorkspace({
   const [live, setLive] = useState("");
   const [choice, setChoice] = useState<CallOutcome | null>(null);
   const [follow, setFollow] = useState<FollowUp>(noFollowUp);
+  // Day 5b (design 7.9, D17): "Open a deal" with Interested and Book meeting, on when the lead has no open deal.
+  const [openDeal, setOpenDeal] = useState(false);
+  const [dealTitle, setDealTitle] = useState("");
+  const [dealValue, setDealValue] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [dials, setDials] = useState<Record<string, Dialled>>({});
   const [noteSheet, setNoteSheet] = useState(false);
@@ -106,7 +112,7 @@ export function QueueWorkspace({
       } else if (e.kind === "undone") {
         // The lead comes back on screen: its heading takes the focus (the card it replaces is leaving and inert).
         if (e.claimed) advanced.current = true;
-        toast.show(e.claimed ? tOut("toast.undone") : t("lostClaim"));
+        toast.show(e.dealKept ? tOut("toast.dealKept") : e.claimed ? tOut("toast.undone") : t("lostClaim"));
       } else if (e.kind === "undoFailed") {
         toast.show(tErr(e.error));
       } else if (e.kind === "released") {
@@ -138,6 +144,11 @@ export function QueueWorkspace({
         parts.push(tOut("toast.back", { date: format.dateTime(new Date(r.next_action_at), { weekday: "short", day: "numeric", month: "short" }) }));
       }
     }
+    // Day 5b: the deal Interested or Book meeting opened, or why it was not (the same words as the call panel's toast).
+    if (r.deal?.opened) parts.push(tOut("toast.dealOpened", { stage: tStage("lead") }));
+    else if (r.deal && r.deal.reason === "not_editable") {
+      parts.push(lastLogged.card.owner?.first_name ? tOut("dealSkipped.not_editable", { owner: lastLogged.card.owner.first_name }) : tOut("dealSkipped.not_editableUnowned"));
+    } else if (r.deal) parts.push(tOut(`dealSkipped.${r.deal.reason}`));
     if (lastLogged.lostClaim) parts.push(t("lostClaim"));
     // The polite message already said what was logged and who is next (one announcement per key): the toast is shown,
     // not read out, unless it also says a card went to a teammate.
@@ -210,6 +221,11 @@ export function QueueWorkspace({
   const dialled = current ? (dials[current.id] ?? defaultDial(current)) : null;
   const note = current ? (notes[current.id] ?? "") : "";
   const onlyDnc = !!current && q.changedStatus === "do_not_contact";
+  const dealChoice = choice === "interested" || choice === "meeting_booked";
+  const canDeal = !!current && current.can_edit && current.lead_status !== "do_not_contact" && !onlyDnc;
+  const dealValueParsed = dealValue.trim() ? parseMoney(dealValue, locale) : null;
+  const dealOn = dealChoice && canDeal && openDeal;
+  const dealValueBad = dealOn && dealValue.trim() !== "" && dealValueParsed === null;
 
   const announce = useCallback(
     (what: string, leadName: string) => {
@@ -249,6 +265,7 @@ export function QueueWorkspace({
         ...followUpArgs(f, viewerZone),
         leadName: current.name,
         requestId: crypto.randomUUID(),
+        openDeal: (o === "interested" || o === "meeting_booked") && canDeal && openDeal ? { title: dealTitle.trim() || null, value: dealValueParsed } : null,
       });
       announce(tOut(o), current.name);
       if (today) {
@@ -266,7 +283,7 @@ export function QueueWorkspace({
         return rest;
       });
     },
-    [current, dialled, notes, q, viewerZone, announce, tOut, today, stats],
+    [current, dialled, notes, q, viewerZone, announce, tOut, today, stats, canDeal, openDeal, dealTitle, dealValueParsed],
   );
 
   // A key or a pad button: 1–4 log at once; 5, 6 and 0 open their follow-up first; 7 asks once more.
@@ -278,6 +295,9 @@ export function QueueWorkspace({
       const rule = followUpRule("call", o);
       if (o === "do_not_contact" || rule !== "none") {
         setChoice(o);
+        setOpenDeal((o === "interested" || o === "meeting_booked") && canDeal && (current.open_deal?.count ?? 0) === 0);
+        setDealTitle("");
+        setDealValue("");
         setFollow(
           rule === "date_or_time"
             ? { date: nextWorkingDate(new Date(), current.call_zone), time: null }
@@ -289,7 +309,7 @@ export function QueueWorkspace({
       }
       commit(o, noFollowUp);
     },
-    [current, onlyDnc, dialled, commit],
+    [current, onlyDnc, dialled, commit, canDeal],
   );
 
   // Cancel the follow-up or the Do not contact question: if the focus was inside it (phones move it there), it goes
@@ -310,8 +330,9 @@ export function QueueWorkspace({
     if (!choice) return;
     if (choice === "meeting_booked" && (!follow.date || !follow.time)) return;
     if (choice === "interested" && !follow.date) return;
+    if (dealValueBad) return;
     commit(choice, follow);
-  }, [choice, follow, commit]);
+  }, [choice, follow, commit, dealValueBad]);
 
   const skip = useCallback(() => {
     if (!current) return;
@@ -373,6 +394,12 @@ export function QueueWorkspace({
           event.preventDefault();
           q.undo();
         }
+        return;
+      }
+      // D toggles "Open a deal" while Interested or Book meeting waits for ↩ (event.key: the letter, wherever it sits).
+      if (dealChoice && canDeal && !isTyping(target) && event.key.toLowerCase() === "d" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        setOpenDeal((on) => !on);
         return;
       }
       if (choice && (event.key === "Enter" || event.key === "Escape") && (!isTyping(target) || inPicker)) {
@@ -677,6 +704,21 @@ export function QueueWorkspace({
               noNumber={!dialled}
               stats={stats}
               disabled={false}
+              deal={
+                canDeal
+                  ? {
+                      on: openDeal,
+                      onToggle: () => setOpenDeal((on) => !on),
+                      latest: current.open_deal?.latest ?? null,
+                      openCount: current.open_deal?.count ?? 0,
+                      title: dealTitle,
+                      onTitle: setDealTitle,
+                      value: dealValue,
+                      onValue: setDealValue,
+                      valueBad: dealValueBad,
+                    }
+                  : null
+              }
             />
           </aside>
           <div className="flex min-w-0 flex-col rounded-lg bg-card p-4 [grid-area:details] sm:p-6">

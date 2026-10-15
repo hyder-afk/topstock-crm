@@ -90,9 +90,11 @@ test.describe("desktop", () => {
     await expect(page).toHaveURL(/country=BE/);
     await expect(page.getByText("Status: Customer")).toBeVisible();
     await expect(page.getByText("Country: Belgium")).toBeVisible();
-    const filteredCount = (await page.locator("main h1").innerText()).replace(/\D/g, "");
-    expect(Number(filteredCount)).toBeGreaterThan(0);
-    expect(Number(filteredCount)).toBeLessThan(120);
+    // The count in the title arrives after the rows (it is hidden while it loads): wait for the filtered count.
+    const titleCount = async () => Number((await page.locator("main h1").innerText()).replace(/\D/g, "") || "0");
+    await expect.poll(titleCount).toBeGreaterThan(0);
+    await expect.poll(titleCount).toBeLessThan(120);
+    const filteredCount = String(await titleCount());
 
     await page.reload();
     await appReady(page);

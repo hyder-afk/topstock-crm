@@ -28,7 +28,16 @@ const namespaces = [
   "Queue",
   "Tasks",
   "Profile",
+  // Day 5b: the pipeline, deals and their words in the lead page, the call panel and the command menu.
+  "Stages",
+  "Pipeline",
+  "Deals",
+  "LostReasons",
+  "Fulfilment",
   "Palette",
+  "Files",
+  // Day 5c: the Home dashboard.
+  "Home",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {
@@ -168,6 +177,27 @@ test.describe("import and lead page messages", () => {
     expect(say(en, "en")("Tasks.dueCount", { count: 5 })).toBe("5 tasks due today or overdue");
     expect(say(fr, "fr")("Tasks.dueCount", { count: 0 })).toBe("0 tâche pour aujourd’hui ou en retard");
     expect(say(fr, "fr")("Tasks.dueCount", { count: 2 })).toBe("2 tâches pour aujourd’hui ou en retard");
+  });
+
+  test("the Home Low stock card's counts (Day 6's stock_alerts) at 0, 1 and more", () => {
+    const te = say(en, "en");
+    const tf = say(fr, "fr");
+    expect(te("Home.lowStock.summary", { low: 3, soldOut: 1 })).toBe("3 low · 1 sold out");
+    expect(tf("Home.lowStock.summary", { low: 3, soldOut: 1 })).toBe("3 en stock bas · 1 épuisé");
+    expect(tf("Home.lowStock.summary", { low: 1200, soldOut: 2 })).toBe("1 200 en stock bas · 2 épuisés");
+    expect(tf("Home.lowStock.available", { available: "120", reorder: "200" })).toBe("Disponible : 120 · seuil : 200");
+    // Sentence case mid-line, like the lines around it (the Day 6 status name "In Transit" is a label, not this line).
+    expect(te("Home.lowStock.inTransit", { count: "300" })).toBe("+300 in transit");
+    expect(tf("Home.lowStock.inTransit", { count: "1 200" })).toBe("+1 200 en transit");
+    expect(te("Home.lowStock.arrivingLate", { count: 1 })).toBe("1 arrival past its expected date");
+    expect(te("Home.lowStock.arrivingLate", { count: 2 })).toBe("2 arrivals past their expected date");
+    expect(tf("Home.lowStock.arrivingLate", { count: 1 })).toBe("1 arrivage en retard sur la date prévue");
+    expect(te("Home.lowStock.requestsNew", { count: 1 })).toBe("1 new stock request");
+    expect(tf("Home.lowStock.requestsNew", { count: 4 })).toBe("4 nouvelles demandes de stock");
+    expect(te("Home.lowStock.holdsEndingSoon", { count: 1 })).toBe("1 hold ends within 2 days");
+    expect(te("Home.lowStock.holdsEndingSoon", { count: 3 })).toBe("3 holds end within 2 days");
+    expect(tf("Home.lowStock.holdsEndingSoon", { count: 1 })).toBe("1 réservation se termine sous 2 jours");
+    expect(tf("Home.lowStock.holdsEndingSoon", { count: 2 })).toBe("2 réservations se terminent sous 2 jours");
   });
 
   test("every call outcome, kind of entry and database hint has words in both languages", () => {

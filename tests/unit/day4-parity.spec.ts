@@ -14,6 +14,8 @@ import {
 import { STEP_UP_SECONDS } from "@/lib/import";
 import { TASK_KINDS, TASK_TITLE_MAX } from "@/lib/tasks";
 import { CALL_WINDOW } from "@/lib/timezones";
+import { UNSAFE_NAME } from "@/lib/files/name";
+import { FILE_NAME_MAX, FILE_TYPES, MAX_FILE_BYTES, TEAM_QUOTA_BYTES } from "@/lib/files/types";
 
 // The lead page's lists and limits against the Day 4a and 4b migrations (Day 4 design 8.4): a kind, outcome or limit
 // the database does not share would make a save fail, or show a raw code.
@@ -76,4 +78,32 @@ test("undo window, step-up window, page size and the 09:00 working day", () => {
   expect(CALL_WINDOW.start).toBe(9 * 60);
   expect(CALL_WINDOW.end).toBe(18 * 60);
   expect(CALL_WINDOW.lunch).toEqual([12 * 60, 14 * 60]);
+});
+
+// Day 4d: file types, limits and the name rule against the files migration, and Storage's S3 protocol off.
+const files = readFileSync(join(__dirname, "../../supabase/migrations/20261014090000_lead_files.sql"), "utf8");
+const config = readFileSync(join(__dirname, "../../supabase/config.toml"), "utf8");
+
+test("file types and extensions match the migration (file_ext, the bucket's list, the path shape)", () => {
+  for (const [mime, ext] of Object.entries(FILE_TYPES)) expect(files).toContain(`when '${mime}' then '${ext}'`);
+  const bucketTypes = between(files, "values ('lead-files', 'lead-files', false, 10485760, array[", "])");
+  expect([...bucketTypes.matchAll(/'([^']+)'/g)].map((m) => m[1])).toEqual(Object.keys(FILE_TYPES));
+  expect(files).toContain(`\\.(${Object.values(FILE_TYPES).join("|")})$'`);
+});
+
+test("10 MB a file, 800 MB for the team, 180-character names, the same unsafe characters", () => {
+  expect(MAX_FILE_BYTES).toBe(10_485_760);
+  expect(files).toContain("check (size between 1 and 10485760)");
+  expect(files).toContain("if new.size is null or new.size not between 1 and 10485760 then");
+  expect(TEAM_QUOTA_BYTES).toBe(838_860_800);
+  expect(files).toContain("select 838860800::bigint");
+  expect(FILE_NAME_MAX).toBe(180);
+  expect(files).toContain("char_length(name) between 1 and 180");
+  const sqlClass = UNSAFE_NAME.source.replace("\\u{E0000}-\\u{E007F}", "\\U000E0000-\\U000E007F").replace('\\\\"]', '\\\\"]');
+  expect(files).toContain(`name !~\n    '${sqlClass}'`);
+  expect(files).toContain(`p_name !~\n    '${sqlClass}'`);
+});
+
+test("Storage's S3 protocol is off (S3 keys would bypass row level security)", () => {
+  expect(config).toMatch(/\[storage\.s3_protocol\]\nenabled = false/);
 });

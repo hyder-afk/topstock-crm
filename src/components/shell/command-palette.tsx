@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { Headset, Keyboard, Languages, LogOut, Monitor, Moon, Search, Sun, Upload, type LucideIcon } from "lucide-react";
+import { CircleAlert, Headset, Keyboard, Languages, LogOut, Monitor, Moon, Plus, Search, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -78,6 +78,12 @@ export function CommandPalette({
                   onSelect={() => run(() => router.push(s.href))}
                 />
               ))}
+            </Group>
+
+            {/* Day 5b (design 7.7): open a deal from anywhere; jump to the stalled deals. */}
+            <Group heading={t("deals")}>
+              <Item value="new deal open deal pipeline affaire" icon={Plus} label={t("newDeal")} onSelect={() => run(() => router.push("/pipeline?new=1"))} />
+              <Item value="stalled deals pipeline bloquées" icon={CircleAlert} label={t("showStalled")} onSelect={() => run(() => router.push("/pipeline?stalled=1"))} />
             </Group>
 
             <Group heading={t("actions")}>

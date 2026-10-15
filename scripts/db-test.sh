@@ -1,5 +1,5 @@
 #!/bin/bash
-# Local RLS test: throwaway PostgreSQL 16 cluster + auth shim + migrations + attack tests + Supabase advisors.
+# Local RLS test: throwaway PostgreSQL 16 cluster + auth and storage shims + migrations + attack tests + Supabase advisors.
 # No keys; the only network call fetches the pinned advisor rules (scripts/db-advisors.sh).
 # CI runs the same migrations and tests against the real Supabase Postgres image.
 set -euo pipefail
@@ -26,5 +26,11 @@ $PSQL -f "$ROOT/supabase/tests/outcome_attack.sql"
 bash "$ROOT/supabase/tests/outcome_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 $PSQL -f "$ROOT/supabase/tests/queue_attack.sql"
 bash "$ROOT/supabase/tests/queue_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/files_attack.sql"
+bash "$ROOT/supabase/tests/files_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/deals_attack.sql"
+bash "$ROOT/supabase/tests/deal_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/deal_links_attack.sql"
+$PSQL -f "$ROOT/supabase/tests/home_attack.sql"
 bash "$ROOT/supabase/tests/team_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p 54329 -U postgres -d postgres

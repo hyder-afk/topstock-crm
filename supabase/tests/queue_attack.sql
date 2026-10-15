@@ -1350,7 +1350,7 @@ begin
   perform pg_temp.expect_error(format('select public.update_task(%L, %L, null, null, null, null)', t,
                                       repeat('x', 300) || 'MARKER-TITLE'), '22023', 'task_title', 'MARKER-TITLE');
   perform pg_temp.expect_error(format('select public.update_task(%L, %L, null, null, null, null)', t,
-                                      E'bad‮title MARKER-BIDI'), '22023', 'task_title', 'MARKER-BIDI');
+                                      E'bad\u202Etitle MARKER-BIDI'), '22023', 'task_title', 'MARKER-BIDI');
   perform pg_temp.expect_error(format('select public.update_task(%L, %L, null, null, %L, null)', t, 'x', i), '42501');
   perform pg_temp.expect_error(format('select public.update_task(%L, %L, null, null, null, %L)', t, 'x', oc), 'P0002');
   perform pg_temp.expect_error(format('select public.update_task(%L, %L, %L, null, null, null)', m, 'Meet', v_today + 2),

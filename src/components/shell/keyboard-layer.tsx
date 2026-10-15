@@ -7,8 +7,10 @@ import { ShortcutsDialog } from "@/components/shell/shortcuts-dialog";
 import { sections } from "@/lib/nav";
 import { goKeys, isTyping, queueGoKey } from "@/lib/shortcuts";
 
-type Shell = { openPalette: () => void; openShortcuts: () => void };
-const ShellContext = createContext<Shell>({ openPalette: () => {}, openShortcuts: () => {} });
+// isChordPending (Day 5b, design 7.7): element key handlers run before this layer's window handler, so a focused deal
+// card asks whether a "G then a letter" chord is under way before it takes a key for itself.
+type Shell = { openPalette: () => void; openShortcuts: () => void; isChordPending: () => boolean };
+const ShellContext = createContext<Shell>({ openPalette: () => {}, openShortcuts: () => {}, isChordPending: () => false });
 export const useShell = () => useContext(ShellContext);
 
 // Keyboard-first layer for the signed-in app: Cmd/Ctrl+K and "/" open the command menu, "?" lists the shortcuts,
@@ -73,7 +75,8 @@ export function KeyboardLayer({ children, isAdmin = false }: { children: React.R
     };
   }, [router, openPalette, openShortcuts]);
 
-  const value = useMemo(() => ({ openPalette, openShortcuts }), [openPalette, openShortcuts]);
+  const isChordPending = useCallback(() => pendingG.current !== null, []);
+  const value = useMemo(() => ({ openPalette, openShortcuts, isChordPending }), [openPalette, openShortcuts, isChordPending]);
   return (
     <ShellContext.Provider value={value}>
       {children}

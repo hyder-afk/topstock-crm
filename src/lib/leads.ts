@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { LeadDealsBrief } from "@/lib/deals";
 
 // A lead is a company (Haider, 10 Oct 2026). Statuses in his order; the database check constraint holds the same list.
 export const leadStatuses = [
@@ -178,6 +179,9 @@ export type LeadDetail = {
   import?: { id: string; filename: string; created_at: string } | null;
   // Day 4c: a teammate working this lead in the queue right now (never the viewer).
   worked_by?: { first_name: string | null; until: string } | null;
+  // Day 5b (get_lead extended): the open deals the caller sees and the newest in stage; whether the caller may open one.
+  deals?: LeadDealsBrief;
+  can_open_deal?: boolean;
 };
 
 export type TeamMember = { id: string; first_name: string; last_name: string; role: "admin" | "manager" | "rep" };
@@ -185,7 +189,7 @@ export type TeamMember = { id: string; first_name: string; last_name: string; ro
 export const pageSize = 50;
 
 // The lead page's tabs (Day 4b), in order; the selected one is in ?tab=. Files joins from Day 4d (design D16).
-export const LEAD_TABS = ["summary", "timeline", "deals", "stock", "details"] as const;
+export const LEAD_TABS = ["summary", "timeline", "deals", "stock", "files", "details"] as const;
 export type LeadTab = (typeof LEAD_TABS)[number];
 
 // Form input (server actions validate again; the database checks once more).
