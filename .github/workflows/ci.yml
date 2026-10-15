@@ -71,9 +71,14 @@ jobs:
             shard: 2/2
             part: "2"
             timeout: 45
+          # Safari's engine runs its own subset, also in two halves since Day 6 (one WebKit job hit 45 minutes on PR #18).
           - browser: webkit
-            shard: 1/1
+            shard: 1/2
             part: "1"
+            timeout: 45
+          - browser: webkit
+            shard: 2/2
+            part: "2"
             timeout: 45
     timeout-minutes: ${{ matrix.timeout }}
     env:
