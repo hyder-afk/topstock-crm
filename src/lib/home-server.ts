@@ -36,7 +36,8 @@ export async function fetchHome(supabase: SupabaseClient, scope: HomeScope): Pro
     supabase.rpc("list_tasks", { p_bucket: "overdue", p_scope: "mine", p_after_sort: null, p_after_id: null, p_limit: TODAY_SHOWN }),
     supabase.rpc("list_tasks", { p_bucket: "today", p_scope: "mine", p_after_sort: null, p_after_id: null, p_limit: TODAY_SHOWN }),
     supabase.rpc("count_tasks", { p_scope: "mine" }),
-    supabase.rpc("home_low_stock", { p_limit: 5 }),
+    // Low stock: Day 6's stock_alerts() (decision B); the Day 5c stub answers null until inventory is set up.
+    supabase.rpc("stock_alerts"),
   ]);
   if (summary.status === "fulfilled" && (summary.value.error as { code?: string } | null)?.code === "42501" && scope === "team") {
     return "forbidden";

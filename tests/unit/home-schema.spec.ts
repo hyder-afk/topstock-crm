@@ -53,16 +53,40 @@ test("unknown keys are dropped from every part", () => {
   expect(attentionPart.safeParse({ total: 1, items: [{ id: "x" }] }).success).toBe(false);
 });
 
-test("low stock: null (not set up), empty, full, and the purchase cost stripped", () => {
+test("low stock: Day 6's stock_alerts() shape, null (not set up), all zero, and strict on every key", () => {
+  // The exact payload Day 6's stock_alerts() builds (6d migration): counts plus up to 5 low products.
+  const item = { id: "6f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Denim jacket", available: 120, reorder_point: 200, arriving: 300 };
+  const day6 = { low: 3, sold_out: 1, arriving_late: 2, requests_new: 4, holds_ending_soon: 1, deals_waiting: 2, sample: [item] };
+  expect(lowStockPart.parse(day6)).toEqual(day6);
   expect(lowStockPart.parse(null)).toBeNull();
-  expect(lowStockCard.parse({ low: 0, out: 0, deals_waiting: null, items: [] })).toEqual({ low: 0, out: 0, deals_waiting: null, items: [] });
-  const item = { product_id: "6f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Denim jacket", available: 120, reorder_point: 200,
-    in_transit: 300, next_eta: "2026-10-24", state: "low", pp: "4.10" };
-  const full = lowStockCard.parse({ low: 3, out: 1, deals_waiting: 2, items: [item], pp_total: "999" });
-  expect(full.items[0]).not.toHaveProperty("pp");
-  expect(full).not.toHaveProperty("pp_total");
-  expect(lowStockCard.safeParse({ low: 1, out: 0, deals_waiting: 0, items: Array(6).fill(item) }).success).toBe(false);
-  expect(lowStockCard.safeParse({ low: 1, out: 0, deals_waiting: 0, items: [{ ...item, state: "fine" }] }).success).toBe(false);
+  const zero = { low: 0, sold_out: 0, arriving_late: 0, requests_new: 0, holds_ending_soon: 0, deals_waiting: 0, sample: [] };
+  expect(lowStockCard.parse(zero)).toEqual(zero);
+  // Strict: an unknown key (a purchase cost, say) fails the whole part instead of being passed on.
+  expect(lowStockCard.safeParse({ ...day6, pp_total: "999" }).success).toBe(false);
+  expect(lowStockCard.safeParse({ ...day6, sample: [{ ...item, cost_per_piece: 4.1 }] }).success).toBe(false);
+  // Every key is required (the 5c draft's {low, out, items} is refused).
+  for (const key of Object.keys(day6)) {
+    expect(lowStockCard.safeParse(Object.fromEntries(Object.entries(day6).filter(([k]) => k !== key))).success, key).toBe(false);
+  }
+  for (const key of Object.keys(item)) {
+    const partial = Object.fromEntries(Object.entries(item).filter(([k]) => k !== key));
+    expect(lowStockCard.safeParse({ ...day6, sample: [partial] }).success, key).toBe(false);
+  }
+  expect(lowStockCard.safeParse({ low: 0, out: 0, deals_waiting: null, items: [] }).success).toBe(false);
+  // At most 5 products; counts and quantities are whole numbers of zero or more; the id is a uuid.
+  expect(lowStockCard.safeParse({ ...day6, sample: Array(5).fill(item) }).success).toBe(true);
+  expect(lowStockCard.safeParse({ ...day6, sample: Array(6).fill(item) }).success).toBe(false);
+  for (const key of ["low", "sold_out", "arriving_late", "requests_new", "holds_ending_soon", "deals_waiting"] as const) {
+    expect(lowStockCard.safeParse({ ...day6, [key]: -1 }).success, key).toBe(false);
+    expect(lowStockCard.safeParse({ ...day6, [key]: 1.5 }).success, key).toBe(false);
+    expect(lowStockCard.safeParse({ ...day6, [key]: null }).success, key).toBe(false);
+  }
+  for (const key of ["available", "reorder_point", "arriving"] as const) {
+    expect(lowStockCard.safeParse({ ...day6, sample: [{ ...item, [key]: -1 }] }).success, key).toBe(false);
+    expect(lowStockCard.safeParse({ ...day6, sample: [{ ...item, [key]: 0.5 }] }).success, key).toBe(false);
+  }
+  expect(lowStockCard.safeParse({ ...day6, sample: [{ ...item, id: "P-0042" }] }).success).toBe(false);
+  expect(lowStockCard.safeParse({ ...day6, sample: [{ ...item, name: "" }] }).success).toBe(false);
 });
 
 test("scope: reps always Mine; managers and admins their remembered choice, Team first", () => {

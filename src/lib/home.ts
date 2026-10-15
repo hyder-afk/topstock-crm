@@ -163,24 +163,27 @@ export function buildToday(
 }
 
 /**
- * The Day 6 contract for the Low stock card (design section 10): exactly {low, out, deals_waiting, items[≤ 5]}. Unknown
- * keys (a purchase cost, say) are dropped by the parse and never reach the browser; a bad shape shows the card's error.
- * null from home_low_stock means inventory is not set up yet (the calm placeholder).
+ * The Low stock card reads Day 6's own contract, public.stock_alerts() (Haider's decision B, 15 Oct 2026: it belongs to
+ * the stock module). Exactly {low, sold_out, arriving_late, requests_new, holds_ending_soon, deals_waiting, sample[≤ 5]},
+ * strict: an unknown key (a purchase cost, say) fails the parse and shows the card's error instead of reaching the
+ * browser. The sample holds low products only. null from the Day 5c stub means inventory is not set up yet (the calm
+ * placeholder).
  */
-export const lowStockItem = z.object({
-  product_id: z.uuid(),
-  name: z.string().max(200),
-  available: z.number().int(),
-  reorder_point: z.number().int().nonnegative(),
-  in_transit: z.number().int().nonnegative(),
-  next_eta: z.iso.date().nullable(),
-  state: z.enum(["low", "out"]),
+export const lowStockItem = z.strictObject({
+  id: z.uuid(),
+  name: z.string().min(1).max(200),
+  available: count,
+  reorder_point: count,
+  arriving: count,
 });
-export const lowStockCard = z.object({
+export const lowStockCard = z.strictObject({
   low: count,
-  out: count,
-  deals_waiting: count.nullable(),
-  items: z.array(lowStockItem).max(5),
+  sold_out: count,
+  arriving_late: count,
+  requests_new: count,
+  holds_ending_soon: count,
+  deals_waiting: count,
+  sample: z.array(lowStockItem).max(5),
 });
 export const lowStockPart = lowStockCard.nullable();
 export type LowStockCard = z.infer<typeof lowStockCard>;

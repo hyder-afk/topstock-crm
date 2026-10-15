@@ -112,13 +112,15 @@
       "title": "Low stock",
       "notReady": "Stock alerts will show here once inventory is set up.",
       "allGood": "All products are above their reorder level.",
-      "summary": "{low} low · {out} out",
+      "summary": "{low, number} low · {soldOut, number} sold out",
       "dealsWaiting": "{count, plural, one {# deal waiting} other {# deals waiting}}",
       "available": "{available} available · reorder at {reorder}",
       "inTransit": "+{count} In Transit",
-      "eta": "ETA {date}",
       "low": "Low",
-      "out": "Out of stock",
+      "followUps": "Also in inventory",
+      "arrivingLate": "{count, plural, one {# arrival past its expected date} other {# arrivals past their expected date}}",
+      "requestsNew": "{count, plural, one {# new stock request} other {# new stock requests}}",
+      "holdsEndingSoon": "{count, plural, one {# hold ends within 2 days} other {# holds end within 2 days}}",
       "open": "Open inventory"
     }
   },
