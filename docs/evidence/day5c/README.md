@@ -166,6 +166,16 @@ Verifier verdict on b6b360b: NOT READY. The Day 5c findings (the shared ones, 3,
    new `home-low-stock-loading` shots (24).
 4. Pipeline evidence gaps: in the 5b README.
 
+**Checks for this round** (src as at d29be68, tests and docs at the round's last commit): lint 0 errors (the 2 known
+warnings); typecheck clean; unit 433 passed; `db-test.sh` copy on port 54497: exit 0, every suite (`home_attack.sql` all
+Day 5c checks passed), advisors 0 ERROR (WARN `set_user_role` as before; INFO `unindexed_foreign_keys` 5,
+`unused_index` 2: the unused-index count is run statistics, no index changed); the same copy with the stub answering a
+Day 6-shaped object (filled, and all zeros): exit 0; mutations day5c rows 20 and 21: 2 of 2 caught; `--anchors`: every
+set, every row once (day5c 21). e2e local Chromium, stack restarted from this worktree: `home.spec` 14 passed (also 14
+and 14 with Day 6's real `stock_alerts()` body over throwaway tables, empty and with fake products); `home-screens` 4
+passed (93 shots); `day5-screens` 5 passed (96 shots); `pipeline` 15, `pipeline-multi` 1, `shell` 20 passed. gitleaks
+`origin/main..HEAD` (84 commits): no leaks.
+
 ## Deviations from the design
 
 1. **Tasks** (since the 4c rebase): K5's overdue and today are Day 4c's `count_tasks('mine')`; K6 (the day's meetings)
