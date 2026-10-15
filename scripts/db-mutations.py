@@ -32,6 +32,7 @@ text sits in such a later redefinition is made there too, automatically (REDEFIN
 live definition.
 """
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -1937,8 +1938,8 @@ MUTATIONS_6D = [
      [("old.created_at > now() - interval '120 seconds' and new.cancel_reason = 'undo'",
        "old.created_at > now() - interval '3600 seconds' and new.cancel_reason = 'undo'")]),
     ("task_guard without the new links in its cascade exception [design 36]",
-     [("       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id', 'source_product_id',\n                            'source_request_id']\n",
-       "       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id']\n")], SURVIVES),
+     [("       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',\n                            'source_product_id', 'source_request_id']\n",
+       "       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id']\n")], SURVIVES),
     ("task_guard lets a client change a system link (the column grant refuses it first: two layers)",
      [("    if not changed <@ array['assignee_id', 'cancelled_at', 'completed_by', 'contact_id', 'done_at', 'due_at',\n                            'due_date', 'title'] then\n      raise exception 'this part of a task cannot change'",
        "    if not changed <@ array['assignee_id', 'cancelled_at', 'completed_by', 'contact_id', 'done_at', 'due_at',\n                            'due_date', 'title', 'source_product_id', 'source_request_id'] then\n      raise exception 'this part of a task cannot change'")], SURVIVES),
@@ -2061,12 +2062,75 @@ MUTATIONS_6E = [
 ]
 
 
+# The merge of Day 5 into Day 6 (15 Oct 2026). Two functions earlier sets mutate are redefined by Day 6 with text that
+# differs from the earlier copy, so the automatic mirror (same text in the later body) cannot reach them, and --anchors
+# reported those rows DEAD: Day 6d's task_guard (Day 5a's body plus source_product_id and source_request_id) and Day 6d's
+# stock_alerts (the real body that replaces Day 5c's stub). Each such row also gets the same protection removed from the
+# live Day 6d body; the earlier edit is kept (it still applies, to the dead copy).
+TASK_GUARD_6D = Region(MIG_6D, "create or replace function private.task_guard()")
+STOCK_ALERTS_6D = Region(MIG_6D, "create or replace function public.stock_alerts()")
+TG6_LIST = ("       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',\n"
+            "                            'source_product_id', 'source_request_id']\n")
+TG6_LINKS = ("\n       and (new.assignee_id is null or new.assignee_id is not distinct from old.assignee_id)"
+             "\n       and (new.contact_id is null or new.contact_id is not distinct from old.contact_id)"
+             "\n       and (new.created_by is null or new.created_by is not distinct from old.created_by)"
+             "\n       and (new.deal_id is null or new.deal_id is not distinct from old.deal_id)"
+             "\n       and (new.source_activity_id is null or new.source_activity_id is not distinct from old.source_activity_id)"
+             "\n       and (new.source_product_id is null or new.source_product_id is not distinct from old.source_product_id)"
+             "\n       and (new.source_request_id is null or new.source_request_id is not distinct from old.source_request_id) then")
+ALSO_IN_6D = {
+    ("day4a", "Task guard: link-emptying exception without created_by (the design's list: a person delete fails)"):
+        [(TASK_GUARD_6D, "changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',\n",
+          "changed <@ array['assignee_id', 'contact_id', 'deal_id', 'source_activity_id',\n")],
+    ("day4a", "Task guard: link-emptying exception lets a link move to another record (depth 2)"):
+        [(TASK_GUARD_6D, TG6_LINKS, " then")],
+    ("day4a", "Task guard: link-emptying exception lets any column change (depth 2)"):
+        [(TASK_GUARD_6D, "    if pg_trigger_depth() > 1\n" + TG6_LIST, "    if pg_trigger_depth() > 1\n")],
+    ("day5a", "Task guard: deal_id not in the link-emptying exception"):
+        [(TASK_GUARD_6D, "'created_by', 'deal_id', 'source_activity_id',\n", "'created_by', 'source_activity_id',\n")],
+    ("day5c", "stock_alerts stub callable by anon"):
+        [(MIG_6D, "  end loop;\nend;\n$$;\nrevoke all on function private.order_guard()",
+          "  end loop;\nend;\n$$;\ngrant execute on function public.stock_alerts() to anon;\nrevoke all on function private.order_guard()")],
+    ("day5c", "stock_alerts stub without the two-factor check (an aal1 session gets an answer)"):
+        [(STOCK_ALERTS_6D, "  if (select auth.uid()) is null or not private.has_aal2() then\n",
+          "  if (select auth.uid()) is null then\n")],
+    ("day5c", "stock_alerts stub runs as its owner (SECURITY DEFINER)"):
+        [(STOCK_ALERTS_6D, "language plpgsql stable security invoker set search_path = '' as $$",
+          "language plpgsql stable security definer set search_path = '' as $$")],
+    ("day5c", "stock_alerts answers Day 6's keys plus an extra one (a purchase cost)"):
+        [(STOCK_ALERTS_6D, "      'sample', (select", "      'cost_per_piece', 4.1,\n      'sample', (select")],
+    ("day5c", "stock_alerts answers an empty object"):
+        [(STOCK_ALERTS_6D, "  return (\n    with s as (", "  return '{}'::jsonb;\n  return (\n    with s as (")],
+}
+for (_set, _rows) in (("day4a", MUTATIONS_4A), ("day5a", MUTATIONS_5A), ("day5c", MUTATIONS_5C)):
+    for _n, (_title, _edits, *_flags) in enumerate(_rows):
+        if (_set, _title) in ALSO_IN_6D:
+            _rows[_n] = (_title, list(_edits) + ALSO_IN_6D.pop((_set, _title)), *_flags)
+assert not ALSO_IN_6D, f"rows not found: {list(ALSO_IN_6D)}"
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
         "day4c": (MIG_4C, MUTATIONS_4C), "day4d": (MIG_4D, MUTATIONS_4D), "day5a": (MIG_5A, MUTATIONS_5A),
         "day5b": (MIG_5B, MUTATIONS_5B), "day5c": (MIG_5C, MUTATIONS_5C),
         "team": (MIG_TEAM, MUTATIONS_TEAM),
         "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
         "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E)}
+
+
+FUNCTION_HEAD = re.compile(r"create (?:or replace )?function ([a-z_]+\.[a-z_0-9]+)\(")
+
+
+def enclosing_function(text: str, at: int):
+    """The function whose body holds position `at` (its header before it, its closing $$; after it), or None."""
+    heads = [m for m in FUNCTION_HEAD.finditer(text, 0, at)]
+    if not heads:
+        return None
+    head = heads[-1]
+    body = re.compile(r"\bas\s+(\$[a-z_]*\$)").search(text, head.end())
+    if body is None:
+        return None
+    end = text.find(body.group(1), body.end())  # the closing dollar quote (a nested $f$ body ends at its own tag)
+    return head.group(1) if end == -1 or end > at else None
 
 
 def redefinitions(text: str) -> list:
@@ -2079,15 +2143,55 @@ def redefinitions(text: str) -> list:
     return bodies
 
 
-def mirrored_edits(path, old: str, new: str) -> list:
-    """The same edit in every later migration whose redefinition of a function holds the text (once)."""
+def _path(target):
+    return target.path if isinstance(target, Region) else target
+
+
+def mirrored_edits(target, old: str, new: str) -> list:
+    """The same edit in every later Day 6 migration that redefines the function the edit is aimed inside (the edit made
+    in that function's later body, found exactly once there). An edit outside any function is not mirrored; neither is
+    text that only happens to appear in another function of a later migration (merge of Day 5, 15 Oct 2026: the old
+    rule mirrored any body holding the text, and a Day 5a row's generic header line matched three 6c functions)."""
+    path = target.path if isinstance(target, Region) else target
+    text = path.read_text()
+    lo = 0
+    if isinstance(target, Region) and target.bounds(text):
+        lo = target.bounds(text)[0]
+    at = text.find(old, lo)
+    fn = enclosing_function(text, at) if at >= 0 else None
+    if fn is None:
+        return []
     out = []
     for later in REDEFINERS:
         if later.name <= path.name:
             continue
-        text = later.read_text()
-        if any(old in body for body in redefinitions(text)):
-            out.append((later, old, new))
+        region = Region(later, f"create or replace function {fn}(")
+        b = region.bounds(later.read_text())
+        if b and old in later.read_text()[b[0]:b[1]]:
+            out.append((region, old, new))
+    return out
+
+
+def dead_edits(expanded: list) -> list:
+    """Edits aimed at a function that a later migration redefines without an edit in that later body (the row would
+    change a dead definition and could pass for the wrong reason). One line per such edit."""
+    migrations = sorted((ROOT / "supabase/migrations").glob("*.sql"))
+    where = []
+    for target, old, _ in expanded:
+        path = target.path if isinstance(target, Region) else target
+        text = path.read_text()
+        lo = target.bounds(text)[0] if isinstance(target, Region) and target.bounds(text) else 0
+        at = text.find(old, lo)
+        where.append((path, enclosing_function(text, at) if at >= 0 else None))
+    aimed = set(where)
+    out = []
+    for path, fn in where:
+        if fn is None:
+            continue
+        later = [m for m in migrations if m.name > path.name
+                 and re.search(r"create or replace function " + re.escape(fn) + r"\(", m.read_text())]
+        if later and (later[-1], fn) not in aimed:
+            out.append(f"{fn} is redefined in {later[-1].name} without an edit there")
     return out
 
 
@@ -2106,8 +2210,8 @@ def run_set(name: str, only: set) -> int:
         for edit in edits:
             target, old, new = edit if len(edit) == 3 else (default, *edit)
             expanded.append((target, old, new))
-            path = target.path if isinstance(target, Region) else target
-            expanded += [m for m in mirrored_edits(path, old, new) if m not in edits]
+            given = {(_path(e[0]) if len(e) == 3 else default, e[-2]) for e in edits}
+            expanded += [m for m in mirrored_edits(target, old, new) if (m[0].path, m[1]) not in given]
         for target, old, new in expanded:
             path = target.path if isinstance(target, Region) else target
             files.setdefault(path, path.read_text())
@@ -2132,8 +2236,13 @@ def run_set(name: str, only: set) -> int:
         if not applied:
             continue
         if ANCHORS_ONLY:
-            print(f"| {i} | {title} | anchor found | |")
-            counts["caught"] += 1
+            dead = dead_edits(expanded)
+            if dead:
+                print(f"| {i} | {title} | DEAD ({'; '.join(dead)}) | |")
+                counts["unexpected"] += 1
+            else:
+                print(f"| {i} | {title} | anchor found | |")
+                counts["caught"] += 1
             continue
         originals = {path: path.read_text() for path in files}
         try:
