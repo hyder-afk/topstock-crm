@@ -55,7 +55,7 @@ export type LoggedEntry = { requestId: string; activityId: string; card: QueueCa
 export type QueueEvent =
   | { kind: "logged"; entry: LoggedEntry }
   | { kind: "failed"; error: AppError; hint?: string; leadName: string }
-  | { kind: "undone"; claimed: boolean; leadName: string }
+  | { kind: "undone"; claimed: boolean; leadName: string; dealKept?: boolean }
   | { kind: "undoFailed"; error: AppError }
   | { kind: "lostClaim"; name: string | null }
   | { kind: "released" };
@@ -446,7 +446,7 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         setError(null);
         setPhase("working");
       }
-      eventRef.current({ kind: "undone", claimed: res.data.claimed, leadName: last.card.name });
+      eventRef.current({ kind: "undone", claimed: res.data.claimed, leadName: last.card.name, dealKept: res.data.undone?.deal === "kept" });
     });
     return true;
   }, [canUndo, enqueue, setCards, setPhase, setLastLogged, newSession, queryClient]);

@@ -5,9 +5,11 @@ import { appReady, createUser, fullSession, isCancelledPrefetch, setRole, settle
 // takes it back; Interested and Book meeting open a deal from the call panel (the switch is on when the lead has no
 // open deal, off with the reason when it has one, D toggles it); one Undo takes back the call and its deal, or keeps a
 // deal that changed since; a person who may not change the lead gets no switch and is told why; the header chip and
-// the Summary card show the latest open deal; the composer's deal chip links an entry. The queue (Day 4c) is not on
-// this branch: "interested_opens_deal_in_queue" joins at the 4c rebase. Leads and deals are made-up fixtures written
-// straight into the local database, found by id, never by name; outcomes are checked in the database.
+// the Summary card show the latest open deal; the composer's deal chip links an entry; the work queue (Day 4c, since the
+// 4c rebase) shows the card's open deal and opens one with Interested; Reopen from the Deals tab starts at the stage the
+// deal was closed from; U on the lead page takes back the newer of the last entry and the last deal move. Leads and
+// deals are made-up fixtures written straight into the local database, found by id, never by name; outcomes are checked
+// in the database.
 test.describe.configure({ mode: "serial" });
 
 const password = "Lead-Deals-Pass-42!";
@@ -83,8 +85,8 @@ const panel = (page: Page) => page.getByRole("region", { name: /^(Calling|How di
 const toast = (page: Page) => page.getByRole("status").filter({ hasText: /\S/ }).last();
 const dealSwitch = (page: Page) => panel(page).getByRole("switch", { name: /Open a deal/ });
 
-// Call, End call, then the outcome by its key (Digit5 Interested, Digit6 Book meeting).
-async function callAndPick(page: Page, key: "Digit5" | "Digit6") {
+// Call, End call, then the outcome by its key (Digit1 No answer, Digit5 Interested, Digit6 Book meeting).
+async function callAndPick(page: Page, key: "Digit1" | "Digit5" | "Digit6") {
   await page.getByRole("link", { name: "Call", exact: true }).first().click();
   await expect(panel(page)).toBeVisible();
   await panel(page).getByRole("button", { name: "End call" }).click();
@@ -304,6 +306,121 @@ test("phone_390: the Deals tab's Open a deal is full width and the page has no s
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(box.width).toBeGreaterThan(300);
   expect(await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth)).toBe(true);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+// A closed deal with its closing history (written by the superuser): lost (or won) from `from`.
+function makeClosedDeal(lead: string, status: "lost" | "won", from: string, title: string) {
+  const id = sql(`insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, title, value, status, closed_at, lost_reason,
+                                            fulfilment, stage_entered_at, version)
+                  select '${org}', '${lead}', s.id, '${admin}', '${admin}', '${title} ${run}', 900, '${status}', now() - interval '1 day',
+                         ${status === "lost" ? "'price'" : "null"}, ${status === "won" ? "'from_stock'" : "null"}, now() - interval '1 day', 1
+                    from public.pipeline_stages s where s.org_id = '${org}' and s.key = '${status}' returning id`);
+  expect(id).toMatch(uuid);
+  sql(`insert into public.deal_stage_history (org_id, deal_id, actor_id, kind, from_stage, to_stage, value_after, version_after, created_at)
+       values ('${org}', '${id}', '${admin}', '${status}', '${from}', '${status}', 900, 1, now() - interval '1 day')`);
+  return id;
+}
+const stageOf = (deal: string) => sql(`select s.key from public.deals d join public.pipeline_stages s on s.id = d.stage_id where d.id = '${deal}'`);
+const statusOf = (lead: string) => sql(`select lead_status from public.companies where id = '${lead}'`);
+
+test("reopen_from_deals_tab_uses_closing_stage, the row keeps the focus (verifier finding 4)", async ({ browser }) => {
+  // A lost deal closed from Qualified, on a Cool off lead: it reopens in Qualified (the lead follows: Warm), never in
+  // Negotiations (which would have made the lead Negotiation).
+  const lead = makeLead("Reopen Lead", "cool_off");
+  const deal = makeClosedDeal(lead, "lost", "qualified", "Lost from qualified");
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead, "deals");
+  await page.getByRole("button", { name: "Actions for this deal" }).click();
+  await page.getByRole("menuitem", { name: "Reopen…" }).click();
+  await expect.poll(() => sql(`select status from public.deals where id = '${deal}'`)).toBe("open");
+  expect(stageOf(deal)).toBe("qualified");
+  await expect.poll(() => statusOf(lead)).toBe("warm");
+  // The row menu went with the closed row: the deal's row in Open takes the focus.
+  await expect(page.locator(`[data-deal-row="${deal}"]`)).toBeFocused();
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("u_on_lead_page_undoes_the_newer_deal_move, else the entry (verifier finding 7)", async ({ browser }) => {
+  const lead = makeLead("Undo Order Lead", "warm");
+  const deal = makeDeal(lead, "lead", "Undo order", "1500");
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead);
+  // 1. An entry first (a no answer from the call panel), then a deal move from the sheet over the page.
+  await callAndPick(page, "Digit1");
+  await page.keyboard.press("Control+Enter");
+  await expect(panel(page)).toHaveCount(0);
+  await expect.poll(() => sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("1");
+  await page.getByRole("button", { name: /^Deal: Lead/ }).click();
+  await page.locator(`[data-deal-row="${deal}"]`).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("radio", { name: /^Qualified/ }).click();
+  await expect.poll(() => stageOf(deal)).toBe("qualified");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await page.locator("main h1").click();
+  // U takes back the move (the newer change); the entry stays.
+  await page.keyboard.press("u");
+  await expect.poll(() => stageOf(deal)).toBe("lead");
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("1");
+  // 2. Now the entry is the newest undoable change (the move was undone): U takes it back.
+  await page.keyboard.press("u");
+  await expect.poll(() => sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("0");
+  expect(stageOf(deal)).toBe("lead");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("interested_opens_deal_in_queue, the queue card's deal line (Day 4c rebase)", async ({ browser }) => {
+  // Only this test's two leads are in the admin's queue: Negotiation first (with an open deal), then Warm (none).
+  sql(`update public.companies set lead_status = 'disqualified' where owner_id = '${admin}'`);
+  sql(`delete from private.queue_claims where user_id = '${admin}'`);
+  const withDeal = makeLead("Queue Deal Lead", "negotiation");
+  makeDeal(withDeal, "qualified", "Linen shirts", "6800");
+  const without = makeLead("Queue Fresh Lead", "warm");
+  const { context, page, errors } = await open(browser, adminState);
+  await settled(page);
+  await page.goto("/leads/queue");
+  await expect(page.locator("main h1")).toContainText("Work queue");
+  await appReady(page);
+  await page.keyboard.press("Enter");
+  const card = page.locator("main section[role=region]:not([data-leaving])");
+  const outside = page.getByRole("button", { name: "Show leads outside calling hours" });
+  await expect(card.or(outside).first()).toBeVisible();
+  if (await outside.isVisible()) await outside.click();
+  await expect(card).toHaveCount(1);
+  await expect(card.locator("h2")).toContainText(`Queue Deal Lead ${run}`);
+  await expect(card.locator("[data-queue-deal]")).toHaveText("Deal open: Qualified · €6,800");
+  const qSwitch = page.getByRole("switch", { name: /Open a deal/ });
+  // Interested on a lead with an open deal: the switch is off and says why; D turns it on and off.
+  await page.keyboard.press("Digit5");
+  await expect(qSwitch).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByRole("group", { name: "Interested" })).toContainText("Already has an open deal: Qualified · €6,800");
+  await page.keyboard.press("d");
+  await expect(qSwitch).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("d");
+  await expect(qSwitch).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => sql(`select count(*) from public.activities where company_id = '${withDeal}' and outcome = 'interested'`)).toBe("1");
+  expect(dealsOn(withDeal)).toBe("1");
+  // The next card has no deal: no deal line, and Interested opens one in the same call.
+  await expect(card.locator("h2")).toContainText(`Queue Fresh Lead ${run}`);
+  await expect(card.locator("[data-queue-deal]")).toHaveCount(0);
+  await page.keyboard.press("Digit5");
+  await expect(qSwitch).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => dealsOn(without)).toBe("1");
+  expect(sql(`select s.key || '|' || (d.source_activity_id is not null) from public.deals d join public.pipeline_stages s on s.id = d.stage_id
+               where d.company_id = '${without}'`)).toBe("lead|true");
+  await expect(page.locator("[data-toast]").last()).toContainText("deal opened in Lead");
+  // U in the queue takes back the outcome and its untouched deal.
+  await page.keyboard.press("u");
+  await expect.poll(() => dealsOn(without)).toBe("0");
+  expect(sql(`select count(*) from public.activities where company_id = '${without}'`)).toBe("0");
   expect(errors).toEqual([]);
   await context.close();
 });

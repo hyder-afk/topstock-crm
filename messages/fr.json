@@ -1046,8 +1046,7 @@
       "rate_limited": "Aucune affaire ouverte : trop d’affaires cette heure-ci.",
       "not_editable": "Noté. Seul {owner} ou un admin peut ouvrir une affaire.",
       "not_editableUnowned": "Noté. Seul un admin peut ouvrir une affaire."
-    },
-    "openItNow": "L’ouvrir maintenant"
+    }
   },
   "Timeline": {
     "title": "Historique",
@@ -1471,6 +1470,8 @@
     "owner": "Responsable : {name}",
     "unassigned": "Sans responsable",
     "readOnly": "Seul {owner} ou un administrateur peut modifier ce prospect. Votre appel est quand même noté.",
+    "dealOpen": "Affaire en cours : {stage} · {value}",
+    "dealOpenNoValue": "Affaire en cours : {stage}",
     "script": {
       "title": "Script d’appel",
       "inEnglish": "Afficher en anglais",

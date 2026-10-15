@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/leads/status-badge";
 import { useClientNow } from "@/components/lead/local-time";
 import { countryName } from "@/lib/countries";
 import { personName, type LeadStatus } from "@/lib/leads";
+import { formatMoney } from "@/lib/money";
 import { callHref } from "@/lib/phone";
 import type { QueueCard as Card } from "@/lib/queue";
 import { isOpen, localDate, openUntilMinutes, primaryZone, spanEnds, zonedInstant } from "@/lib/timezones";
@@ -57,6 +58,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
   const tOut = useTranslations("Outcomes");
   const tTypes = useTranslations("Composer.types");
   const tLeads = useTranslations("Leads");
+  const tStage = useTranslations("Stages");
   const format = useFormatter();
   const locale = useLocale();
   const now = useClientNow(30_000);
@@ -121,6 +123,17 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
             </span>
           ) : null}
         </p>
+        {/* Day 5b (design 7.9): the lead's open deal the caller sees, "Deal open: Negotiations · €18,400". */}
+        {card.open_deal?.latest ? (
+          <p className="text-sm" data-queue-deal>
+            {card.open_deal.latest.value
+              ? t("dealOpen", {
+                  stage: tStage(card.open_deal.latest.stage),
+                  value: formatMoney(card.open_deal.latest.value, locale),
+                })
+              : t("dealOpenNoValue", { stage: tStage(card.open_deal.latest.stage) })}
+          </p>
+        ) : null}
         {!card.can_edit ? (
           <p className="text-sm text-muted-foreground">{t("readOnly", { owner: card.owner ? personName(card.owner) : tLeads("unassigned") })}</p>
         ) : null}

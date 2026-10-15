@@ -1046,8 +1046,7 @@
       "rate_limited": "No deal opened: too many deals this hour.",
       "not_editable": "Logged. Only {owner} or an admin can open a deal.",
       "not_editableUnowned": "Logged. Only an admin can open a deal."
-    },
-    "openItNow": "Open it now"
+    }
   },
   "Timeline": {
     "title": "Timeline",
@@ -1471,6 +1470,8 @@
     "owner": "Owner: {name}",
     "unassigned": "Unassigned",
     "readOnly": "Only {owner} or an admin can change this lead. Your call is still logged.",
+    "dealOpen": "Deal open: {stage} · {value}",
+    "dealOpenNoValue": "Deal open: {stage}",
     "script": {
       "title": "Call script",
       "inEnglish": "Show in English",
