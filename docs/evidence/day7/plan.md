@@ -21,6 +21,16 @@ their migrations to dev. Two known items go into those PRs, not into Day 7: Team
 and deals with a code") must follow Day 5's admin-only deal delete, and Team's `/security-review` is repeated on its
 final head (`docs/evidence/team/README.md`, open risks).
 
+**Scope A, compressed (Haider 15 Oct 2026: "Day 7 scope A", all 14 recommendations in section 5 yes).** The nine steps
+first planned (7a to 7i) become **four PRs** (section 4): **7a** security fixes and the audit harness, **7b** the switch
+to the app's own pickers (no native pickers or popups, Haider 15 Oct) plus loading, empty and error states on every
+list, **7c** French and phone pass plus the orphan sweeper, **7d** the Gate 1 run. Deep speed tuning, the full
+accessibility pass, PWA extras and animation polish are **deferred** (section 4, "Deferred"); the speed misses left are
+written down as the Release 1 baseline (question 14). The replacement picker components are built ahead of 7b on
+`day7-local` (`docs/evidence/day7/pickers.md`). Step names in sections 1 to 3 and section 5 keep the first split; read
+them as: old 7a and 7b → **7a**; old 7d → **7b**; old 7c (sweeper, runbooks), 7e and 7f → **7c**; old 7i → **7d**;
+old 7g and 7h → deferred, except the items named in the new table (re-timing on a GitHub runner moves to 7d).
+
 ---
 
 ## 1. Gate 1 checklist (Master Plan section 8, A to F)
@@ -169,6 +179,21 @@ Sources searched: `docs/log.md` and every evidence README and audit on [main], [
 18. **pg_cron** on dev and prod (the nightly stock job runs only if it is installed). [6] log 15 Oct (HAIDER DECIDES);
     `day6a/README.md` open risk 4. Question 3.
 19. **Sharing switched on in production** after Gate 1 and Vercel Pro. `day6e/README.md` open risk 1. Day 8 question.
+20. **`supabase/tests/deal_links_attack.sql` [5], block 2**, found via Day 5a mutation row 58: it creates its deals with
+    `pg_temp.su_deal(…)` in the block's `DECLARE`, so they survive the block's TS001 rollback. Move the calls into the
+    block body, or clean `public.deals` for r1 in setup next to the `private.deal_opens` reset; then re-run Day 5a
+    mutation rows 64 to 73 in the Day 7 full pass (scope A 7d). Also hide the deal Delete item client-side once
+    `created_at` + 120 s has passed (the server already refuses it). Scope A step 7a.
+
+### No native pickers or popups (Haider 15 Oct 2026)
+1. **Rule:** "do not keep any native pickers or popups on the app". Audit: `ui/select.tsx` was a styled native
+   `<select>` (about 37 call sites on the combined code), 13 raw `<select>`s, 15 native date, time and datetime-local
+   inputs, about 27 `title=` tooltips, native validation bubbles (auth forms, status menu, quick add, hold sheet have no
+   `noValidate`), the WebKit clear cross on `type="search"`, one `<summary>` marker.
+2. **Components built first** on `day7-local` (Select, Combobox, DatePicker and DateRangePicker, TimePicker,
+   DateTimePicker, Tooltip, SearchInput, CSS safety net): `docs/evidence/day7/pickers.md` with the call-site guide.
+3. **Call sites switched in scope A step 7b** on the combined code, with the e2e tests that use `selectOption` or `fill` on a date
+   field moved to clicks and typing (`tests/auth/screens`, `import`, `import-perf`, `lead-page`, `leads`, `tasks`).
 
 ### Speed
 1. **Day 4b**: tab switch 105 to 155 ms (100), route change 209 to 334 ms (200), 1,000-entry timeline frames 25 to 31 ms
@@ -306,7 +331,7 @@ files row, so their objects are never candidates.
 
 ---
 
-## 4. Day 7 steps (one PR each, in this order)
+## 4. Day 7 steps, scope A (four PRs, in this order)
 
 Every step: two sentences to Haider before it; Context7 before code with any library; branch, PR, CI green, Vercel
 preview; `/security-review`, gitleaks, `npm audit`, Semgrep (CI), lint, typecheck, Playwright suite; `advisor`
@@ -316,31 +341,35 @@ Advisors after `deploy-dev-db`, reported. **UI steps** add: DESIGN.md, Taste Ski
 at 1280, 1440, 1728 and 390 (plus 768 and 1024 where a layout changes), light and dark, EN and FR, no console errors,
 no sideways scroll, `/apple-design` audit, web-design-guidelines audit, fixes.
 
-Effort is builder time before review rounds; each review round and CI run adds about half a day of wall time.
+Scope A (Haider 15 Oct 2026) folds the nine steps first planned into four PRs. CI budget stays at 10 USD (question 12);
+the fewer PRs are the bundling.
 
 | Step | What | Evidence beyond the standard | Effort |
 |---|---|---|---|
-| **7a** Gate audit harness (tests and CI only) | `docs/evidence/day7/gate1.md` filled from section 1; `supabase/tests/gate1_attack.sql`: RLS and the two-factor policy on every table, anon has nothing (allowlist share functions), every `SECURITY DEFINER` function on a reviewed list, every `public` function revoked from `public`/`anon`; CI: anon-key requests to every PostgREST table on real PostgREST; route inventory unit test (session helper and Zod in every route and action); production bundle scan and no `*.map`; `GET /.env` 404; dynamic-SQL review list; codes-only check on Day 5/6 APIs; `config push` diff check instead of `--yes` | Each new check shown failing on a planted break (mutation-style) | 1 day |
-| **7b** Security fixes (DB) | Owner-in-org check in `enforce_org_and_owner`; `private.rate_hits` counter and guard on search/list routes (429); "signed in" audit row; "Sign out of all devices" on More; cookie `secure` in production; expired-link test | DB evidence; e2e for each; More screenshots (UI) | 1 day |
-| **7c** Ops: sweeper, digest, runbooks | Section 3 in full; `docs/ops-templates/security-digest.yml` (daily, read-only, red on thresholds); restore runbook gains `share_reader`; `docs/go-live.md` gains the sweeper key, the digest and pg_cron steps | DB evidence; actionlint and shellcheck on templates; advisor approves the changed go-live kit | 1 day |
-| **7d** Lists: loading, empty, error | Table of every list in the app (Leads, lead timeline, tasks, files, deals, Pipeline columns, Home cards, Tasks, queue, Inventory tables, movements, sales, requests, share links, Past imports, Team) with its three states and the test that shows each; fill gaps; skeletons measured against the final layout (Day 2 method): Recent activity 4 to 8 rows, Low stock on real data, More without Administration for non-admins | Screenshot per state; skeleton-vs-page overlay at 390 and 1440 | 0.5 to 1 day |
-| **7e** Mobile and PWA | `src/app/manifest.ts` (name, short name, icons from the brand mark incl. maskable, `display: standalone`, start URL `/`, theme colours light and dark), apple-touch icon and `appleWebApp` metadata; safe-area insets for the dock and sheets in standalone; the 5-item dock checked on every section; Lose sheet at 390, call sheet scroll padding and focus trap; edge fades on tab strips and chip rows | Manifest served and valid (e2e); 390 and 768 screenshots on every route; WebKit run | 1 day |
-| **7f** French pass | Every route at 390, 768 and 1280 in French with the cut-text check (Day 5's method) in CI; messages parity (exists); French typography (U+202F before ; : ! ?, quotes); "Détails", the Tasks Done tab and other cuts fixed; Intl dates and money in both languages | Cut-text report: 0; list of strings changed; Henri or Kais read the preview (question 13) | 0.5 day |
-| **7g** Speed and animation polish | The three largest misses first: pipeline move painted, Home to Pipeline after hover, queue burst; then the rest of section 2 "Speed" re-measured once on the agreed machine (question 11) and written as the Release 1 baseline; dock as Haider decides (question 6); entrances, drop zone, progress overshoot; real-clock tests moved to Playwright's clock | `day4-perf`, `day5-perf`, `home-perf`, chunk sizes before and after; reduced motion on and off; `/apple-design` audit across all screens | 1 to 1.5 days |
-| **7h** Accessibility pass | `@axe-core/playwright` (new dev dependency: exact pin, release at least two weeks old, name and maintainer checked) over every route in EN/FR, light/dark; keyboard-only journeys for the main flows; skip link and `<main>` focus fallback moved into the layout; contrast check of the token pairs; screen-reader names; the `exhaustive-deps` suppression resolved; Lighthouse on 3 routes | axe: 0 serious or critical; Lighthouse scores recorded | 0.5 to 1 day |
-| **7i** Gate 1 run | On the `main` head after 7a to 7h: two-user attack test steps 1 to 8 as one Playwright plus SQL run with a step-to-test map; `/security-review` over all of Release 1; full-history gitleaks; `npm audit` and `audit signatures`; dev Security and Performance Advisors; dev data checks (section 2 security item 15) and the size query; spike S5 answered from Vercel's docs; Day 1 residuals restated; gate file complete with Haider's dashboard items listed | Advisor APPROVED, then **HAIDER DECIDES: pass Gate 1 (code part)?** | 0.5 day plus Haider's checks |
+| **7a** Security fixes and audit harness (DB + tests) | `docs/evidence/day7/gate1.md` from section 1; `supabase/tests/gate1_attack.sql`: RLS and the two-factor policy on every table, anon has nothing (allowlist share functions), every `SECURITY DEFINER` function on a reviewed list, every `public` function revoked from `public`/`anon`. **The gaps:** the anon test covers only Day 1 tables (now every table, plus anon-key requests to every PostgREST table on real PostgREST in CI); no "Sign out of all devices" (added on More, `signOut({ scope: "global" })`); auth cookie `Secure` unchecked (set and tested in production mode); no rate limit on the search and list APIs (`private.rate_hits` counter, 429); sign-ins not audited ("signed in" row, no IP, question 9); the same-org owner check in `enforce_org_and_owner` (question 5). Also: route inventory unit test (session helper and Zod in every route and action), production bundle scan and no `*.map`, `GET /.env` 404, codes-only check on Day 5/6 APIs, `config push` diff check instead of `--yes`, the `deal_links_attack.sql` block 2 fix and the client-side deal Delete cut-off (section 2 security item 20) | Each new check shown failing on a planted break (mutation-style); DB evidence; e2e for each fix; More screenshots | 1.5 days |
+| **7b** No native pickers + list states (UI) | Every call site moved to the components in `src/components/ui/` (guide: `docs/evidence/day7/pickers.md`): `ui/select.tsx` users (already custom), raw `<select>`s, native date/time/datetime-local inputs, `title=` tooltips, `type="search"`, `<summary>` markers, `noValidate` on every form with errors in `FormMessage`; a source check in CI that fails on any of them returning. Then the table of every list (Leads, lead timeline, tasks, files, deals, Pipeline columns, Home cards, Tasks, queue, Inventory tables, movements, sales, requests, share links, Past imports, Team) with its loading, empty and error state and the test for each; fill gaps; skeletons that match (Recent activity 4 to 8 rows, Low stock, More without Administration for non-admins) | Screenshot per picker open and closed (EN/FR, light/dark, 390 and 1440); keyboard-only run through each picker; screenshot per list state | 1.5 days |
+| **7c** French and phone pass + orphan sweeper | Every route at 390, 768 and 1280 in French with the cut-text check in CI; French typography; "Détails", the Tasks Done tab and other cuts fixed; Henri or Kais reads the French screens (question 13). Phone: the 5-item dock on every section, Lose sheet at 390, call sheet focus trap and scroll padding, edge fades on tab strips and chip rows; PWA **only** home-screen icon (maskable), `display: standalone`, theme colours and safe areas (question 8). Sweeper: section 3 in full (migration, `topstock-ops` template with its own key, dry runs for a week, question 2); restore runbook gains `share_reader`; `docs/go-live.md` gains the sweeper key and the pg_cron step for production | Cut-text report 0; 390 and 768 screenshots per route; manifest e2e; sweeper DB evidence; actionlint and shellcheck on the template | 1.5 days |
+| **7d** Gate 1 run (code part) | On the `main` head after 7a to 7c: two-user attack test steps 1 to 8 as one Playwright plus SQL run with a step-to-test map; `/security-review` over all of Release 1; full-history gitleaks; `npm audit` and `audit signatures`; dev Security and Performance Advisors; dev data checks (security item 15) and the size query; re-run Day 5a mutation rows 64 to 73; database budgets re-timed once on a GitHub runner (question 11); spike S5 answered from Vercel's docs; Day 1 residuals restated; leaked-password WARN recorded as accepted (question 4) | Advisor APPROVED, then **HAIDER DECIDES: pass Gate 1 (code part)?** The ops part passes on Day 8 (question 1) | 0.5 day plus Haider's checks |
 
-Order reasons: security first because it gates go-live and 7a finds the gaps 7b fixes; the four screen steps touch the
-same files, so they run one after another, with French and accessibility after the layout changes so screenshots are
-taken once; 7i last so it runs on the final code.
+**Deferred (out of scope A):** deep speed tuning (section 2 "Speed": the misses are re-measured once in 7d and written
+as the Release 1 baseline, question 14; JS budgets still checked on every PR); the full accessibility pass (axe over
+every route, Lighthouse, screen-reader journeys; the pickers and list states still get keyboard and ARIA checks in 7b);
+PWA extras (offline, push, install prompts); animation polish (dock notch, springs for page entrances, drop zone,
+progress overshoot; the halo dock stays, question 6); swipe gestures and dock badges (question 7); stock CSV export
+(Release 2, question 10).
 
-Haider's own items during Day 7 (numbered click steps given when each comes up): Dependabot alerts on; pg_cron on dev
-(if yes to question 3); Vercel and Supabase member lists and Vercel settings review; Storage S3 connection off on dev;
-a preview link opened signed out of Vercel; the sweeper key in account B (Day 8, if yes to question 2).
+Order reasons: security first because it gates go-live; the picker switch and list states touch the same screens, so
+the French and phone pass runs after them and screenshots are taken once; the Gate 1 run last, on the final code.
+
+Haider's own items during Day 7 (numbered click steps given when each comes up): Dependabot alerts on; Vercel and
+Supabase member lists and Vercel settings review; Storage S3 connection off on dev; a preview link opened signed out of
+Vercel; the sweeper key in account B (Day 8). pg_cron on dev: done (1.6.4, confirmed 15 Oct).
 
 ---
 
 ## 5. Questions for Haider (HAIDER DECIDES)
+
+**Answered 15 Oct 2026: all 14 recommendations yes** (scope A; `docs/log.md`). pg_cron on dev is already on (1.6.4).
 
 1. **Split Gate 1 in two?** The code part (section 8 A to F, two-user test, `/security-review`, advisors) passes at the
    end of Day 7; the ops part (backup, restore test, keep-alive, Vercel Pro) passes on Day 8 before any real data, as
