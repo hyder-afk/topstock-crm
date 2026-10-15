@@ -96,7 +96,14 @@ commit.
 - `private.stock_movement_a_guard`, `private.stock_movement_b_apply` (from 6c, unmerged); `private.movement_request_guard`
   and the `movement_requests` kind check (from 6a, unmerged).
 - Day 5 must set `deals.status = 'lost'` when a deal enters Closed/lost (design 12.1); `list_lead_deals_for_stock` is
-  dropped if Day 5 ships an equivalent.
+  dropped if Day 5 ships an equivalent. (Checked at the merge of Day 5, 15 Oct 2026: Day 5's `guard_deal` sets
+  `status = 'lost'` on a move to Closed/lost, and `stock_attack.sql` now proves the release through that real trigger
+  instead of a stand-in; Day 5 has no deal list with held pieces, so `list_lead_deals_for_stock` stays, now with Day 5's
+  title and the stage key: `docs/evidence/day6/README.md`, merge section.)
+- **Holds released when a deal is lost stay released if the loss is undone** (Haider, 15 Oct 2026, asked "After Day
+  5's Undo of Closed/lost, holds released on loss do not come back: is that the intended behaviour?", answered "Yes").
+  `release_deal_holds_lost` (6a) releases the deal's holds when it enters Closed/lost; Day 5's Undo of that move (or a
+  later reopen) does not put them back, and the rep holds again if the stock is still needed. No code change.
 - **`stock_alerts()` and Day 5c (Haider's decision B, 15 Oct 2026):** Day 5's Home low stock card reads this
   function ("use Day 6's version (stock_alerts), since it belongs to the stock module, and change the Home card to
   read it"). Day 5 merges first, and its migration `20261015150000_home_dashboard.sql` creates a null-returning stub

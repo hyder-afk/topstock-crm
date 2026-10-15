@@ -1166,9 +1166,9 @@ begin
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, deal => %L)', p, 'reserve', 5,
     '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000b1'), '22023', 'deal_closed');
 end $$;
--- deal_delete_releases_holds: d1 holds for a deal; manager a1 deletes the deal (since Day 5, deleting a deal someone
--- worked on takes a manager or an admin with a fresh code, through delete_deal); the hold is released (deal_deleted, in
--- a1's name) and loses the link.
+-- deal_delete_releases_holds: d1 holds for a deal; admin a deletes the deal (since Day 5, deleting a deal someone
+-- worked on takes an admin, or a manager, with a fresh code, through delete_deal; an admin works under either rule); the
+-- hold is released (deal_deleted, in a's name) and loses the link.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
 do $$
 declare
@@ -1176,7 +1176,7 @@ declare
 begin
   v_hold := (pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'reserve', 30, company => '33000000-0000-0000-0000-0000000000d1',
                         deal => '43000000-0000-0000-0000-0000000000d1') ->> 'reservation_id')::uuid;
-  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2', 30);
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
   perform public.delete_deal('43000000-0000-0000-0000-0000000000d1');
   if exists (select 1 from public.deals where id = '43000000-0000-0000-0000-0000000000d1')
      or not exists (select 1 from private.stock_reservations where id = v_hold and status = 'released'
@@ -1184,7 +1184,7 @@ begin
      or pg_temp.rv('7a000000-0000-0000-0000-000000000003', 'warehouse') <> 0
      or not exists (select 1 from private.stock_movements where reservation_id = v_hold and kind = 'release'
                       and reason = 'deal_deleted' and deal_id = '43000000-0000-0000-0000-0000000000d1'
-                      and user_id = '00000000-0000-0000-0000-0000000000a1') then
+                      and user_id = '00000000-0000-0000-0000-00000000000a') then
     raise exception 'FAIL: deal_delete_releases_holds';
   end if;
 end $$;
