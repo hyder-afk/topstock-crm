@@ -187,6 +187,95 @@ shell.spec.ts                      21 passed, 0 failed
 No failures, no fixes. More on the merged build shows Administration > Team above main's "Your time zone" section.
 Not run locally (CI only): WebKit, Semgrep, `journey.spec.ts` (Mailpit).
 
+## Merge of Day 5 (b9c05db, with 4c and 4d), 15 Oct 2026
+
+`day5a-local` at b9c05db (Day 5a/5b/5c on top of `main` 5f1a966, with Day 4d's PR #16 final head efbbbb4 already merged
+into it) fetched from the Day 5 worktree and merged into this branch with a merge commit (4711172, no rebase, no force),
+so the Team PR can follow the Day 5 PR. Eight files conflicted, exactly the ones listed under "Open risks"; each keeps
+both sides:
+
+| File | Resolution |
+|---|---|
+| `.github/workflows/db.yml` | Day 5's steps (every test through `scripts/ci-report.sh`; files attack and concurrency, deals attack and concurrency, deal links, Home figures), then the Team role-change step, now also through `ci-report.sh`; the header names both; Day 5's migration order job unchanged |
+| `scripts/db-test.sh` | files, deals, deal links and Home suites, then `team_concurrency.sh`, then the advisors |
+| `playwright.auth.config.ts` | WebKit runs `shell, leads, import, lead-page, queue, queue-multi, tasks, files, pipeline, lead-deals, home, team`; comment names both |
+| `scripts/db-mutations.py` | `MIG_4D`, `MIG_5A`, `MIG_5B`, `MIG_5C`, then `MIG_TEAM`; Day 5's `Region` class and sets, then the team set; `SETS` in migration order (`… day5c, team`); usage `--set day3b\|…\|day5c\|team\|all` and Day 5's `--anchors` |
+| `src/components/auth/step-up-dialog.tsx` | Day 5's `StepUpBody` type gains `bodyRole`: `body, bodyDelete, bodyDeleteTask, bodyReopenWon, bodyDeleteDeal, bodyRole` |
+| `messages/en.json`, `messages/fr.json` | `StepUp.bodyReopenWon`, `bodyDeleteDeal`, `bodyDeleteTask`, `bodyRole`; keys = the three-way union (1459, EN = FR, no duplicates; Day 5 removed `Home.emptyTitle`/`emptyBody`, so they stay removed) |
+| `docs/log.md` | every row from both sides, in date order (same date: Day 5's rows first). The one older out-of-order spot (Day 5's 11 to 12 Oct rows after 4c's 14 Oct rows) comes from Day 5's rebase and is left as on that branch |
+
+No other file was changed on both sides. Migration order after the merge: `…20261013090000_tasks_queue`,
+`20261014090000_lead_files`, `20261015090000_deals_pipeline`, `20261015120000_deal_links`,
+`20261015150000_home_dashboard`, `20261015200000_role_change_lock`. `scripts/check-migration-order.sh b9c05db` (main as it
+will be after the Day 5 PR): ok, newest there `20261015150000_home_dashboard.sql`, added here
+`20261015200000_role_change_lock.sql`. Neither 4d nor Day 5 redefines `set_user_role`: only `20261009180000_core_schema.sql`
+and the lock migration mention it, so the lock still replaces the latest version.
+
+### Role wording re-checked against the merged permissions (advisor item 3)
+
+What each role may do after the merge (database first, the screens follow it):
+
+- Admin only: importing leads (`lead_import` policies and RPCs: `is_admin` plus a fresh code) and changing roles
+  (`set_user_role`). The only `requireAdmin()` pages are More > Team and Leads > Import. 4d and Day 5 add nothing admin-only.
+- Managers and admins: every deal (`deals_select`/`deals_update`: `is_manager_or_admin` or the owner), the team scope on
+  Home and the pipeline (`deal_scope_owner`, `home_*` refuse `team` to others), deleting any deal with a fresh code
+  (`deals_delete` and `delete_deal`: manager or admin and `has_recent_aal2(600)`; the only code-free delete is one's own
+  untouched deal within 120 s), every ready file (`files_select`, `list_files`) and deleting any file (`files_delete`;
+  a ready file needs a fresh code for everyone).
+- Reps: every lead; only the deals they own; files: may add one to any lead, see and delete those they uploaded or that
+  sit on leads they own.
+
+So deal delete is manager or admin, not admin only. Changes (2ab9969):
+
+| Key | Before | After |
+|---|---|---|
+| `roleDescription.admin` EN/FR | unchanged | Everything a manager does, plus importing leads and changing roles. / Tout ce que fait un manager, plus l’import de prospects et le changement des rôles. |
+| `roleDescription.manager` EN | Changes every lead, contact and task, and can delete leads with a code. | Changes every lead, contact, task, deal and file; deletes leads and deals with a code. |
+| `roleDescription.manager` FR | Modifie tous les prospects, contacts et tâches, et peut supprimer des prospects avec un code. | Modifie tous les prospects, contacts, tâches, affaires et fichiers ; supprime prospects et affaires avec un code. |
+| `roleDescription.rep` EN | Sees every lead; changes the leads they own and their own tasks. | Sees every lead but only their own deals; changes what they own: leads, deals, tasks and files. |
+| `roleDescription.rep` FR | Voit tous les prospects ; modifie ceux dont il est responsable et ses propres tâches. | Voit tous les prospects, mais seulement ses affaires ; modifie ce qui lui appartient : prospects, affaires, tâches et fichiers. |
+| `confirm.self` EN/FR | unchanged | "Team and Import leads" / "Équipe et Importer des prospects" are still the only admin screens |
+
+FR uses U+202F before `;` and `:` (shown as a plain space in the table) and typographic apostrophes. The 50 team shots
+were re-taken on the merged build (every one shows a role description: list column at 1280 and up, Roles card, role
+menu, confirmation); checked by eye: team fr light 1440, team-menu fr dark 390, confirm-self en light 1440 (three-line
+descriptions, no clipping, no sideways scroll).
+
+### Checks on the merge (code head 2ab9969)
+
+`node_modules` in this worktree linked to the main checkout, which lacks Day 5's two new packages (`@dnd-kit/core`,
+`@radix-ui/react-context-menu`; the pre-commit hook's typecheck failed on them), so it now links to a scratch copy's
+`npm ci` install of the merged lockfile (the link is not tracked).
+
+```
+npm ci              scratch copy                           exit 0 (Day 5's lockfile)
+lint                npm run lint                           exit 0 (0 errors; the 2 existing TanStack Virtual warnings)
+typecheck           npm run typecheck                      exit 0
+unit                npm run test:unit                      493 passed (incl. sql-bidi.spec: no raw bidi characters)
+db                  scripts/db-test.sh copy, port 54495    exit 0, all 16 suites: rls, import (+ concurrency), activity
+                                                           (+ concurrency), outcome (+ concurrency), queue_attack,
+                                                           queue_concurrency, files_attack, files_concurrency (storage
+                                                           shim), deals_attack, deal_concurrency, deal_links_attack,
+                                                           home_attack, team_concurrency; advisors: no ERROR (WARN
+                                                           set_user_role SECURITY DEFINER, accepted Day 1; INFO
+                                                           unindexed_foreign_keys 5 = 4 before + Day 5a's
+                                                           deal_moves_org_id_fkey, accepted; unused_index 3)
+anchors             db-mutations.py --anchors (scratch)    every row applies exactly once: day3b 37, day4a 104, day4b 94,
+                                                           day4c 92, day4d 44, day5a 73, day5b 20, day5c 21, team 4
+mutations           db-mutations.py --set team (scratch)   exit 0, 4 rows run, 4 caught. No other set re-run: the merge
+                                                           changes no migration those sets edit (Team only adds its own)
+migration order     check-migration-order.sh b9c05db       ok
+gitleaks            git --log-opts=5f1a966..HEAD           no leaks found (158 commits scanned)
+e2e (Chromium)      Chrome Headless Shell 156 (as CI),     66 passed, 0 failed: team 5, team-screens 4 (50 shots),
+                    shared stack restarted from this       shell 21, home 15, tasks 12, day4-security 9
+                    worktree, build + next start from the
+                    scratch copy
+```
+
+The shared local auth stack (Day 5a's) was stopped by its PIDs and restarted from this worktree with
+`scripts/local-auth/start.sh`, so the migration list includes the lock. Not run locally (CI only): WebKit, Semgrep,
+`journey.spec.ts` (Mailpit). Still due on the final head: `/security-review` and the advisor.
+
 ## Check results after the verifier round (14 Oct 2026, code head 6d07187)
 
 ```text
@@ -298,7 +387,8 @@ Context7 pages consulted (14 Oct, first round):
 - ~~`docs/go-live.md` comes from the unmerged go-live kit branch~~: merged with main on 15 Oct (main's text, this
   branch's part A and K paragraphs).
 - ~~The Team e2e specs have not run on the merged code yet~~: run on 15 Oct on bc79fa6 (Chromium), all passed (see
-  "Merge of main (5f1a966)"). The Day 4d and Day 5 merges are still to come. Expected conflicts (from
+  "Merge of main (5f1a966)"). ~~The Day 4d and Day 5 merges are still to come~~: merged on 15 Oct (4711172), the eight
+  conflicts below as expected, e2e passed (see "Merge of Day 5"). Expected conflicts (from
   `git diff origin/main...day4d-local` and `...day5a-local`): files both change: `.github/workflows/db.yml`,
   `scripts/db-test.sh`, `playwright.auth.config.ts` (WebKit `testMatch`), `scripts/db-mutations.py` (`SETS` and the
   usage line), `messages/en.json` and `messages/fr.json`, `docs/log.md`; Day 5 only: `src/components/auth/step-up-dialog.tsx`
@@ -306,9 +396,10 @@ Context7 pages consulted (14 Oct, first round):
   (no `Team` key on either branch; `StepUp` gets both sides' keys). Neither branch redefines `set_user_role` (only the
   core schema mentions it); if a later version of either does, the lock must be applied again on top of it.
 - Migration order rule: Team's `20261015200000_role_change_lock.sql` must sort after `main`'s latest migration at the
-  time Team merges and before Day 6's first (`20261016090000`). Re-check it when 4d and Day 5 are merged in (their
-  latest today: `20261014090000`, `20261015150000`); if either gains a later one, re-date again before the PR.
-- After the 4d and Day 5 merge: re-check `Team.roleDescription` (messages EN and FR, about line 117) and
+  time Team merges and before Day 6's first (`20261016090000`). Re-checked after the 4d and Day 5 merge: it sorts after
+  `20261015150000_home_dashboard`; if main gains a later one before the Team PR, re-date again.
+- ~~After the 4d and Day 5 merge: re-check~~ (done 15 Oct, see "Role wording re-checked"; manager and rep reworded,
+  admin and `confirm.self` unchanged; shots re-taken): re-check `Team.roleDescription` (messages EN and FR, about line 117) and
   `Team.confirm.self` (about line 127, "Team and Import leads") against the merged RLS (4d: lead files permissions;
   Day 5: deals use `is_manager_or_admin`, deal delete is admin-only), in both languages, and re-take the affected shots.
 - `/security-review` (15 Oct, 5f1a966...7d7c2f2): residual window, theoretical: a promotion and a demotion running at
