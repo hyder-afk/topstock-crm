@@ -38,6 +38,8 @@ const namespaces = [
   "Files",
   // Day 5c: the Home dashboard.
   "Home",
+  // Day 7a: More (sign out of all devices).
+  "More",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

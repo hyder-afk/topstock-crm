@@ -5,6 +5,7 @@ import { signOut } from "@/app/(auth)/actions";
 import { SettingsBar } from "@/components/settings-bar";
 import { ArrivalFocus } from "@/components/shell/arrival-focus";
 import { ProfileForm } from "@/components/shell/profile-form";
+import { SignOutEverywhere } from "@/components/shell/sign-out-everywhere";
 import { TimezoneForm } from "@/components/shell/timezone-form";
 import { TeamEntry } from "@/components/team/team-entry";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ async function databaseReachable() {
   }
 }
 
-// More: the sections that do not fit the phone dock, settings, status and sign-out.
+// More: the sections that do not fit the phone dock, settings, status, sign-out and sign-out of all devices.
 export default async function MorePage() {
   const { supabase, claims } = await requireSession();
   const [t, nav, profileT, up, profile] = await Promise.all([
@@ -114,11 +115,14 @@ export default async function MorePage() {
         </p>
       </section>
 
-      <form action={signOut}>
-        <Button type="submit" variant="quiet">
-          {t("signOut")}
-        </Button>
-      </form>
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+        <form action={signOut}>
+          <Button type="submit" variant="quiet">
+            {t("signOut")}
+          </Button>
+        </form>
+        <SignOutEverywhere />
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { authCookieOptions, isHttps } from "@/lib/supabase/cookie-options";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -45,7 +46,7 @@ function wallTarget(path: string, aal: string | null) {
 
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const https = request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
+  const https = isHttps(request.nextUrl.protocol, request.headers.get("x-forwarded-proto"));
   const csp = contentSecurityPolicy(nonce, https);
 
   const requestHeaders = new Headers(request.headers);
@@ -59,6 +60,7 @@ export async function proxy(request: NextRequest) {
   // Refresh the Supabase session cookie on every request (authorisation still happens on the server per route).
   if (supabaseUrl && supabaseKey) {
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
+      cookieOptions: authCookieOptions(https),
       cookies: {
         getAll() {
           return request.cookies.getAll();
