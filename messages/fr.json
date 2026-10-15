@@ -6,9 +6,122 @@
   "Home": {
     "tagline": "Small start. Same grade. Big orders.",
     "hello": "Bonjour",
-    "emptyTitle": "Votre journée en un coup d’œil",
-    "emptyBody": "Les tâches du jour, les rendez-vous et votre pipeline s’afficheront ici dès qu’ils seront dans le CRM.",
-    "addName": "Ajoutez votre prénom à l’accueil"
+    "addName": "Ajoutez votre prénom à l’accueil",
+    "title": "Accueil",
+    "calmLine": "Vous avez {tasks, plural, one {# tâche} other {# tâches}} aujourd’hui et {meetings, plural, one {# rendez-vous} other {# rendez-vous}}.",
+    "calmTasks": "Vous avez {tasks, plural, one {# tâche} other {# tâches}} aujourd’hui.",
+    "calmMeetings": "Vous avez {meetings, plural, one {# rendez-vous} other {# rendez-vous}} aujourd’hui.",
+    "nothingToday": "Rien de prévu aujourd’hui.",
+    "loadFailed": "Chargement impossible",
+    "retry": "Réessayer",
+    "updatedAgo": "Mis à jour {ago}",
+    "refreshFailed": "Actualisation impossible. Ces chiffres datent de {ago}.",
+    "loading": "Chargement de l’accueil…",
+    "scope": {
+      "label": "Chiffres de",
+      "team": "Équipe",
+      "mine": "Moi",
+      "heading": "{title} · Équipe"
+    },
+    "kpi": {
+      "rowLabel": "Chiffres clés",
+      "rowFailed": "Chargement des chiffres impossible",
+      "open": {
+        "label": "Pipeline en cours",
+        "deals": "{count, plural, one {# affaire} other {# affaires}}",
+        "stalled": "{count, plural, one {# bloquée} other {# bloquées}}",
+        "noValue": "{count} sans montant",
+        "empty": "Aucune affaire en cours. Marquez un prospect Intéressé pour en ouvrir une."
+      },
+      "won": {
+        "label": "Gagné ce mois-ci",
+        "deals": "{count, plural, =0 {Aucune affaire gagnée} one {# affaire} other {# affaires}}"
+      },
+      "calls": {
+        "label": "Appels aujourd’hui",
+        "reached": "{count, plural, one {# joint} other {# joints}}",
+        "empty": "Aucun appel aujourd’hui"
+      },
+      "tasks": {
+        "label": "Tâches à faire",
+        "overdue": "{count} en retard",
+        "empty": "Rien à faire"
+      }
+    },
+    "today": {
+      "title": "Aujourd’hui",
+      "overdueDays": "En retard · {days, plural, one {# jour} other {# jours}}",
+      "overdue": "En retard",
+      "allDay": "Aujourd’hui",
+      "more": "+{count} de plus",
+      "openTasks": "Ouvrir Tâches",
+      "empty": "Rien de prévu aujourd’hui.",
+      "addTask": "Ajouter une tâche",
+      "markDone": "Marquer « {title} » comme faite",
+      "done": "Tâche faite",
+      "undo": "Annuler",
+      "failed": "La tâche n’a pas pu être mise à jour. Réessayez.",
+      "kind": {
+        "todo": "À faire",
+        "call": "Appel",
+        "meeting": "Rendez-vous"
+      },
+      "theirTime": "{time} chez lui"
+    },
+    "queue": {
+      "title": "File d’appels",
+      "counts": "{now} à appeler maintenant · {later} plus tard aujourd’hui",
+      "nobody": "Personne à appeler pour l’instant.",
+      "newLeads": "{count, plural, =0 {Aucun nouveau prospect cette semaine} one {# nouveau prospect cette semaine} other {# nouveaux prospects cette semaine}}",
+      "imported": "(+{count} importés)",
+      "start": "Commencer les appels",
+      "failed": "Chargement du nombre d’appels impossible"
+    },
+    "attention": {
+      "title": "À surveiller",
+      "stalled": "Bloquée · aucun mouvement ni contact depuis {days, plural, one {# jour} other {# jours}}",
+      "closePassed": "Date de clôture dépassée ({date})",
+      "closing": "Clôture le {date}",
+      "seeAll": "Voir les {count} sur le pipeline",
+      "empty": "Toutes les affaires avancent.",
+      "noValue": "Sans montant"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "barLabel": "Montant en cours par étape",
+      "deals": "{count, plural, one {# affaire} other {# affaires}}",
+      "winRate": "Taux de réussite {rate} % · {won} gagnées, {lost} perdues en 90 jours",
+      "winRateEmpty": "Pas encore assez d’affaires conclues",
+      "lost": "Perdues (30 jours) : {count}",
+      "lostNone": "Aucune affaire perdue ces 30 derniers jours",
+      "empty": "Aucune affaire pour l’instant. Elles s’ouvrent quand un prospect se dit intéressé.",
+      "open": "Ouvrir le pipeline"
+    },
+    "recent": {
+      "title": "Activité récente",
+      "empty": "Aucun appel ni note aujourd’hui.",
+      "someone": "Quelqu’un",
+      "aLead": "un prospect",
+      "won": "{name} a gagné {lead}",
+      "lost": "{name} a perdu {lead}",
+      "move": "{name} a passé {lead} en {stage}",
+      "open": "{name} a ouvert une affaire sur {lead}",
+      "reopen": "{name} a rouvert {lead}"
+    },
+    "lowStock": {
+      "title": "Stock bas",
+      "notReady": "Les alertes de stock s’afficheront ici dès que l’inventaire sera configuré.",
+      "allGood": "Tous les produits sont au-dessus de leur seuil de réapprovisionnement.",
+      "summary": "{low, number} en stock bas · {soldOut, plural, one {# épuisé} other {# épuisés}}",
+      "dealsWaiting": "{count, plural, one {# affaire en attente} other {# affaires en attente}}",
+      "available": "Disponible : {available} · seuil : {reorder}",
+      "inTransit": "+{count} en transit",
+      "followUps": "Aussi dans l’inventaire",
+      "arrivingLate": "{count, plural, one {# arrivage en retard sur la date prévue} other {# arrivages en retard sur la date prévue}}",
+      "requestsNew": "{count, plural, one {# nouvelle demande de stock} other {# nouvelles demandes de stock}}",
+      "holdsEndingSoon": "{count, plural, one {# réservation se termine sous 2 jours} other {# réservations se terminent sous 2 jours}}",
+      "open": "Ouvrir l’inventaire"
+    }
   },
   "Settings": {
     "language": "Langue",
@@ -98,6 +211,60 @@
     "settings": "Réglages",
     "status": "Système"
   },
+  "Team": {
+    "title": "Équipe",
+    "subtitle": "Toutes les personnes qui peuvent se connecter à TopStock CRM, et ce que chacune peut faire. Changer un rôle demande un code de votre application d’authentification.",
+    "back": "Plus",
+    "count": "{count, plural, one {# personne} other {# personnes}}",
+    "you": "Vous",
+    "noName": "Pas encore de nom",
+    "account": "Compte {id}",
+    "userId": "ID utilisateur <mono>{id}</mono>",
+    "created": "Compte créé le {date}",
+    "noNameHint": "Son nom s’affichera ici dès qu’il aura été ajouté dans Plus > Votre nom.",
+    "role": {
+      "admin": "Admin",
+      "manager": "Manager",
+      "rep": "Commercial"
+    },
+    "roleDescription": {
+      "admin": "Tout ce que fait un manager, plus l’import de prospects et le changement des rôles.",
+      "manager": "Modifie tous les prospects, contacts, tâches, affaires et fichiers ; supprime prospects et affaires avec un code.",
+      "rep": "Voit tous les prospects, mais seulement ses affaires ; modifie ce qui lui appartient : prospects, affaires, tâches et fichiers."
+    },
+    "roleMenu": "Rôle de {who} : {role}",
+    "rolesTitle": "Rôles",
+    "confirm": {
+      "title": "Changer le rôle ?",
+      "body": "{who} devient {role, select, admin {admin} manager {manager} other {commercial}}.",
+      "self": "Vous perdrez les écrans d’administration (Équipe et Importer des prospects) dès l’enregistrement.",
+      "code": "Si votre dernier code d’authentification date de plus de 10 minutes, un nouveau code vous sera demandé.",
+      "cancel": "Annuler",
+      "submit": "Confirmer"
+    },
+    "announce": {
+      "saving": "Enregistrement du nouveau rôle de {who}…",
+      "saved": "{who} est maintenant {role, select, admin {admin} manager {manager} other {commercial}}.",
+      "savedSelf": "Vous êtes maintenant {role, select, admin {admin} manager {manager} other {commercial}}. L’écran Équipe est réservé aux admins.",
+      "cancelled": "Rôle inchangé."
+    },
+    "errors": {
+      "last_admin": "{who} est le dernier admin. Nommez d’abord un autre admin.",
+      "last_admin_self": "Vous êtes le dernier admin. Nommez d’abord un autre admin.",
+      "forbidden": "Seuls les admins peuvent changer les rôles.",
+      "not_found": "Cette personne ne fait plus partie de votre équipe. Rechargez la page.",
+      "unavailable": "Impossible de confirmer le changement pour le moment. Le rôle affiché est celui enregistré ; réessayez si ce n’est pas celui choisi.",
+      "load": "Impossible de charger l’équipe pour le moment.",
+      "retry": "Réessayer"
+    },
+    "empty": {
+      "title": "Personne pour l’instant",
+      "body": "Les personnes apparaissent ici dès que leur compte existe."
+    },
+    "moreSection": "Administration",
+    "moreRow": "Équipe",
+    "moreRowHint": "Les personnes et leurs rôles"
+  },
   "Nav": {
     "label": "Sections",
     "home": "Accueil",
@@ -150,6 +317,10 @@
     "shortcuts": "Raccourcis clavier",
     "signOut": "Se déconnecter",
     "importLeads": "Importer des prospects",
+    "newDeal": "Nouvelle affaire",
+    "showStalled": "Voir les affaires bloquées",
+    "deals": "Affaires",
+    "startQueue": "Lancer la file d’appels",
     "stockMovements": "Mouvements de stock",
     "inventorySettings": "Réglages du stock",
     "importStock": "Importer une feuille de stock",
@@ -174,6 +345,35 @@
     "outcomeKeys": "Choisir le résultat d’un appel (panneau d’appel)",
     "undoLast": "Annuler le dernier appel ou la dernière entrée (2 minutes)",
     "saveEntry": "Enregistrer dans l’historique",
+    "pipeline": {
+      "title": "Pipeline",
+      "newDeal": "Nouvelle affaire",
+      "undo": "Annuler le dernier déplacement (2 minutes)",
+      "open": "Ouvrir l’affaire sélectionnée",
+      "step": "Déplacer d’une étape",
+      "digit": "Envoyer à une étape (4 Gagnée, 5 Perdue)",
+      "drag": "Prendre, puis choisir une étape avec les flèches",
+      "edit": "Modifier le montant",
+      "openLead": "Ouvrir le prospect de l’affaire",
+      "delete": "Supprimer l’affaire",
+      "menu": "Ouvrir le menu de la carte",
+      "walk": "Passer d’une carte à l’autre"
+    },
+    "goQueue": "Lancer la file d’appels",
+    "queue": "File d’appels",
+    "queueOutcomes": "Noter le résultat",
+    "queueSkip": "Passer ce prospect",
+    "queueNote": "Écrire une note",
+    "queueCall": "Appeler le numéro principal",
+    "queueUndo": "Annuler le dernier résultat",
+    "tasks": "Tâches",
+    "tasksNew": "Nouvelle tâche",
+    "tasksMove": "Tâche suivante ou précédente",
+    "tasksDone": "Terminée ou non",
+    "tasksEdit": "Modifier la tâche",
+    "tasksDismiss": "Écarter la tâche",
+    "tasksDelete": "Supprimer la tâche",
+    "tasksOpen": "Ouvrir le prospect de la tâche",
     "inventory": "Dans le stock",
     "stockSearch": "Rechercher des produits",
     "stockRows": "Produit suivant ou précédent",
@@ -194,7 +394,14 @@
       "invalid": "Les noms font 80 caractères au maximum.",
       "unavailable": "Enregistrement impossible pour le moment. Réessayez.",
       "load": "Impossible de charger votre nom pour le moment. Rechargez la page pour réessayer."
-    }
+    },
+    "timezoneTitle": "Votre fuseau horaire",
+    "timezone": "Fuseau horaire",
+    "timezoneHelp": "« Aujourd’hui » dans vos tâches et les relances de la file d’appels suivent ce fuseau.",
+    "timezoneDevice": "Utiliser le fuseau de cet appareil ({zone})",
+    "timezoneSave": "Enregistrer le fuseau",
+    "timezoneSaved": "Fuseau horaire enregistré.",
+    "timezoneError": "Ce fuseau n’a pas pu être enregistré. Choisissez-en un dans la liste."
   },
   "Leads": {
     "title": "Prospects",
@@ -364,7 +571,8 @@
       "pick": "Choisir une date",
       "cancel": "Annuler",
       "confirm": "Mettre en pause"
-    }
+    },
+    "workQueue": "File d’appels"
   },
   "StepUp": {
     "title": "Confirmez votre identité",
@@ -380,6 +588,10 @@
       "unavailable": "Impossible de vérifier le code pour l’instant. Réessayez dans un instant."
     },
     "bodyDelete": "Supprimer une entrée est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
+    "bodyReopenWon": "Rouvrir une affaire gagnée change les ventes du mois. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé 10 minutes.",
+    "bodyDeleteDeal": "Supprimer une affaire est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé 10 minutes.",
+    "bodyDeleteTask": "Supprimer une tâche est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
+    "bodyRole": "Un rôle décide de ce qu’une personne peut voir et modifier. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
     "bodyStock": "Les corrections de stock, réceptions et archivages demandent une nouvelle vérification. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes."
   },
   "Import": {
@@ -673,6 +885,7 @@
       "timeline": "Historique",
       "deals": "Affaires",
       "stock": "Stock",
+      "files": "Fichiers",
       "details": "Détails"
     },
     "railLabel": "Saisie, tâches et contacts",
@@ -708,7 +921,7 @@
     "seeTimeline": "Voir tout l’historique",
     "noEntries": "Rien de noté pour l’instant. Les appels, e-mails, messages, rendez-vous et notes s’affichent ici.",
     "dealsTitle": "Aucune affaire pour l’instant",
-    "dealsEmpty": "Aucune affaire pour l’instant. Les affaires s’ouvriront depuis cette page quand le pipeline sera prêt.",
+    "dealsEmpty": "Aucune affaire pour l’instant. Ouvrez-en une quand ce prospect est intéressé.",
     "markedWrong": "Marqué faux",
     "fix": "Corriger",
     "callContact": "Appeler {name}",
@@ -745,7 +958,29 @@
       "nextSaved": "Prochain appel enregistré.",
       "nextCleared": "Prochain appel effacé."
     },
-    "noNextStepDnc": "Pas de prochaine étape."
+    "noNextStepDnc": "Pas de prochaine étape.",
+    "deals": {
+      "open": "Ouvrir une affaire",
+      "cannotOpen": "Seul {owner} ou un admin peut ouvrir une affaire sur ce prospect.",
+      "cannotOpenUnowned": "Seul un admin peut ouvrir une affaire sur ce prospect.",
+      "dnc": "Ne souhaite pas être contacté : pas de nouvelle affaire.",
+      "loadFailed": "Impossible de charger les affaires",
+      "retry": "Réessayer",
+      "openSection": "En cours",
+      "closedSection": "Clôturées",
+      "closedWon": "Gagnée · {value} · {date}",
+      "closedWonNoValue": "Gagnée · {date}",
+      "closedLost": "Perdue · {reason} · {date}",
+      "summaryTitle": "Affaire",
+      "moreOpen": "{count, plural, one {+# autre affaire en cours} other {+# autres affaires en cours}}",
+      "onBoard": "Voir dans le pipeline",
+      "chip": "Affaire : {stage} · {value}",
+      "chipNoValue": "Affaire : {stage}",
+      "chipLabel": "Voir les affaires de ce prospect",
+      "reopen": "Rouvrir…",
+      "rowMenu": "Actions pour cette affaire"
+    },
+    "workedBy": "{name} travaille ce prospect dans la file d’appels (jusqu’à {time})"
   },
   "QuickActions": {
     "call": "Appeler",
@@ -832,7 +1067,12 @@
     "needEmail": "Ce prospect n’a pas encore d’adresse e-mail.",
     "needWhatsapp": "Aucun numéro avec indicatif pour WhatsApp.",
     "needTime": "Choisissez la date et l’heure.",
-    "needDate": "Choisissez une date de relance."
+    "needDate": "Choisissez une date de relance.",
+    "about": "À propos : {deal}",
+    "aboutLabel": "À propos d’une affaire",
+    "aboutNone": "Aucune affaire",
+    "aboutRemove": "Retirer l’affaire de cette entrée",
+    "aboutChoose": "Choisir l’affaire"
   },
   "Outcomes": {
     "no_answer": "Pas de réponse",
@@ -863,7 +1103,21 @@
       "back": "retour {date}",
       "undo": "Annuler",
       "undone": "Annulé. Le prospect est revenu à son état d’avant.",
-      "undonePartly": "Annulé. Le statut reste : quelqu’un l’a changé entre-temps."
+      "undonePartly": "Annulé. Le statut reste : quelqu’un l’a changé entre-temps.",
+      "dealOpened": "affaire ouverte en {stage}",
+      "dealKept": "L’affaire est gardée : elle a changé entre-temps"
+    },
+    "openDeal": "Ouvrir une affaire",
+    "dealTitle": "Titre de l’affaire (facultatif)",
+    "dealValue": "Montant (facultatif)",
+    "dealOpen": "A déjà une affaire en cours : {stage} · {value}",
+    "dealOpenNoValue": "A déjà une affaire en cours : {stage}",
+    "dealValueInvalid": "Saisissez un montant comme 6 800, ou laissez vide.",
+    "dealSkipped": {
+      "dnc": "Aucune affaire ouverte : ne souhaite pas être contacté.",
+      "rate_limited": "Aucune affaire ouverte : trop d’affaires cette heure-ci.",
+      "not_editable": "Noté. Seul {owner} ou un admin peut ouvrir une affaire.",
+      "not_editableUnowned": "Noté. Seul un admin peut ouvrir une affaire."
     }
   },
   "Timeline": {
@@ -939,8 +1193,575 @@
       "state": "Cette tâche est déjà terminée ou écartée.",
       "task_kind": "Type de tâche inconnu.",
       "task_due": "Une tâche a une date ou une heure, pas les deux ; un rendez-vous a besoin d’une heure.",
-      "lead_has_files": "Supprimez d’abord les fichiers de ce prospect."
+      "lead_has_files": "Supprimez d’abord les fichiers de ce prospect.",
+      "value": "Saisissez un montant de 0 à 100 000 000 €, avec au plus 2 décimales.",
+      "value_required": "Une affaire gagnée a besoin de son montant final, supérieur à 0 €.",
+      "fulfilment": "Expédition inconnue.",
+      "fulfilment_required": "Choisissez l’expédition.",
+      "lost_reason_required": "Choisissez une raison.",
+      "lost_note_required": "Autre demande une note.",
+      "lost_note": "La note fait de 1 à 500 caractères, sans caractères de contrôle.",
+      "deal_title": "Le titre fait au plus 120 caractères, sans caractères de contrôle.",
+      "closed": "Rouvrez l’affaire pour modifier ceci.",
+      "reopen_first": "Rouvrez d’abord l’affaire.",
+      "dnc": "Ce prospect ne souhaite pas être contacté.",
+      "lead_required": "Choisissez un prospect.",
+      "fields": "Rechargez la page et réessayez.",
+      "owner_required": "Une affaire a besoin d’un responsable.",
+      "stage": "Rechargez la page et réessayez.",
+      "bad_scope": "Rechargez la page et réessayez.",
+      "bad_order": "Rechargez la page et réessayez.",
+      "limit": "Rechargez la page et réessayez.",
+      "deal_has_order": "Cette affaire a une commande. Annulez d’abord la commande.",
+      "bad_bucket": "Rechargez la page et réessayez.",
+      "timezone": "Ce fuseau horaire est inconnu. Choisissez-en un dans la liste.",
+      "file_type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
+      "file_size": "10 Mo maximum par fichier.",
+      "file_name": "Ce nom de fichier ne peut pas être enregistré. Renommez le fichier et réessayez.",
+      "file_lead": "Rechargez la page et réessayez."
+    },
+    "blocked": "Des mouvements de stock retiennent cette affaire. Réglez-les d’abord."
+  },
+  "Files": {
+    "title": "Fichiers",
+    "drop": "Déposez des fichiers ici ou choisissez-les",
+    "choose": "Choisir des fichiers",
+    "add": "Ajouter un fichier",
+    "limits": "PDF, PNG, JPG, Word ou Excel, 10 Mo maximum chacun",
+    "uploadsLabel": "Envois",
+    "uploading": "Envoi…",
+    "checking": "Vérification du fichier…",
+    "cancel": "Annuler",
+    "dismiss": "Retirer {name}",
+    "progressLabel": "Envoi de {name}",
+    "open": "Ouvrir",
+    "download": "Télécharger",
+    "delete": "Supprimer",
+    "menu": "Actions pour {name}",
+    "opensNewTab": "(s’ouvre dans un nouvel onglet)",
+    "you": "Vous",
+    "someone": "Quelqu’un",
+    "usage": "{used} utilisés sur {total}",
+    "empty": "Aucun fichier pour l’instant. Ajoutez des devis, des tarifs ou des photos.",
+    "error": "Impossible de charger les fichiers.",
+    "retry": "Réessayer",
+    "retryUpload": "Réessayer {name}",
+    "loadOlder": "Afficher les fichiers plus anciens",
+    "errorOlder": "Impossible de charger les fichiers plus anciens.",
+    "stuckDeleting": "Suppression inachevée",
+    "retryDelete": "Réessayer",
+    "retryDeleteNamed": "Réessayer de supprimer {name}",
+    "deleted": "{name} supprimé",
+    "deleteConfirm": {
+      "title": "Supprimer ce fichier ?",
+      "body": "« {name} » sera supprimé pour tout le monde. Impossible de revenir en arrière.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer"
+    },
+    "errors": {
+      "tooBig": "Trop lourd : 10 Mo maximum par fichier. Réduisez-le ou découpez-le.",
+      "empty": "Ce fichier est vide.",
+      "type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
+      "unreadable": "Impossible de lire ce fichier. Choisissez-le à nouveau.",
+      "mismatch": {
+        "pdf": "Ce fichier n’est pas vraiment un PDF. Enregistrez-le ou exportez-le à nouveau en PDF, puis ajoutez-le.",
+        "image": "Ce fichier n’est pas vraiment une photo (PNG ou JPG). Enregistrez-le en JPG ou PNG, puis ajoutez-le.",
+        "word": "Ce n’est pas un vrai fichier Word, ou il contient des macros. Enregistrez-le en .docx sans macros, puis ajoutez-le.",
+        "excel": "Ce n’est pas un vrai fichier Excel, ou il contient des macros. Enregistrez-le en .xlsx sans macros, puis ajoutez-le."
+      },
+      "quota": "L’espace de fichiers de l’équipe est plein (800 Mo). Supprimez d’abord d’anciens fichiers.",
+      "rateLimited": "Beaucoup d’envois en une heure. Réessayez plus tard.",
+      "tooManyPending": "Attendez la fin des envois en cours.",
+      "connection": "Connexion perdue. Réessayez.",
+      "tooMany": "5 fichiers à la fois au maximum. Ajoutez celui-ci à nouveau.",
+      "unavailable": "Impossible d’ajouter ce fichier. Réessayez.",
+      "deleteFailed": "Suppression inachevée. Réessayez."
+    },
+    "announce": {
+      "uploading": "Envoi de {name}",
+      "added": "{name} ajouté",
+      "failed": "{name} n’a pas été ajouté. {reason}",
+      "tooMany": "{count, plural, one {# fichier n’a pas été ajouté : 5 à la fois au maximum.} other {# fichiers n’ont pas été ajoutés : 5 à la fois au maximum.}}",
+      "cancelled": "Envoi de {name} annulé"
+    },
+    "unavailable": {
+      "title": "Ce fichier ne peut pas être ouvert",
+      "body": "Il n’est plus disponible, ou vous n’y avez pas accès.",
+      "back": "Retour aux prospects"
     }
+  },
+  "Stages": {
+    "lead": "Prospect",
+    "qualified": "Qualifiée",
+    "negotiations": "Négociation",
+    "won": "Gagnée",
+    "lost": "Perdue",
+    "short": {
+      "lead": "Prospect",
+      "qualified": "Qualif.",
+      "negotiations": "Négo.",
+      "won": "Gagnée",
+      "lost": "Perdue"
+    },
+    "wonWindow": "30 derniers jours"
+  },
+  "Pipeline": {
+    "title": "Pipeline",
+    "totals": "{count, plural, one {# en cours} other {# en cours}} · {value}",
+    "scope": {
+      "label": "Affaires de qui",
+      "team": "Équipe",
+      "mine": "Les miennes"
+    },
+    "owners": {
+      "label": "Responsable",
+      "everyone": "Tout le monde"
+    },
+    "stalledOnly": "Bloquées seulement",
+    "sort": {
+      "label": "Tri : {order}",
+      "recent": "Déplacées récemment",
+      "oldest": "Les plus anciennes dans l’étape",
+      "value": "Montant",
+      "close": "Date de clôture",
+      "loadedNote": "Montant et Date de clôture trient les cartes affichées"
+    },
+    "sortedAmongShown": "Triées parmi les {count} affichées",
+    "newDeal": "Nouvelle affaire",
+    "boardLabel": "Tableau du pipeline",
+    "stageTabs": "Étapes",
+    "columnSummary": "{count, plural, one {# affaire} other {# affaires}}, {value}{stalled, plural, =0 {} one {, # bloquée} other {, # bloquées}}",
+    "stalledCount": "{count, plural, one {# bloquée} other {# bloquées}}",
+    "dropHere": "Déposer pour déplacer ici",
+    "dropWon": "Déposer pour marquer gagnée",
+    "lostBand": "Déposer ici pour marquer perdue",
+    "lostLine": "Perdues sur les 30 derniers jours : {count}",
+    "lostReason": "{reason} {count}",
+    "seeLost": "Voir les affaires perdues",
+    "seeWon": "Voir toutes les gagnées",
+    "closedTitle": {
+      "won": "Affaires gagnées",
+      "lost": "Affaires perdues"
+    },
+    "closedEmpty": {
+      "won": "Aucune affaire gagnée pour l’instant.",
+      "lost": "Aucune affaire perdue."
+    },
+    "empty": {
+      "org": "Aucune affaire pour l’instant. Une affaire s’ouvre quand un prospect se dit intéressé, depuis un appel ou la fiche du prospect.",
+      "orgLeads": "Ouvrir les prospects",
+      "mine": "Vous n’avez aucune affaire.",
+      "showTeam": "Voir celles de l’équipe",
+      "column": "Aucune affaire en {stage}",
+      "lead": "Marquez un appel Intéressé, ou appuyez sur N.",
+      "filtered": "Aucune affaire ne correspond.",
+      "clear": "Effacer les filtres"
+    },
+    "showMore": "Afficher {count} de plus",
+    "showingOf": "{shown} affichées sur {total}",
+    "loadMoreFailed": "Impossible d’afficher la suite",
+    "refreshFailed": "Impossible d’actualiser",
+    "retry": "Réessayer",
+    "offline": "Vous êtes hors ligne · les déplacements sont en pause",
+    "loading": "Chargement du pipeline",
+    "loadFailed": "Impossible de charger le pipeline",
+    "confirmWin": "Confirmez la vente",
+    "conflict": "{name} vient de la déplacer en {stage}.",
+    "conflictSomeone": "Un collègue vient de la déplacer en {stage}.",
+    "moveFailed": "Impossible de déplacer l’affaire",
+    "undoExpired": "Trop tard pour annuler. Replacez-la à la main.",
+    "undoConflict": "Annulation impossible : {name} a modifié cette affaire entre-temps.",
+    "undoConflictSomeone": "Annulation impossible : un collègue a modifié cette affaire entre-temps.",
+    "undone": "Déplacement annulé",
+    "announce": {
+      "instructions": "Pour déplacer une affaire, appuyez sur Espace, choisissez une étape avec les flèches gauche et droite, puis appuyez sur Espace. Échap annule. Ou appuyez sur 1 à 5 pour l’envoyer directement à une étape.",
+      "start": "{lead}, {value}, prise dans {stage}.",
+      "over": "Au-dessus de {stage}.",
+      "overNone": "Au-dessus d’aucune étape.",
+      "end": "{lead} déplacée vers {stage}. Appuyez sur U pour annuler.",
+      "endClosed": "{lead} déposée sur {stage}. Confirmez dans la fenêtre.",
+      "cancel": "Déplacement annulé. {lead} est revenue dans {stage}.",
+      "roledescription": "affaire déplaçable",
+      "noValue": "sans montant"
+    },
+    "undo": "Annuler"
+  },
+  "Deals": {
+    "untitled": "Affaire",
+    "addValue": "Ajouter un montant",
+    "daysInStage": "{count, plural, =0 {Aujourd’hui} one {# jour dans l’étape} other {# jours dans l’étape}}",
+    "wonOn": "Gagnée le {date}",
+    "lostOn": "Perdue le {date}",
+    "stalled": "Bloquée",
+    "stalledHint": "Aucun déplacement ni contact depuis {quiet, plural, one {# jour} other {# jours}}. D’habitude moins de {limit, plural, one {# jour} other {# jours}} en {stage}.",
+    "closes": "Clôture {date}",
+    "closePassed": "Date de clôture dépassée · {date}",
+    "supplierStock": "Stock fournisseur",
+    "dnc": "Ne souhaite pas être contacté",
+    "readOnly": "Seul {owner} ou un admin peut modifier cette affaire.",
+    "readOnlyUnowned": "Seul un admin peut modifier cette affaire.",
+    "nextTo": "→ {stage}",
+    "nextToLabel": "Déplacer en {stage}",
+    "markWon": "Marquer gagnée",
+    "moreActions": "Plus d’actions pour {name}",
+    "owner": "Responsable : {name}",
+    "menu": {
+      "label": "Actions de l’affaire",
+      "moveTo": "Déplacer en",
+      "markWon": "Marquer gagnée…",
+      "markLost": "Marquer perdue…",
+      "reopen": "Rouvrir…",
+      "editValue": "Modifier le montant",
+      "openLead": "Ouvrir le prospect",
+      "openDeal": "Ouvrir l’affaire",
+      "copyLink": "Copier le lien",
+      "linkCopied": "Lien copié",
+      "undo": "Annuler le dernier déplacement",
+      "delete": "Supprimer…"
+    },
+    "sheet": {
+      "label": "Affaire",
+      "close": "Fermer",
+      "stage": "Étape",
+      "stepper": "Déplacer cette affaire",
+      "markLost": "Marquer perdue",
+      "reopenToEdit": "Rouvrez-la pour modifier le montant ou l’expédition.",
+      "notAvailable": "Cette affaire n’est pas disponible.",
+      "notAvailableBody": "Elle a peut-être été supprimée, ou elle appartient à quelqu’un d’autre.",
+      "loadFailed": "Impossible de charger cette affaire",
+      "path": "Parcours",
+      "history": "Historique",
+      "recent": "Entrées liées",
+      "noRecent": "Rien n’a encore été noté sur cette affaire.",
+      "logNote": "Noter quelque chose sur cette affaire",
+      "more": "Plus d’actions",
+      "closedOn": "Clôturée le {date}",
+      "openedBy": "Ouverte par {name}, {date}"
+    },
+    "fields": {
+      "title": "Ce qui est vendu",
+      "titlePlaceholder": "ex. Vestes en jean, 2 palettes…",
+      "value": "Montant (HT)",
+      "expectedClose": "Clôture prévue",
+      "fulfilment": "Expédition",
+      "contact": "Contact",
+      "owner": "Responsable",
+      "noContact": "Aucun contact",
+      "lead": "Prospect"
+    },
+    "closeChips": {
+      "endMonth": "Fin de ce mois",
+      "endNextMonth": "Fin du mois prochain",
+      "pick": "Choisir une date",
+      "clear": "Sans date"
+    },
+    "edit": {
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "saved": "Enregistré",
+      "valueInvalid": "Saisissez un montant comme 12 400,50 (jusqu’à 100 000 000).",
+      "edit": "Modifier {field}"
+    },
+    "pathStep": "{stage} {days, plural, =0 {moins d’un jour} one {# jour} other {# jours}}",
+    "pathCurrent": "{stage}, {days, plural, =0 {aujourd’hui} one {# jour jusqu’ici} other {# jours jusqu’ici}}",
+    "history": {
+      "open": "{name} l’a ouverte en {stage}",
+      "move": "{name} l’a déplacée en {stage}",
+      "won": "{name} l’a marquée gagnée",
+      "wonValue": "{name} l’a marquée gagnée · {value}",
+      "lost": "{name} l’a marquée perdue · {reason}",
+      "reopen": "{name} l’a rouverte en {stage}",
+      "undo": "{name} a annulé le dernier déplacement",
+      "someone": "Un collègue",
+      "undoneTag": "annulé"
+    },
+    "keepYours": "Garder la vôtre",
+    "useTheirs": "Prendre la leur",
+    "theyChanged": "{name} vient de modifier ceci.",
+    "theyChangedSomeone": "Un collègue vient de modifier ceci.",
+    "win": {
+      "title": "Marquer {lead} comme gagnée ?",
+      "body": "Le montant final et l’expédition.",
+      "value": "Montant final (HT)",
+      "valueRequired": "Saisissez le montant final, supérieur à 0 €.",
+      "ships": "Expédition",
+      "shipsRequired": "Choisissez l’expédition.",
+      "submit": "Marquer gagnée",
+      "cancel": "Annuler",
+      "saving": "Enregistrement…"
+    },
+    "lose": {
+      "title": "Pourquoi {lead} est-elle perdue ?",
+      "reasons": "Raison",
+      "note": "Note",
+      "noteOptional": "Note (facultative)",
+      "noteRequired": "Autre demande une note.",
+      "noteCount": "{count}/500",
+      "submit": "Marquer perdue",
+      "cancel": "Annuler",
+      "saving": "Enregistrement…"
+    },
+    "reopen": {
+      "title": "Rouvrir cette affaire",
+      "body": "Elle revient à une étape en cours.",
+      "stage": "Rouvrir en",
+      "submit": "Rouvrir",
+      "wonConfirm": "Rouvrir cette affaire gagnée ? Elle sort du total gagné de ce mois.",
+      "cancel": "Annuler"
+    },
+    "delete": {
+      "title": "Supprimer cette affaire ?",
+      "body": "C’est définitif. Son historique d’étapes disparaît avec elle ; le prospect, ses entrées et ses tâches restent.",
+      "confirm": "Supprimer l’affaire",
+      "cancel": "Annuler"
+    },
+    "open": {
+      "title": "Nouvelle affaire",
+      "body": "Ouvrez une affaire en Prospect. Seul le prospect est nécessaire ; le reste peut venir plus tard.",
+      "lead": "Prospect",
+      "leadPlaceholder": "Chercher un prospect par nom",
+      "noLeads": "Aucun prospect ne correspond.",
+      "searching": "Recherche…",
+      "searchFailed": "Impossible de chercher les prospects",
+      "submit": "Ouvrir l’affaire",
+      "existing": "Ce prospect a déjà une affaire en cours : {title} en {stage}.",
+      "openIt": "L’ouvrir",
+      "openAnother": "En ouvrir une autre",
+      "cancel": "Annuler",
+      "leadFirst": "Choisissez d’abord un prospect.",
+      "change": "Changer",
+      "ownerMe": "Moi"
+    },
+    "toast": {
+      "moved": "Déplacée en {stage}",
+      "won": "Gagnée · {value}",
+      "wonCustomer": "Gagnée · {value} · {lead} est maintenant client",
+      "lost": "Perdue · {reason}",
+      "opened": "Affaire ouverte en {stage}",
+      "reopened": "Rouverte en {stage}",
+      "deleted": "Affaire supprimée",
+      "updated": "Enregistré",
+      "kept": "L’affaire est gardée : elle a changé entre-temps"
+    }
+  },
+  "LostReasons": {
+    "price": "Prix",
+    "timing": "Pas le bon moment",
+    "no_stock": "Stock indisponible",
+    "competitor": "Concurrent choisi",
+    "no_response": "Plus de réponse",
+    "shipping": "Livraison : coût ou délai",
+    "mistake": "Ouverte par erreur",
+    "other": "Autre, à préciser"
+  },
+  "Fulfilment": {
+    "undecided": "Pas encore décidé",
+    "from_stock": {
+      "title": "Stock entrepôt",
+      "body": "Vendu depuis notre entrepôt en France"
+    },
+    "direct_from_source": {
+      "title": "Stock fournisseur",
+      "body": "Expédié du Pakistan directement dans le pays du client"
+    }
+  },
+  "Queue": {
+    "title": "File d’appels",
+    "intro": "Un prospect à la fois, le plus urgent d’abord : les relances dues, puis Négociation, Chaud, les nouveaux essais et les premiers appels. Seulement aux heures d’appel du prospect (du lundi au vendredi, de 09:00 à 18:00 chez lui).",
+    "back": "Prospects",
+    "scopeLabel": "Quels prospects",
+    "scope": {
+      "mine": "Les miens",
+      "mineUnassigned": "Les miens + sans responsable",
+      "team": "Équipe"
+    },
+    "countsLabel": "En ce moment",
+    "callableNow": "{count, plural, one {<n>#</n> à appeler maintenant} other {<n>#</n> à appeler maintenant}}",
+    "followUpsDue": "{count, plural, one {<n>#</n> relance due} other {<n>#</n> relances dues}}",
+    "laterToday": "{count, plural, one {<n>#</n> autre plus tard aujourd’hui} other {<n>#</n> autres plus tard aujourd’hui}}",
+    "noNumber": "{count, plural, one {<n>#</n> prospect sans numéro} other {<n>#</n> prospects sans numéro}}",
+    "claimedByOthers": "{count, plural, one {<n>#</n> en cours d’appel par un collègue} other {<n>#</n> en cours d’appel par des collègues}}",
+    "summaryError": "Impossible de charger les chiffres.",
+    "skipLunch": "Éviter le déjeuner (12:00–14:00) pour les prospects européens",
+    "showOutside": "Afficher les prospects hors des heures d’appel",
+    "start": "Commencer",
+    "starting": "Démarrage…",
+    "stop": "Terminer pour l’instant",
+    "regionLabel": "Prospect à appeler : {name}",
+    "reason": {
+      "follow_up": "Relance due",
+      "followUpAt": "Relance due à {time}",
+      "negotiation": "Négociation",
+      "warm": "Prospect chaud",
+      "retry": "Nouvel essai",
+      "retryNth": "Nouvel essai · {count, selectordinal, one {#er} other {#e}} appel",
+      "returning": "Retour de pause",
+      "first_call": "Premier appel"
+    },
+    "theirTime": "{time} chez lui",
+    "openUntil": "ouvert jusqu’à {time}",
+    "outsideCard": "Hors des heures d’appel · {time} chez lui",
+    "spanTime": "{from}–{to} chez lui",
+    "noCountry": "Heure locale inconnue",
+    "call": "Appeler",
+    "callNumber": "Appeler le {number}",
+    "wrongMark": "Marqué faux",
+    "noPhoneMain": "Pas de numéro principal",
+    "contacts": "Contacts",
+    "lastNotes": "Dernières notes",
+    "noNotes": "Pas encore de note.",
+    "myTasks": "Mes tâches ouvertes",
+    "owner": "Responsable : {name}",
+    "unassigned": "Sans responsable",
+    "readOnly": "Seul {owner} ou un administrateur peut modifier ce prospect. Votre appel est quand même noté.",
+    "dealOpen": "Affaire en cours : {stage} · {value}",
+    "dealOpenNoValue": "Affaire en cours : {stage}",
+    "script": {
+      "title": "Script d’appel",
+      "inEnglish": "Afficher en anglais",
+      "inFrench": "Afficher en français",
+      "en": "Hello, this is {me} from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?",
+      "enNoName": "Hello, I’m calling from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "frNoName": "Bonjour, je vous appelle de la part de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?"
+    },
+    "next": "Ensuite : {name}",
+    "nextPlace": "Ensuite : {name} ({place})",
+    "nextLoading": "Recherche du prospect suivant…",
+    "padTitle": "Comment ça s’est passé ?",
+    "note": "Note",
+    "notePlaceholder": "Une note rapide sur l’appel…",
+    "noteSheet": "Note sur l’appel",
+    "noteDone": "OK",
+    "skip": "Passer",
+    "keysHint": "1–7 et 0 notent le résultat · S passer · N note · C appeler · U annuler",
+    "stats": "Cette session : {calls, plural, one {# appel} other {# appels}} · {talks, plural, one {# échange} other {# échanges}}",
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "confirmKeys": "↩ confirme · Échap annule",
+    "needTime": "Un rendez-vous demande une date et une heure.",
+    "dncChanged": "{name} a été marqué Ne plus contacter entre-temps. Seuls 7 et Passer fonctionnent sur cette fiche.",
+    "lostClaim": "Un collègue s’en occupe déjà. Voici le suivant.",
+    "lostClaimNamed": "{name} s’en occupe déjà. Voici le suivant.",
+    "released": {
+      "title": "Vos prospects sont retournés à l’équipe",
+      "body": "Aucune touche ni aucun clic ici depuis 10 minutes (ou la file a été ouverte dans un autre onglet) : les prospects à l’écran ont été libérés pour vos collègues.",
+      "logCall": "Noter votre appel à {lead}"
+    },
+    "notSaved": "{count, plural, one {# résultat non enregistré} other {# résultats non enregistrés}}",
+    "retry": "Réessayer",
+    "retrying": "Enregistrement…",
+    "live": "{outcome} noté pour {lead}. Ensuite : {next}.",
+    "liveEnd": "{outcome} noté pour {lead}.",
+    "liveSkip": "{lead} passé. Ensuite : {next}.",
+    "empty": {
+      "allDoneTitle": "Tous les prospects dus ont été appelés.",
+      "noNumber": "{count, plural, one {# prospect n’a pas de numéro.} other {# prospects n’ont pas de numéro.}}",
+      "laterToday": "{count, plural, one {# autre revient plus tard aujourd’hui.} other {# autres reviennent plus tard aujourd’hui.}}",
+      "outsideHoursTitle": "Personne à appeler pour l’instant.",
+      "opensNext": "{place} ouvre à {time} heure locale ({relative}).",
+      "opensNextDay": "{place} ouvre {day} à {time} heure locale ({relative}).",
+      "noneMineTitle": "Aucun prospect ne vous est attribué.",
+      "noneMineBody": "Demandez des prospects à un administrateur, ou travaillez ceux sans responsable.",
+      "workUnassigned": "Travailler les prospects sans responsable",
+      "backToStart": "Retour au début"
+    },
+    "error": "Impossible de charger le prospect suivant.",
+    "loading": "Chargement du prospect suivant…"
+  },
+  "Tasks": {
+    "title": "Tâches",
+    "tabsLabel": "Listes de tâches",
+    "tabs": {
+      "today": "Aujourd’hui",
+      "overdue": "En retard",
+      "upcoming": "À venir",
+      "done": "Terminées"
+    },
+    "scopeLabel": "Quelles tâches",
+    "scope": {
+      "mine": "Les miennes",
+      "team": "Équipe"
+    },
+    "quickAdd": {
+      "label": "Nouvelle tâche",
+      "placeholder": "Ajouter une tâche…",
+      "add": "Ajouter",
+      "adding": "Ajout…",
+      "dateLabel": "Quand",
+      "date": "Date",
+      "time": "Heure (facultatif)",
+      "timeRequired": "Heure",
+      "kindLabel": "Type",
+      "needTitle": "Écrivez d’abord la tâche.",
+      "needTime": "Un rendez-vous demande une date et une heure.",
+      "added": "Tâche ajoutée : {title}."
+    },
+    "chips": {
+      "today": "Aujourd’hui",
+      "tomorrow": "Demain",
+      "nextWeek": "La semaine prochaine",
+      "pick": "Choisir une date",
+      "none": "Sans date"
+    },
+    "kinds": {
+      "todo": "À faire",
+      "call": "Appel",
+      "meeting": "Rendez-vous"
+    },
+    "linkLead": "Lier un prospect",
+    "leadSearch": "Chercher un prospect",
+    "leadSearchPlaceholder": "Nom du prospect…",
+    "noLeadMatch": "Aucun prospect ne correspond.",
+    "leadSearchError": "Impossible de chercher les prospects.",
+    "unlinkLead": "Retirer le lien vers {name}",
+    "overdue": "En retard",
+    "noDate": "Sans date",
+    "today": "Aujourd’hui",
+    "tomorrow": "Demain",
+    "yesterday": "Hier",
+    "theirTime": "{time} chez lui",
+    "doneAt": "Terminée {when}",
+    "assignee": "Pour {name}",
+    "markDone": "Marquer « {title} » comme terminée",
+    "markOpen": "Marquer « {title} » comme non terminée",
+    "done": "Terminée : {title}.",
+    "reopened": "Non terminée : {title}.",
+    "dismiss": "Écarter",
+    "dismissed": "Écartée : {title}.",
+    "undo": "Annuler",
+    "undone": "Annulé.",
+    "edit": "Modifier",
+    "editLabel": "Modifier la tâche",
+    "editTitle": "Titre",
+    "editAssignee": "Pour",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "cancel": "Annuler",
+    "saved": "Tâche enregistrée.",
+    "delete": "Supprimer",
+    "deleteConfirm": {
+      "title": "Supprimer cette tâche ?",
+      "body": "« {title} » sera supprimée définitivement. Pour l’écarter plutôt, appuyez sur Annuler et choisissez Écarter.",
+      "confirm": "Supprimer la tâche"
+    },
+    "deleted": "Tâche supprimée.",
+    "menu": "Autres actions pour « {title} »",
+    "openLead": "Ouvrir {lead}",
+    "empty": {
+      "today": "Rien à faire aujourd’hui.",
+      "overdue": "Rien en retard.",
+      "upcoming": "Rien de prévu.",
+      "done": "Rien de terminé pour l’instant."
+    },
+    "error": "Impossible de charger ces tâches.",
+    "retry": "Réessayer",
+    "showMore": "Afficher plus",
+    "loadingMore": "Chargement…",
+    "dncLead": "Ne souhaite plus être contacté",
+    "keysHint": "T nouvelle tâche · J/K se déplacer · X terminer · E modifier · D écarter · ⌫ supprimer · ↩ ouvrir le prospect",
+    "dueCount": "{count, plural, one {# tâche pour aujourd’hui ou en retard} other {# tâches pour aujourd’hui ou en retard}}",
+    "listLabel": "Tâches : {tab}"
   },
   "Inventory": {
     "title": "Stock",

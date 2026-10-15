@@ -1,0 +1,61 @@
+# TEMPLATE for the private repository topstock-ops. Never add it to topstock-crm.
+# Haider pastes this file into topstock-ops as .github/workflows/keep-alive.yml (docs/go-live.md, part I).
+#
+# Why: Supabase pauses a Free-plan project after a week with too little database activity, which would take the CRM
+# offline (for example over a holiday). Supabase's guide says a few requests to the database each day over the past
+# week is typically enough, so this runs once a day rather than every 3 days (Master Plan section 12 said every 2 to
+# 3 days; daily costs about 30 Actions minutes a month). Not needed if the prod project moves to a paid Supabase plan.
+#
+# What it calls, with the publishable key only (public by design; it is in the app's JavaScript anyway):
+#   1. the Auth health endpoint: proves the project is up (this alone does not query the database);
+#   2. one REST read of public.pipeline_stages. The anon role has no grant on it, so Postgres itself answers
+#      "permission denied" (code 42501): the request reaches the database without reading any data.
+#      A 200 with rows would mean anonymous visitors can read a table: the run then fails as a security alarm.
+# No database password and no secret key are used here.
+#
+# Secrets (topstock-ops > Settings > Secrets and variables > Actions): PROD_PROJECT_REF, PROD_PUBLISHABLE_KEY.
+# A failed run makes GitHub email Haider.
+name: keep-alive
+on:
+  schedule:
+    - cron: "41 7 * * *" # every day at 07:41 UTC; for every 3 days instead use "41 7 */3 * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Auth health and one REST request that reaches the database
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          PROD_PUBLISHABLE_KEY: ${{ secrets.PROD_PUBLISHABLE_KEY }}
+        run: |
+          set -uo pipefail
+          base="https://${PROD_PROJECT_REF}.supabase.co"
+
+          health=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 --retry 2 \
+            "$base/auth/v1/health" -H "apikey: ${PROD_PUBLISHABLE_KEY}") || health="no answer"
+          if [ "$health" != "200" ]; then
+            echo "::error::Prod Auth health answered '$health' (expected 200). Is the project paused? Check the prod dashboard."
+            exit 1
+          fi
+
+          code=$(curl -sS -o "$RUNNER_TEMP/rest.json" -w '%{http_code}' --max-time 30 --retry 2 \
+            "$base/rest/v1/pipeline_stages?select=id&limit=1" -H "apikey: ${PROD_PUBLISHABLE_KEY}") || code="no answer"
+          pg_code=$(jq -r 'if type == "object" then (.code // "") else "" end' "$RUNNER_TEMP/rest.json" 2>/dev/null || true)
+          rows=$(jq -r 'if type == "array" then length else 0 end' "$RUNNER_TEMP/rest.json" 2>/dev/null || echo 0)
+          rm -f "$RUNNER_TEMP/rest.json"
+
+          if { [ "$code" = "401" ] || [ "$code" = "403" ]; } && [ "$pg_code" = "42501" ]; then
+            echo "Database reached (anonymous read refused by Postgres, as it should be)."
+          elif [ "$code" = "200" ] && [ "$rows" = "0" ]; then
+            echo "::warning::Database reached, but the anon role is allowed to query pipeline_stages (no rows visible). Tell Claude: 'keep-alive: anon can query pipeline_stages'."
+          elif [ "$code" = "200" ]; then
+            echo "::error::SECURITY: an anonymous request read rows from pipeline_stages. Tell Claude 'keep-alive security alarm' (no data) right away."
+            exit 1
+          else
+            echo "::error::Unexpected REST answer (HTTP $code, code '${pg_code:-none}'). Is the project paused or the key wrong?"
+            exit 1
+          fi
+          echo "keep-alive: auth 200, REST $code at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"

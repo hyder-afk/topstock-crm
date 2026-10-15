@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isMoney } from "@/lib/money";
 
 // Timeline entries and call outcomes (Day 4 design 5.2 and 5.5). The lists match the database's
 // activities_outcome_fits_type check and log_activity's rules; tests/unit/day4-parity.spec.ts reads the migrations.
@@ -139,8 +140,26 @@ export const logActivityInput = z
     followUpAt: isoInstant.nullable(),
     leadName: z.string().trim().min(1).max(200).refine((s) => !UNSAFE_TEXT.test(s)),
     requestId: uuid,
+    // Day 5b (design 4.4): the deal this entry is about (one of the lead's deals the caller sees), or a deal to open
+    // from an Interested or Book meeting call, with an optional title and value (a decimal string).
+    dealId: uuid.nullable().optional(),
+    openDeal: z
+      .strictObject({
+        title: z
+          .string()
+          .trim()
+          .max(400)
+          .refine((s) => Array.from(s).length <= 120 && !/[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069\u0000]/.test(s), { message: "deal_title" })
+          .nullable(),
+        value: z.string().refine(isMoney, { message: "value" }).nullable(),
+      })
+      .nullable()
+      .optional(),
   })
   .superRefine((v, ctx) => {
+    if (v.openDeal && (v.type !== "call" || (v.outcome !== "interested" && v.outcome !== "meeting_booked") || v.dealId)) {
+      ctx.addIssue({ code: "custom", path: ["openDeal"], message: "state" });
+    }
     const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
     if (!OUTCOMES_FOR_TYPE[v.type].includes(v.outcome)) issue("outcome", "outcome");
     if (v.type === "note" && v.body.trim() === "") issue("body", "body_required");
@@ -175,6 +194,9 @@ export type LoggedActivity = {
   cancelled_task_ids: string[];
   created_at: string;
   undo_until: string | null;
+  /** Day 5b: the deal the entry names, and the deal an Interested or Book meeting call opened (or why it did not). */
+  deal_id?: string | null;
+  deal?: { id: string; opened: true; open_deal_count: number } | { opened: false; reason: "not_editable" | "dnc" | "rate_limited" } | null;
 };
 
 export type UndoneActivity = {
@@ -182,6 +204,8 @@ export type UndoneActivity = {
   restored: { status: boolean; next_action_at: boolean; owner: boolean; phone_wrong: boolean; contact_phone_wrong: boolean };
   task_deleted: boolean;
   tasks_reopened: number;
+  /** Day 5b: the deal the call opened went with it ("removed"), or stayed because it changed since ("kept"). */
+  deal?: "removed" | "kept" | null;
   lead: { lead_status: string; next_action_at: string | null; owner_id: string | null; last_activity_at: string | null } | null;
 };
 

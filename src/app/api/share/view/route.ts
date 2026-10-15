@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertSameOrigin, readJsonCapped } from "@/lib/http";
+import { assertSameOrigin, readJsonBody } from "@/lib/http";
 import { snapshotToWire } from "@/lib/share/map";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { viewBodySchema } from "@/lib/share/schema";
@@ -12,8 +12,8 @@ const limiter = createLimiter({ windowMs: 60_000, max: 60 });
 const headers = { "Cache-Control": "no-store" };
 
 export async function POST(request: Request) {
-  if (!assertSameOrigin(request)) return NextResponse.json({ status: "forbidden" }, { status: 403, headers });
-  const body = await readJsonCapped(request, 2048);
+  if (!assertSameOrigin(request.headers)) return NextResponse.json({ status: "forbidden" }, { status: 403, headers });
+  const body = await readJsonBody(request, 2048);
   if (!body.ok) return NextResponse.json({ status: "invalid" }, { status: body.status, headers });
   const parsed = viewBodySchema.safeParse(body.value);
   if (!parsed.success) return NextResponse.json({ status: "inactive" }, { status: 404, headers });

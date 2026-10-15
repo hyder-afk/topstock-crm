@@ -6,9 +6,122 @@
   "Home": {
     "tagline": "Small start. Same grade. Big orders.",
     "hello": "Hello",
-    "emptyTitle": "Your day at a glance",
-    "emptyBody": "Today’s tasks, meetings and your pipeline will show here once they’re in the CRM.",
-    "addName": "Add your first name to the greeting"
+    "addName": "Add your first name to the greeting",
+    "title": "Home",
+    "calmLine": "You have {tasks, plural, one {# task} other {# tasks}} today and {meetings, plural, one {# meeting} other {# meetings}}.",
+    "calmTasks": "You have {tasks, plural, one {# task} other {# tasks}} today.",
+    "calmMeetings": "You have {meetings, plural, one {# meeting} other {# meetings}} today.",
+    "nothingToday": "Nothing due today.",
+    "loadFailed": "Couldn’t load",
+    "retry": "Retry",
+    "updatedAgo": "Updated {ago}",
+    "refreshFailed": "Couldn’t refresh. These figures are from {ago}.",
+    "loading": "Loading Home…",
+    "scope": {
+      "label": "Figures for",
+      "team": "Team",
+      "mine": "Mine",
+      "heading": "{title} · Team"
+    },
+    "kpi": {
+      "rowLabel": "Key figures",
+      "rowFailed": "Couldn’t load the figures",
+      "open": {
+        "label": "Open pipeline",
+        "deals": "{count, plural, one {# deal} other {# deals}}",
+        "stalled": "{count} stalled",
+        "noValue": "{count} without a value",
+        "empty": "No open deals yet. Mark a lead Interested to open one."
+      },
+      "won": {
+        "label": "Won this month",
+        "deals": "{count, plural, =0 {No deals won yet} one {# deal} other {# deals}}"
+      },
+      "calls": {
+        "label": "Calls today",
+        "reached": "{count} reached",
+        "empty": "No calls yet today"
+      },
+      "tasks": {
+        "label": "Tasks due",
+        "overdue": "{count} overdue",
+        "empty": "Nothing due"
+      }
+    },
+    "today": {
+      "title": "Today",
+      "overdueDays": "Overdue · {days, plural, one {# day} other {# days}}",
+      "overdue": "Overdue",
+      "allDay": "Today",
+      "more": "+{count} more",
+      "openTasks": "Open Tasks",
+      "empty": "Nothing due today.",
+      "addTask": "Add a task",
+      "markDone": "Mark “{title}” done",
+      "done": "Task done",
+      "undo": "Undo",
+      "failed": "Couldn’t update the task. Try again.",
+      "kind": {
+        "todo": "To do",
+        "call": "Call",
+        "meeting": "Meeting"
+      },
+      "theirTime": "{time} their time"
+    },
+    "queue": {
+      "title": "Work queue",
+      "counts": "{now} to call now · {later} later today",
+      "nobody": "Nobody to call right now.",
+      "newLeads": "{count, plural, =0 {No new leads this week} one {# new lead this week} other {# new leads this week}}",
+      "imported": "(+{count} imported)",
+      "start": "Start calling",
+      "failed": "Couldn’t load the queue count"
+    },
+    "attention": {
+      "title": "Needs attention",
+      "stalled": "Stalled · no move or contact for {days, plural, one {# day} other {# days}}",
+      "closePassed": "Close date passed {date}",
+      "closing": "Closes {date}",
+      "seeAll": "See all {count} on the board",
+      "empty": "All deals are moving.",
+      "noValue": "No value"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "barLabel": "Open value by stage",
+      "deals": "{count, plural, one {# deal} other {# deals}}",
+      "winRate": "Win rate {rate}% · {won} won, {lost} lost in 90 days",
+      "winRateEmpty": "Not enough closed deals yet",
+      "lost": "Lost (30 days): {count}",
+      "lostNone": "Nothing lost in the last 30 days",
+      "empty": "No deals yet. Deals open when a lead says they’re interested.",
+      "open": "Open the pipeline"
+    },
+    "recent": {
+      "title": "Recent activity",
+      "empty": "No calls or notes yet today.",
+      "someone": "Someone",
+      "aLead": "a lead",
+      "won": "{name} won {lead}",
+      "lost": "{name} lost {lead}",
+      "move": "{name} moved {lead} to {stage}",
+      "open": "{name} opened a deal on {lead}",
+      "reopen": "{name} reopened {lead}"
+    },
+    "lowStock": {
+      "title": "Low stock",
+      "notReady": "Stock alerts will show here once inventory is set up.",
+      "allGood": "All products are above their reorder level.",
+      "summary": "{low, number} low · {soldOut, number} sold out",
+      "dealsWaiting": "{count, plural, one {# deal waiting} other {# deals waiting}}",
+      "available": "{available} available · reorder at {reorder}",
+      "inTransit": "+{count} in transit",
+      "followUps": "Also in inventory",
+      "arrivingLate": "{count, plural, one {# arrival past its expected date} other {# arrivals past their expected date}}",
+      "requestsNew": "{count, plural, one {# new stock request} other {# new stock requests}}",
+      "holdsEndingSoon": "{count, plural, one {# hold ends within 2 days} other {# holds end within 2 days}}",
+      "open": "Open inventory"
+    }
   },
   "Settings": {
     "language": "Language",
@@ -98,6 +211,60 @@
     "settings": "Settings",
     "status": "System"
   },
+  "Team": {
+    "title": "Team",
+    "subtitle": "Everyone who can sign in to TopStock CRM, and what each person may do. Changing a role asks for a code from your authenticator app.",
+    "back": "More",
+    "count": "{count, plural, one {# person} other {# people}}",
+    "you": "You",
+    "noName": "No name yet",
+    "account": "Account {id}",
+    "userId": "User ID <mono>{id}</mono>",
+    "created": "Account created {date}",
+    "noNameHint": "Their name shows here once they add it under More > Your name.",
+    "role": {
+      "admin": "Admin",
+      "manager": "Manager",
+      "rep": "Rep"
+    },
+    "roleDescription": {
+      "admin": "Everything a manager does, plus importing leads and changing roles.",
+      "manager": "Changes every lead, contact, task, deal and file; deletes leads and deals with a code.",
+      "rep": "Sees every lead but only their own deals; changes what they own: leads, deals, tasks and files."
+    },
+    "roleMenu": "Role for {who}: {role}",
+    "rolesTitle": "Roles",
+    "confirm": {
+      "title": "Change role?",
+      "body": "{who} becomes {role, select, admin {an admin} manager {a manager} other {a rep}}.",
+      "self": "You will lose the admin screens (Team and Import leads) as soon as this is saved.",
+      "code": "If your last authenticator code is more than 10 minutes old, you’ll be asked for a new one.",
+      "cancel": "Cancel",
+      "submit": "Confirm"
+    },
+    "announce": {
+      "saving": "Saving the new role for {who}…",
+      "saved": "{who} is now {role, select, admin {an admin} manager {a manager} other {a rep}}.",
+      "savedSelf": "You are now {role, select, admin {an admin} manager {a manager} other {a rep}}. The Team screen is for admins only.",
+      "cancelled": "Role not changed."
+    },
+    "errors": {
+      "last_admin": "{who} is the last admin. Make someone else an admin first.",
+      "last_admin_self": "You are the last admin. Make someone else an admin first.",
+      "forbidden": "Only admins can change roles.",
+      "not_found": "This person is no longer in your team. Reload the page.",
+      "unavailable": "Couldn’t confirm the change just now. The role shown is the one saved; try again if it isn’t the one you chose.",
+      "load": "Couldn’t load the team just now.",
+      "retry": "Try again"
+    },
+    "empty": {
+      "title": "No one here yet",
+      "body": "People appear here as soon as their account exists."
+    },
+    "moreSection": "Administration",
+    "moreRow": "Team",
+    "moreRowHint": "People and their roles"
+  },
   "Nav": {
     "label": "Sections",
     "home": "Home",
@@ -150,6 +317,10 @@
     "shortcuts": "Keyboard shortcuts",
     "signOut": "Sign out",
     "importLeads": "Import leads",
+    "newDeal": "New deal",
+    "showStalled": "Show stalled deals",
+    "deals": "Deals",
+    "startQueue": "Start work queue",
     "stockMovements": "Stock movements",
     "inventorySettings": "Inventory settings",
     "importStock": "Import a stock sheet",
@@ -174,6 +345,35 @@
     "outcomeKeys": "Pick a call outcome (call panel)",
     "undoLast": "Undo the last call or entry (2 minutes)",
     "saveEntry": "Save to timeline",
+    "pipeline": {
+      "title": "Pipeline",
+      "newDeal": "New deal",
+      "undo": "Undo the last move (2 minutes)",
+      "open": "Open the focused deal",
+      "step": "Move one stage",
+      "digit": "Send to a stage (4 Won, 5 Lost)",
+      "drag": "Pick up, then choose a stage with the arrows",
+      "edit": "Edit the value",
+      "openLead": "Open the deal’s lead",
+      "delete": "Delete the deal",
+      "menu": "Open the card menu",
+      "walk": "Move between cards"
+    },
+    "goQueue": "Start the work queue",
+    "queue": "Work queue",
+    "queueOutcomes": "Log an outcome",
+    "queueSkip": "Skip this lead",
+    "queueNote": "Write a note",
+    "queueCall": "Call the main number",
+    "queueUndo": "Undo the last outcome",
+    "tasks": "Tasks",
+    "tasksNew": "New task",
+    "tasksMove": "Next or previous task",
+    "tasksDone": "Done or not done",
+    "tasksEdit": "Edit the task",
+    "tasksDismiss": "Dismiss the task",
+    "tasksDelete": "Delete the task",
+    "tasksOpen": "Open the task’s lead",
     "inventory": "On Inventory",
     "stockSearch": "Search products",
     "stockRows": "Next or previous product",
@@ -194,7 +394,14 @@
       "invalid": "Names can be up to 80 characters.",
       "unavailable": "Couldn’t save just now. Try again.",
       "load": "Couldn’t load your name just now. Reload the page to try again."
-    }
+    },
+    "timezoneTitle": "Your time zone",
+    "timezone": "Time zone",
+    "timezoneHelp": "“Today” on your tasks and the queue’s follow-ups follow this zone.",
+    "timezoneDevice": "Use this device’s zone ({zone})",
+    "timezoneSave": "Save time zone",
+    "timezoneSaved": "Time zone saved.",
+    "timezoneError": "That time zone couldn’t be saved. Pick one from the list."
   },
   "Leads": {
     "title": "Leads",
@@ -364,7 +571,8 @@
       "pick": "Pick a date",
       "cancel": "Cancel",
       "confirm": "Set Cool off"
-    }
+    },
+    "workQueue": "Work queue"
   },
   "StepUp": {
     "title": "Confirm it’s you",
@@ -380,6 +588,10 @@
       "unavailable": "We couldn’t check the code just now. Try again in a moment."
     },
     "bodyDelete": "Deleting an entry can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
+    "bodyReopenWon": "Reopening a won deal changes this month’s sales. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
+    "bodyDeleteDeal": "Deleting a deal can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
+    "bodyDeleteTask": "Deleting a task can’t be undone. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
+    "bodyRole": "Changing a role decides what someone can see and change. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes.",
     "bodyStock": "Stock corrections, receipts and archiving need a fresh check. Enter the 6-digit code from your authenticator app. You stay confirmed for 10 minutes."
   },
   "Import": {
@@ -673,6 +885,7 @@
       "timeline": "Timeline",
       "deals": "Deals",
       "stock": "Stock",
+      "files": "Files",
       "details": "Details"
     },
     "railLabel": "Log, tasks and contacts",
@@ -708,7 +921,7 @@
     "seeTimeline": "See the whole timeline",
     "noEntries": "Nothing logged yet. Calls, emails, messages, meetings and notes show here.",
     "dealsTitle": "No deals yet",
-    "dealsEmpty": "No deals yet. Deals open from this page once the pipeline is ready.",
+    "dealsEmpty": "No deals yet. Open one when this lead is interested.",
     "markedWrong": "Marked wrong",
     "fix": "Fix",
     "callContact": "Call {name}",
@@ -745,7 +958,29 @@
       "nextSaved": "Next call saved.",
       "nextCleared": "Next call cleared."
     },
-    "noNextStepDnc": "No next step."
+    "noNextStepDnc": "No next step.",
+    "deals": {
+      "open": "Open a deal",
+      "cannotOpen": "Only {owner} or an admin can open a deal on this lead.",
+      "cannotOpenUnowned": "Only an admin can open a deal on this lead.",
+      "dnc": "Asked not to be contacted: no new deals.",
+      "loadFailed": "Couldn’t load deals",
+      "retry": "Retry",
+      "openSection": "Open",
+      "closedSection": "Closed",
+      "closedWon": "Won · {value} · {date}",
+      "closedWonNoValue": "Won · {date}",
+      "closedLost": "Lost · {reason} · {date}",
+      "summaryTitle": "Deal",
+      "moreOpen": "{count, plural, one {+# more open deal} other {+# more open deals}}",
+      "onBoard": "Open on the board",
+      "chip": "Deal: {stage} · {value}",
+      "chipNoValue": "Deal: {stage}",
+      "chipLabel": "Show this lead’s deals",
+      "reopen": "Reopen…",
+      "rowMenu": "Actions for this deal"
+    },
+    "workedBy": "{name} is on this lead in the queue (until {time})"
   },
   "QuickActions": {
     "call": "Call",
@@ -832,7 +1067,12 @@
     "needEmail": "This lead has no email address yet.",
     "needWhatsapp": "No number with a country code for WhatsApp.",
     "needTime": "Pick the date and time.",
-    "needDate": "Pick a follow-up date."
+    "needDate": "Pick a follow-up date.",
+    "about": "About: {deal}",
+    "aboutLabel": "About a deal",
+    "aboutNone": "No deal",
+    "aboutRemove": "Remove the deal from this entry",
+    "aboutChoose": "Choose the deal"
   },
   "Outcomes": {
     "no_answer": "No answer",
@@ -863,7 +1103,21 @@
       "back": "back {date}",
       "undo": "Undo",
       "undone": "Undone. The lead is back as it was.",
-      "undonePartly": "Undone. The status stays: someone changed it since."
+      "undonePartly": "Undone. The status stays: someone changed it since.",
+      "dealOpened": "deal opened in {stage}",
+      "dealKept": "The deal was kept: it changed since"
+    },
+    "openDeal": "Open a deal",
+    "dealTitle": "Deal title (optional)",
+    "dealValue": "Value (optional)",
+    "dealOpen": "Already has an open deal: {stage} · {value}",
+    "dealOpenNoValue": "Already has an open deal: {stage}",
+    "dealValueInvalid": "Enter an amount like 6,800 or leave it empty.",
+    "dealSkipped": {
+      "dnc": "No deal opened: asked not to be contacted.",
+      "rate_limited": "No deal opened: too many deals this hour.",
+      "not_editable": "Logged. Only {owner} or an admin can open a deal.",
+      "not_editableUnowned": "Logged. Only an admin can open a deal."
     }
   },
   "Timeline": {
@@ -939,8 +1193,575 @@
       "state": "That task is already done or dismissed.",
       "task_kind": "Unknown kind of task.",
       "task_due": "A task has a date or a time, not both; a meeting needs a time.",
-      "lead_has_files": "Delete this lead’s files first."
+      "lead_has_files": "Delete this lead’s files first.",
+      "value": "Enter an amount from €0 to €100,000,000, with at most 2 decimals.",
+      "value_required": "A won deal needs its final value, above €0.",
+      "fulfilment": "Unknown way of shipping.",
+      "fulfilment_required": "Choose how it ships.",
+      "lost_reason_required": "Pick a reason.",
+      "lost_note_required": "Other needs a note.",
+      "lost_note": "The note needs 1 to 500 characters, without control characters.",
+      "deal_title": "The title needs at most 120 characters, without control characters.",
+      "closed": "Reopen the deal to change this.",
+      "reopen_first": "Reopen the deal first.",
+      "dnc": "This lead asked not to be contacted.",
+      "lead_required": "Pick a lead.",
+      "fields": "Reload the page and try again.",
+      "owner_required": "A deal needs an owner.",
+      "stage": "Reload the page and try again.",
+      "bad_scope": "Reload the page and try again.",
+      "bad_order": "Reload the page and try again.",
+      "limit": "Reload the page and try again.",
+      "deal_has_order": "This deal has an order. Cancel the order first.",
+      "bad_bucket": "Reload the page and try again.",
+      "timezone": "That time zone isn’t known. Pick one from the list.",
+      "file_type": "Only PDF, PNG, JPG, Word or Excel files.",
+      "file_size": "A file can be up to 10 MB.",
+      "file_name": "This file name can’t be stored. Rename the file and try again.",
+      "file_lead": "Reload the page and try again."
+    },
+    "blocked": "Stock records hold this deal. Sort them out first."
+  },
+  "Files": {
+    "title": "Files",
+    "drop": "Drop files here or choose files",
+    "choose": "Choose files",
+    "add": "Add file",
+    "limits": "PDF, PNG, JPG, Word or Excel, up to 10 MB each",
+    "uploadsLabel": "Uploads",
+    "uploading": "Uploading…",
+    "checking": "Checking the file…",
+    "cancel": "Cancel",
+    "dismiss": "Dismiss {name}",
+    "progressLabel": "Uploading {name}",
+    "open": "Open",
+    "download": "Download",
+    "delete": "Delete",
+    "menu": "Actions for {name}",
+    "opensNewTab": "(opens in a new tab)",
+    "you": "You",
+    "someone": "Someone",
+    "usage": "{used} of {total} used",
+    "empty": "No files yet. Add quotes, price lists or photos.",
+    "error": "Couldn’t load the files.",
+    "retry": "Try again",
+    "retryUpload": "Try {name} again",
+    "loadOlder": "Show older files",
+    "errorOlder": "Couldn’t load older files.",
+    "stuckDeleting": "Couldn’t finish deleting",
+    "retryDelete": "Retry",
+    "retryDeleteNamed": "Retry deleting {name}",
+    "deleted": "Deleted {name}",
+    "deleteConfirm": {
+      "title": "Delete this file?",
+      "body": "“{name}” will be removed for everyone. This can’t be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "errors": {
+      "tooBig": "Too big: a file can be up to 10 MB. Make it smaller, or split it.",
+      "empty": "This file is empty.",
+      "type": "Only PDF, PNG, JPG, Word or Excel files.",
+      "unreadable": "Couldn’t read this file. Choose it again.",
+      "mismatch": {
+        "pdf": "This file isn’t really a PDF. Save or export it as a PDF again, then add it.",
+        "image": "This file isn’t really a photo (PNG or JPG). Save it as JPG or PNG, then add it.",
+        "word": "This isn’t a real Word file, or it contains macros. Save it as a .docx without macros, then add it.",
+        "excel": "This isn’t a real Excel file, or it contains macros. Save it as an .xlsx without macros, then add it."
+      },
+      "quota": "The team’s file space is full (800 MB). Delete old files first.",
+      "rateLimited": "That’s a lot of uploads in an hour. Try again later.",
+      "tooManyPending": "Wait for the uploads in progress to finish.",
+      "connection": "Connection lost. Try again.",
+      "tooMany": "Up to 5 files at a time. Add this one again.",
+      "unavailable": "Couldn’t add this file. Try again.",
+      "deleteFailed": "Couldn’t finish deleting. Try again."
+    },
+    "announce": {
+      "uploading": "Uploading {name}",
+      "added": "Added {name}",
+      "failed": "{name} wasn’t added. {reason}",
+      "tooMany": "{count, plural, one {# file wasn’t added: up to 5 at a time.} other {# files weren’t added: up to 5 at a time.}}",
+      "cancelled": "Cancelled {name}"
+    },
+    "unavailable": {
+      "title": "This file can’t be opened",
+      "body": "It’s no longer available, or it isn’t yours to open.",
+      "back": "Back to leads"
     }
+  },
+  "Stages": {
+    "lead": "Lead",
+    "qualified": "Qualified",
+    "negotiations": "Negotiations",
+    "won": "Closed/won",
+    "lost": "Closed/lost",
+    "short": {
+      "lead": "Lead",
+      "qualified": "Qualified",
+      "negotiations": "Nego.",
+      "won": "Won",
+      "lost": "Lost"
+    },
+    "wonWindow": "Last 30 days"
+  },
+  "Pipeline": {
+    "title": "Pipeline",
+    "totals": "{count, plural, one {# open} other {# open}} · {value}",
+    "scope": {
+      "label": "Whose deals",
+      "team": "Team",
+      "mine": "Mine"
+    },
+    "owners": {
+      "label": "Owner",
+      "everyone": "Everyone"
+    },
+    "stalledOnly": "Stalled only",
+    "sort": {
+      "label": "Sort: {order}",
+      "recent": "Recently moved",
+      "oldest": "Longest in stage",
+      "value": "Value",
+      "close": "Close date",
+      "loadedNote": "Value and Close date sort the cards shown"
+    },
+    "sortedAmongShown": "Sorted among the {count} shown",
+    "newDeal": "New deal",
+    "boardLabel": "Pipeline board",
+    "stageTabs": "Stages",
+    "columnSummary": "{count, plural, one {# deal} other {# deals}}, {value}{stalled, plural, =0 {} one {, # stalled} other {, # stalled}}",
+    "stalledCount": "{count} stalled",
+    "dropHere": "Drop to move here",
+    "dropWon": "Drop to mark won",
+    "lostBand": "Drop here to mark as lost",
+    "lostLine": "Lost in the last 30 days: {count}",
+    "lostReason": "{reason} {count}",
+    "seeLost": "See lost deals",
+    "seeWon": "See all won",
+    "closedTitle": {
+      "won": "Won deals",
+      "lost": "Lost deals"
+    },
+    "closedEmpty": {
+      "won": "No won deals yet.",
+      "lost": "No lost deals."
+    },
+    "empty": {
+      "org": "No deals yet. Deals open when a lead says they’re interested, from a call or the lead page.",
+      "orgLeads": "Open the leads",
+      "mine": "You have no deals.",
+      "showTeam": "Show the team’s",
+      "column": "No deals in {stage}",
+      "lead": "Mark a call Interested, or press N.",
+      "filtered": "No deals match.",
+      "clear": "Clear filters"
+    },
+    "showMore": "Show {count} more",
+    "showingOf": "Showing {shown} of {total}",
+    "loadMoreFailed": "Couldn’t load more",
+    "refreshFailed": "Couldn’t refresh",
+    "retry": "Retry",
+    "offline": "You’re offline · moves are paused",
+    "loading": "Loading the pipeline",
+    "loadFailed": "Couldn’t load the pipeline",
+    "confirmWin": "Confirm the win",
+    "conflict": "{name} moved this to {stage} a moment ago.",
+    "conflictSomeone": "A teammate moved this to {stage} a moment ago.",
+    "moveFailed": "Couldn’t move the deal",
+    "undoExpired": "Too late to undo. Move it back by hand.",
+    "undoConflict": "Couldn’t undo: {name} changed this deal since.",
+    "undoConflictSomeone": "Couldn’t undo: a teammate changed this deal since.",
+    "undone": "Move undone",
+    "announce": {
+      "instructions": "To move a deal, press Space, choose a stage with the left and right arrows, then press Space. Escape cancels. Or press 1 to 5 to send it straight to a stage.",
+      "start": "Picked up {lead}, {value}, in {stage}.",
+      "over": "Over {stage}.",
+      "overNone": "Not over a stage.",
+      "end": "Moved {lead} to {stage}. Press U to undo.",
+      "endClosed": "{lead} dropped on {stage}. Confirm in the dialog.",
+      "cancel": "Move cancelled. {lead} is back in {stage}.",
+      "roledescription": "draggable deal",
+      "noValue": "no value"
+    },
+    "undo": "Undo"
+  },
+  "Deals": {
+    "untitled": "Deal",
+    "addValue": "Add value",
+    "daysInStage": "{count, plural, =0 {Today} one {# day in stage} other {# days in stage}}",
+    "wonOn": "Won {date}",
+    "lostOn": "Lost {date}",
+    "stalled": "Stalled",
+    "stalledHint": "No move or contact for {quiet, plural, one {# day} other {# days}}. Usually under {limit, plural, one {# day} other {# days}} in {stage}.",
+    "closes": "Closes {date}",
+    "closePassed": "Close date passed · {date}",
+    "supplierStock": "Supplier Stock",
+    "dnc": "Asked not to be contacted",
+    "readOnly": "Only {owner} or an admin can change this deal.",
+    "readOnlyUnowned": "Only an admin can change this deal.",
+    "nextTo": "→ {stage}",
+    "nextToLabel": "Move to {stage}",
+    "markWon": "Mark won",
+    "moreActions": "More actions for {name}",
+    "owner": "Owner: {name}",
+    "menu": {
+      "label": "Deal actions",
+      "moveTo": "Move to",
+      "markWon": "Mark won…",
+      "markLost": "Mark lost…",
+      "reopen": "Reopen…",
+      "editValue": "Edit value",
+      "openLead": "Open lead",
+      "openDeal": "Open deal",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "undo": "Undo last move",
+      "delete": "Delete…"
+    },
+    "sheet": {
+      "label": "Deal",
+      "close": "Close",
+      "stage": "Stage",
+      "stepper": "Move this deal",
+      "markLost": "Mark lost",
+      "reopenToEdit": "Reopen to change the value or how it ships.",
+      "notAvailable": "This deal isn’t available.",
+      "notAvailableBody": "It may have been deleted, or it belongs to someone else.",
+      "loadFailed": "Couldn’t load this deal",
+      "path": "Path",
+      "history": "History",
+      "recent": "Linked entries",
+      "noRecent": "Nothing logged on this deal yet.",
+      "logNote": "Log a note on this deal",
+      "more": "More actions",
+      "closedOn": "Closed {date}",
+      "openedBy": "Opened by {name}, {date}"
+    },
+    "fields": {
+      "title": "What’s being sold",
+      "titlePlaceholder": "e.g. Denim jackets, 2 pallets…",
+      "value": "Value (excl. VAT)",
+      "expectedClose": "Expected close",
+      "fulfilment": "How it ships",
+      "contact": "Contact",
+      "owner": "Owner",
+      "noContact": "No contact",
+      "lead": "Lead"
+    },
+    "closeChips": {
+      "endMonth": "End of this month",
+      "endNextMonth": "End of next month",
+      "pick": "Pick a date",
+      "clear": "No date"
+    },
+    "edit": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Saved",
+      "valueInvalid": "Enter an amount like 12,400.50 (up to 100,000,000).",
+      "edit": "Edit {field}"
+    },
+    "pathStep": "{stage} {days, plural, =0 {under a day} one {# day} other {# days}}",
+    "pathCurrent": "{stage}, {days, plural, =0 {today} one {# day so far} other {# days so far}}",
+    "history": {
+      "open": "{name} opened it in {stage}",
+      "move": "{name} moved it to {stage}",
+      "won": "{name} marked it won",
+      "wonValue": "{name} marked it won · {value}",
+      "lost": "{name} marked it lost · {reason}",
+      "reopen": "{name} reopened it in {stage}",
+      "undo": "{name} undid the last move",
+      "someone": "A teammate",
+      "undoneTag": "undone"
+    },
+    "keepYours": "Keep yours",
+    "useTheirs": "Use theirs",
+    "theyChanged": "{name} changed this a moment ago.",
+    "theyChangedSomeone": "A teammate changed this a moment ago.",
+    "win": {
+      "title": "Mark {lead} as won?",
+      "body": "The final value and how it ships.",
+      "value": "Final value (excl. VAT)",
+      "valueRequired": "Enter the final value, above €0.",
+      "ships": "How it ships",
+      "shipsRequired": "Choose how it ships.",
+      "submit": "Mark as won",
+      "cancel": "Cancel",
+      "saving": "Saving…"
+    },
+    "lose": {
+      "title": "Why was {lead} lost?",
+      "reasons": "Reason",
+      "note": "Note",
+      "noteOptional": "Note (optional)",
+      "noteRequired": "Other needs a note.",
+      "noteCount": "{count}/500",
+      "submit": "Mark as lost",
+      "cancel": "Cancel",
+      "saving": "Saving…"
+    },
+    "reopen": {
+      "title": "Reopen this deal",
+      "body": "It goes back to an open stage.",
+      "stage": "Reopen in",
+      "submit": "Reopen",
+      "wonConfirm": "Reopen this won deal? It leaves this month’s won total.",
+      "cancel": "Cancel"
+    },
+    "delete": {
+      "title": "Delete this deal?",
+      "body": "This can’t be undone. Its stage history goes with it; the lead, its entries and tasks stay.",
+      "confirm": "Delete deal",
+      "cancel": "Cancel"
+    },
+    "open": {
+      "title": "New deal",
+      "body": "Open a deal at Lead. Only the lead is needed; the rest can come later.",
+      "lead": "Lead",
+      "leadPlaceholder": "Search leads by name",
+      "noLeads": "No leads match.",
+      "searching": "Searching…",
+      "searchFailed": "Couldn’t search leads",
+      "submit": "Open deal",
+      "existing": "This lead already has an open deal: {title} in {stage}.",
+      "openIt": "Open it",
+      "openAnother": "Open another",
+      "cancel": "Cancel",
+      "leadFirst": "Pick a lead first.",
+      "change": "Change",
+      "ownerMe": "Me"
+    },
+    "toast": {
+      "moved": "Moved to {stage}",
+      "won": "Won · {value}",
+      "wonCustomer": "Won · {value} · {lead} is now a customer",
+      "lost": "Lost · {reason}",
+      "opened": "Deal opened in {stage}",
+      "reopened": "Reopened in {stage}",
+      "deleted": "Deal deleted",
+      "updated": "Saved",
+      "kept": "The deal was kept: it changed since"
+    }
+  },
+  "LostReasons": {
+    "price": "Price",
+    "timing": "Timing",
+    "no_stock": "No stock",
+    "competitor": "Went with a competitor",
+    "no_response": "No response",
+    "shipping": "Shipping (cost or time)",
+    "mistake": "Opened by mistake",
+    "other": "Other"
+  },
+  "Fulfilment": {
+    "undecided": "Not decided",
+    "from_stock": {
+      "title": "Warehouse inventory",
+      "body": "Sold from our warehouse in France"
+    },
+    "direct_from_source": {
+      "title": "Supplier Stock",
+      "body": "Shipped from Pakistan straight to the client’s country"
+    }
+  },
+  "Queue": {
+    "title": "Work queue",
+    "intro": "One lead at a time, best first: follow-ups due, then Negotiation, Warm, retries and first calls. Only leads in their calling hours (Monday to Friday, 09:00 to 18:00 their time).",
+    "back": "Leads",
+    "scopeLabel": "Whose leads",
+    "scope": {
+      "mine": "Mine",
+      "mineUnassigned": "Mine + unassigned",
+      "team": "Team"
+    },
+    "countsLabel": "Right now",
+    "callableNow": "{count, plural, one {<n>#</n> to call now} other {<n>#</n> to call now}}",
+    "followUpsDue": "{count, plural, one {<n>#</n> follow-up due} other {<n>#</n> follow-ups due}}",
+    "laterToday": "{count, plural, one {<n>#</n> more later today} other {<n>#</n> more later today}}",
+    "noNumber": "{count, plural, one {<n>#</n> lead with no number} other {<n>#</n> leads with no number}}",
+    "claimedByOthers": "{count, plural, one {<n>#</n> being called by a teammate} other {<n>#</n> being called by teammates}}",
+    "summaryError": "Couldn’t load the counts.",
+    "skipLunch": "Skip lunch (12:00–14:00) for European leads",
+    "showOutside": "Show leads outside calling hours",
+    "start": "Start",
+    "starting": "Starting…",
+    "stop": "Done for now",
+    "regionLabel": "Lead to call: {name}",
+    "reason": {
+      "follow_up": "Follow-up due",
+      "followUpAt": "Follow-up due {time}",
+      "negotiation": "Negotiation",
+      "warm": "Warm lead",
+      "retry": "Retry",
+      "retryNth": "Retry · {count, selectordinal, one {#st} two {#nd} few {#rd} other {#th}} try",
+      "returning": "Back from Cool off",
+      "first_call": "First call"
+    },
+    "theirTime": "{time} their time",
+    "openUntil": "open until {time}",
+    "outsideCard": "Outside calling hours · {time} their time",
+    "spanTime": "{from}–{to} their time",
+    "noCountry": "Local time unknown",
+    "call": "Call",
+    "callNumber": "Call {number}",
+    "wrongMark": "Marked wrong",
+    "noPhoneMain": "No main number",
+    "contacts": "Contacts",
+    "lastNotes": "Last notes",
+    "noNotes": "No notes yet.",
+    "myTasks": "My open tasks",
+    "owner": "Owner: {name}",
+    "unassigned": "Unassigned",
+    "readOnly": "Only {owner} or an admin can change this lead. Your call is still logged.",
+    "dealOpen": "Deal open: {stage} · {value}",
+    "dealOpenNoValue": "Deal open: {stage}",
+    "script": {
+      "title": "Call script",
+      "inEnglish": "Show in English",
+      "inFrench": "Show in French",
+      "en": "Hello, this is {me} from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?",
+      "enNoName": "Hello, I’m calling from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "frNoName": "Bonjour, je vous appelle de la part de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?"
+    },
+    "next": "Next: {name}",
+    "nextPlace": "Next: {name} ({place})",
+    "nextLoading": "Finding the next lead…",
+    "padTitle": "How did it go?",
+    "note": "Note",
+    "notePlaceholder": "Quick note about the call…",
+    "noteSheet": "Note about the call",
+    "noteDone": "Done",
+    "skip": "Skip",
+    "keysHint": "1–7 and 0 log an outcome · S skip · N note · C call · U undo",
+    "stats": "This session: {calls, plural, one {# call} other {# calls}} · {talks, plural, one {# talk} other {# talks}}",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "confirmKeys": "↩ confirms · Esc cancels",
+    "needTime": "A meeting needs a date and a time.",
+    "dncChanged": "{name} was marked Do not contact meanwhile. Only 7 and Skip work on this card.",
+    "lostClaim": "A teammate is on that one now. Here’s the next.",
+    "lostClaimNamed": "{name} is on that one now. Here’s the next.",
+    "released": {
+      "title": "Your leads went back to the team",
+      "body": "No key or click here for 10 minutes (or the queue was opened in another tab), so the leads on your screen were let go for your teammates.",
+      "logCall": "Log your call to {lead}"
+    },
+    "notSaved": "{count, plural, one {# outcome not saved} other {# outcomes not saved}}",
+    "retry": "Retry",
+    "retrying": "Saving…",
+    "live": "Logged {outcome} for {lead}. Next: {next}.",
+    "liveEnd": "Logged {outcome} for {lead}.",
+    "liveSkip": "Skipped {lead}. Next: {next}.",
+    "empty": {
+      "allDoneTitle": "Everyone due has been called.",
+      "noNumber": "{count, plural, one {# lead has no number.} other {# leads have no number.}}",
+      "laterToday": "{count, plural, one {# more comes back later today.} other {# more come back later today.}}",
+      "outsideHoursTitle": "Nobody to call right now.",
+      "opensNext": "{place} opens at {time} their time ({relative}).",
+      "opensNextDay": "{place} opens {day} at {time} their time ({relative}).",
+      "noneMineTitle": "No leads are assigned to you.",
+      "noneMineBody": "Ask an admin to give you leads, or work the unassigned ones.",
+      "workUnassigned": "Work unassigned leads",
+      "backToStart": "Back to the start"
+    },
+    "error": "Couldn’t load the next lead.",
+    "loading": "Loading the next lead…"
+  },
+  "Tasks": {
+    "title": "Tasks",
+    "tabsLabel": "Task lists",
+    "tabs": {
+      "today": "Today",
+      "overdue": "Overdue",
+      "upcoming": "Upcoming",
+      "done": "Done"
+    },
+    "scopeLabel": "Whose tasks",
+    "scope": {
+      "mine": "Mine",
+      "team": "Team"
+    },
+    "quickAdd": {
+      "label": "New task",
+      "placeholder": "Add a task…",
+      "add": "Add",
+      "adding": "Adding…",
+      "dateLabel": "When",
+      "date": "Date",
+      "time": "Time (optional)",
+      "timeRequired": "Time",
+      "kindLabel": "Kind",
+      "needTitle": "Write the task first.",
+      "needTime": "A meeting needs a date and a time.",
+      "added": "Task added: {title}."
+    },
+    "chips": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "nextWeek": "Next week",
+      "pick": "Pick a date",
+      "none": "No date"
+    },
+    "kinds": {
+      "todo": "To-do",
+      "call": "Call",
+      "meeting": "Meeting"
+    },
+    "linkLead": "Link a lead",
+    "leadSearch": "Search leads",
+    "leadSearchPlaceholder": "Lead name…",
+    "noLeadMatch": "No lead matches.",
+    "leadSearchError": "Couldn’t search the leads.",
+    "unlinkLead": "Remove the link to {name}",
+    "overdue": "Overdue",
+    "noDate": "No date",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "yesterday": "Yesterday",
+    "theirTime": "{time} their time",
+    "doneAt": "Done {when}",
+    "assignee": "For {name}",
+    "markDone": "Mark “{title}” done",
+    "markOpen": "Mark “{title}” not done",
+    "done": "Done: {title}.",
+    "reopened": "Not done: {title}.",
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed: {title}.",
+    "undo": "Undo",
+    "undone": "Undone.",
+    "edit": "Edit",
+    "editLabel": "Edit task",
+    "editTitle": "Title",
+    "editAssignee": "For",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "saved": "Task saved.",
+    "delete": "Delete",
+    "deleteConfirm": {
+      "title": "Delete this task?",
+      "body": "“{title}” goes for good. To dismiss it instead, press Cancel and pick Dismiss.",
+      "confirm": "Delete task"
+    },
+    "deleted": "Task deleted.",
+    "menu": "More actions for “{title}”",
+    "openLead": "Open {lead}",
+    "empty": {
+      "today": "Nothing due today.",
+      "overdue": "Nothing overdue.",
+      "upcoming": "Nothing planned.",
+      "done": "Nothing done yet."
+    },
+    "error": "Couldn’t load these tasks.",
+    "retry": "Try again",
+    "showMore": "Show more",
+    "loadingMore": "Loading more…",
+    "dncLead": "Asked not to be contacted",
+    "keysHint": "T new task · J/K move · X done · E edit · D dismiss · ⌫ delete · ↩ open the lead",
+    "dueCount": "{count, plural, one {# task due today or overdue} other {# tasks due today or overdue}}",
+    "listLabel": "{tab} tasks"
   },
   "Inventory": {
     "title": "Inventory",

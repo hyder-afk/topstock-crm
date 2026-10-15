@@ -135,12 +135,15 @@ begin
      or private.lead_db_problem('x', null, null, null, null, 'hot') <> 'db_status' then
     raise exception 'FAIL: lead_db_problem';
   end if;
-  -- Only contacts, activities, deals, tasks (Day 4a), holds (Day 6a), sales and stock requests (Day 6d) and client
-  -- links (Day 6e) point at a lead: the "untouched" rule checks exactly these.
+  -- Only contacts, activities, deals, tasks (Day 4a), files (Day 4d), holds (Day 6a), sales and stock requests (Day 6d)
+  -- and client links (Day 6e) point at a lead: the "untouched" rule checks exactly these. Day 4c's queue claims point at
+  -- leads too, and are left out on purpose: a claim is not work; it goes with the lead (on delete cascade). Re-checked
+  -- after Day 4c merged into Day 4d: 4c did not redefine the rule; and after main, 4d, Day 5 and Team merged into Day 6.
   if (select array_agg(conrelid::regclass::text order by conrelid::regclass::text) from pg_constraint
        where contype = 'f' and confrelid = 'public.companies'::regclass)
-     is distinct from array['activities', 'contacts', 'deals', 'private.orders', 'private.share_links',
-                             'private.stock_requests', 'private.stock_reservations', 'tasks'] then
+     is distinct from array['activities', 'contacts', 'deals', 'files', 'private.orders', 'private.queue_claims',
+                             'private.share_links', 'private.stock_requests', 'private.stock_reservations',
+                             'tasks'] then
     raise exception 'FAIL: a new table references leads; update private.lead_import_untouched';
   end if;
 end $$;
@@ -522,10 +525,9 @@ begin
   insert into public.activities (company_id, type, outcome)  -- the author is the caller (Day 4a)
   values ((select id from public.companies where import_batch_id = batch and name = 'Beta'), 'call', 'no_answer');
   perform public.add_contact((select id from public.companies where import_batch_id = batch and name = 'Café Gamma S.A.R.L.'), 'Ana');
-  insert into public.deals (company_id, stage_id, owner_id)
-  select (select id from public.companies where import_batch_id = batch and name = '東京商事'), s.id,
-         '00000000-0000-0000-0000-00000000000a'
-    from public.pipeline_stages s order by s.position limit 1;
+  insert into public.deals (company_id, owner_id)  -- the stage is the server's since Day 5a (a deal opens at Lead)
+  values ((select id from public.companies where import_batch_id = batch and name = '東京商事'),
+          '00000000-0000-0000-0000-00000000000a');
   perform set_config('test.untagged', untagged::text, false);
 end $$;
 

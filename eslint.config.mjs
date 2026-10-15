@@ -39,6 +39,11 @@ const eslintConfig = defineConfig([
       "src/lib/stock-import-server.ts",
       "src/app/(app)/inventory/**",
       "src/app/api/inventory/**",
+      // Day 4d: files (names, paths and signed links never reach a log).
+      "src/lib/files/**",
+      "src/components/files/**",
+      "src/app/api/files/**",
+      "src/app/(app)/files/**",
     ],
     rules: { "no-console": "error" },
   },

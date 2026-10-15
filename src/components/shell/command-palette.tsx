@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { Eye, Hand, History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Receipt, Search, Settings, Share2, Sun, Upload, type LucideIcon } from "lucide-react";
+import { CircleAlert, Eye, Hand, Headset, History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Plus, Receipt, Search, Settings, Share2, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { sections } from "@/lib/nav";
-import { goKeys } from "@/lib/shortcuts";
+import { goKeys, queueGoKey } from "@/lib/shortcuts";
 
 // The command menu (Cmd/Ctrl+K): jump to a section, switch appearance or language, show shortcuts, sign out.
 // Searching leads joins it when leads exist (Day 3).
@@ -80,7 +80,20 @@ export function CommandPalette({
               ))}
             </Group>
 
+            {/* Day 5b (design 7.7): open a deal from anywhere; jump to the stalled deals. */}
+            <Group heading={t("deals")}>
+              <Item value="new deal open deal pipeline affaire" icon={Plus} label={t("newDeal")} onSelect={() => run(() => router.push("/pipeline?new=1"))} />
+              <Item value="stalled deals pipeline bloquées" icon={CircleAlert} label={t("showStalled")} onSelect={() => run(() => router.push("/pipeline?stalled=1"))} />
+            </Group>
+
             <Group heading={t("actions")}>
+              <Item
+                value="start work queue call next"
+                icon={Headset}
+                label={t("startQueue")}
+                keys={["G", queueGoKey.toUpperCase()]}
+                onSelect={() => run(() => router.push("/leads/queue"))}
+              />
               <Item
                 value="stock movements inventory log history mouvements"
                 icon={History}

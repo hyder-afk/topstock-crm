@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertSameOrigin, readJsonCapped } from "@/lib/http";
+import { assertSameOrigin, readJsonBody } from "@/lib/http";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
 import { requestBodySchema } from "@/lib/share/schema";
 import { shareRequest } from "@/lib/share/server";
@@ -12,8 +12,8 @@ const headers = { "Cache-Control": "no-store" };
 const STATUS: Record<string, number> = { received: 200, invalid: 400, closed: 403, inactive: 404, slow_down: 429, too_many_open: 429 };
 
 export async function POST(request: Request) {
-  if (!assertSameOrigin(request)) return NextResponse.json({ status: "forbidden" }, { status: 403, headers });
-  const body = await readJsonCapped(request, 16_384);
+  if (!assertSameOrigin(request.headers)) return NextResponse.json({ status: "forbidden" }, { status: 403, headers });
+  const body = await readJsonBody(request, 16_384);
   if (!body.ok) return NextResponse.json({ status: "invalid" }, { status: body.status, headers });
   const parsed = requestBodySchema.safeParse(body.value);
   if (!parsed.success) return NextResponse.json({ status: "invalid" }, { status: 400, headers });

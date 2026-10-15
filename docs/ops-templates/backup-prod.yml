@@ -1,0 +1,118 @@
+# TEMPLATE for the private repository topstock-ops. Never add it to topstock-crm.
+# Haider pastes this file into topstock-ops as .github/workflows/backup-prod.yml (docs/go-live.md, part G).
+#
+# Every night (and by hand): pg_dump of the production database in custom format, encrypted with age to Haider's
+# backup PUBLIC key, uploaded as a private artifact kept 90 days. The unencrypted dump never touches the disk: pg_dump
+# streams straight into age. Only Haider's offline private key can open it (restore: docs/ops-templates/restore-into-dev.md
+# in topstock-crm).
+#
+# What is in the dump: the schemas public and private (all CRM data), auth (accounts, so a real recovery keeps
+# everyone's sign-in) and supabase_migrations (which migrations were applied). Not in it: files in Supabase Storage
+# (none in Release 1) and Supabase's own managed schemas, which Supabase recreates.
+# Next to the encrypted file the artifact holds row-counts.txt: table names and row counts only (no data), used by
+# the restore test to prove the backup is complete.
+#
+# Secrets (topstock-ops > Settings > Secrets and variables > Actions):
+#   PROD_PROJECT_REF, PROD_DB_PASSWORD, PROD_DB_POOLER_HOST (as in migrate-prod.yml)
+#   AGE_PUBLIC_KEY   Haider's age public key (starts with age1); the private key never leaves his password manager
+# No connection string is ever built or printed: psql and pg_dump read the PG* variables; secrets are masked.
+# A failed run makes GitHub email Haider (scheduled runs notify the person who last changed the schedule line).
+name: backup-prod
+on:
+  schedule:
+    - cron: "23 1 * * *" # every night at 01:23 UTC (03:23 Paris in summer, 02:23 in winter)
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: prod-database
+  cancel-in-progress: false
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # pg_dump must be the same major version as the server or newer (topstock-prod runs Postgres 17;
+      # change 17 below if Supabase upgrades the project). Ubuntu's own client is older, so it comes from the
+      # PostgreSQL project's apt repository.
+      - name: Install the PostgreSQL 17 client tools and age
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17 age
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Dump, encrypt and check
+        id: dump
+        env:
+          PGHOST: ${{ secrets.PROD_DB_POOLER_HOST }}
+          PGPORT: "5432"
+          PGUSER: postgres.${{ secrets.PROD_PROJECT_REF }}
+          PGPASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
+          AGE_PUBLIC_KEY: ${{ secrets.AGE_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          pg_dump --version
+          case "$AGE_PUBLIC_KEY" in
+            age1*) ;;
+            *) echo "::error::AGE_PUBLIC_KEY is missing or is not an age public key (it starts with age1). No backup was made."; exit 1 ;;
+          esac
+
+          # Same query and same psql flags as the restore test, so the two outputs can be compared with diff.
+          COUNTS_SQL="select n.nspname || '.' || c.relname, (xpath('/row/cnt/text()', query_to_xml(format('select count(*) as cnt from %I.%I', n.nspname, c.relname), false, true, '')))[1]::text::bigint from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname in ('public', 'private') and c.relkind in ('r', 'p') order by 1"
+
+          stamp=$(date -u +%Y%m%d-%H%M%SZ)
+          name="topstock-prod-$stamp"
+          dir="$RUNNER_TEMP/$name"
+          mkdir -p "$dir"
+          out="$dir/$name.dump.age"
+
+          psql -X -A -t -F '|' -v ON_ERROR_STOP=1 -c "$COUNTS_SQL" > "$dir/row-counts.txt"
+          # --strict-names: every listed schema must exist, so a missing schema fails the run instead of being skipped.
+          pg_dump --format=custom --strict-names \
+            --schema=public --schema=private --schema=auth --schema=supabase_migrations \
+            | age --encrypt --recipient "$AGE_PUBLIC_KEY" --output "$out"
+          psql -X -A -t -F '|' -v ON_ERROR_STOP=1 -c "$COUNTS_SQL" > "$RUNNER_TEMP/row-counts-after.txt"
+
+          # Fail loudly unless the file is a real, non-trivial age file.
+          size=$(stat -c %s "$out")
+          if [ "$size" -lt 1024 ]; then
+            echo "::error::The encrypted backup is only $size bytes; something went wrong."
+            exit 1
+          fi
+          if [ "$(head -c 21 "$out")" != "age-encryption.org/v1" ]; then
+            echo "::error::The backup file is not age-encrypted. It was not uploaded."
+            rm -f "$out"
+            exit 1
+          fi
+          tables=$(grep -c . "$dir/row-counts.txt" || true)
+          if [ "$tables" -lt 10 ]; then
+            echo "::error::Only $tables tables counted in public and private; the database does not look migrated."
+            exit 1
+          fi
+
+          {
+            echo "## backup-prod $stamp"
+            echo "- Encrypted backup: $name.dump.age, $(numfmt --to=iec --suffix=B "$size")"
+            echo "- Tables counted: $tables (row-counts.txt in the artifact)"
+            if ! cmp -s "$dir/row-counts.txt" "$RUNNER_TEMP/row-counts-after.txt"; then
+              echo "- Note: row counts changed while the backup ran (someone was working). The backup is fine, but use a quiet night's backup for the restore test."
+            fi
+            echo
+            echo "Migrations in this backup:"
+            psql -X -A -t -v ON_ERROR_STOP=1 -c "select version from supabase_migrations.schema_migrations order by 1" | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.dump.outputs.name }}
+          path: ${{ steps.dump.outputs.dir }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0 # already encrypted, so it does not compress

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import enMessages from "../../messages/en.json";
 import frMessages from "../../messages/fr.json";
 import { isShareSurface, shareMessages, withShareTexts } from "@/i18n/share-messages";
-import { assertSameOrigin, readJsonCapped } from "@/lib/http";
+import { assertSameOrigin, readJsonBody } from "@/lib/http";
 import { mapShareItem, mapShareItems, mapShareRequest, mapShareView, snapshotToWire } from "@/lib/share/map";
 import { itemFromWire, requestElapsed, snapshotFromWire } from "@/lib/share/wire";
 import { clientIp, createLimiter } from "@/lib/share/rate-limit";
@@ -252,16 +252,21 @@ test.describe("stock list text", () => {
 });
 
 test.describe("request guards", () => {
+  // The client routes use the one request module (src/lib/http.ts, shared with the work queue's routes since the merge
+  // of main): the same origin check and the same streaming byte cap (tests/unit/http.spec.ts has the full cases).
   const req = (body: BodyInit | null, headers: Record<string, string>) => new Request("http://localhost:3100/api/share/view", { method: "POST", body, headers });
   test("same origin only", () => {
-    expect(assertSameOrigin(req("{}", { origin: "http://localhost:3100", host: "localhost:3100" }))).toBe(true);
-    expect(assertSameOrigin(req("{}", { origin: "https://evil.example", host: "localhost:3100" }))).toBe(false);
-    expect(assertSameOrigin(req("{}", { host: "localhost:3100" }))).toBe(false);
+    expect(assertSameOrigin(req("{}", { origin: "http://localhost:3100", host: "localhost:3100" }).headers)).toBe(true);
+    expect(assertSameOrigin(req("{}", { origin: "https://evil.example", host: "localhost:3100" }).headers)).toBe(false);
+    expect(assertSameOrigin(req("{}", { host: "localhost:3100" }).headers)).toBe(false);
+    expect(assertSameOrigin(req("{}", { origin: "null", host: "localhost:3100" }).headers)).toBe(false);
+    expect(assertSameOrigin(req("{}", { host: "localhost:3100", "sec-fetch-site": "cross-site" }).headers)).toBe(false);
+    expect(assertSameOrigin(req("{}", { origin: "https://evil.example", host: "localhost:3100", "sec-fetch-site": "same-origin" }).headers)).toBe(false);
   });
   test("JSON only, read with a byte cap", async () => {
-    expect(await readJsonCapped(req('{"a":1}', { "content-type": "application/json" }), 100)).toEqual({ ok: true, value: { a: 1 } });
-    expect(await readJsonCapped(req('{"a":1}', { "content-type": "text/plain" }), 100)).toEqual({ ok: false, status: 415 });
-    expect(await readJsonCapped(req(JSON.stringify({ a: "x".repeat(200) }), { "content-type": "application/json" }), 100)).toEqual({ ok: false, status: 413 });
-    expect(await readJsonCapped(req("{nope", { "content-type": "application/json; charset=utf-8" }), 100)).toEqual({ ok: false, status: 400 });
+    expect(await readJsonBody(req('{"a":1}', { "content-type": "application/json" }), 100)).toEqual({ ok: true, value: { a: 1 } });
+    expect(await readJsonBody(req('{"a":1}', { "content-type": "text/plain" }), 100)).toEqual({ ok: false, status: 415 });
+    expect(await readJsonBody(req(JSON.stringify({ a: "x".repeat(200) }), { "content-type": "application/json" }), 100)).toEqual({ ok: false, status: 413 });
+    expect(await readJsonBody(req("{nope", { "content-type": "application/json; charset=utf-8" }), 100)).toEqual({ ok: false, status: 400 });
   });
 });

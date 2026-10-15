@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { sections } from "@/lib/nav";
-import { goKeys } from "@/lib/shortcuts";
+import { goKeys, queueGoKey } from "@/lib/shortcuts";
 import { useModKey } from "@/lib/use-platform";
 
 // "?" shows every shortcut. Rows are a definition list: keys, then what they do.
@@ -20,6 +20,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     { keys: ["/"], label: t("search") },
     { keys: ["?"], label: t("help") },
     ...sections.map((s) => ({ keys: ["G", goKeys[s.id].toUpperCase()], label: t("goTo", { section: nav(s.id) }) })),
+    { keys: ["G", queueGoKey.toUpperCase()], label: t("goQueue") },
   ];
   // Day 4b: the lead page, the leads preview and the call panel.
   const leadRows: { keys: string[]; label: string }[] = [
@@ -28,6 +29,37 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     { keys: ["1–7", "0"], label: t("outcomeKeys") },
     { keys: ["U"], label: t("undoLast") },
     { keys: [mod, "↩"], label: t("saveEntry") },
+  ];
+  // Day 4c: the work queue and the Tasks page.
+  const queueRows: { keys: string[]; label: string }[] = [
+    { keys: ["1–7", "0"], label: t("queueOutcomes") },
+    { keys: ["S"], label: t("queueSkip") },
+    { keys: ["N"], label: t("queueNote") },
+    { keys: ["C"], label: t("queueCall") },
+    { keys: ["U"], label: t("queueUndo") },
+  ];
+  const taskRows: { keys: string[]; label: string }[] = [
+    { keys: ["T"], label: t("tasksNew") },
+    { keys: ["J", "K"], label: t("tasksMove") },
+    { keys: ["X"], label: t("tasksDone") },
+    { keys: ["E"], label: t("tasksEdit") },
+    { keys: ["D"], label: t("tasksDismiss") },
+    { keys: ["⌫"], label: t("tasksDelete") },
+    { keys: ["↩"], label: t("tasksOpen") },
+  ];
+  // Day 5b: the pipeline board and its focused card (design 7.7).
+  const pipelineRows: { keys: string[]; label: string }[] = [
+    { keys: ["N"], label: t("pipeline.newDeal") },
+    { keys: ["U"], label: t("pipeline.undo") },
+    { keys: ["↑", "↓", "←", "→"], label: t("pipeline.walk") },
+    { keys: ["↩"], label: t("pipeline.open") },
+    { keys: ["⇧", "←/→"], label: t("pipeline.step") },
+    { keys: ["1–5"], label: t("pipeline.digit") },
+    { keys: ["Space"], label: t("pipeline.drag") },
+    { keys: ["E"], label: t("pipeline.edit") },
+    { keys: ["O"], label: t("pipeline.openLead") },
+    { keys: ["Del"], label: t("pipeline.delete") },
+    { keys: ["⇧", "F10"], label: t("pipeline.menu") },
   ];
   // Day 6b: Inventory.
   const inventoryRows: { keys: string[]; label: string }[] = [
@@ -71,32 +103,29 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
             </div>
           ))}
         </dl>
-        <h3 className="mt-5 text-sm font-bold text-muted-foreground">{t("leadPage")}</h3>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
-          {leadRows.map((r) => (
-            <div key={r.label} className="contents">
-              <dt className="flex gap-1">
-                {r.keys.map((k) => (
-                  <Kbd key={k}>{k}</Kbd>
-                ))}
-              </dt>
-              <dd>{r.label}</dd>
-            </div>
-          ))}
-        </dl>
-        <h3 className="mt-5 text-sm font-bold text-muted-foreground">{t("inventory")}</h3>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
-          {inventoryRows.map((r) => (
-            <div key={r.label} className="contents">
-              <dt className="flex gap-1">
-                {r.keys.map((k) => (
-                  <Kbd key={k}>{k}</Kbd>
-                ))}
-              </dt>
-              <dd>{r.label}</dd>
-            </div>
-          ))}
-        </dl>
+        {[
+          { title: t("leadPage"), rows: leadRows },
+          { title: t("queue"), rows: queueRows },
+          { title: t("tasks"), rows: taskRows },
+          { title: t("pipeline.title"), rows: pipelineRows },
+          { title: t("inventory"), rows: inventoryRows },
+        ].map((group) => (
+          <div key={group.title}>
+            <h3 className="mt-5 text-sm font-bold text-muted-foreground">{group.title}</h3>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+              {group.rows.map((r) => (
+                <div key={r.label} className="contents">
+                  <dt className="flex gap-1">
+                    {r.keys.map((k) => (
+                      <Kbd key={k}>{k}</Kbd>
+                    ))}
+                  </dt>
+                  <dd>{r.label}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
       </DialogContent>
     </Dialog>
   );

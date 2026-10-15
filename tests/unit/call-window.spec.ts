@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   CALL_WINDOW,
@@ -17,7 +19,8 @@ import {
 // Calling hours on the lead's side (Day 4 design 5.1; Haider 11 Oct: Monday to Friday 09:00 to 18:00 lead time, a lunch
 // switch off by default that skips 12:00 to 14:00 for European zones). Fixed instants around the 2026 clock changes:
 // EU 29 Mar and 25 Oct, US 8 Mar and 1 Nov (the week Paris and New York are 5 hours apart). The cases between the
-// markers are written to be shared with 4c's queue_attack.sql (private.call_zone_open).
+// markers are shared with 4c's supabase/tests/queue_attack.sql, which runs the same list through private.call_zone_open
+// and private.open_call_zones (the test below checks the two lists are the same).
 // call-window:start
 const cases: [key: string, at: string, skipLunch: boolean, open: boolean][] = [
   ["Europe/Paris", "2026-10-12T06:59:00Z", false, false], // Monday 08:59 Paris
@@ -89,6 +92,16 @@ for (const [key, at, lunch, open] of cases) {
     expect(isOpen(key, new Date(at), lunch)).toBe(open);
   });
 }
+
+test("the SQL test holds the same calling-hours cases (queue_attack.sql, call-window markers)", () => {
+  const sql = readFileSync(join(__dirname, "../../supabase/tests/queue_attack.sql"), "utf8");
+  const block = sql.slice(sql.indexOf("-- call-window:start"), sql.indexOf("-- call-window:end"));
+  const sqlCases = [...block.matchAll(/\('([^']+)', '([^']+)', (true|false), (true|false)\)/g)].map(
+    (m) => [m[1], m[2], m[3] === "true", m[4] === "true"],
+  );
+  expect(sqlCases.length).toBeGreaterThanOrEqual(55);
+  expect(sqlCases).toEqual(cases);
+});
 
 test("the window constants", () => {
   expect(CALL_WINDOW).toEqual({ weekdays: [1, 2, 3, 4, 5], start: 540, end: 1080, lunch: [720, 840] });

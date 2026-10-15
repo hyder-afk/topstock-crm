@@ -25,6 +25,20 @@ const namespaces = [
   "Errors",
   "Leads",
   "Shortcuts",
+  "Queue",
+  "Tasks",
+  "Profile",
+  // Day 5b: the pipeline, deals and their words in the lead page, the call panel and the command menu.
+  "Stages",
+  "Pipeline",
+  "Deals",
+  "LostReasons",
+  "Fulfilment",
+  "Palette",
+  "Files",
+  // Day 5c: the Home dashboard.
+  "Home",
+  // Day 6: inventory, the stock sheet import, sales and the client stock link.
   "Inventory",
   "InventorySettings",
   "StockImport",
@@ -112,6 +126,86 @@ test.describe("import and lead page messages", () => {
     expect(tf("Outcomes.taskTitle.rightNumber", { lead: "Maison Verdane" })).toBe("Trouver le bon numéro de Maison Verdane");
     expect(tf("LeadPage.position", { index: "3", total: "1 204" })).toBe("3 sur 1 204");
     expect(tf("Leads.until.title")).toBe("Jusqu’à quand\u202f?");
+  });
+
+  test("queue and tasks counts (Day 4c)", () => {
+    const tf = say(fr, "fr");
+    const te = say(en, "en");
+    expect(te("Queue.notSaved", { count: 1 })).toBe("1 outcome not saved");
+    expect(te("Queue.notSaved", { count: 2 })).toBe("2 outcomes not saved");
+    expect(tf("Queue.notSaved", { count: 1 })).toBe("1 résultat non enregistré");
+    expect(tf("Queue.notSaved", { count: 3 })).toBe("3 résultats non enregistrés");
+    expect(te("Queue.reason.retryNth", { count: 2 })).toBe("Retry · 2nd try");
+    expect(te("Queue.reason.retryNth", { count: 3 })).toBe("Retry · 3rd try");
+    expect(te("Queue.reason.retryNth", { count: 11 })).toBe("Retry · 11th try");
+    expect(tf("Queue.reason.retryNth", { count: 1 })).toBe("Nouvel essai · 1er appel");
+    expect(tf("Queue.reason.retryNth", { count: 3 })).toBe("Nouvel essai · 3e appel");
+    expect(te("Queue.stats", { calls: 1, talks: 0 })).toBe("This session: 1 call · 0 talks");
+    expect(tf("Queue.stats", { calls: 23, talks: 4 })).toBe("Cette session\u202f: 23 appels · 4 échanges");
+    expect(te("Queue.empty.noNumber", { count: 1 })).toBe("1 lead has no number.");
+    expect(tf("Queue.empty.noNumber", { count: 1203 })).toContain("prospects n’ont pas de numéro.");
+    expect(tf("Tasks.deleteConfirm.title")).toBe("Supprimer cette tâche\u202f?");
+    expect(te("LeadPage.workedBy", { name: "Henri", time: "10:24" })).toBe("Henri is on this lead in the queue (until 10:24)");
+    expect(te("Queue.lostClaimNamed", { name: "Henri" })).toBe("Henri is on that one now. Here’s the next.");
+    expect(tf("Queue.lostClaimNamed", { name: "Henri" })).toBe("Henri s’en occupe déjà. Voici le suivant.");
+    expect(tf("Queue.released.body")).toContain("onglet)\u202f: les prospects");
+    expect(tf("Queue.released.logCall", { lead: "Dupont SARL" })).toBe("Noter votre appel à Dupont SARL");
+    expect(te("Queue.script.enNoName", { lead: "Dupont SARL" })).toContain("I’m calling from TopStock Wholesale");
+    expect(tf("Queue.script.frNoName", { lead: "Dupont SARL" })).toContain("pour Dupont SARL\u202f?");
+  });
+
+  test("no stray symbols; the French call script reads the same in the English interface (Day 4c)", () => {
+    // U+237D (a shouldered open box) once stood in for the narrow no-break space in en.json's French script.
+    for (const locale of ["en", "fr"]) {
+      const raw = readFileSync(path.join(__dirname, "..", "..", "messages", `${locale}.json`), "utf8");
+      expect(raw.includes("\u237d"), `${locale}.json has U+237D`).toBe(false);
+    }
+    const scriptsEn = en.Queue as { script: Record<string, string> };
+    const scriptsFr = fr.Queue as { script: Record<string, string> };
+    for (const key of ["fr", "frNoName", "en", "enNoName"]) expect(scriptsEn.script[key]).toBe(scriptsFr.script[key]);
+    for (const key of ["fr", "frNoName"]) {
+      const text = scriptsEn.script[key];
+      expect(/[ \u00a0][:;?!»]/.test(text) || text.includes("'"), `en.json Queue.script.${key}`).toBe(false);
+    }
+  });
+
+  test("key hints break only at the separators (Day 4c)", () => {
+    for (const messages of [en, fr]) {
+      const m = messages as Record<string, Record<string, string>>;
+      for (const text of [m.Queue.keysHint, m.Queue.confirmKeys, m.Tasks.keysHint]) {
+        // Each "key word" part holds no ordinary space; the parts are joined by " · ".
+        for (const part of text.split(" · ")) expect(part.includes(" "), part).toBe(false);
+        expect(text.split(" · ").length).toBeGreaterThan(1);
+      }
+    }
+  });
+
+  test("the Tasks title count says what it counts (Day 4c)", () => {
+    expect(say(en, "en")("Tasks.dueCount", { count: 1 })).toBe("1 task due today or overdue");
+    expect(say(en, "en")("Tasks.dueCount", { count: 5 })).toBe("5 tasks due today or overdue");
+    expect(say(fr, "fr")("Tasks.dueCount", { count: 0 })).toBe("0 tâche pour aujourd’hui ou en retard");
+    expect(say(fr, "fr")("Tasks.dueCount", { count: 2 })).toBe("2 tâches pour aujourd’hui ou en retard");
+  });
+
+  test("the Home Low stock card's counts (Day 6's stock_alerts) at 0, 1 and more", () => {
+    const te = say(en, "en");
+    const tf = say(fr, "fr");
+    expect(te("Home.lowStock.summary", { low: 3, soldOut: 1 })).toBe("3 low · 1 sold out");
+    expect(tf("Home.lowStock.summary", { low: 3, soldOut: 1 })).toBe("3 en stock bas · 1 épuisé");
+    expect(tf("Home.lowStock.summary", { low: 1200, soldOut: 2 })).toBe("1 200 en stock bas · 2 épuisés");
+    expect(tf("Home.lowStock.available", { available: "120", reorder: "200" })).toBe("Disponible : 120 · seuil : 200");
+    // Sentence case mid-line, like the lines around it (the Day 6 status name "In Transit" is a label, not this line).
+    expect(te("Home.lowStock.inTransit", { count: "300" })).toBe("+300 in transit");
+    expect(tf("Home.lowStock.inTransit", { count: "1 200" })).toBe("+1 200 en transit");
+    expect(te("Home.lowStock.arrivingLate", { count: 1 })).toBe("1 arrival past its expected date");
+    expect(te("Home.lowStock.arrivingLate", { count: 2 })).toBe("2 arrivals past their expected date");
+    expect(tf("Home.lowStock.arrivingLate", { count: 1 })).toBe("1 arrivage en retard sur la date prévue");
+    expect(te("Home.lowStock.requestsNew", { count: 1 })).toBe("1 new stock request");
+    expect(tf("Home.lowStock.requestsNew", { count: 4 })).toBe("4 nouvelles demandes de stock");
+    expect(te("Home.lowStock.holdsEndingSoon", { count: 1 })).toBe("1 hold ends within 2 days");
+    expect(te("Home.lowStock.holdsEndingSoon", { count: 3 })).toBe("3 holds end within 2 days");
+    expect(tf("Home.lowStock.holdsEndingSoon", { count: 1 })).toBe("1 réservation se termine sous 2 jours");
+    expect(tf("Home.lowStock.holdsEndingSoon", { count: 2 })).toBe("2 réservations se terminent sous 2 jours");
   });
 
   test("every call outcome, kind of entry and database hint has words in both languages", () => {

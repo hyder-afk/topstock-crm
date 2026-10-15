@@ -32,6 +32,9 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      // Day 4d: opening a file answers with a 60-second Storage link in a redirect; that link must never be sent on as a
+      // referrer (the last matching rule wins over the site-wide value above).
+      { source: "/api/files/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
       // The client stock link (design 8.6): the last matching entry wins, so these replace the Referrer-Policy above.
       ...["/s/:path*", "/s", "/api/share/:path*"].map((source) => ({ source, headers: shareHeaders })),
     ];

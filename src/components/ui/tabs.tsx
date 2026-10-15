@@ -15,6 +15,33 @@ export type TabItem<T extends string> = { id: T; label: React.ReactNode };
 export const tabId = (base: string, id: string) => `${base}-tab-${id}`;
 export const panelId = (base: string, id: string) => `${base}-panel-${id}`;
 
+/**
+ * Scrolls a sideways tab strip (only the strip, never the page) so the tab is whole on screen. The strip snaps each tab
+ * to its start (`snap-mandatory`), so any other scroll position is snapped again by the browser and can leave the tab
+ * cut: the strip goes to the first tab start from which this tab shows whole, measured in fractional pixels.
+ */
+function revealTab(el: HTMLElement) {
+  const strip = el.parentElement;
+  if (!strip || strip.scrollWidth <= strip.clientWidth) return;
+  const box = strip.getBoundingClientRect();
+  const at = (b: Element) => b.getBoundingClientRect().left - box.left - strip.clientLeft + strip.scrollLeft;
+  const left = at(el);
+  const right = left + el.getBoundingClientRect().width;
+  const view = strip.clientWidth;
+  if (left >= strip.scrollLeft - 0.5 && right <= strip.scrollLeft + view + 0.5) return;
+  let target = left;
+  if (left > strip.scrollLeft) {
+    for (const b of Array.from(strip.children)) {
+      const start = at(b);
+      if (start + view >= right) {
+        target = Math.min(start, left);
+        break;
+      }
+    }
+  }
+  strip.scrollLeft = target;
+}
+
 export function TabList<T extends string>({
   items,
   value,
@@ -44,6 +71,13 @@ export function TabList<T extends string>({
     return () => cancelAnimationFrame(frame);
   }, [pill, value]);
 
+  // The selected tab is always in view in a strip that scrolls sideways (phones): on load (a deep link to ?tab=files)
+  // and after a change made elsewhere (Details opened from the header). Read after paint, in an effect.
+  useEffect(() => {
+    const el = refs.current.get(value);
+    if (el) revealTab(el);
+  }, [value]);
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const index = items.findIndex((i) => i.id === value);
     const next =
@@ -56,8 +90,9 @@ export function TabList<T extends string>({
     event.preventDefault();
     onChange(next.id);
     const el = refs.current.get(next.id);
-    el?.focus();
-    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    revealTab(el);
   };
 
   return (

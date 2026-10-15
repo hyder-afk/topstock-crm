@@ -127,8 +127,9 @@ file_size_limit = "50MiB"
 # objects_path = "./images"
 
 # Allow connections via S3 compatible clients
+# TopStock (Day 4d, design 3.4): off. S3 access keys bypass row level security, so the files rules could be skipped.
 [storage.s3_protocol]
-enabled = true
+enabled = false
 
 # Image transformation API is available to Supabase Pro plan.
 # [storage.image_transformation]

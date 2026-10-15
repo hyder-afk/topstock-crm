@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { callZone, isOpen } from "../../src/lib/timezones";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
 function base32Decode(input: string) {
@@ -204,10 +205,14 @@ export function setRole(email: string, role: "admin" | "manager" | "rep") {
 }
 
 // Replaces every lead with `count` made-up companies (names from fixed word lists, @example.com emails, +33 6 00
-// numbers), owned in turn by the given test users, with a contact on every third one.
+// numbers), owned in turn by the given test users, with a contact on every third one. File rows and deals go first: since
+// Day 4d a lead with files cannot be deleted (their stored bytes, if any, are left to the throwaway stack), and a deal
+// keeps its lead (deals_company_id_fkey has no cascade), so earlier specs' made-up files and deals would block the reset.
 export function seedLeads(ownerEmails: string[], count = 120) {
   const owners = ownerEmails.map(emailLiteral).join(", ");
   sql(`
+    delete from public.files;
+    delete from public.deals;
     delete from public.companies;
     with o as (select array_agg(p.id order by u.email) as ids, min(p.org_id::text)::uuid as org
                from public.profiles p join auth.users u on u.id = p.id where u.email in (${owners})),
@@ -263,4 +268,52 @@ export async function ageStepUp(context: BrowserContext, seconds: number) {
   const { domain, path, expires, httpOnly, secure, sameSite } = cookies[0];
   await context.clearCookies({ name: new RegExp(`^${key}(\\.\\d+)?$`) });
   await context.addCookies(chunks.map((c) => ({ ...c, domain, path, expires, httpOnly, secure, sameSite })));
+}
+
+// Day 4c: calling hours depend on the real clock (the database's now()), so queue fixtures pick their country at run
+// time: a single-zone country whose calling hours are open now and for the next `minutes` (or closed, for the
+// outside-hours case). Null when none qualifies (weekends: every zone closed from Saturday about 04:00 UTC to Sunday
+// about 19:00 UTC); the tests then use "Show leads outside calling hours".
+const QUEUE_COUNTRIES = ["FR", "GB", "DE", "PT", "GR", "AE", "PK", "IN", "TH", "JP", "NZ", "IS", "AR", "CO", "CR", "JM", "SN", "MA", "EG", "SA"];
+export function countryInHours(open: boolean, minutes = 20, now = new Date()): string | null {
+  for (const country of QUEUE_COUNTRIES) {
+    const key = callZone(null, country);
+    if (open ? isOpen(key, now) && isOpen(key, new Date(now.getTime() + minutes * 60_000)) : !isOpen(key, now) && !isOpen(key, new Date(now.getTime() + minutes * 60_000))) {
+      return country;
+    }
+  }
+  return null;
+}
+
+/** A fresh browser page for a signed-in person, with console and page errors collected (WebKit's cancelled prefetches
+ * aside, as in lead-page.spec.ts), and tel:/mailto:/wa.me navigations stopped (no handler in a test browser). */
+export async function signedInPage(
+  browser: import("@playwright/test").Browser,
+  state: Awaited<ReturnType<BrowserContext["storageState"]>>,
+  o: { width?: number; timezoneId?: string; locale?: string; baseURL?: string } = {},
+) {
+  const width = o.width ?? 1440;
+  const context = await browser.newContext({
+    storageState: state,
+    viewport: { width, height: width < 600 ? 844 : 900 },
+    timezoneId: o.timezoneId ?? "Europe/Paris",
+    hasTouch: width < 600,
+  });
+  if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: o.baseURL ?? "http://localhost:3100" }]);
+  await context.addInitScript(() => {
+    document.addEventListener(
+      "click",
+      (e) => {
+        const a = (e.target as Element | null)?.closest?.("a[href^='tel:'],a[href^='mailto:'],a[href^='https://wa.me/']");
+        if (a) e.preventDefault();
+      },
+      true,
+    );
+  });
+  const page = await context.newPage();
+  trackRequests(page);
+  const errors: string[] = [];
+  page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(m.text()));
+  page.on("pageerror", (e) => !isCancelledPrefetch(e.message) && errors.push(e.message));
+  return { context, page, errors };
 }

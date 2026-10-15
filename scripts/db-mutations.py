@@ -5,18 +5,31 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day6a|day6c|day6d|day6e|all] [numbers...]  (about 40 s per mutation,
-70 s once the Day 6a stock tests run; default: all
-sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count line per set; exits 1
-when a row does not behave as listed. A protection with two layers is also removed together with its second layer (one
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|all]
+[numbers...]  (about 60 s per mutation, 90 s once the Day 6 stock tests run; default: all sets, numbers apply within one
+set). Writes one Markdown table per set to stdout, then a count line per set; exits 1 when a row does not behave as
+listed. --anchors [--set ...] only checks that every edit applies (its text is found exactly once where it is aimed) and
+lands in the live definition of its function (no later migration redefines it without the same edit), without running
+anything. A protection with two layers is also removed together with its second layer (one
 mutation each way). A row marked SURVIVES is such a layer that no test can see on its own, because the other layer stops
 the same thing: it must stay NOT CAUGHT, and the row removing both layers must be caught.
 An edit is (old, new) on the set's own migration, or (path, old, new) on another one. A mutation edits the definition
 that is live after every migration: Day 4a redefines the import "untouched" rule (so Day 3b's mutations of it edit the
 Day 4a migration), and Day 4b redefines the audit trigger, the activity and task delete policies and the insert lock
-(so the Day 3b and Day 4a mutations of those edit the Day 4b migration). Day 6a and Day 6c redefine more of them (the
-"untouched" rule; the batch guard; the stock guard, apply step and nightly job): an edit whose text sits in such a later
-redefinition is made there too, automatically (REDEFINERS, mirrored_edits).
+(so the Day 3b and Day 4a mutations of those edit the Day 4b migration). Day 4c redefines the audit trigger, get_lead
+and log_activity again: the earlier rows that edit those are moved to the Day 4c migration (REDEFINED_IN_4C below).
+Day 4d redefines the "untouched" rule again (so the Day 3b and Day 4a mutations of it edit the Day 4d migration);
+Day 4c leaves that rule alone, and Day 4d redefines nothing Day 4c changed.
+Day 5a redefines the audit trigger and the task guard (so every earlier mutation of those, Day 4c's included, edits the
+Day 5a copy: a Region names the function inside the file, because the Day 5a migration holds the same text in other
+functions too). Day 5b recreates log_activity and get_lead (from Day 4c), undo_activity (Day 4b), the work queue's card
+private.queue_card (Day 4c) and the activities insert policy (Day 4a), so every earlier mutation aimed inside those now
+edits the Day 5b copy. Day 4d redefines none of those, so no Day 4d row moves. Day 5c (the Home figures) only adds
+functions, so no earlier row moves.
+Day 6a, 6c, 6d and 6e redefine more of them (the "untouched" rule, rebased on Day 4d's; the batch guard; the task
+guard, rebased on Day 5a's; the stock guard, apply step and nightly job; the request and settings guards): an edit whose
+text sits in such a later redefinition is made there too, automatically (REDEFINERS, mirrored_edits), so it reaches the
+live definition.
 """
 import pathlib
 import subprocess
@@ -27,16 +40,85 @@ MIG_3A = ROOT / "supabase/migrations/20261010090000_leads_are_companies.sql"
 MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
+MIG_4C = ROOT / "supabase/migrations/20261013090000_tasks_queue.sql"
+MIG_4D = ROOT / "supabase/migrations/20261014090000_lead_files.sql"
+MIG_5A = ROOT / "supabase/migrations/20261015090000_deals_pipeline.sql"
+MIG_5B = ROOT / "supabase/migrations/20261015120000_deal_links.sql"
+MIG_5C = ROOT / "supabase/migrations/20261015150000_home_dashboard.sql"
+MIG_TEAM = ROOT / "supabase/migrations/20261015200000_role_change_lock.sql"
 MIG_6A = ROOT / "supabase/migrations/20261016090000_stock_engine.sql"
 MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
 MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
 MIG_6E = ROOT / "supabase/migrations/20261020090000_client_share.sql"
 # Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
-# "untouched" rule; Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
-# Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 4a); Day 6e the
+# "untouched" rule (Day 4d's); Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
+# Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 5a's); Day 6e the
 # request guards (6d), the settings guard (6a), the settings read (6b) and the untouched rule again.
 # An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
 REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E]
+
+
+class Region:
+    """One function inside a migration: an edit aimed here applies only between `start` and the first `end` after it."""
+
+    def __init__(self, path: pathlib.Path, start: str, end: str = "\n$$;\n"):
+        self.path, self.start, self.end = path, start, end
+        self.name = f"{path.name} ({start.strip()[:60]})"
+
+    def bounds(self, text: str):
+        s = text.find(self.start)
+        if s < 0 or text.count(self.start) != 1:
+            return None
+        e = text.find(self.end, s + len(self.start))
+        return None if e < 0 else (s, e)
+
+
+TASK_GUARD_5A = Region(MIG_5A, "create or replace function private.task_guard()")
+AUDIT_ROW_5A = Region(MIG_5A, "create or replace function private.audit_row()")
+DEAL_GUARD = Region(MIG_5A, "create function private.deal_guard()")
+DEAL_HISTORY = Region(MIG_5A, "create function private.deal_history()")
+OPEN_FLOOD = Region(MIG_5A, "create function private.deal_open_flood()")
+MOVE_FLOOD = Region(MIG_5A, "create function private.deal_move_flood()")
+CANDIDATE = Region(MIG_5A, "create function private.deal_undo_candidate(")
+MOVE_DEAL = Region(MIG_5A, "create function public.move_deal(")
+OPEN_DEAL = Region(MIG_5A, "create function public.open_deal(")
+DELETE_DEAL = Region(MIG_5A, "create function public.delete_deal(")
+UPDATE_DEAL = Region(MIG_5A, "create function public.update_deal(")
+BOARD = Region(MIG_5A, "create function public.pipeline_board(")
+LIST_STAGE = Region(MIG_5A, "create function public.list_stage_deals(")
+CARDS = Region(MIG_5A, "create function private.deal_cards(")
+ORG_RECENT_PAGE = Region(MIG_5A, "  elsif not p_oldest then\n", "\n  else\n")
+LOG_ACTIVITY_5B = Region(MIG_5B, "create function public.log_activity(")
+UNDO_ACTIVITY_5B = Region(MIG_5B, "create or replace function public.undo_activity(")
+GET_LEAD_5B = Region(MIG_5B, "create or replace function public.get_lead(")
+QUEUE_CARD_5B = Region(MIG_5B, "create or replace function private.queue_card(")
+INSERT_POLICY_5B = Region(MIG_5B, "create policy activities_insert on public.activities for insert to authenticated with check (", ";\n")
+# The Day 4 originals of what Day 5b recreates (an earlier mutation aimed inside one of these is moved to the 5b copy).
+RELIVE_5B = [
+    (Region(MIG_4B, "create function public.log_activity("), LOG_ACTIVITY_5B),
+    (Region(MIG_4B, "create function public.undo_activity("), UNDO_ACTIVITY_5B),
+    (Region(MIG_4B, "create or replace function public.get_lead("), GET_LEAD_5B),
+    (Region(MIG_4A, "create policy activities_insert on public.activities for insert to authenticated with check (", ";\n"),
+     INSERT_POLICY_5B),
+    # Day 4c's copies (on main since the 4c rebase): Day 5b re-copied them, so a row aimed at them moves to the 5b copy.
+    (Region(MIG_4C, "create or replace function public.log_activity("), LOG_ACTIVITY_5B),
+    (Region(MIG_4C, "create or replace function public.get_lead("), GET_LEAD_5B),
+    (Region(MIG_4C, "create function private.queue_card("), QUEUE_CARD_5B),
+]
+# Day 5c: the Home figures. Mine and Team are separate statements, so a Region names the branch a row aims at.
+HOME_WINDOW = Region(MIG_5C, "create function private.home_window(")
+OPEN_DEALS_ORG = Region(MIG_5C, "  else\n    return query\n      select d.id, s.key", "\n  end if;\n")
+SUMMARY = Region(MIG_5C, "create function public.home_summary(")
+SUMMARY_TEAM_CLOSED = Region(MIG_5C, "  -- K2, K3 and the Lost line: closed deals in scope.\n  if v_team then\n", "\n  else\n")
+SUMMARY_MINE_CLOSED = Region(MIG_5C, "     where d.status <> 'open' and d.owner_id = v_me and d.status = 'won' and d.closed_at >= w.month_start;",
+                             "\n  end if;\n")
+ATTENTION = Region(MIG_5C, "create function public.home_attention(")
+RECENT = Region(MIG_5C, "create function public.home_recent_activity(")
+RECENT_TEAM = Region(MIG_5C, "  if p_scope = 'team' then\n    return query\n      select f.item_id", "\n  else\n")
+RECENT_MINE = Region(MIG_5C, "  else\n    return query\n      select f.item_id", "\n  end if;\n")
+SCOPE_5C = ("  if p_scope = 'team' and not (select private.is_manager_or_admin()) then\n"
+            "    raise exception 'only managers and admins see the team''s figures' using errcode = '42501', hint = 'scope';\n"
+            "  end if;\n")
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
@@ -89,13 +171,13 @@ MUTATIONS_3B = [
      [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx"),
       (MIG_6C, "create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
     ("Undo: leads with an activity count as untouched",
-     [(MIG_4A, "     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
     ("Undo: leads with a contact count as untouched",
-     [(MIG_4A, "     and not exists (select 1 from public.contacts k where k.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.contacts k where k.company_id = c.id)\n", "")]),
     ("Undo: leads with a deal count as untouched",
-     [(MIG_4A, "     and not exists (select 1 from public.deals d where d.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.deals d where d.company_id = c.id)\n", "")]),
     ("Undo: edited leads count as untouched",
-     [(MIG_4A, "c.import_batch_id = p_batch and c.updated_at = c.created_at", "c.import_batch_id = p_batch")]),
+     [(MIG_4D, "c.import_batch_id = p_batch and c.updated_at = c.created_at", "c.import_batch_id = p_batch")]),
     ("Undo: no second look before deleting (race with a new contact)",
      [("   where c.id = any (v_ids) and c.id in (select private.lead_import_untouched(p_batch, p_max_rows));",
        "   where c.id = any (v_ids);")]),
@@ -177,7 +259,7 @@ MUTATIONS_4A = [
      [(MIG_4B, "    diff := jsonb_build_object('old', (rec - 'body') || jsonb_build_object('body_len', char_length(rec ->> 'body')));\n",
        "    diff := jsonb_build_object('old', rec);\n")]),
     ("Import undo: leads with a task count as untouched",
-     [("     and not exists (select 1 from public.tasks t where t.company_id = c.id)\n", "")]),
+     [(MIG_4D, "     and not exists (select 1 from public.tasks t where t.company_id = c.id)\n", "")]),
     ("Task guard: keeps the client's done_at",
      [("      new.done_at := now();\n      new.completed_by := caller;\n", "      new.completed_by := caller;\n")]),
     ("Task guard: the source entry need not be the caller's",
@@ -698,6 +780,906 @@ MUTATIONS_4B = [
 ]
 
 
+# Day 4d (design 8.3, rows 1 to 10; row 11 "skip the sniff on open" is app code: docs/evidence/day4d/mutations.md).
+INS_POLICY = ("execute $p$create policy lead_files_insert on storage.objects for insert to authenticated with check (\n"
+              "    bucket_id = 'lead-files' and (select private.has_aal2())\n"
+              "    and (storage.foldername(name))[1] = (select private.current_org_id())::text\n")
+SEL_POLICY = ("execute $p$create policy lead_files_select on storage.objects for select to authenticated using (\n"
+              "    bucket_id = 'lead-files' and (select private.has_aal2())\n")
+MUTATIONS_4D = [
+    ("Storage insert policy: no organisation folder check",
+     [(INS_POLICY, INS_POLICY.replace("    and (storage.foldername(name))[1] = (select private.current_org_id())::text\n", ""))]),
+    ("Storage insert policy: the file row need not be pending",
+     [("and f.status = 'pending'\n                and f.uploaded_by = (select auth.uid())", "\n                and f.uploaded_by = (select auth.uid())")]),
+    ("Storage: an update policy (overwrite, move)",
+     [("  execute $p$create policy lead_files_delete on storage.objects",
+       "  execute $p$create policy lead_files_update on storage.objects for update to authenticated using (bucket_id = 'lead-files') with check (bucket_id = 'lead-files')$p$;\n  execute $p$create policy lead_files_delete on storage.objects")]),
+    ("Update guard: ready -> deleting without a fresh code",
+     [("  elsif old.status = 'ready' and new.status = 'deleting' then\n    if not (select private.has_recent_aal2(600)) then\n      raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n    end if;\n",
+       "  elsif old.status = 'ready' and new.status = 'deleting' then\n    null;\n")]),
+    ("Update guard: finish without the size and type match",
+     [("\n       and private.object_size(o.metadata) = old.size\n       and private.object_mime(o.metadata) = old.mime;", ";")]),
+    ("Insert guard: the space counts declared sizes, not stored bytes",
+     [("  if private.org_storage_bytes(new.org_id) + v_reserved + new.size > private.file_quota_bytes() then",
+       "  if (select coalesce(sum(f.size), 0) from public.files f where f.org_id = new.org_id) + new.size > private.file_quota_bytes() then")]),
+    ("Insert guard: no advisory lock (two uploads take the last space)",
+     [("  perform pg_advisory_xact_lock(hashtextextended('files:' || new.org_id::text, 0));\n", "")]),
+    ("Files foreign key to the lead: cascade (bytes orphaned when a lead goes)",
+     [("references public.companies (id) on delete restrict,", "references public.companies (id) on delete cascade,")]),
+    ("storage_path written by the client (grant, and the guard keeps it)",
+     [("grant insert (company_id, name, mime, size), update (status), delete on public.files to authenticated;",
+       "grant insert (company_id, name, mime, size, storage_path), update (status), delete on public.files to authenticated;"),
+      ("  new.storage_path := new.org_id::text || '/' || new.company_id::text || '/' || new.id::text || '.' || v_ext;\n  if not",
+       "  new.storage_path := coalesce(new.storage_path, new.org_id::text || '/' || new.company_id::text || '/' || new.id::text || '.' || v_ext);\n  if not")]),
+    ("Bucket public",
+     [("  values ('lead-files', 'lead-files', false, 10485760,", "  values ('lead-files', 'lead-files', true, 10485760,"),
+      ("  on conflict (id) do update set public = false,", "  on conflict (id) do update set public = true,")]),
+    # Further protections of this migration, each removed on its own.
+    ("Insert guard: no limit on uploads waiting",
+     [("       where f.uploaded_by = caller and f.status = 'pending' and f.created_at > now() - interval '15 minutes') >= 5 then",
+       "       where f.uploaded_by = caller and f.status = 'pending' and f.created_at > now() - interval '15 minutes') >= 500 then")]),
+    ("Insert guard: no hourly upload limit",
+     [("         and l.table_name = 'files' and l.action = 'insert' and l.actor_id = caller) >= 30 then",
+       "         and l.table_name = 'files' and l.action = 'insert' and l.actor_id = caller) >= 3000 then")]),
+    ("Insert guard: hourly limit counts the rows still there (deleting resets it)",
+     [("  if (select count(*) from public.audit_log l\n       where l.org_id = new.org_id and l.created_at > now() - interval '1 hour'\n         and l.table_name = 'files' and l.action = 'insert' and l.actor_id = caller) >= 30 then",
+       "  if (select count(*) from public.files l\n       where l.created_at > now() - interval '1 hour' and l.uploaded_by = caller) >= 30 then")]),
+    ("Insert guard: waiting uploads' declared sizes not reserved",
+     [("  if private.org_storage_bytes(new.org_id) + v_reserved + new.size > private.file_quota_bytes() then",
+       "  if private.org_storage_bytes(new.org_id) + new.size > private.file_quota_bytes() then")]),
+    ("Insert guard: the client's status kept",
+     [("  new.id := gen_random_uuid();\n  new.status := 'pending';\n", "  new.id := gen_random_uuid();\n")]),
+    ("Insert guard: the client's uploader kept",
+     [("  new.uploaded_by := caller;\n", "")]),
+    ("Insert guard: no constant pre-check on the name (the CHECK puts it in the log)",
+     [("  if not private.file_name_ok(new.name) then\n    raise exception 'this file name cannot be stored' using errcode = '22023', hint = 'file_name';\n  end if;\n  if new.company_id is null",
+       "  if new.company_id is null")]),
+    ("Update guard: other columns may change with the status",
+     [("  if (to_jsonb(new) - keep) is distinct from (to_jsonb(old) - keep) then\n    raise exception 'only the status of a file changes' using errcode = '42501';\n  end if;\n", "")]),
+    ("Update guard: a file may move back",
+     [("  else\n    raise exception 'a file cannot move back' using errcode = '22023', hint = 'state';\n  end if;\n  return new;", "  end if;\n  return new;")]),
+    ("Delete guard: the row goes while its bytes are still stored",
+     [("  if old.status <> 'deleting'\n     or exists (select 1 from storage.objects o where o.bucket_id = 'lead-files' and o.name = old.storage_path) then",
+       "  if old.status <> 'deleting' then")]),
+    ("Who sees a file: the lead's owner sees uploads still pending",
+     [("    or (status in ('ready', 'deleting') and ((select private.is_manager_or_admin())", "    or (status in ('pending', 'ready', 'deleting') and ((select private.is_manager_or_admin())")]),
+    ("Storage delete policy: the file row need not be deleting",
+     [("objects.name and f.status = 'deleting'))$p$;", "objects.name))$p$;")]),
+    ("Storage select policy: no file row needed (any object of the org)",
+     [("    and exists (select 1 from public.files f where f.storage_path = objects.name))$p$;", ")$p$;")]),
+    ("Storage insert policy: no two-factor check",
+     [(INS_POLICY, INS_POLICY.replace("bucket_id = 'lead-files' and (select private.has_aal2())\n", "bucket_id = 'lead-files'\n"))]),
+    ("Storage insert policy: bytes accepted after 15 minutes",
+     [("                and f.uploaded_by = (select auth.uid()) and f.created_at > now() - interval '15 minutes'))$p$;",
+       "                and f.uploaded_by = (select auth.uid())))$p$;")]),
+    ("take_stale_uploads: stale uploads not handed back",
+     [("                       and s.created_at <= now() - interval '15 minutes'", "                       and false")]),
+    ("audit_file_access: any organisation",
+     [("   where f.id = p_file and f.org_id = v_org and f.status = 'ready';", "   where f.id = p_file and f.status = 'ready';")]),
+    ("Import undo: a lead with a file counts as untouched",
+     [("     and not private.lead_has_files(c.id)\n", "")]),
+    ("begin_file_delete: no fresh-code pre-check (no step_up hint from the function)",
+     [("  if v_status = 'ready' and not (select private.has_recent_aal2(600)) then\n    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n", "")], SURVIVES),
+    ("begin_file_delete pre-check and the update guard's step-up both removed (both layers)",
+     [("  if v_status = 'ready' and not (select private.has_recent_aal2(600)) then\n    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n", ""),
+      ("  elsif old.status = 'ready' and new.status = 'deleting' then\n    if not (select private.has_recent_aal2(600)) then\n      raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n    end if;\n",
+       "  elsif old.status = 'ready' and new.status = 'deleting' then\n    null;\n")]),
+    ("file_usage: for everyone",
+     [("  if not (select private.is_manager_or_admin()) then\n    return null;\n  end if;\n  return (select", "  return (select")]),
+    # Verifier 4d round 2. Finding 1: a ready file is bound to the stored object checked at finish.
+    ("open_file: the object's version not compared (an overwrite through a signed upsert link opens)",
+     [("     and o.version is not distinct from f.object_version\n", "")]),
+    ("open_file: the object's size and type not compared",
+     [("     and private.object_size(o.metadata) = f.size\n     and private.object_mime(o.metadata) = f.mime;", ";")]),
+    ("Update guard: the object's version not recorded at finish",
+     [("    new.object_version := v_version;\n", "")]),
+    ("Update guard: a client may change the recorded object version",
+     [("  keep constant text[] := array['status', 'ready_at', 'updated_at'];", "  keep constant text[] := array['status', 'ready_at', 'object_version', 'updated_at'];")]),
+    ("Insert guard: the client's object version kept",
+     [("  new.object_version := null;\n", "")]),
+    # Finding 3: import undo sees every file of a lead, whoever uploaded it. The static list of definers in files_attack
+    # section 0 is adjusted in the same run, so the behaviour test (section 12) is what must catch it.
+    ("lead_has_files: security invoker (another person's pending upload hidden; the undo fails with 23503)",
+     [("language sql stable security definer set search_path = '' as $$\n  select exists (select 1 from public.files f\n",
+       "language sql stable set search_path = '' as $$\n  select exists (select 1 from public.files f\n"),
+      (ROOT / "supabase/tests/files_attack.sql", "array['audit_file_access', 'file_guard_insert', 'lead_has_files']",
+       "array['audit_file_access', 'file_guard_insert']")]),
+    ("lead_has_files: any organisation",
+     [(" and f.org_id = (select private.current_org_id()))\n$$;", ")\n$$;")]),
+    # Finding 5: reads at aal1 once ready files and their objects exist (section 6b).
+    ("Files: require_mfa no longer applies to reads (an aal1 session reads file rows)",
+     [("create index files_company_idx on public.files (company_id);\n",
+       "create index files_company_idx on public.files (company_id);\nalter policy require_mfa on public.files using (true);\n")]),
+    ("Storage select policy: two-factor check made always true (the files row it needs is still hidden at aal1)",
+     [(SEL_POLICY, SEL_POLICY.replace("(select private.has_aal2())", "(select private.has_aal2() or true)"))], SURVIVES),
+    ("Storage select policy two-factor check and files require_mfa reads both removed (both layers)",
+     [(SEL_POLICY, SEL_POLICY.replace("(select private.has_aal2())", "(select private.has_aal2() or true)")),
+      ("create index files_company_idx on public.files (company_id);\n",
+       "create index files_company_idx on public.files (company_id);\nalter policy require_mfa on public.files using (true);\n")]),
+    # Finding 6: the clauses of the space and waiting limits, each removed on its own.
+    ("Insert guard: the space reserves uploads begun over 15 minutes ago (another person's abandoned upload, forever)",
+     [("   where f.org_id = new.org_id and f.status = 'pending' and f.created_at > now() - interval '15 minutes'\n",
+       "   where f.org_id = new.org_id and f.status = 'pending'\n")]),
+    ("Insert guard: a waiting upload whose bytes are stored is also reserved (counted twice)",
+     [("\n     and not exists (select 1 from storage.objects o where o.bucket_id = 'lead-files' and o.name = f.storage_path);", ";")]),
+    ("Insert guard: the 5-waiting limit counts uploads begun over 15 minutes ago",
+     [("       where f.uploaded_by = caller and f.status = 'pending' and f.created_at > now() - interval '15 minutes') >= 5 then",
+       "       where f.uploaded_by = caller and f.status = 'pending') >= 5 then")]),
+]
+
+
+# Day 4c (tasks and work queue). Rows 1 to 10 are the design's list (section 8.3, 4c), in order; the rest remove every
+# other protection the migration adds, one at a time. A protection with two layers is removed alone (SURVIVES: the other
+# layer stops the same thing) and with its second layer (caught).
+SCOPE_QUEUE = """  if p_scope <> 'mine' and not (select private.is_manager_or_admin()) then
+    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';
+  end if;
+"""
+TEAM_TASKS = """  if p_scope = 'team' and not v_mgr then
+    raise exception 'only managers and admins see the team''s tasks' using errcode = '42501', hint = 'scope';
+  end if;
+"""
+GUARD_LOCK = "  perform pg_advisory_xact_lock(hashtextextended('queue_claims:' || caller::text, 0));\n  if tg_op = 'INSERT' then"
+RPC_LOCK = "  perform pg_advisory_xact_lock(hashtextextended('queue_claims:' || caller::text, 0));\n"
+LOG_LOCKS_4C = """    if p_outcome = 'wrong_number' and p_dialled = 'contact' then
+      select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
+        from public.contacts k where k.id = p_contact for update;
+      v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
+    end if;
+    -- (4c: FOR NO KEY UPDATE, not FOR UPDATE: it still makes outcomes on one lead take turns, and it no longer blocks
+    -- the key-share lock a foreign key check takes, so a teammate claiming this lead in the queue never waits for the
+    -- call being saved, nor deadlocks with its claim release in step 9.)
+    select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
+      into v_lead from public.companies c where c.id = p_company for no key update;
+    v_editable := found;
+"""
+LOG_LOCKS_4C_REVERSED = """    select c.id, c.owner_id, c.lead_status, c.phone, c.phone_wrong_at, c.next_action_at, c.timezone, c.country
+      into v_lead from public.companies c where c.id = p_company for no key update;
+    v_editable := found;
+    if p_outcome = 'wrong_number' and p_dialled = 'contact' then
+      select k.phone, k.phone_wrong_at into v_contact_phone, v_contact_wrong
+        from public.contacts k where k.id = p_contact for update;
+      v_contact_locked := found;
+    elsif p_contact is not null then
+      perform 1 from public.contacts k where k.id = p_contact for key share;
+    end if;
+"""
+MUTATIONS_4C = [
+    # The design's list (8.3, 4c).
+    ("claim_next_lead and queue_candidates: no scope check (a rep works Team or the unassigned leads; both layers)",
+     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns"),
+      ("  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then\n    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';\n  end if;\n  if p_segment = 0 then",
+       "  if p_segment = 0 then")]),
+    ("Claims delete policy: no expiry condition (an expired claim stays until its holder lets go)",
+     [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  org_id = (select private.current_org_id()) and user_id = (select auth.uid()));")]),
+    ("Claims: no primary key on company_id (two live claims on one lead)",
+     [("  company_id uuid primary key references public.companies (id) on delete cascade,  -- one live claim per lead",
+       "  company_id uuid not null references public.companies (id) on delete cascade,")]),
+    ("Claim guard: keeps the client's end time (a claim stretched for a year)",
+     [("  new.expires_at := now() + interval '10 minutes';\n  if (tg_op = 'INSERT'",
+       "  new.expires_at := coalesce(new.expires_at, now() + interval '10 minutes');\n  if (tg_op = 'INSERT'")]),
+    ("Claims insert policy: no editor condition (a rep locks a teammate out of their lead)",
+     [("  org_id = (select private.current_org_id()) and user_id = (select auth.uid())\n  and exists (select 1 from public.companies c where c.id = queue_claims.company_id\n              and ((select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()))));",
+       "  org_id = (select private.current_org_id()) and user_id = (select auth.uid()));")]),
+    ("Queue rank: Do not contact leads ranked",
+     [("      when lead_status = 'negotiation' then 0\n", "      when lead_status = 'do_not_contact' then 3\n      when lead_status = 'negotiation' then 0\n")]),
+    ("Queue rank: no number-to-dial rule",
+     [("      when not ((coalesce(phone ~ '[0-9]', false) and phone_wrong_at is null) or has_contact_phone) then null\n", "")]),
+    ("claim_next_lead: no calling-hours filter",
+     [("  v_open := case when p_any_hours then null else private.open_call_zones(now(), p_skip_lunch) end;", "  v_open := null;")]),
+    ("Calling hours: a span judged on its eastern zone only",
+     [("  foreach z in array coalesce(v_ends, array[p_key]) loop", "  foreach z in array coalesce(v_ends[1:1], array[p_key]) loop")]),
+    ("Queue rank: Cool off without a date served",
+     [("      when lead_status = 'cool_off' and next_action_at is not null then 2", "      when lead_status = 'cool_off' then 2")]),
+    # Every other protection.
+    ("claim_next_lead: no scope check (queue_candidates still refuses the scope)",
+     [(SCOPE_QUEUE + "  -- The caller's claims take turns", "  -- The caller's claims take turns")], SURVIVES),
+    ("queue_candidates: no scope check (a direct call lists the team's leads for a rep)",
+     [("  if p_scope is null or (p_scope <> 'mine' and not (select private.is_manager_or_admin())) then\n    raise exception 'only managers and admins can work beyond their own leads' using errcode = '42501', hint = 'scope';\n  end if;\n  if p_segment = 0 then",
+       "  if p_segment = 0 then")]),
+    ("queue_summary: no scope check",
+     [(SCOPE_QUEUE + "  v_open := private.open_call_zones(now(), p_skip_lunch);", "  v_open := private.open_call_zones(now(), p_skip_lunch);")]),
+    ("list_tasks: Team for anyone",
+     [(TEAM_TASKS + "  v_tz := private.caller_zone();", "  v_tz := private.caller_zone();")]),
+    ("count_tasks: Team for anyone",
+     [("  if p_scope = 'team' and not (select private.is_manager_or_admin()) then\n    raise exception 'only managers and admins see the team''s tasks' using errcode = '42501', hint = 'scope';\n  end if;\n", "")]),
+    ("claim_lead: no editor pre-check (the policy answers without the scope hint)",
+     [("  if not ((select private.is_manager_or_admin()) or v_owner is not distinct from caller) then\n    raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';\n  end if;\n", "")]),
+    ("Contact trigger: no lead lock before it looks (two contacts changed at once leave a wrong flag)",
+     [("    perform 1 from public.companies c where c.id = v_lead for no key update;\n", "")]),
+    ("Contact trigger: a number marked wrong still counts",
+     [("where k.company_id = v_lead and k.phone ~ '[0-9]' and k.phone_wrong_at is null) as has_phone) s",
+       "where k.company_id = v_lead and k.phone ~ '[0-9]') as has_phone) s")]),
+    ("Contact trigger: a number without digits counts",
+     [("where k.company_id = v_lead and k.phone ~ '[0-9]' and k.phone_wrong_at is null) as has_phone) s",
+       "where k.company_id = v_lead and k.phone is not null and k.phone_wrong_at is null) as has_phone) s")]),
+    ("Contact trigger: the old lead is left as it was when a contact moves",
+     [("      from unnest(array[case when tg_op <> 'INSERT' then old.company_id end,\n                        case when tg_op <> 'DELETE' then new.company_id end]) as x (id)",
+       "      from unnest(array[case when tg_op <> 'DELETE' then new.company_id end]) as x (id)")]),
+    ("Contact trigger: not on delete",
+     [("create trigger sync_contact_phone after insert or delete or update of phone, phone_wrong_at, company_id",
+       "create trigger sync_contact_phone after insert or update of phone, phone_wrong_at, company_id")]),
+    ("Contact trigger: not on a wrong-number mark",
+     [("create trigger sync_contact_phone after insert or delete or update of phone, phone_wrong_at, company_id",
+       "create trigger sync_contact_phone after insert or delete or update of phone, company_id")]),
+    ("Contact trigger: SECURITY INVOKER (an editor's contact change fails on the ungranted column)",
+     [("create function private.sync_contact_phone() returns trigger\nlanguage plpgsql security definer set search_path = '' as $$",
+       "create function private.sync_contact_phone() returns trigger\nlanguage plpgsql set search_path = '' as $$")]),
+    ("Queue rank: a main number without digits counts",
+     [("      when not ((coalesce(phone ~ '[0-9]', false) and phone_wrong_at is null) or has_contact_phone) then null",
+       "      when not ((phone is not null and phone_wrong_at is null) or has_contact_phone) then null")]),
+    ("Queue rank: a main number marked wrong still counts",
+     [("      when not ((coalesce(phone ~ '[0-9]', false) and phone_wrong_at is null) or has_contact_phone) then null",
+       "      when not (coalesce(phone ~ '[0-9]', false) or has_contact_phone) then null")]),
+    ("Claims: no two-factor policy",
+     [("create policy require_mfa on private.queue_claims as restrictive to authenticated\n  using ((select private.has_aal2())) with check ((select private.has_aal2()));\n", "")]),
+    ("Claims select policy: every organisation's claims",
+     [("create policy claims_select on private.queue_claims for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy claims_select on private.queue_claims for select to authenticated\n  using (true);")]),
+    ("Claims delete policy: no organisation fence (the select policy still hides other organisations' claims from a delete)",
+     [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  user_id = (select auth.uid()) or expires_at <= now());")], SURVIVES),
+    ("Claims update policy: anyone renews anyone's claim",
+     [("  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));",
+       "  using (true) with check (true);")]),
+    ("Claims: insert grant names the person too",
+     [("grant select, insert (company_id), update (expires_at), delete on private.queue_claims to authenticated;",
+       "grant select, insert (company_id, user_id), update (expires_at), delete on private.queue_claims to authenticated;")]),
+    ("Claim guard: the client's person kept (the grant and the insert policy still stop it)",
+     [("    new.user_id := caller;\n    new.claimed_at := now();", "    new.user_id := coalesce(new.user_id, caller);\n    new.claimed_at := now();")], SURVIVES),
+    ("Claim guard, grant and insert policy: a claim for someone else (all three layers)",
+     [("    new.user_id := caller;\n    new.claimed_at := now();", "    new.user_id := coalesce(new.user_id, caller);\n    new.claimed_at := now();"),
+      ("grant select, insert (company_id), update (expires_at), delete on private.queue_claims to authenticated;",
+       "grant select, insert (company_id, user_id), update (expires_at), delete on private.queue_claims to authenticated;"),
+      ("  org_id = (select private.current_org_id()) and user_id = (select auth.uid())\n  and exists (select 1 from public.companies c where c.id = queue_claims.company_id",
+       "  org_id = (select private.current_org_id())\n  and exists (select 1 from public.companies c where c.id = queue_claims.company_id")]),
+    ("Claim guard: no limit of 3",
+     [("           where q.user_id = caller and q.expires_at > now() and q.company_id <> new.company_id) >= 3 then",
+       "           where q.user_id = caller and q.expires_at > now() and q.company_id <> new.company_id) >= 1000 then")]),
+    ("Claim guard: expired claims count toward the limit",
+     [("           where q.user_id = caller and q.expires_at > now() and q.company_id <> new.company_id) >= 3 then",
+       "           where q.user_id = caller and q.company_id <> new.company_id) >= 3 then")]),
+    ("Claim guard: renewing an expired claim passes the limit",
+     [("  if (tg_op = 'INSERT' or old.expires_at <= now())\n", "  if tg_op = 'INSERT'\n")]),
+    ("Claim guard trigger dropped",
+     [("create trigger claim_guard before insert or update on private.queue_claims\n  for each row execute function private.claim_guard();", "")]),
+    ("Claim guard: other fields may change (the column grants still stop it)",
+     [("    raise exception 'only the end of a claim can change' using errcode = '42501', hint = 'not_editable';\n", "    null;\n")], SURVIVES),
+    ("Claim guard: no per-person lock (claim_lead and the queue still take it)",
+     [(GUARD_LOCK, "  if tg_op = 'INSERT' then")], SURVIVES),
+    ("Claims: no per-person lock anywhere (two tabs pass the limit)",
+     [(GUARD_LOCK, "  if tg_op = 'INSERT' then"),
+      ("  -- The caller's claims take turns (the claim guard takes the same lock), so two tabs never pass the limit together.\n" + RPC_LOCK,
+       "  -- The caller's claims take turns (the claim guard takes the same lock), so two tabs never pass the limit together.\n"),
+      ("    raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';\n  end if;\n" + RPC_LOCK,
+       "    raise exception 'only the lead''s owner, a manager or an admin can claim it' using errcode = '42501', hint = 'scope';\n  end if;\n")]),
+    ("claim_next_lead: an expired claim is not removed first (a closed laptop keeps its leads)",
+     [("      delete from private.queue_claims q where q.company_id = v_cand and q.expires_at <= now();\n", "")]),
+    ("claim_next_lead: candidates include leads with a live claim (the primary key still refuses them)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n")], SURVIVES),
+    ("claim_next_lead: no second look after winning a claim (a lead a teammate just called is served again)",
+     [("      if v_got is not null and not exists (\n", "      if false and not exists (\n")]),
+    ("claim_next_lead: the session's skips ignored",
+     [("  v_skip := v_exclude || coalesce(p_keep, '{}'::uuid[]);", "  v_skip := coalesce(p_keep, '{}'::uuid[]);")]),
+    ("claim_next_lead: the caller's other claims kept (the screen holds more than it shows)",
+     [("     where q.user_id = caller and (not (q.company_id = any (p_keep)) or q.expires_at <= now());", "     where false;")]),
+    ("claim_next_lead: a reload resumes claims that are no longer eligible",
+     [("      if v_won < p_count and r.live and r.eligible then", "      if v_won < p_count and r.live then")]),
+    ("claim_next_lead: no limit on kept plus new cards",
+     [("     or coalesce(cardinality(p_keep), 0) + p_count > 3\n", "")]),
+    ("claim_next_lead: follow-ups not first (the walk starts at Negotiation)",
+     [("  v_seg integer := 0;", "  v_seg integer := 1;")]),
+    ("Queue follow-ups: a task due today is not yet due",
+     [("                   and (t.due_date <= p_today or t.due_at <= now() + interval '5 minutes')\n                 group by t.company_id) f\n          join public.companies c on c.id = f.company_id\n         where c.owner_id = caller and c.queue_rank is not null",
+       "                   and (t.due_date < p_today or t.due_at <= now() + interval '5 minutes')\n                 group by t.company_id) f\n          join public.companies c on c.id = f.company_id\n         where c.owner_id = caller and c.queue_rank is not null")]),
+    ("Queue follow-ups: the next call date wins over the task",
+     [("         where c.owner_id = caller and c.queue_rank is not null\n",
+       "         where c.owner_id = caller and c.queue_rank is not null and (c.next_action_at is null or c.next_action_at <= now())\n")]),
+    ("Queue order: leads called before come first among first calls",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n         order by c.next_action_at, c.last_activity_at nulls first, c.id",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists (select 1 from private.queue_claims q where q.company_id = c.id and q.expires_at > now())\n         order by c.next_action_at, c.last_activity_at nulls last, c.id")]),
+    ("Queue Mine: anyone's leads (dated part)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists",
+       "         where c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists")]),
+    ("Queue Mine + unassigned: the second half takes anyone's leads",
+     [("                 where c.owner_id is null and c.queue_rank = v_rank and c.next_action_at is null\n",
+       "                 where c.queue_rank = v_rank and c.next_action_at is null\n")]),
+    ("Queue Mine: future dates offered (no stop at now; the second look after the claim still lets them go)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is not null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists")], SURVIVES),
+    ("log_activity: a call from the queue keeps its claim",
+     [("    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;\n", "    null;\n")]),
+    ("log_activity: a call from the queue releases anyone's claim (the delete policy still stops it)",
+     [("    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;\n",
+       "    delete from private.queue_claims q where q.company_id = p_company;\n")], SURVIVES),
+    ("log_activity and the delete policy: a call from the queue releases a teammate's claim (both layers)",
+     [("    delete from private.queue_claims q where q.company_id = p_company and q.user_id = caller;\n",
+       "    delete from private.queue_claims q where q.company_id = p_company;\n"),
+      ("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  org_id = (select private.current_org_id()));")]),
+    ("log_activity: the lead locked FOR UPDATE again (a claim waits for the call)",
+     [("      into v_lead from public.companies c where c.id = p_company for no key update;",
+       "      into v_lead from public.companies c where c.id = p_company for update;")]),
+    ("get_lead: worked_by names the caller",
+     [("                   where q.company_id = c.id and q.expires_at > now() and q.user_id <> (select auth.uid()))",
+       "                   where q.company_id = c.id and q.expires_at > now())")]),
+    ("get_lead: worked_by from an expired claim",
+     [("                   where q.company_id = c.id and q.expires_at > now() and q.user_id <> (select auth.uid()))",
+       "                   where q.company_id = c.id and q.user_id <> (select auth.uid()))")]),
+    ("Calling hours: the lunch switch also cuts a span (no span has a European end, so the Europe/* rule still spares them)",
+     [("    if v_ends is null and coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then",
+       "    if coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then")], SURVIVES),
+    ("Calling hours: the lunch switch outside Europe",
+     [("    if v_ends is null and coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then",
+       "    if v_ends is null and coalesce(p_skip_lunch, false) and m >= 720 and m < 840 then")]),
+    ("Calling hours: 18:00 still open",
+     [("    if m < 540 or m >= 1080 then", "    if m < 540 or m > 1080 then")]),
+    ("Calling hours: weekends open",
+     [("    if extract(isodow from l) > 5 then\n      return false;\n    end if;\n    m :=", "    m :=")]),
+    ("Calling zone keys: the zones a person may pick left out",
+     [("          union all\n          select unnest(private.country_zone_choices(chr(a) || chr(b)))\n            from generate_series(65, 90) a, generate_series(65, 90) b\n", "")]),
+    ("Audit: call_zone and queue_rank stored",
+     [("  hidden constant text[] := array['search_text', 'email_key', 'phone_key', 'name_key', 'call_zone', 'queue_rank'];",
+       "  hidden constant text[] := array['search_text', 'email_key', 'phone_key', 'name_key'];")]),
+    ("Audit: the contact flag diffed",
+     [("'next_action_at', 'phone_wrong_at', 'has_contact_phone')", "'next_action_at', 'phone_wrong_at')")]),
+    ("list_tasks: days read in UTC, not the person's zone",
+     [("  v_tz := private.caller_zone();\n  v_today := (now() at time zone v_tz)::date;\n  v_tomorrow := (v_today + 1)::timestamp at time zone v_tz;\n\n  if p_bucket = 'overdue' then",
+       "  v_tz := 'UTC';\n  v_today := (now() at time zone v_tz)::date;\n  v_tomorrow := (v_today + 1)::timestamp at time zone v_tz;\n\n  if p_bucket = 'overdue' then")]),
+    ("list_tasks: Today includes times already past",
+     [("                 and (x.due_date = v_today or (x.due_at >= now() and x.due_at < v_tomorrow))\n",
+       "                 and (x.due_date = v_today or x.due_at < v_tomorrow)\n")]),
+    ("list_tasks: undated tasks missing from Upcoming",
+     [("                 and (x.due_date > v_today or x.due_at >= v_tomorrow or (x.due_date is null and x.due_at is null))\n",
+       "                 and (x.due_date > v_today or x.due_at >= v_tomorrow)\n")]),
+    ("list_tasks: dismissed tasks listed in Today",
+     [("               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null and x.cancelled_at is null\n                 and (x.due_date = v_today",
+       "               where (p_scope = 'team' or x.assignee_id = caller) and x.done_at is null\n                 and (x.due_date = v_today")]),
+    ("list_tasks: Done keyset <= (a task repeated across pages)",
+     [("                 and (p_after_id is null or (x.done_at, x.id) < (p_after_sort, p_after_id))",
+       "                 and (p_after_id is null or (x.done_at, x.id) <= (p_after_sort, p_after_id))")]),
+    ("list_tasks: Upcoming undated cursor >= (a task repeated across pages)",
+     [("                      or (p_after_sort is null and s.sort_at is null and x.id > p_after_id))",
+       "                      or (p_after_sort is null and s.sort_at is null and x.id >= p_after_id))")]),
+    ("update_task: no contact pre-check (the policy answers 42501 instead of P0002)",
+     [("  if p_contact is not null and not exists (select 1 from public.contacts k\n                                            where k.id = p_contact and k.company_id = v_company) then\n    raise exception 'contact not found on this lead' using errcode = 'P0002';\n  end if;\n  update public.tasks t",
+       "  update public.tasks t")]),
+    ("update_task: no person given leaves the task with nobody",
+     [("         assignee_id = coalesce(p_assignee, t.assignee_id), contact_id = p_contact", "         assignee_id = p_assignee, contact_id = p_contact")]),
+    ("delete_task: no fresh-code pre-check (no step_up hint)",
+     [("    raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n  end if;\n  if not exists (select 1 from public.tasks t where t.id = p_id) then",
+       "  end if;\n  if not exists (select 1 from public.tasks t where t.id = p_id) then")]),
+    ("Profile zone check trigger dropped",
+     [("create trigger check_profile_timezone before update of timezone on public.profiles\n  for each row execute function private.check_profile_timezone();", "")]),
+    ("set_my_timezone: no pre-check (the profile trigger still refuses it)",
+     [("  if p_timezone is null or char_length(p_timezone) > 64\n     or not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_timezone) then",
+       "  if false then")], SURVIVES),
+    ("set_my_timezone and the profile trigger: any zone stored (both layers)",
+     [("  if p_timezone is null or char_length(p_timezone) > 64\n     or not exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_timezone) then",
+       "  if false then"),
+      ("create trigger check_profile_timezone before update of timezone on public.profiles\n  for each row execute function private.check_profile_timezone();", "")]),
+    ("Claims: a lead delete is refused while it has a claim (claims must go with their lead)",
+     [("  company_id uuid primary key references public.companies (id) on delete cascade,  -- one live claim per lead",
+       "  company_id uuid primary key references public.companies (id),")]),
+    ("renew_claims: brings back expired claims",
+     [("     where q.user_id = caller and q.expires_at > now()\n    returning q.expires_at)", "     where q.user_id = caller\n    returning q.expires_at)")]),
+    ("queue_summary: customers counted as having no number",
+     [("count(*) filter (where c.queue_rank is null and c.lead_status in ('cold', 'warm', 'negotiation', 'cool_off')",
+       "count(*) filter (where c.queue_rank is null")]),
+    ("claim_next_lead: null in the skips accepted (every lead skipped)",
+     [("     or array_position(p_keep, null) is not null or array_position(v_exclude, null) is not null\n", "")]),
+    ("Queue Mine: future dates served (no stop at now, and no second look after the claim; both layers)",
+     [("         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at <= now()\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists",
+       "         where c.owner_id = caller and c.queue_rank = v_rank and c.next_action_at is not null\n           and (p_open is null or c.call_zone = any (p_open)) and not (c.id = any (p_skip))\n           and not exists"),
+      ("      if v_got is not null and not exists (\n", "      if false and not exists (\n")]),
+    ("Calling hours: the lunch switch cuts every zone, spans included (both layers)",
+     [("    if v_ends is null and coalesce(p_skip_lunch, false) and z like 'Europe/%' and m >= 720 and m < 840 then",
+       "    if coalesce(p_skip_lunch, false) and m >= 720 and m < 840 then")]),
+    ("Claims delete and select policies: no organisation fence (another organisation clears expired claims; both layers)",
+     [("  org_id = (select private.current_org_id()) and (user_id = (select auth.uid()) or expires_at <= now()));",
+       "  user_id = (select auth.uid()) or expires_at <= now());"),
+      ("create policy claims_select on private.queue_claims for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy claims_select on private.queue_claims for select to authenticated\n  using (true);")]),
+    ("Wrong number: a contact number without a digit counts as another working number (no find-the-number task)",
+     [("                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null\n",
+       "                        where k.company_id = p_company and k.phone is not null and k.phone_wrong_at is null\n")]),
+    ("Wrong number: a main line without a digit counts as another working number (no find-the-number task)",
+     [("    if not ((coalesce(v_lead.phone ~ '[0-9]', false) and v_lead.phone_wrong_at is null and p_dialled <> 'lead')",
+       "    if not ((v_lead.phone is not null and v_lead.phone_wrong_at is null and p_dialled <> 'lead')")]),
+    ("Claim guard: a renewal of a lead that changed hands passes (renew_claims and the keep path still let it go)",
+     [("  elsif not exists (select 1 from public.companies c\n                     where c.id = new.company_id\n                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).\n    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';\n", "")]),
+    ("renew_claims: a reassigned lead's claim is renewed, not let go (the claim guard then refuses the renewal)",
+     [('  delete from private.queue_claims q\n   where q.user_id = caller\n     and not exists (select 1 from public.companies c\n                      where c.id = q.company_id\n                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));\n', "")]),
+    ("claim_next_lead keep: a reassigned lead's claim is kept (the claim guard then refuses the renewal)",
+     [("    delete from private.queue_claims q\n     where q.user_id = caller\n       and not exists (select 1 from public.companies c\n                        where c.id = q.company_id\n                          and (p_scope = 'team' or c.owner_id = caller\n                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));\n", "")]),
+    ("Renewals of a reassigned lead: the guard, renew_claims and the keep path all let it pass (all three layers)",
+     [("  elsif not exists (select 1 from public.companies c\n                     where c.id = new.company_id\n                       and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n    -- A lead that changed hands since it was claimed is never renewed (threat 13: nobody keeps a teammate's lead).\n    raise exception 'only a lead the caller may change can stay claimed' using errcode = '42501', hint = 'scope';\n", ""), ('  delete from private.queue_claims q\n   where q.user_id = caller\n     and not exists (select 1 from public.companies c\n                      where c.id = q.company_id\n                        and ((select private.is_manager_or_admin()) or c.owner_id = caller));\n', ""), ("    delete from private.queue_claims q\n     where q.user_id = caller\n       and not exists (select 1 from public.companies c\n                        where c.id = q.company_id\n                          and (p_scope = 'team' or c.owner_id = caller\n                               or (p_scope = 'mine_unassigned' and c.owner_id is null)));\n", "")]),
+    ("claim_next_lead walk: no lead lock tried (waits on a teammate's claim; two crossing walks deadlock)",
+     [("      continue when not pg_try_advisory_xact_lock(hashtextextended('queue_claim:' || v_cand::text, 0));\n", "")]),
+]
+
+# Day 4c redefines the audit trigger, get_lead and log_activity (create or replace, Day 4b's text kept): the earlier rows
+# that edit those definitions now edit the Day 4c copy, where the live definition is. Rows whose Day 4b text changed in
+# the copy get the Day 4c text (Day 4b row 5, the lock block; row 47, the audit's no-diff list).
+REDEFINED_IN_4C = {
+    "day3b": [28, 29],
+    "day4a": [9, 32, 33, 83],
+    "day4b": [4, 11, 12, 31, 32, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70,
+              71, 72, 73, 74, 79, 87],
+}
+for _set, _rows, _default in (("day3b", MUTATIONS_3B, MIG_3B), ("day4a", MUTATIONS_4A, MIG_4A),
+                              ("day4b", MUTATIONS_4B, MIG_4B)):
+    for _n in REDEFINED_IN_4C[_set]:
+        _title, _edits, *_flags = _rows[_n - 1]
+        _rows[_n - 1] = (_title, [(MIG_4C, *_e[-2:]) if (_e[0] if len(_e) == 3 else _default) == MIG_4B else _e
+                                  for _e in _edits], *_flags)
+MUTATIONS_4B[4] = (MUTATIONS_4B[4][0], [(MIG_4C, LOG_LOCKS_4C, LOG_LOCKS_4C_REVERSED)])
+# Row 65's text changed in Day 4c: another working number needs a digit (k.phone ~ '[0-9]').
+MUTATIONS_4B[64] = (MUTATIONS_4B[64][0],
+                    [(MIG_4C, "            or exists (select 1 from public.contacts k\n                        where k.company_id = p_company and k.phone ~ '[0-9]' and k.phone_wrong_at is null\n                          and not (p_dialled = 'contact' and k.id = p_contact))) then",
+                      "            or false) then")])
+MUTATIONS_4B[46] = (MUTATIONS_4B[46][0],
+                    [(MIG_4C, "       and n.key not in ('updated_at', 'last_activity_at', 'next_action_at', 'phone_wrong_at', 'has_contact_phone')",
+                      "       and n.key not in ('updated_at', 'last_activity_at', 'has_contact_phone')")])
+
+
+
+# Day 5a (design 8.3, rows 1 to 31 in the design's order, then the builder's additions from 32). The default target is the
+# Day 5a migration; a Region aims an edit at one function where the same text appears in several.
+MUTATIONS_5A = [
+    ("Grant update (status) on deals",
+     [("      update (title, value, expected_close, fulfilment, contact_id, owner_id, stage_id, lost_reason, lost_note)",
+       "      update (title, value, expected_close, fulfilment, contact_id, owner_id, stage_id, lost_reason, lost_note, status)")]),
+    ("Grant update (stage_entered_at) on deals",
+     [("      update (title, value, expected_close, fulfilment, contact_id, owner_id, stage_id, lost_reason, lost_note)",
+       "      update (title, value, expected_close, fulfilment, contact_id, owner_id, stage_id, lost_reason, lost_note, stage_entered_at)")]),
+    ("Guard: no value_required pre-check (the won-shape CHECK answers with the row)",
+     [(DEAL_GUARD, "        if new.value is null or new.value <= 0 then\n          raise exception 'a won deal needs its final value'",
+       "        if false then\n          raise exception 'a won deal needs its final value'")]),
+    ("Guard: no fulfilment_required pre-check (the won-shape CHECK answers with the row)",
+     [(DEAL_GUARD, "        if new.fulfilment is null then\n          raise exception 'a won deal needs how it ships'",
+       "        if false then\n          raise exception 'a won deal needs how it ships'")]),
+    ("Guard: no lost-reason pre-check (the hint test fails although the CHECK still raises)",
+     [(DEAL_GUARD, "        if new.lost_reason is null or new.lost_reason not in (",
+       "        if false and new.lost_reason not in (")]),
+    ("Guard: won and lost reachable from a closed deal (no reopen_first)",
+     [(DEAL_GUARD, "      if v_to in ('won', 'lost') and old.status <> 'open' then", "      if false then")]),
+    ("Guard: reopening a won deal needs no fresh code",
+     [(DEAL_GUARD, "        if not (select private.has_recent_aal2(600)) then\n          raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';\n        end if;\n",
+       "")]),
+    ("Undo candidate: ignores who made the change",
+     [(CANDIDATE, "     and h.actor_id = (select auth.uid())\n", "")]),
+    ("Undo candidate: ignores the 120-second window",
+     [(CANDIDATE, "     and h.created_at > now() - interval '120 seconds'\n", "")]),
+    ("Undo candidate: ignores version_after (a colleague's change in between)",
+     [(CANDIDATE, "\n     and h.version_after = p_old_version", "")]),
+    ("move_deal: no version compare",
+     [(MOVE_DEAL, "  if v_deal.version <> p_expected_version then", "  if false then")]),
+    ("History: insert granted to clients",
+     [("grant select on public.deal_stage_history to authenticated;", "grant select, insert on public.deal_stage_history to authenticated;")]),
+    ("History: actor taken from the deal's owner",
+     [(DEAL_HISTORY, "  values (new.org_id, new.id, (select auth.uid()), v_kind,", "  values (new.org_id, new.id, new.owner_id, v_kind,")]),
+    ("Delete policy: no fresh code for managers and admins",
+     [("       ((select private.has_recent_aal2(600)) and (select private.is_manager_or_admin()))\n    or (created_by",
+       "       ((select private.is_manager_or_admin()))\n    or (created_by")]),
+    ("Delete policy: the creator's branch without version = 0 (a moved deal deleted without a code)",
+     [("    or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds'",
+       "    or (created_by = (select auth.uid()) and created_at > now() - interval '120 seconds'")]),
+    ("Deals: lead FK back to set null",
+     [("references public.companies (id) on delete restrict", "references public.companies (id) on delete set null")]),
+    ("Tasks: deal FK back to cascade",
+     [("foreign key (deal_id) references public.deals (id) on delete set null;", "foreign key (deal_id) references public.deals (id) on delete cascade;")]),
+    ("Task guard: deal_id not in the link-emptying exception",
+     [(TASK_GUARD_5A, "'created_by', 'deal_id', 'source_activity_id']", "'created_by', 'source_activity_id']")]),
+    ("Stages: the admin update policy and grant restored",
+     [("revoke insert, update, delete on public.pipeline_stages from authenticated;  -- select (own org) and require_mfa stay",
+       "revoke insert, update, delete on public.pipeline_stages from authenticated;\ngrant update on public.pipeline_stages to authenticated;\n"
+       "create policy pipeline_stages_admin_update on public.pipeline_stages for update to authenticated\n"
+       "  using (org_id = (select private.current_org_id()) and (select private.is_admin()))\n"
+       "  with check (org_id = (select private.current_org_id()) and (select private.is_admin()));")]),
+    ("Value CHECK: no NaN term (the 100,000,000 bound refuses NaN too: NaN sorts above every number)",
+     [("check (value is null or (value >= 0 and value <> 'NaN' and value <= 100000000))",
+       "check (value is null or (value >= 0 and value <= 100000000))")], SURVIVES),
+    ("Value CHECK: no NaN term and no bound (both layers of the backstop)",
+     [("check (value is null or (value >= 0 and value <> 'NaN' and value <= 100000000))", "check (value is null or value >= 0)")]),
+    ("move_deal: locks the deal FOR UPDATE (blocks behind an entry's key lock; spike S8)",
+     [(MOVE_DEAL, "    from public.deals d where d.id = p_id for no key update;", "    from public.deals d where d.id = p_id for update;")]),
+    ("Lead coupling: a win overrides Do not contact",
+     [(MOVE_DEAL, "      elsif p_stage = 'won' and v_lead_status in ('cold', 'warm', 'negotiation', 'cool_off') then",
+       "      elsif p_stage = 'won' and v_lead_status in ('cold', 'warm', 'negotiation', 'cool_off', 'do_not_contact') then")]),
+    ("Lead coupling: without the editor lock (row level security on the lead update still stops it)",
+     [(MOVE_DEAL, "    v_lead_editable := found;\n  end if;",
+       "    v_lead_editable := true;\n    if not found then\n      select c.lead_status, c.next_action_at into v_lead_status, v_lead_next from public.companies c where c.id = v_deal.company_id;\n    end if;\n  end if;")], SURVIVES),
+    ("Lead coupling: without the editor lock, and move_deal runs as its owner (both layers)",
+     [(MOVE_DEAL, "    v_lead_editable := found;\n  end if;",
+       "    v_lead_editable := true;\n    if not found then\n      select c.lead_status, c.next_action_at into v_lead_status, v_lead_next from public.companies c where c.id = v_deal.company_id;\n    end if;\n  end if;"),
+      (MOVE_DEAL, ") returns jsonb\nlanguage plpgsql volatile set search_path = '' as $$",
+       ") returns jsonb\nlanguage plpgsql volatile security definer set search_path = '' as $$")]),
+    ("Undo: the lead put back whatever it holds now",
+     [(MOVE_DEAL, "         set lead_status = case when c.lead_status = v_move.new_lead_status then v_move.prev_lead_status\n                                else c.lead_status end,",
+       "         set lead_status = v_move.prev_lead_status,"),
+      (MOVE_DEAL, "       where c.id = v_deal.company_id\n         and (c.lead_status = v_move.new_lead_status\n              or (v_move.new_next_action_at is distinct from v_move.prev_next_action_at\n                  and c.next_action_at is not distinct from v_move.new_next_action_at));",
+       "       where c.id = v_deal.company_id;")]),
+    ("Guard: no open flood guard (since verifier round 2 the statement-level recount answers the same rate_limited)",
+     [(DEAL_GUARD, "                               limit 30) recent) >= 30 then", "                               limit 30) recent) >= 30 and false then")], SURVIVES),
+    ("Guard: no stage-change flood guard (since verifier round 2 the statement-level recount answers the same rate_limited)",
+     [(DEAL_GUARD, "                               limit 120) recent) >= 120 then", "                               limit 120) recent) >= 120 and false then")], SURVIVES),
+    ("Deals: request id index not unique",
+     [("create unique index deals_creator_request_idx", "create index deals_creator_request_idx")]),
+    ("Column keyset: <= instead of < (a deal repeated across pages)",
+     [(ORG_RECENT_PAGE, "         and (d.stage_entered_at, d.id) < (coalesce(p_after_at, 'infinity'::timestamptz),",
+       "         and (d.stage_entered_at, d.id) <= (coalesce(p_after_at, 'infinity'::timestamptz),")]),
+    ("pipeline_board: a rep's team is not mapped to their own deals (42501 on first paint)",
+     [(BOARD, "  v_owner := private.deal_scope_owner(p_scope, p_owner, false);", "  v_owner := private.deal_scope_owner(p_scope, p_owner, true);")]),
+    ("Guard: an invisible stage answers P0002 instead of 42501",
+     [(DEAL_GUARD, "      raise exception 'this stage is not one of your pipeline''s' using errcode = '42501', hint = 'stage';",
+       "      raise exception 'this stage is not one of your pipeline''s' using errcode = 'P0002', hint = 'stage';")]),
+    ("Guard: a lost note change is not a change (no version, no check)",
+     [(DEAL_GUARD, "   where n.value is distinct from o.value and n.key <> 'updated_at';\n  if changed = '{}' then",
+       "   where n.value is distinct from o.value and n.key not in ('updated_at', 'lost_note');\n  if changed = '{}' then")]),
+    # Builder's additions
+    ("Undo: the value is not restored from history (the client's or the won value stays)",
+     [(DEAL_GUARD, "      new.value := v_hist.value_before;\n", "")]),
+    ("Guard: no Do not contact check on insert",
+     [(DEAL_GUARD, "    if v_lead_status = 'do_not_contact' then", "    if false then")]),
+    ("Guard: created_by left to the client (empty)",
+     [(DEAL_GUARD, "    new.created_by := caller;\n", "")]),
+    ("Guard: an admin's deal left without an owner (G11)",
+     [(DEAL_GUARD, "    new.owner_id := coalesce(new.owner_id, caller);\n", "")]),
+    ("Guard: a closed deal's value, shipping and dates editable",
+     [(DEAL_GUARD, "    if old.status <> 'open' and not changed <@ array['contact_id', 'owner_id', 'title'] then",
+       "    if false then")]),
+    ("Guard: the client's stage clock kept on insert (no insert grant on it, and its default is now())",
+     [(DEAL_GUARD, "    new.stage_entered_at := now();\n    new.owner_id", "    new.owner_id")], SURVIVES),
+    ("Guard: the client's stage clock kept on insert, and granted (both layers)",
+     [(DEAL_GUARD, "    new.stage_entered_at := now();\n    new.owner_id", "    new.owner_id"),
+      ("grant insert (company_id, contact_id, title, value, expected_close, fulfilment, owner_id, source_activity_id, request_id),",
+       "grant insert (company_id, contact_id, title, value, expected_close, fulfilment, owner_id, source_activity_id, request_id, stage_entered_at),")]),
+    ("Deals select: no organisation check",
+     [("create policy deals_select on public.deals for select to authenticated using (\n  org_id = (select private.current_org_id())\n  and ((select",
+       "create policy deals_select on public.deals for select to authenticated using (\n  true\n  and ((select")]),
+    ("History select: no deal visibility (a colleague's deal history readable)",
+     [("  and exists (select 1 from public.deals d where d.id = deal_stage_history.deal_id));  -- deals RLS decides",
+       ");")]),
+    ("Move records: a row for another person's change",
+     [("                             and h.actor_id = (select auth.uid()) and d.company_id = deal_moves.company_id));",
+       "                             and d.company_id = deal_moves.company_id));")]),
+    ("delete_deal: no fresh-code pre-check (no step_up hint)",
+     [(DELETE_DEAL, "    if not (select private.has_recent_aal2(600)) then\n      raise exception 'confirm it is you first'",
+       "    if false then\n      raise exception 'confirm it is you first'")]),
+    ("update_deal: no field whitelist",
+     [(UPDATE_DEAL, "     or not p_fields <@ array['title', 'value', 'expected_close', 'fulfilment', 'contact_id', 'owner_id']\n", "")]),
+    ("list_stage_deals: half a cursor accepted",
+     [(LIST_STAGE, "  if (p_after_at is null) <> (p_after_id is null) then", "  if false then")]),
+    ("Cards: stalled ignores the lead's last activity",
+     [(CARDS, "           and greatest(d.stage_entered_at, coalesce(c.last_activity_at, '-infinity'::timestamptz))\n               < now()",
+       "           and d.stage_entered_at\n               < now()")]),
+    ("Lead coupling: a loss rests the lead although another deal is open",
+     [(MOVE_DEAL, "            and not exists (select 1 from public.deals x\n                             where x.company_id = v_deal.company_id and x.id <> p_id and x.status = 'open') then",
+       " then")]),
+    ("Audit: the version diffed",
+     [(AUDIT_ROW_5A, "       and not (is_deal and n.key in ('version', 'lost_note'));", "       and not (is_deal and n.key = 'lost_note');")]),
+    ("Audit: the lost note copied",
+     [(AUDIT_ROW_5A, "       and not (is_deal and n.key in ('version', 'lost_note'));", "       and not (is_deal and n.key = 'version');"),
+      (AUDIT_ROW_5A, "    if is_deal and (to_jsonb(new) -> 'lost_note') is distinct from (to_jsonb(old) -> 'lost_note') then", "    if false then")]),
+    ("open_deal: no lead lock (a non-editor's open reaches the policy; the answer loses its hint)",
+     [(OPEN_DEAL, "  select c.lead_status, c.next_action_at into v_lead from public.companies c where c.id = p_company for update;\n  if not found then",
+       "  select c.lead_status, c.next_action_at into v_lead from public.companies c where c.id = p_company;\n  if not found then")]),
+    ("Guard: the value bound not checked on a same-stage change (the CHECK answers with the row)",
+     [(DEAL_GUARD, "    if new.value is distinct from old.value\n       and new.value is not null and (new.value = 'NaN' or new.value < 0 or new.value > 100000000) then",
+       "    if false then")]),
+    ("Undo: a win undone without the Day 6 block check",
+     [(DEAL_GUARD, "      if v_from = 'won' or new.fulfilment is distinct from old.fulfilment then\n        v_block := private.deal_closing_blocked(new.id);",
+       "      if false then\n        v_block := private.deal_closing_blocked(new.id);")]),
+    # Verifier round 1 (the Day 6 seam is tested with a blocking stub; opens counted after delete; owner; undo replay)
+    ("Guard: a win that changes the shipping skips the Day 6 block check",
+     [(DEAL_GUARD, "        if new.fulfilment is distinct from old.fulfilment then\n          v_block := private.deal_closing_blocked(new.id);",
+       "        if false then\n          v_block := private.deal_closing_blocked(new.id);")]),
+    ("Guard: reopening a won deal without the Day 6 block check",
+     [(DEAL_GUARD, "        v_block := private.deal_closing_blocked(new.id);\n        if v_block is not null then\n          raise exception 'this deal is held by stock records' using errcode = '42501', hint = 'blocked_' || v_block;\n        end if;\n        new.status := 'open';",
+       "        new.status := 'open';")]),
+    ("Guard: a shipping change on the same stage without the Day 6 block check",
+     [(DEAL_GUARD, "        raise exception 'unknown way of shipping' using errcode = '22023', hint = 'fulfilment';\n      end if;\n      v_block := private.deal_closing_blocked(new.id);",
+       "        raise exception 'unknown way of shipping' using errcode = '22023', hint = 'fulfilment';\n      end if;\n      v_block := null;")]),
+    ("delete_deal: no Day 6 block check",
+     [(DELETE_DEAL, "  v_block := private.deal_closing_blocked(p_id);", "  v_block := null;")]),
+    ("Guard: the open flood guard counts live deals only (since verifier round 2 the statement-level recount counts the open records)",
+     [(DEAL_GUARD, "    if (select count(*) from (select 1 from private.deal_opens o\n                               where o.user_id = caller and o.created_at > now() - interval '1 hour'",
+       "    if (select count(*) from (select 1 from public.deals o\n                               where o.created_by = caller and o.created_at > now() - interval '1 hour'")], SURVIVES),
+    ("History trigger: no open record written",
+     [(DEAL_HISTORY, "      insert into private.deal_opens (user_id) values ((select auth.uid()));\n", "")]),
+    ("Open records: insert granted to clients",
+     [("grant select on private.deal_opens to authenticated;", "grant select, insert, delete on private.deal_opens to authenticated;")]),
+    ("move_deal: no move record for an Undo with a request id (a repeated Undo is not a replay)",
+     [(MOVE_DEAL, "    if p_request_id is not null then\n      insert into private.deal_moves (history_id, org_id, user_id, deal_id, company_id, request_id, prev_lead_status,\n                                      new_lead_status)\n",
+       "    if false then\n      insert into private.deal_moves (history_id, org_id, user_id, deal_id, company_id, request_id, prev_lead_status,\n                                      new_lead_status)\n")]),
+    ("Guard: a deal's owner can be emptied on update (G11)",
+     [(DEAL_GUARD, "  if new.owner_id is null and old.owner_id is not null then", "  if false then")]),
+    ("update_deal: no owner pre-check (the guard answers the same 22023 owner_required)",
+     [(UPDATE_DEAL, "  if 'owner_id' = any (p_fields) and p_owner is null then", "  if false then")], SURVIVES),
+    ("update_deal: no owner pre-check, and the guard lets the owner be emptied (both layers)",
+     [(UPDATE_DEAL, "  if 'owner_id' = any (p_fields) and p_owner is null then", "  if false then"),
+      (DEAL_GUARD, "  if new.owner_id is null and old.owner_id is not null then", "  if false then")]),
+    ("delete_deal: the creator's window ignores the call's undo record (a refused delete answers P0002)",
+     [(DELETE_DEAL, "                      and (v_deal.source_activity_id is null  -- the policy's undo-record condition (verifier finding 8)\n                           or not exists (select 1 from private.activity_undo u\n                                           where u.activity_id = v_deal.source_activity_id));",
+       ";")]),
+    # Verifier round 2 (one statement with many rows: the limits are counted again after the statement)
+    ("Open flood: no statement-level recount (a bulk insert passes the 30-an-hour limit)",
+     [(OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
+    ("Open flood: the statement-level recount allows 31 an hour",
+     [(OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 32) recent) > 31 then")]),
+    ("Stage flood: no statement-level recount (a bulk PATCH passes the 120-a-minute limit)",
+     [(MOVE_FLOOD, "                             limit 121) recent) > 120 then", "                             limit 121) recent) > 120 and false then")]),
+    ("Stage flood: the statement-level recount is INVOKER (history on a deal handed on is not counted)",
+     [(MOVE_FLOOD, "language plpgsql security definer set search_path = '' as $$", "language plpgsql security invoker set search_path = '' as $$")]),
+    ("Stage flood: the statement-level recount runs for edits that change no stage",
+     [(MOVE_FLOOD, "\n     or not exists (select 1 from new_deals n join old_deals o on o.id = n.id where n.stage_id is distinct from o.stage_id) then", " then")]),
+    ("Open flood: no guard and no statement-level recount (both layers of row 27)",
+     [(DEAL_GUARD, "                               limit 30) recent) >= 30 then", "                               limit 30) recent) >= 30 and false then"),
+      (OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
+    ("Stage flood: no guard and no statement-level recount (both layers of row 28)",
+     [(DEAL_GUARD, "                               limit 120) recent) >= 120 then", "                               limit 120) recent) >= 120 and false then"),
+      (MOVE_FLOOD, "                             limit 121) recent) > 120 then", "                             limit 121) recent) > 120 and false then")]),
+    ("Open flood: the guard counts live deals only, and no statement-level recount (both layers of row 58)",
+     [(DEAL_GUARD, "    if (select count(*) from (select 1 from private.deal_opens o\n                               where o.user_id = caller and o.created_at > now() - interval '1 hour'",
+       "    if (select count(*) from (select 1 from public.deals o\n                               where o.created_by = caller and o.created_at > now() - interval '1 hour'"),
+      (OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
+]
+
+
+# Day 5a redefines the audit trigger and the task guard: the earlier sets' rows aimed at those functions in the Day 4a
+# and 4b migrations now edit the live Day 5a copy (rewritten here once, so each row keeps its number). Rows whose text
+# Day 5a changed (the task guard's link exception gained deal_id; the audit line gained the deals rule) have their own
+# Day 5a edit below.
+OVERRIDES_5A = {
+    ("day4a", "Task guard: no link-emptying exception (a contact delete must then fail)"):
+        [(TASK_GUARD_5A, "    if pg_trigger_depth() > 1\n       and changed <@", "    if false\n       and changed <@")],
+    ("day4a", "Task guard: link-emptying exception without the depth condition"):
+        [(TASK_GUARD_5A, "    if pg_trigger_depth() > 1\n       and changed <@", "    if true\n       and changed <@")],
+    ("day4a", "Task guard: link-emptying exception without created_by (the design's list: a person delete fails)"):
+        [(TASK_GUARD_5A, "changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id']",
+          "changed <@ array['assignee_id', 'contact_id', 'deal_id', 'source_activity_id']")],
+    ("day4a", "Task guard: link-emptying exception lets a link move to another record (depth 2)"):
+        [(TASK_GUARD_5A, "\n       and (new.assignee_id is null or new.assignee_id is not distinct from old.assignee_id)\n       and (new.contact_id is null or new.contact_id is not distinct from old.contact_id)\n       and (new.created_by is null or new.created_by is not distinct from old.created_by)\n       and (new.deal_id is null or new.deal_id is not distinct from old.deal_id)\n       and (new.source_activity_id is null or new.source_activity_id is not distinct from old.source_activity_id) then",
+          " then")],
+    ("day4a", "Task guard: link-emptying exception lets any column change (depth 2)"):
+        [(TASK_GUARD_5A, "    if pg_trigger_depth() > 1\n       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id']\n",
+          "    if pg_trigger_depth() > 1\n")],
+    ("day4a", "Audit: an edit keeps the text"):
+        [(AUDIT_ROW_5A, "       and not (is_activity and n.key = 'body')\n", ""),
+         (AUDIT_ROW_5A, "    if is_activity and (to_jsonb(new) -> 'body') is distinct from (to_jsonb(old) -> 'body') then", "    if false then")],
+}
+
+
+def _relive(name, default, mutations):
+    out = []
+    for title, edits, *flags in mutations:
+        if (name, title) in OVERRIDES_5A:
+            edits = OVERRIDES_5A[(name, title)]
+        else:
+            moved = []
+            for edit in edits:
+                target, old, new = edit if len(edit) == 3 else (default, *edit)
+                if title.startswith("Task guard") and target == MIG_4A:
+                    target = TASK_GUARD_5A
+                elif title.startswith("Audit") and target in (MIG_4B, MIG_4C):
+                    target = AUDIT_ROW_5A
+                moved.append((target, old, new))
+            edits = moved
+        out.append((title, edits, *flags))
+    return out
+
+
+MUTATIONS_3B = _relive("day3b", MIG_3B, MUTATIONS_3B)
+MUTATIONS_4A = _relive("day4a", MIG_4A, MUTATIONS_4A)
+MUTATIONS_4B = _relive("day4b", MIG_4B, MUTATIONS_4B)
+MUTATIONS_4C = _relive("day4c", MIG_4C, MUTATIONS_4C)
+
+
+# Earlier rows whose text Day 5b changed around (the replay answer appends the deal part; the deal check sits between
+# the contact check and the dialled check): the same protection removed from the Day 5b copy.
+UNIQUE_ANSWER_5B = ("    if v_constraint is distinct from 'activities_author_request_idx' then\n      raise;\n    end if;\n"
+                    "    select a.id into v_id from public.activities a where a.user_id = caller and a.request_id = p_request_id;\n"
+                    "    return private.logged_activity(v_id, true) || private.logged_activity_deal(v_id);")
+OVERRIDES_5B = {
+    # (Found at the 4c rebase by a check that every edit lands in a live definition: this row's text ended where Day 5b's
+    # policy goes on with the deal clause, so it still edited the dropped Day 4a policy.)
+    ("day4a", "Activities insert policy: a contact of another lead"):
+        [(INSERT_POLICY_5B, "\n  and (contact_id is null or exists (select 1 from public.contacts k\n       where k.id = activities.contact_id and k.company_id = activities.company_id))", "")],
+    ("day4b", "log_activity: no second replay check after the lock, and no unique-violation answer (both layers)"):
+        [(LOG_ACTIVITY_5B, "    -- The same request may have been saved while this one waited for the lock.\n    if p_request_id is not null then",
+          "    -- The same request may have been saved while this one waited for the lock.\n    if false then"),
+         (LOG_ACTIVITY_5B, UNIQUE_ANSWER_5B, "    raise;")],
+    ("day4b", "log_activity: no unique-violation answer (a concurrent duplicate fails)"):
+        [(LOG_ACTIVITY_5B, UNIQUE_ANSWER_5B, "    raise;")],
+    ("day4b", "Input: a contact of another lead (the policy answers 42501 instead of P0002)"):
+        [(LOG_ACTIVITY_5B, "      from public.contacts k where k.id = p_contact and k.company_id = p_company;\n    if not found then\n"
+          "      raise exception 'contact not found on this lead' using errcode = 'P0002';\n    end if;\n  end if;\n  -- A linked deal",
+          "      from public.contacts k where k.id = p_contact;\n  end if;\n  -- A linked deal")],
+}
+
+
+def _relive_5b(default, mutations, name):
+    """Moves an edit aimed inside a Day 4 function that Day 5b recreates to the Day 5b copy (REBASE: and again at 4c)."""
+    out = []
+    for title, edits, *flags in mutations:
+        if (name, title) in OVERRIDES_5B:
+            out.append((title, OVERRIDES_5B[(name, title)], *flags))
+            continue
+        moved = []
+        for edit in edits:
+            target, old, new = edit if len(edit) == 3 else (default, *edit)
+            if not isinstance(target, Region):
+                text = target.read_text()
+                for original, copy in RELIVE_5B:
+                    b = original.path == target and original.bounds(text)
+                    if b and old in text[b[0]:b[1]] and text.count(old) == 1:
+                        target = copy
+                        break
+            moved.append((target, old, new))
+        out.append((title, moved, *flags))
+    return out
+
+
+MUTATIONS_4A = _relive_5b(MIG_4A, MUTATIONS_4A, "day4a")
+MUTATIONS_4B = _relive_5b(MIG_4B, MUTATIONS_4B, "day4b")
+MUTATIONS_3B = _relive_5b(MIG_3B, MUTATIONS_3B, "day3b")
+MUTATIONS_4C = _relive_5b(MIG_4C, MUTATIONS_4C, "day4c")
+
+# Day 5b (design 8.3 "5b", rows 1 to 5 in the design's order, then the builder's additions from 6). The default target is
+# the Day 5b migration.
+UNDO_DEAL_BLOCK = """  if u.created_deal_id is not null then
+    if u.prev_status is null then
+      perform 1 from public.companies c where c.id = v_company for update;
+    end if;
+    delete from public.deals d where d.id = u.created_deal_id and d.version = 0 and d.created_by = caller;
+    v_deal := case when found then 'removed' else 'kept' end;
+  end if;
+"""
+MUTATIONS_5B = [
+    ("Activities insert policy: no same-lead deal check",
+     [(INSERT_POLICY_5B, "\n  and (deal_id is null or exists (select 1 from public.deals d\n       where d.id = activities.deal_id and d.company_id = activities.company_id))", "")]),
+    ("undo_activity: removes the deal without version = 0 (a moved deal goes too)",
+     [(UNDO_ACTIVITY_5B, "d.id = u.created_deal_id and d.version = 0 and d.created_by = caller", "d.id = u.created_deal_id and d.created_by = caller")]),
+    ("undo_activity: deletes the deal before the lead lock (deadlock test)",
+     [(UNDO_ACTIVITY_5B, UNDO_DEAL_BLOCK, ""),
+      (UNDO_ACTIVITY_5B, "  if u.prev_status is not null then\n    select c.lead_status",
+       UNDO_DEAL_BLOCK.replace("    if u.prev_status is null then\n      perform 1 from public.companies c where c.id = v_company for update;\n    end if;\n", "")
+       + "  if u.prev_status is not null then\n    select c.lead_status")]),
+    ("Deal delete policy: creator branch without the activity-undo condition",
+     [(MIG_5A, "    or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds'\n        and (source_activity_id is null\n             or not exists (select 1 from private.activity_undo u where u.activity_id = deals.source_activity_id)))));",
+       "    or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds')));")]),
+    ("log_activity: opens deals for people who may not change the lead",
+     [(LOG_ACTIVITY_5B, "    if not v_editable then\n      v_deal_answer := jsonb_build_object('opened', false, 'reason', 'not_editable');\n    elsif", "    if")]),
+    ("log_activity: opens a deal on a Do not contact lead (the guard refuses the whole call)",
+     [(LOG_ACTIVITY_5B, "    elsif v_status = 'do_not_contact' then\n      v_deal_answer := jsonb_build_object('opened', false, 'reason', 'dnc');\n", "")]),
+    ("log_activity: no open-rate check before the deal (the guard refuses the whole call)",
+     [(LOG_ACTIVITY_5B, "                                  limit 30) recent) >= 30 then\n      v_deal_answer", "                                  limit 30) recent) >= 1000 then\n      v_deal_answer")]),
+    ("log_activity: a deal opens from any outcome",
+     [(LOG_ACTIVITY_5B, "  if (p_open_deal and (p_type is distinct from 'call' or p_outcome is null\n                       or p_outcome not in ('interested', 'meeting_booked') or p_deal is not null))\n     or",
+       "  if")]),
+    ("log_activity: no deal title pre-check (a skipped open never checks it)",
+     [(LOG_ACTIVITY_5B, "  if v_deal_title is not null and (char_length(v_deal_title) > 120", "  if false and (char_length(v_deal_title) > 120")]),
+    ("log_activity: no deal value pre-check (3 decimals rounded by the column)",
+     [(LOG_ACTIVITY_5B, "  if not private.deal_value_ok(p_deal_value) then", "  if false then")]),
+    ("log_activity: no same-lead check for a linked deal (the policy answers 42501 instead of P0002)",
+     [(LOG_ACTIVITY_5B, "  if p_deal is not null and not exists (select 1 from public.deals d where d.id = p_deal and d.company_id = p_company) then",
+       "  if false then")]),
+    ("undo_activity: never removes the deal the call opened",
+     [(UNDO_ACTIVITY_5B, "    delete from public.deals d where d.id = u.created_deal_id and d.version = 0 and d.created_by = caller;\n", "    perform 1 where false;\n")]),
+    ("log_activity: the undo record forgets the deal",
+     [(LOG_ACTIVITY_5B, "          v_completed, v_cancelled, v_deal);", "          v_completed, v_cancelled, null);")]),
+    ("Replay answer without the opened deal",
+     [("    'deal', case when u.created_deal_id is not null\n", "    'deal', case when false\n")]),
+    ("get_lead: can_open_deal ignores Do not contact",
+     [(GET_LEAD_5B, "    'can_open_deal', e.can_edit and c.lead_status <> 'do_not_contact'", "    'can_open_deal', e.can_edit")]),
+    ("get_lead: open_count counts closed deals too",
+     [(GET_LEAD_5B, "from public.deals d where d.company_id = c.id and d.status = 'open') o)", "from public.deals d where d.company_id = c.id) o)")]),
+    ("log_activity runs as its owner (DEFINER: deals and links for anyone)",
+     [(LOG_ACTIVITY_5B, ") returns jsonb\nlanguage plpgsql volatile set search_path = ''", ") returns jsonb\nlanguage plpgsql volatile security definer set search_path = ''")]),
+    # Added at the 4c rebase: the work queue's card (claim_next_lead) says how many open deals the lead has.
+    ("Queue card: open_deal counts closed deals too",
+     [(QUEUE_CARD_5B, "                   where d.company_id = c.id and d.status = 'open'))", "                   where d.company_id = c.id))")]),
+    ("Queue card: open_deal's newest is the oldest",
+     [(QUEUE_CARD_5B, "order by d.stage_entered_at desc, d.id desc))[1])", "order by d.stage_entered_at, d.id))[1])")]),
+    ("Queue card runs as its owner (DEFINER: every deal in the org counted for a rep)",
+     [(QUEUE_CARD_5B, "returns jsonb\nlanguage sql stable set search_path = ''", "returns jsonb\nlanguage sql stable security definer set search_path = ''")]),
+]
+
+
+MUTATIONS_5C = [
+    ("home_summary: no scope check (a rep asking for the team gets the org's figures)",
+     [(SUMMARY, SCOPE_5C, "")]),
+    ("Month start in UTC, not the profile zone",
+     [(HOME_WINDOW, "(w.today - (extract(day from w.today)::integer - 1))::timestamp at time zone p_tz",
+       "date_trunc('month', p_at at time zone 'UTC') at time zone 'UTC'")]),
+    ("Day end = day start + 24 h (a 23 or 25 hour day)",
+     [(HOME_WINDOW, "(w.today + 1)::timestamp at time zone p_tz,", "w.today::timestamp at time zone p_tz + interval '24 hours',")]),
+    ("Win rate counts Opened by mistake",
+     [(SUMMARY_TEAM_CLOSED, "d.status = 'lost' and d.lost_reason <> 'mistake'", "d.status = 'lost'"),
+      (SUMMARY_MINE_CLOSED, "d.status = 'lost' and d.lost_reason <> 'mistake'", "d.status = 'lost'")]),
+    ("The feed selects the entry's text",
+     [(RECENT_MINE, "a.type, a.outcome, null::text as to_stage,\n                  null::text as value",
+       "a.type, a.outcome, null::text as to_stage,\n                  a.body as value")]),
+    ("home_summary runs as its owner (SECURITY DEFINER: past the row rules)",
+     [(SUMMARY, ") returns jsonb\nlanguage plpgsql stable set search_path = ''",
+       ") returns jsonb\nlanguage plpgsql stable security definer set search_path = ''")]),
+    # (Since the 4c rebase overdue and today come from count_tasks('mine'); the meetings of the day are still counted in
+    # home_summary, so the row removes the caller filter there. Row 16 aims at the count_tasks call.)
+    ("Tasks due ignores Mine (the org's meetings in Team)",
+     [(SUMMARY, "                         where t.assignee_id = v_me and t.done_at is null and t.cancelled_at is null\n",
+       "                         where t.done_at is null and t.cancelled_at is null\n")]),
+    ("Stalled ignores the lead's last activity (Team)",
+     [(OPEN_DEALS_ORG, "then greatest(d.stage_entered_at,\n                                    coalesce((select c.last_activity_at from public.companies c where c.id = d.company_id),\n                                             '-infinity'::timestamptz))",
+       "then d.stage_entered_at")]),
+    ("Calls today from midnight UTC (Mine)",
+     [(SUMMARY, "where a.user_id = v_me and a.created_at >= w.day_start and a.type = 'call';",
+       "where a.user_id = v_me and a.created_at >= (now() at time zone 'UTC')::date::timestamp at time zone 'UTC' and a.type = 'call';")]),
+    ("Win rate shown from 3 closed deals",
+     [(SUMMARY, ">= 5\n         then round(", ">= 3\n         then round(")]),
+    ("home_attention: no scope check", [(ATTENTION, SCOPE_5C, "")]),
+    ("home_attention: closing soon means 30 days",
+     [(ATTENTION, "x.expected_close between v_today and v_today + 7)", "x.expected_close between v_today and v_today + 30)")]),
+    ("home_attention: close date passed not first",
+     [(ATTENTION, "row_number() over (order by (o.expected_close < v_today) is true desc,\n                                       ",
+       "row_number() over (order by ")]),
+    ("home_recent_activity: no scope check", [(RECENT, SCOPE_5C, "")]),
+    ("home_recent_activity: undo pairs shown (Team)",
+     [(RECENT_TEAM, "and h.kind <> 'undo'\n              and not exists (select 1 from public.deal_stage_history u where u.undoes = h.id)",
+       "and true")]),
+    # Row 16 aimed at the 5c stand-in home_today_tasks until the 4c rebase; the Today card now reads Day 4c's list_tasks
+    # (its own rows), so the row aims at what Home still decides: K5/K6 are always the caller's own tasks.
+    ("home_summary tasks: Team counts everyone's tasks (count_tasks('team') for Team)",
+     [(SUMMARY, "    from public.count_tasks('mine') as k (v);",
+       "    from public.count_tasks(case when v_team then 'team' else 'mine' end) as k (v);")]),
+    # Rows 17 to 19: the low stock stub, Day 6's stock_alerts() signature since Haider's decision B (15 Oct 2026; row 17
+    # aimed at the 5c draft home_low_stock(int) before).
+    ("stock_alerts stub callable by anon",
+     [("    grant execute on function public.stock_alerts() to authenticated;",
+       "    grant execute on function public.stock_alerts() to authenticated, anon;")]),
+    ("stock_alerts stub without the two-factor check (an aal1 session gets an answer)",
+     [("      if (select auth.uid()) is null or not private.has_aal2() then\n        raise exception 'two-factor sign-in",
+       "      if (select auth.uid()) is null then\n        raise exception 'two-factor sign-in")]),
+    ("stock_alerts stub runs as its owner (SECURITY DEFINER)",
+     [("    language plpgsql stable security invoker set search_path = '' as $f$",
+       "    language plpgsql stable security definer set search_path = '' as $f$")]),
+    # Rows 20 and 21 (advisor, 15 Oct 2026): home_attack accepts null (this stub) or exactly Day 6's shape (6d's real
+    # body after its create or replace); any other answer fails, e.g. Day 6's keys plus a purchase cost, or an empty object.
+    ("stock_alerts answers Day 6's keys plus an extra one (a purchase cost)",
+     [("      return null;  -- inventory not set up yet",
+       "      return jsonb_build_object('low', 0, 'sold_out', 0, 'arriving_late', 0, 'requests_new', 0, "
+       "'holds_ending_soon', 0, 'deals_waiting', 0, 'sample', '[]'::jsonb, 'cost_per_piece', 4.1);")]),
+    ("stock_alerts answers an empty object",
+     [("      return null;  -- inventory not set up yet", "      return '{}'::jsonb;")]),
+]
+
+
+# Team screen (verifier finding 2): set_user_role as the role-change lock migration redefines it. Rows 1 to 3 remove the
+# new protections one at a time (supabase/tests/team_concurrency.sh); row 4 removes the last-admin count it keeps
+# (rls_attack.sql).
+TEAM_LOCK = "  perform 1 from public.profiles where org_id = caller_org and role = 'admin' order by id for update;\n"
+TEAM_TARGET = "  select org_id, role into target_org, old_role from public.profiles where id = target_user for update;\n"
+TEAM_RECHECK = ("  if not private.is_admin() then\n"
+                "    raise exception 'admin with a two-factor code from the last 10 minutes required' using errcode = '42501';\n"
+                "  end if;\n  select org_id")
+MUTATIONS_TEAM = [
+    ("Role change: the organisation's admin rows not locked (two admins demote each other and none is left)",
+     [(TEAM_LOCK, "")]),
+    ("Role change: the target locked first and the caller checked before the admin rows (a demoted admin still acts)",
+     [(TEAM_LOCK + "  -- The caller", "  -- The caller"), (TEAM_TARGET, TEAM_TARGET + TEAM_LOCK)]),
+    ("Role change: the caller not checked again after the wait (an admin demoted meanwhile still acts)",
+     [(TEAM_RECHECK, "  select org_id")]),
+    ("Role change: no last-admin count",
+     [("     and (select count(*) from public.profiles where org_id = caller_org and role = 'admin') <= 1 then",
+       "     and false then")]),
+]
+
+
+
 MUTATIONS_6A = [
     # Design section 11.3, 6a mutations 1 to 16 (tagged [design N]; a protection with two layers also gets one row per
     # layer, marked SURVIVES where the other layer stops the same thing; the row removing both is caught).
@@ -1078,7 +2060,11 @@ MUTATIONS_6E = [
        "create trigger share_link_caps after insert on private.share_links")]),
 ]
 
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
+        "day4c": (MIG_4C, MUTATIONS_4C), "day4d": (MIG_4D, MUTATIONS_4D), "day5a": (MIG_5A, MUTATIONS_5A),
+        "day5b": (MIG_5B, MUTATIONS_5B), "day5c": (MIG_5C, MUTATIONS_5C),
+        "team": (MIG_TEAM, MUTATIONS_TEAM),
         "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
         "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E)}
 
@@ -1118,19 +2104,36 @@ def run_set(name: str, only: set) -> int:
         applied = True
         expanded = []
         for edit in edits:
-            path, old, new = edit if len(edit) == 3 else (default, *edit)
-            expanded.append((path, old, new))
+            target, old, new = edit if len(edit) == 3 else (default, *edit)
+            expanded.append((target, old, new))
+            path = target.path if isinstance(target, Region) else target
             expanded += [m for m in mirrored_edits(path, old, new) if m not in edits]
-        for path, old, new in expanded:
+        for target, old, new in expanded:
+            path = target.path if isinstance(target, Region) else target
             files.setdefault(path, path.read_text())
             text = files[path]
-            if text.count(old) != 1:
-                print(f"| {i} | {title} | NOT APPLIED (pattern found {text.count(old)} times in {path.name}) | |")
+            lo, hi = 0, len(text)
+            if isinstance(target, Region):
+                b = target.bounds(text)
+                if b is None:
+                    print(f"| {i} | {title} | NOT APPLIED (function not found once: {target.name}) | |")
+                    counts["unexpected"] += 1
+                    applied = False
+                    break
+                lo, hi = b
+            part = text[lo:hi]
+            if part.count(old) != 1:
+                where = target.name if isinstance(target, Region) else path.name
+                print(f"| {i} | {title} | NOT APPLIED (pattern found {part.count(old)} times in {where}) | |")
                 counts["unexpected"] += 1
                 applied = False
                 break
-            files[path] = text.replace(old, new)
+            files[path] = text[:lo] + part.replace(old, new) + text[hi:]
         if not applied:
+            continue
+        if ANCHORS_ONLY:
+            print(f"| {i} | {title} | anchor found | |")
+            counts["caught"] += 1
             continue
         originals = {path: path.read_text() for path in files}
         try:
@@ -1158,8 +2161,14 @@ def run_set(name: str, only: set) -> int:
     return counts["unexpected"]
 
 
+ANCHORS_ONLY = False
+
+
 def main() -> int:
+    global ANCHORS_ONLY
     args = sys.argv[1:]
+    if args[:1] == ["--anchors"]:
+        ANCHORS_ONLY, args = True, args[1:]
     chosen = "all"
     if args[:1] == ["--set"]:
         chosen, args = args[1], args[2:]

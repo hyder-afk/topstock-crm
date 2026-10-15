@@ -42,5 +42,8 @@ export function callTarget(lead: LeadDetail, n: NumberChoice): CallTarget {
     dialled: n.dialled,
     contactId: n.contactId,
     contactName: n.contactName,
+    openDeals: lead.deals?.open_count ?? 0,
+    latestDeal: lead.deals?.latest_open ? { stage: lead.deals.latest_open.stage, value: lead.deals.latest_open.value } : null,
+    canOpenDeal: lead.can_open_deal ?? false,
   };
 }

@@ -1,15 +1,20 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo } from "motion/react";
 import { PhoneOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
+import { OpenDealSwitch } from "@/components/activity/open-deal-switch";
 import { FollowUpPicker, OutcomePad, followUpArgs, followUpReady, noFollowUp, type FollowUp } from "@/components/activity/outcome-pad";
 import { lastUndoable, useLogActivity, useUndoActivity } from "@/components/activity/use-activities";
+import { lastUndoableMove } from "@/lib/last-move";
+import { isUndoKey, newerUndo } from "@/lib/undo-pick";
 import { followUpRule, outcomeForKey, type CallOutcome } from "@/lib/activities";
+import type { StageKey } from "@/lib/deals";
+import { parseMoney } from "@/lib/money";
 import { project, springs } from "@/lib/motion";
 import { isTyping } from "@/lib/shortcuts";
 import { browserZone, nextWorkingDate } from "@/lib/timezones";
@@ -33,6 +38,10 @@ export type CallTarget = {
   dialled: "lead" | "contact";
   contactId: string | null;
   contactName: string | null;
+  /** Day 5b (design 7.9): the lead's open deals the caller sees, and whether the caller may open one here. */
+  openDeals?: number;
+  latestDeal?: { stage: StageKey; value: string | null } | null;
+  canOpenDeal?: boolean;
 };
 
 type Phase = "calling" | "outcome" | "notLogged";
@@ -110,19 +119,20 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
   // Only the open call may change the slot: a panel still playing its exit animation must not bring itself back.
   const change = useCallback((c: CallState) => setSlot((s) => (s.call?.startedAt === c.startedAt ? { ...s, call: c } : s)), []);
 
-  // U or Cmd/Ctrl+Z: undo the last entry this tab logged, within 2 minutes, when nobody is typing and no dialog is open.
+  // U or Cmd/Ctrl+Z: undo the latest change this tab made within 2 minutes (design 5.3), when nobody is typing, no dialog
+  // is open and the page does not own U (data-owns-undo: the work queue). When the newest change is a deal move, the page
+  // whose deal flows made it undoes it (useDealFlows with undoKey: the lead page and Home's deal sheet; the board has
+  // its own key): this listener then leaves the key alone, so U never takes back an older entry instead.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isTyping(event.target)) return;
-      if (document.querySelector("[role=dialog]")) return;
-      const isUndo =
-        (event.key.toLowerCase() === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) ||
-        (event.key.toLowerCase() === "u" && !event.metaKey && !event.ctrlKey && !event.altKey);
-      if (!isUndo) return;
-      const last = lastUndoable();
-      if (!last) return;
+      // A page that owns U (the work queue undoes its own outcomes) handles it; this listener was added first.
+      if (document.querySelector("[role=dialog],[data-owns-undo]")) return;
+      if (!isUndoKey(event)) return;
+      const pick = newerUndo(lastUndoable(), lastUndoableMove());
+      if (pick?.kind !== "entry") return;
       event.preventDefault();
-      void undo(last.activityId, last.leadId);
+      void undo(pick.entry.activityId, pick.entry.leadId);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -197,21 +207,32 @@ function CallPanel({
   const [saving, setSaving] = useState(false);
   const [now] = useState(() => new Date());
   const { target, phase } = call;
+  // Day 5b (design 7.9, D17): Interested and Book meeting offer "Open a deal" (on when the lead has no open deal),
+  // with an optional title and value; hidden for people who may not change the lead.
+  const locale = useLocale();
+  const [openDeal, setOpenDeal] = useState(false);
+  const [dealTitle, setDealTitle] = useState("");
+  const [dealValue, setDealValue] = useState("");
+  const dealOutcome = outcome === "interested" || outcome === "meeting_booked";
+  const canDeal = dealOutcome && !!target.canOpenDeal;
+  const dealValueParsed = dealValue.trim() ? parseMoney(dealValue, locale) : null;
+  const dealValueBad = openDeal && canDeal && dealValue.trim() !== "" && dealValueParsed === null;
   const clock = useClock(call.startedAt, phase === "calling");
   const viewerZone = browserZone() ?? "Europe/Paris";
   const rule = outcome ? followUpRule("call", outcome) : "none";
-  const ready = !!outcome && followUpReady(rule, follow) && !saving;
+  const ready = !!outcome && followUpReady(rule, follow) && !saving && !dealValueBad;
 
   // Picking an outcome sets its follow-up default: Interested → the next working day on the lead's side.
   const pick = useCallback(
     (o: CallOutcome) => {
       setOutcome(o);
+      setOpenDeal((o === "interested" || o === "meeting_booked") && !!target.canOpenDeal && (target.openDeals ?? 0) === 0);
       const r = followUpRule("call", o);
       if (r === "date_or_time") setFollow({ date: nextWorkingDate(new Date(), target.callZoneKey), time: null });
       else if (r === "time") setFollow({ date: nextWorkingDate(new Date(), target.callZoneKey), time: "10:00" });
       else setFollow(noFollowUp);
     },
-    [target.callZoneKey],
+    [target.callZoneKey, target.canOpenDeal, target.openDeals],
   );
 
   // Ends the panel. Focus returns to the opener only if it was in the panel (or lost), not if the person has moved on.
@@ -244,13 +265,14 @@ function CallPanel({
         dialled: target.dialled,
         ...followUpArgs(follow, viewerZone),
         leadName: target.leadName,
+        openDeal: openDeal && canDeal ? { title: dealTitle.trim() || null, value: dealValueParsed } : null,
       },
       preview: { contact_name: target.contactName },
       ownerName: target.ownerName,
     });
     setSaving(false);
     if (res.ok) finish();
-  }, [outcome, ready, isPresent, log, target, note, follow, viewerZone, finish]);
+  }, [outcome, ready, isPresent, log, target, note, follow, viewerZone, finish, openDeal, canDeal, dealTitle, dealValueParsed]);
 
   // End call moves the focus to the pad (design 7.3).
   useEffect(() => {
@@ -301,6 +323,12 @@ function CallPanel({
         return;
       }
       if (isTyping(event.target)) return;
+      // D toggles "Open a deal" (event.key: a letter, wherever it sits on the keyboard).
+      if (event.key.toLowerCase() === "d" && !event.metaKey && !event.ctrlKey && !event.altKey && phase === "outcome" && canDeal) {
+        event.preventDefault();
+        setOpenDeal((on) => !on);
+        return;
+      }
       const o = outcomeForKey(event);
       if (!o) return;
       event.preventDefault();
@@ -309,7 +337,7 @@ function CallPanel({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isPresent, phase, save, dismiss, pick, onChange, call]);
+  }, [isPresent, phase, save, dismiss, pick, onChange, call, canDeal]);
 
   // Grow from the Call button: the transform origin is that button's centre, relative to where the panel sits.
   const [origin, setOrigin] = useState("50% 100%");
@@ -429,6 +457,19 @@ function CallPanel({
                 leadZoneKey={target.callZoneKey}
                 now={now}
                 legend={rule === "time" ? tOut("meetingWhen") : undefined}
+              />
+            ) : null}
+            {canDeal ? (
+              <OpenDealSwitch
+                on={openDeal}
+                onToggle={() => setOpenDeal((on) => !on)}
+                latest={target.latestDeal ?? null}
+                openCount={target.openDeals ?? 0}
+                title={dealTitle}
+                onTitle={setDealTitle}
+                value={dealValue}
+                onValue={setDealValue}
+                valueBad={dealValueBad}
               />
             ) : null}
             <label className="flex flex-col gap-1.5">
