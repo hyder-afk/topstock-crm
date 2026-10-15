@@ -114,7 +114,7 @@ export function DealMenuItems({ card, kind, actions }: { card: DealCard; kind: k
           {keyHint("U")}
         </Item>
       ) : null}
-      {card.can_edit ? (
+      {card.can_delete ? (
         <>
           <Separator />
           <Item onSelect={actions.remove} className="text-status-red">

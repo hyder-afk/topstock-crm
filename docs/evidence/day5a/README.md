@@ -79,6 +79,61 @@ yet**: see "Rebase points". No screens, no server actions, no routes (5b and 5c)
 - `supabase/tests/perf_day5.sql` (new, part 1) and `scripts/db-perf.sh` (runs it after `perf_day4.sql`, then P10).
 - Spikes S6 to S9: `docs/evidence/day5a/spikes/` (scripts) and `docs/log.md` (results and decisions).
 
+## Team advisor finding (15 Oct): deal delete back to admin-only
+
+Haider decided on 11 Oct "delete admin-only with code" (`docs/log.md`; design "Protections", open question 7, threat 15
+"admin plus fresh code"), and confirmed it on 15 Oct ("Admins only"). Day 5a's `deals_delete` policy and `delete_deal`
+allowed a manager **or** an admin with a fresh code, copied from the design's own SQL block and RPC table, which
+contradicted the decision; no log entry accepted the change, and the test named `deal_delete_admin_fresh_code_ok` was run
+by a manager. Found by the Team advisor on 15 Oct. The migration was never deployed (deploy-dev-db runs only on `main`),
+so it is edited in place. No REBASE block is touched.
+
+- **Database** (`20261015090000_deals_pipeline.sql`): `deals_delete`'s fresh-code branch and `delete_deal`'s role check
+  use `private.is_admin()`. A manager (or a rep) with a fresh code gets 42501 with no hint (message "only an admin can
+  delete a deal"), which the app maps to the generic `forbidden`. The order is unchanged: no fresh code gives `step_up`
+  first. **The creator's branch is unchanged** (own untouched deal, `version = 0`, under 120 s, and a deal opened from a
+  call only once that call's undo record is consumed): the design keeps it as part of the decision ("Deleting a deal
+  needs an admin and a fresh code. The one exception is undoing a deal you opened in the last 2 minutes that nobody has
+  touched"; open question 7, "Whoever opened a deal can remove it within 2 minutes if nothing changed"). It applies to
+  any role.
+- **Who is offered Delete**: `private.deal_cards` (and so `list_stage_deals`, `list_lead_deals`, `pipeline_board`,
+  every write RPC's card and `get_deal`) gains `can_delete`: an admin, or the creator inside that window. It is a hint
+  for the screen; the policy and `delete_deal` still decide. `get_deal` no longer computes its own `can_delete` (it said
+  "manager or admin **with a fresh code**", so an admin without a recent code was not offered the Delete that asks for
+  the code). Day 5c's `home_attention` names the new column in its alias list and leaves it out of its items (Home's
+  answer is unchanged).
+- **App**: the card's ⋯/right-click menu, the `Delete`/`Backspace` key and the deal sheet's ⋯ menu show Delete only when
+  `can_delete` is true (before: whenever the person could edit the deal, so a manager, or a rep owner after the window,
+  saw a Delete the database refused). No message changes; the server action is unchanged (it passes the RPC's answer
+  through the error allowlist).
+- **Tests**: `deals_attack.sql` block 7: `deal_delete_manager_fresh_code_denied` (RPC 42501 without a hint; a direct
+  delete removes nothing; `get_deal` and `list_stage_deals` do not offer Delete); an admin without a fresh code is offered
+  Delete; `deal_delete_admin_fresh_code_ok` now runs as the admin; `deal_delete_creator_window_any_role` (a manager's own
+  untouched deal inside 120 s deletes without a code, the lead goes back). Existing: `deal_delete_stale_code_denied`
+  (admin, code 700 s old: `step_up`, and a direct delete removes nothing), `deal_delete_rep_fresh_code_denied`,
+  `deal_delete_creator_within_120s_untouched_ok`, `deal_delete_after_move_needs_code`, the undo-record cases.
+  `pipeline.spec.ts` `delete_not_offered_to_manager` (the admin fixture switched to manager with `setRole`, restored in
+  `finally`): no Delete on the card menu, the Delete key opens nothing, no Delete on the sheet menu; switched back to
+  admin, the same card offers Delete. The existing `delete_deal_asks_for_code` (an admin) is unchanged.
+- **Mutations** (`scripts/db-mutations.py`, day5a): row 14's anchor follows `is_admin` ("no fresh code for admins");
+  new rows 74 (policy back to `is_manager_or_admin`), 75 (`delete_deal`'s check back to `is_manager_or_admin`: the policy
+  then answers P0002) and 76 (the card's `can_delete` offers managers Delete).
+
+**Checks for this fix** (code head 5f240f3; 15 Oct):
+
+| Check | Result |
+|---|---|
+| `bash scripts/db-test.sh` (a copy on port 54497) | exit 0: rls, import (+ concurrency), activity (+), outcome (+), queue (+), files (+), deals_attack, deal_concurrency (case 9: 182 moved, 20 conflicts, 23 `reopen_first`, 75 unchanged, 0 deadlocks), deal_links_attack, home_attack |
+| Supabase advisors (in `db-test.sh`) | no ERROR. WARN `set_user_role` (accepted Day 1); INFO `unindexed_foreign_keys` 5, `unused_index` 5 (the same accepted kinds) |
+| Mutations (`mutations.md`, "Team advisor finding") | rows 1 to 63 and 74 to 76: 59 caught, 6 documented two-layer rows, **1 not as listed: row 58, now caught** (likely later suites' superuser deal inserts, not this fix; to confirm). New rows 74, 75, 76 caught. Rows 64 to 73 not re-run (deadline; code they edit unchanged). `--anchors`: every set found once (day3b 37, day4a 104, day4b 94, day4c 92, day4d 44, day5a 76, day5b 20, day5c 21) |
+| `npm run lint` | 0 errors, the 2 existing React Compiler warnings |
+| `npm run typecheck` | exit 0 |
+| `npm run test:unit` | 471 passed |
+| Playwright, Chromium only, on a throwaway isolated stack (copy of `scripts/local-auth` on postgres 54530, GoTrue 9996, gateway 54521; Next build on 3300; never the shared stack) | `pipeline.spec.ts` 15 passed (new `delete_not_offered_to_manager` included); `lead-deals`, `day5-security`, `home`, `pipeline-multi` 31 passed. The new test fails (Delete… shown to the manager, expected 0, got 1) with the card menu gated on `can_edit` again (UI mutation, scratch build only). WebKit: CI |
+| gitleaks (`b9c05db..HEAD`) | no leaks found |
+| `/security-review` | by-hand review of the delta in `security-review.md` ("Admin-only delete restored"): no finding |
+| Speed | not re-measured (`deal_cards` adds one per-statement `is_admin()` and a boolean that reads `activity_undo` only for the caller's own deal opened under 120 s ago) |
+
 ## Check results
 
 Code head **de33fc6** (verifier round 2: 35d9b51 the statement-level recounts and block 15, de33fc6 the bidi spec; the
@@ -193,6 +248,12 @@ last commit that changes code or tests is 2de7f9c, the mutation rows; later comm
     revoked) recount the open and stage-change limits after each statement (verifier round 2, N1 and N2). Design 3.1
     puts the flood guards in the guard only, which sees nothing the AFTER row triggers write in the same statement. The
     Day 6 contract ("AFTER triggers only" on deals) is kept: both are AFTER triggers and the BEFORE set is unchanged.
+19. **Deleting is admin-only again (restored Haider's 11 Oct decision (admin-only), found by the Team advisor 15 Oct).**
+    The design's SQL block (4.1, `deals_delete`) and RPC table (`delete_deal`: "then manager/admin") said manager or
+    admin, against Haider's decision ("delete admin-only with code"), the design's own "Protections" line and threat 15
+    ("admin plus fresh code"); 5a copied the SQL block. Both design lines are corrected to admin. `can_delete` now comes
+    with every card and means "Delete is offered" (an admin, whose code is asked on use, or the creator's window), where
+    `get_deal` alone had it and required a recent code. Section "Team advisor finding" above.
 
 ## Rebase points (Day 4c done 15 Oct; Day 4d merged in 15 Oct)
 

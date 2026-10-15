@@ -68,6 +68,8 @@ export type DealCard = {
   lost_reason: LostReason | null;
   created_at: string;
   can_edit: boolean;
+  /** Delete is offered: an admin (the code is asked on use), or the creator inside the untouched 2 minutes. */
+  can_delete: boolean;
 };
 
 export type Cursor = { after_at: string; after_id: string } | null;
@@ -112,7 +114,6 @@ export type DealDetail = DealCard & {
   lead: { id: string; name: string; city: string | null; country: string | null; lead_status: string; can_edit: boolean };
   contact: { id: string; first_name: string | null; last_name: string | null } | null;
   owner: { id: string; first_name: string | null; last_name: string | null } | null;
-  can_delete: boolean;
   stall_days: number | null;
   undo: { history_id: number; to_stage: StageKey; until: string } | null;
   history: DealHistoryRow[];

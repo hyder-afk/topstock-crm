@@ -925,6 +925,8 @@ exception when sqlstate 'TS001' then perform pg_temp.su();
 end $$;
 
 -- 7. Deleting (threats 15, 16; D8): codes, roles, the creator's window, what a delete keeps ---------------------------
+-- Deleting is for admins with a fresh code (Haider, 11 Oct: "delete admin-only with code"); a manager is refused like a
+-- rep. The creator's untouched 2-minute window needs no code and no role.
 do $$
 declare
   r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
@@ -938,6 +940,7 @@ declare
   act uuid;
   call jsonb;
   n integer;
+  v_hint text;
 begin
   -- deal_delete_creator_within_120s_untouched_ok: no code; the lead goes back (warm -> cold).
   perform pg_temp.act(r1, 'aal2', null);
@@ -950,7 +953,16 @@ begin
      or exists (select 1 from public.deal_stage_history where deal_id = deal) then
     raise exception 'FAIL: deal_delete_creator_within_120s_untouched_ok';
   end if;
-  -- deal_delete_after_move_needs_code: once moved (version 1), the creator needs a code and a manager or admin role.
+  -- deal_delete_creator_window_any_role: the window is the creator's, whatever the role (a manager, no code).
+  perform pg_temp.act(m1, 'aal2', null);
+  deal := pg_temp.open(lead, 'Manager mistake');
+  if not (public.get_deal(deal) ->> 'can_delete')::boolean then raise exception 'FAIL: a manager creator is not offered Delete'; end if;
+  perform public.delete_deal(deal);
+  perform pg_temp.su();
+  if exists (select 1 from public.deals where id = deal) or (select lead_status from public.companies where id = lead) <> 'cold' then
+    raise exception 'FAIL: deal_delete_creator_window_any_role';
+  end if;
+  -- deal_delete_after_move_needs_code: once moved (version 1), the creator needs a code and the admin role.
   perform pg_temp.act(r1, 'aal2', null);
   deal := pg_temp.open(lead_b, 'Moved');
   perform pg_temp.mv(deal, 'qualified');
@@ -961,6 +973,29 @@ begin
   -- deal_delete_rep_fresh_code_denied
   perform pg_temp.act(r1, 'aal2', 30);
   perform pg_temp.expect_error(format('select public.delete_deal(%L)', deal), '42501');
+  -- deal_delete_manager_fresh_code_denied: a manager with a fresh code is refused by delete_deal (42501, no hint: the
+  -- app's generic "forbidden") and by the policy (a direct delete removes nothing), and is not offered Delete.
+  perform pg_temp.act(m1, 'aal2', 30);
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', deal), '42501');
+  begin
+    perform public.delete_deal(deal);
+  exception when insufficient_privilege then
+    get stacked diagnostics v_hint = pg_exception_hint;
+    if v_hint <> '' then raise exception 'FAIL: deal_delete_manager_fresh_code_denied (hint %)', v_hint; end if;
+  end;
+  delete from public.deals where id = deal;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL: deal_delete_manager_fresh_code_denied (direct)'; end if;
+  if (public.get_deal(deal) ->> 'can_delete')::boolean
+     or (select can_delete from public.list_stage_deals('qualified', 'team') where id = deal) then
+    raise exception 'FAIL: a manager is offered Delete';
+  end if;
+  -- An admin is offered Delete without a fresh code (the code is asked on use).
+  perform pg_temp.act(admin, 'aal2', 700);
+  if not (public.get_deal(deal) ->> 'can_delete')::boolean
+     or not (select can_delete from public.list_stage_deals('qualified', 'team') where id = deal) then
+    raise exception 'FAIL: an admin is not offered Delete';
+  end if;
   -- deal_delete_stale_code_denied (an admin with a code from 700 s ago)
   perform pg_temp.act(admin, 'aal2', 700);
   perform pg_temp.expect_error(format('select public.delete_deal(%L)', deal), '42501', 'step_up');
@@ -973,7 +1008,7 @@ begin
   select org_id, lead_b, deal, 'Send the price list', r1, r1 from public.companies where id = lead_b returning id into task;
   insert into public.activities (org_id, company_id, deal_id, type, body, user_id)
   select org_id, lead_b, deal, 'note', 'About the deal', r1 from public.companies where id = lead_b returning id into act;
-  perform pg_temp.act(m1, 'aal2', 30);  -- a manager with a fresh code
+  perform pg_temp.act(admin, 'aal2', 30);  -- an admin with a fresh code
   perform public.delete_deal(deal);
   perform pg_temp.su();
   if exists (select 1 from public.deals where id = deal)

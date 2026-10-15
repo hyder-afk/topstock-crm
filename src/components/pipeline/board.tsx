@@ -405,7 +405,7 @@ function Pipeline({
           case "undo":
             return void actions.undo();
           case "delete":
-            return card.can_edit ? askDelete(card) : undefined;
+            return card.can_delete ? askDelete(card) : undefined;
           default:
             return;
         }
