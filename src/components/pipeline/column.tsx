@@ -124,6 +124,10 @@ export function Column({
   const virtualizer = useVirtualizer({
     count: virtual ? cards.length : 0,
     getScrollElement: () => scrollRef.current,
+    // Start where the column already is. The virtualizer scrolls its element to this offset when it attaches (on
+    // hydration too), and the default 0 threw a column scrolled before hydration back to the top: a tap on Show more
+    // made then went down on the button and up on the top card, so the click was lost (PR #17 CI, docs/log.md).
+    initialOffset: () => scrollRef.current?.scrollTop ?? 0,
     estimateSize: () => 136,
     overscan: 6,
     rangeExtractor,
@@ -178,7 +182,7 @@ export function Column({
         data-column-scroll={column}
         className={cn(
           "flex-1 px-2 pb-2",
-          !phone && "overflow-y-auto overscroll-contain md:h-[calc(100dvh-var(--board-top,300px)-216px)] md:min-h-[360px] md:flex-none",
+          !phone && "overflow-y-auto overscroll-contain md:min-h-[360px] md:grow md:basis-0",
         )}
       >
         {cards.length === 0 ? (
