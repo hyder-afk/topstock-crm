@@ -228,8 +228,8 @@
       "rep": "Rep"
     },
     "roleDescription": {
-      "admin": "Everything a manager does, plus importing leads and changing roles.",
-      "manager": "Changes every lead, contact, task, deal and file; deletes leads and deals with a code.",
+      "admin": "Everything a manager does, plus deleting deals, importing leads and changing roles.",
+      "manager": "Changes every lead, contact, task, deal and file; deletes leads with a code.",
       "rep": "Sees every lead but only their own deals; changes what they own: leads, deals, tasks and files."
     },
     "roleMenu": "Role for {who}: {role}",
