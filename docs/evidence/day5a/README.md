@@ -196,6 +196,12 @@ last commit that changes code or tests is 2de7f9c, the mutation rows; later comm
 
 ## Rebase points (Day 4c and 4d are not merged)
 
+**15 Oct: Day 4c done** (branch rebased onto `origin/main` 5f1a966): row 1 `task_guard` unchanged by 4c (kept); row 2
+`audit_row` re-copied from 4c's body with the deals rules; row 3 the order check passes (newest on main
+`20261013090000_tasks_queue.sql`); row 4 every mutation anchor found once and every edit lands in a live definition
+(day4c set merged in); rows 5 to 7 merged; row 8 `db-test.sh` all suites pass and the affected mutation rows re-ran
+(`docs/evidence/day5b/mutations.md`, "Verifier round 1"). Rows 1, 2 and 4 to 8 apply again for Day 4d.
+
 Day 4c will add `supabase/migrations/20261013090000_tasks_queue.sql` (queue columns on companies, `private.queue_claims`,
 task indexes, a new `get_lead`, possibly `task_guard`, `audit_row` and the import FK coverage list). After 4c (and 4d)
 merge, before 5a merges:

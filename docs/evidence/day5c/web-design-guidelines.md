@@ -24,3 +24,9 @@ Rules: vercel-labs/web-interface-guidelines at 434b7f9 (`command.md`, fetched fo
 - Performance: no long lists (at most 20 rows a card); the deal sheet loads on demand (Home's extra JS 9.1 KB gzip).
 
 Unresolved: none.
+
+## Verifier round 1 and the 4c rebase (15 Oct)
+
+- Focus is kept when the focused Needs attention row leaves (after the deal sheet closes, or while it is open);
+  `attention_opens_deal_sheet and refetch_after_move` checks both orders with `toBeFocused`.
+- Start calling: `aria-keyshortcuts="G Q"`, key caps `aria-hidden`.

@@ -57,6 +57,21 @@ The other rows (1, 2, 4 to 9, 13 to 16, 20, 22, 24, 26, 29, 30) are Day 5a's and
 Local runs use `scripts/local-auth/gateway.mjs` in place of PostgREST; the checks that hold only on real PostgREST
 (406 by schema name, 401/403 on a table POST) are marked in the spec and asserted in CI.
 
+## At the 4c rebase and verifier round 1 (15 Oct)
+
+- `log_activity` and `get_lead` are now Day 4c's bodies plus the Day 5b parts: still SECURITY INVOKER, static SQL,
+  `search_path = ''`, constant messages, the same revoke/grant loop. 4c's `p_from_queue` claim release deletes only the
+  caller's own claim (the claims delete policy and 4c's mutation rows on it, re-run against the 5b copy).
+- `private.queue_card` gains `open_deal`: INVOKER, static, read under deals RLS (a rep sees no count for a colleague's
+  deals: `deal_links_attack` block 8; a DEFINER mutation of it is caught, day5b row 20).
+- The queue's outcome call passes `p_open_deal` / `p_deal_title` / `p_deal_value` from the same `logActivityInput`
+  strictObject as the lead page (explicit arguments in `queue-server.ts`; `p_deal` always null there). The database
+  keeps deciding: editors only, not on Do not contact, the hourly open limit.
+- Reopen from the board's menu and the Deals tab reads `GET /api/deals/[id]` (existing, Zod-checked) for the history;
+  no new route. U on the lead page may now call `undoDealMove` (existing action; the database refuses a stale or
+  someone else's undo).
+- No new dependency, no `dangerouslySetInnerHTML`, no raw errors.
+
 ## Residual risks (accepted, design section 6)
 
 1. A stolen aal2 session without a fresh code can move, win and lose its own deals, undo its own change within 2

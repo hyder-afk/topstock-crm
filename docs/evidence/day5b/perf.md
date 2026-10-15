@@ -87,3 +87,13 @@ Unthrottled, a keyboard move now paints in 70–110 ms (was 150–240 ms; profil
 
 Day 4b's precedent: Haider accepted the lead page's 4x numbers as the baseline (log, 11 Oct). These misses are listed
 for his decision in the README ("Open risks") rather than accepted here.
+
+
+## Verifier round 1 (15 Oct): one run after the rebase onto Day 4c
+
+`db-perf.sh` copy on port 54481 (perf_leads, perf_day4, perf_day5; the import and queue concurrency parts left out),
+code at 083a348, one run on a quiet machine. Every Day 5 database budget still met with Day 4c's `log_activity` and
+`get_lead` bodies: P5 log_activity with a deal 8.37 / 8.96 ms (15), undo_activity 5.30 / 5.70 ms (18); P1 board team
+19.96 ms (25), mine 14.84 ms (15); P2 2.3 to 3.9 ms (5); P3 4.93 ms (10); P4 6.1 to 8.7 ms (10); P4b 3.16 / 1.84 ms;
+P6 get_deal 4.75 ms (5), list_lead_deals 2.04 ms (3); get_lead with deals 4.26 ms.
+The browser numbers were not re-measured (verifier finding 5 is Haider's decision; README "For Haider").

@@ -24,7 +24,11 @@ who may read every task). Win rate leaves out "Opened by mistake" and shows only
   private, no-store`, read-only; a rep's Team answers 403 from the database's own 42501. Each part is parsed with Zod on
   the server; unknown keys are dropped (unit test: a `pp` purchase cost in the Day 6 low-stock payload never reaches the
   browser), and a wrong shape is that card's error, never raw data.
-- `GET /api/queue/summary`: no parameters; `{ready:false}` while Day 4c's `queue_summary` does not exist; codes only.
+- `GET /api/queue/summary`: since the 4c rebase this is Day 4c's route (its `summaryParams` strictObject, `apiSession`,
+  403 for a scope reserved to managers, `no-store`); 5c's stand-in and its `{ready:false}` branch are gone.
+- Today reads Day 4c's `list_tasks` and `count_tasks` with `p_scope: 'mine'` written in the server code (never from the
+  client), so an admin's Team view still shows only her own tasks (home_attack block 9: Team counts 0 of a rep's tasks).
+  Rows are parsed with Zod (unknown columns dropped).
 - The scope cookie `topstock.home.scope` is a preference, not a permission: the server keeps only `team`/`mine`, reps
   always get Mine (`effectiveScope`, unit-tested), and the database checks the scope on every call. `SameSite=Lax`,
   `Secure` on HTTPS, no secret in it.
@@ -40,7 +44,10 @@ who may read every task). Win rate leaves out "Opened by mistake" and shows only
    418, seen in the screenshot run). Not a data leak, but an error path; the switch now updates in a transition
    (6bd5a7d).
 2. `/api/queue/summary` answered 502 on this branch on every Home visit, which logged a console error in every spec that
-   opens Home. It now answers `{ready:false}` while the function is missing; real failures still answer 502 (4d1e571).
+   opens Home. It answered `{ready:false}` while the function was missing (4d1e571); superseded at the 4c rebase by 4c's
+   own route.
+3. Verifier round 1 (15 Oct): focus no longer drops to `<body>` when a Needs attention row leaves under the deal sheet
+   (not a security issue; keyboard users kept their place). No new route, action, RPC or dependency.
 
 ## Residual risks (accepted, as in the design)
 

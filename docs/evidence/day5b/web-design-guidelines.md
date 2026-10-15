@@ -63,3 +63,12 @@ src/components/pipeline/delete-dialog.tsx
 - No `transition: all`, no zoom lock, no paste blocking, no `dangerouslySetInnerHTML`.
 
 Unresolved: none.
+
+## Verifier round 1 and the 4c rebase (15 Oct)
+
+- Focus: never left on `<body>` after Lose, Delete or Reopen (board, Deals tab) or when the deal sheet's opener is gone;
+  column headings take focus (`tabIndex=-1`) only as a fallback. `toBeFocused` checks in pipeline, lead-deals and home specs.
+- Keyboard: D toggles the queue's switch (`aria-keyshortcuts="D"`, quiet while typing); U on the lead page undoes the newest
+  change (entry or deal move).
+- Forms: the switch's title and value fields keep `name`, `autoComplete="off"`, `inputMode="decimal"`, `aria-invalid` with
+  the visible hint; no horizontal scroll at 390 (checked in the screenshot run).

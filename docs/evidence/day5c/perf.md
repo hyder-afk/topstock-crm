@@ -69,3 +69,11 @@ Local `next start` build, shared VM, one run of the spec (three samples per meas
   the server answers (a client-side route shell; about half a day, touches the shared layout).
 - *Skeleton without a hover (84 to 174 ms).* The skeleton is `loading.tsx`, prefetched with the link; the time is the
   router's work at 4x. Close to the budget; same cause as Day 5b's 124 to 129 ms.
+
+
+## Verifier round 1 (15 Oct): one run after the rebase onto Day 4c
+
+`db-perf.sh` copy on port 54481, code at 083a348 (K5 from `count_tasks`, Today from `list_tasks`), one run: P7
+home_summary Team 11.88 ms (30), Mine 6.57 ms (25), Team in the import week 23.96 ms (45); P8 home_attention 6.80 ms (10),
+home_recent_activity Team 4.05 ms (5), Mine 3.80 ms; Today (list_tasks overdue + today, rep) 3.60 ms (4c's P5: 15 ms).
+Every budget met. Browser numbers not re-measured (Haider's decision, Day 5b README "For Haider").

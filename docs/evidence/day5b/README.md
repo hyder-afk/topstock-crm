@@ -2,8 +2,9 @@
 
 Design: `docs/evidence/day5/design.md` (sections 2.4 spikes S10–S13, 3.2, 4.2, 4.4, 4.5, 5, 6, 7, 8, 9, 11 "5b" items 1
 to 7; Haider's answers of 11 Oct in `docs/log.md`). Local branch `day5a-local` (the finished Day 5a deals database,
-verifier READY) from b49fd9e. **Day 4c and 4d are not merged here**: see "Rebase points". No push, no PR, no remote
-database; fake data only.
+verifier READY) from b49fd9e. **15 Oct: rebased onto `origin/main` 5f1a966 (Day 4c merged)** and verifier round 1 fixed
+(section "Verifier round 1"); Day 4d is not merged yet (see "Rebase points"). No push, no PR, no remote database; fake
+data only.
 
 ## What changed
 
@@ -99,11 +100,58 @@ Code at ee5312c, tests at 409403b (the docs commit after them changes no code).
 - Not run here: WebKit, Semgrep (CI only), `journey.spec.ts` (Mailpit), `screens.spec.ts` (Day 2–4 evidence; CI
   artifact).
 
+## Verifier round 1 (15 Oct): fixes
+
+Verifier verdict on b6b360b: NOT READY. Every finding, what changed and how it was checked (red = the new test failed on
+the code before the fix, built and run here; green = it passes after):
+
+| # | Finding | Change | Check |
+|---|---|---|---|
+| 1 | Day 4c merged on main; Day 5 recreated 4b bodies of `log_activity`, `undo_activity`, `get_lead`; `/api/queue/summary` conflicts; Home duplicated 4c's task functions | Branch rebased onto `origin/main` 5f1a966 (65 commits; conflicts resolved per file: logs, CI and db-test lists, messages merged key by key). `audit_row`, `log_activity`, `get_lead` re-copied from 4c with the Day 5 parts (361e6a4); `queue_card` gains `open_deal`; the queue's switch and deal line built (deviation 1); Home reads `count_tasks`/`list_tasks` and 4c's route (Day 5c README). 4c's own tests and mutation rows now run against the Day 5 copies | `db-test.sh` copy: all suites incl. 4c's `queue_attack`/`queue_concurrency` and the new `deal_links_attack` block 8; mutations below; e2e `interested_opens_deal_in_queue` red then green |
+| 3 | Lose or Delete on the board dropped focus to `<body>` | Neighbour card, else the column heading (`tabIndex=-1`); the Lose dialog leaves the focus to the board; a keep-focus safety net on the board (e4e1f50) | `pipeline.spec` `lose_and_delete_focus_stays_in_column…` red then green |
+| 4 | Reopen from the Deals tab and the card menu always went to Negotiations (and changed the lead's status); focus dropped | `reopenFromHistory` reads `get_deal`'s history (the chooser opens if it cannot); the Deals tab focuses the reopened row (e4e1f50) | `lead-deals.spec` `reopen_from_deals_tab_uses_closing_stage` (stage Qualified, lead Warm, row focused) red then green; pipeline test checks the menu's dialog starts at Qualified |
+| 6 | "Open it now" missing, key unused | Not built, with the reason (deviation 8); key removed | `messages.spec` key parity |
+| 7 | U / ⌘Z on the lead page never undid a deal move | `newerUndo` picks the newer of the last entry and the last move (unit-tested); the call panel takes the entry only when it is newer, and `useDealFlows({ undoKey })` on the lead page and in Home's deal sheet takes the move (the last move is a small store, `src/lib/last-move.ts`, so the layout does not load the pipeline's code; e70d3ae, 916f610) | `lead-deals.spec` `u_on_lead_page_undoes_the_newer_deal_move` red (U took the entry) then green; `undo-pick.spec` |
+| 5 | Speed misses (builder-reported) | Not changed in this round: Haider's decision (below) | — |
+| 8 | Scratchpad take-over script | `5c/take-stack.sh` and its original `5b/take-stack.sh` deleted (never in the repo) | — |
+
+Finding 2 (Home) is in the Day 5c README. **For Haider (finding 5):** the six Day 5b browser misses at 4x CPU (move
+painted ~585 ms p95 vs 100, drag frames ~23 ms vs 16.7, settle ~690 ms vs 450, Home → Pipeline after the hover ~2 s vs
+200, the skeleton 124–129 ms vs 100, long tasks up to 96 ms vs 50) were not re-measured in this round (the code paths of
+a move did not change; the board gained one layout effect). Recommendation unchanged: one more speed step on the move and
+the route before the 5b PR; or accept them as the baseline, as with Day 4b and 4c.
+
+**Checks for this round** (worktree at 6b15b08 for code and tests; docs commit after):
+- **lint** exit 0: 0 errors, the 2 known warnings; **typecheck** exit 0 (also the pre-commit hook on every commit);
+  **unit** 432 passed (new: `home-today.spec.ts` 4, `undo-pick.spec.ts` 3; the 5a `sql-bidi` spec caught two raw bidi
+  characters in 4c's tests at the rebase, now escapes).
+- **db** (`db-test.sh` copy on port 54481): exit 0, every suite incl. 4c's `queue_attack`/`queue_concurrency`,
+  `deal_concurrency` 0 deadlocks, `deal_links_attack` with block 8, `home_attack` with block 9; advisors 0 ERROR (WARN
+  `set_user_role` as before; INFO `unindexed_foreign_keys` 5, `unused_index` 2: main's 4c baseline). `plpgsql_check`: 85
+  functions, no finding. `check-migration-order.sh origin/main`: ok.
+- **mutations** (throwaway worktree of cad5528 on port 54482, removed): 87 affected rows, 86 caught, 1 documented
+  two-layer row (day4c 55, as Day 4c lists it); `--anchors`: every row of every set found once; every edit lands in a
+  live definition. Details in `mutations.md` (5b and 5c).
+- **DB speed** (one run, `db-perf.sh` copy on 54481): every Day 5 budget met (`perf.md`).
+- **e2e, local Chromium, shared stack serving this worktree** (`--trace off` after Playwright's trace-copy error broke two
+  `beforeAll`s in the first run): red then green for the five new or tightened tests (home attention, pipeline focus and
+  reopen, lead-deals reopen, U order, queue deals). Final build: `home` 13, `pipeline` 12, `pipeline-multi` 1,
+  `lead-deals` 9, `day5-security` 6, `queue-multi` 1, `tasks` 12, `lead-page` 26, `shell` 21 passed; `leads` 9 passed
+  after its filtered-count read was made to wait (6b15b08). `queue.spec`: 20 of 20 passed in a full run with
+  `call_keeps_claims` left out; its start key (↩ on the start screen) misses sometimes on this machine, **also on
+  origin/main** (1 of 2 full runs failed the same way there); `call_keeps_claims` fails here on origin/main too (3 of 3:
+  this Chromium fires one beforeunload for two quick tel: links, not CI's Headless Shell 156). Both left to CI.
+- **Screens**: `screens/v1-queue-open-deal-*` (EN light, FR dark; 1440 and 390, no sideways scroll) and Day 5c's
+  `screens/v1-home-queue-*`.
+- **gitleaks** (`origin/main..HEAD`): no leaks. **npm audit --omit=dev**: 0 vulnerabilities.
+- Not run here: WebKit, Semgrep (CI), the browser speed specs (finding 5), the Taste Skill pass, the advisor loop.
+
 ## Deviations from the design
 
-1. **Queue pieces wait for 4c** (the host is not on this branch): `interested_opens_deal_in_queue`, the queue card's
-   "Deal open: Negotiations · €18,400" line, and `claim_next_lead`'s `open_deal {count, latest}`. The call panel's
-   switch, which the queue reuses, is built and tested.
+1. ~~Queue pieces wait for 4c~~: built at the 4c rebase (15 Oct): `claim_next_lead`'s cards carry `open_deal {count,
+   latest}` (4c's `private.queue_card` re-copied in `deal_links.sql`), the queue card shows "Deal open: Qualified ·
+   €6,800", and Interested / Book meeting in the queue have the same "Open a deal" switch as the call panel (one shared
+   `OpenDealSwitch`, D toggles it); `interested_opens_deal_in_queue` is in `lead-deals.spec.ts`.
 2. **Conflict toast** names the colleague by first name ("Anouk moved this to Qualified a moment ago."), as
    `move_deal` answers `changed_by_first_name`.
 3. **Money on cards and chips in whole euros** (design 7.2: "€22,000"); the deal sheet and the Win dialog show cents.
@@ -116,20 +164,31 @@ Code at ee5312c, tests at 409403b (the docs commit after them changes no code).
 6. **Columns end 216 px above the viewport** (design: 152) so the Lost line clears the floating dock at tablet widths.
 7. **Speed work beyond the design** (found by `day5-perf.spec.ts`, 24a6201): stable dnd-kit options and card
    handlers, "now" refreshed per fetch, the optimistic write in the event, cached money formatters. See `perf.md`.
+8. **No "Open it now" after a skipped deal** (design 7.9; verifier finding 6). A call skips the deal for three reasons
+   only: the caller may not change the lead, the lead is Do not contact, or the hourly open limit is reached. `open_deal`
+   refuses all three in the same way (42501 `lead_not_editable`, the guard's `dnc`, the open flood's `rate_limited`), so
+   the button could only fail. The skip is worded in the toast (as before); the unused `Outcomes.openItNow` key is
+   removed (EN and FR).
+9. **Reopen from a list** (the board's card menu, the lead's Deals tab) reads the deal's history first (`get_deal`, cached
+   for the sheet) to start at the stage it was closed from, as the sheet does; if that read fails, the stage chooser
+   opens instead of guessing (verifier finding 4).
 
-## Rebase points (Day 4c and 4d)
+## Rebase points (Day 4c done 15 Oct; Day 4d open)
 
-- `supabase/migrations/20261015120000_deal_links.sql`: `public.log_activity`, `public.undo_activity` and
-  `public.get_lead` are copies of the merged Day 4b bodies plus Day 5b, each marked `-- REBASE: re-copy after 4c/4d
-  merge`. Day 4c redefines `log_activity` (`p_from_queue` releases the claim) and `get_lead` (queue fields): re-copy
-  4c's bodies and re-apply the Day 5b parts; add `open_deal {count, latest}` to 4c's `claim_next_lead` cards.
-- `scripts/db-mutations.py`: rows aimed inside those functions follow the Day 5b copies; at the rebase they must follow
-  the re-copied bodies (marked `REBASE:`).
-- Queue UI: wire the "Open a deal" switch and the "Deal open" line into 4c's queue card; add
-  `interested_opens_deal_in_queue` to `lead-deals.spec.ts`.
-- `/api/queue/summary` is a 5c item (create only if 4c has none); not touched here.
-- `src/lib/deals.ts` `LeadDealsBrief` is shared with 4c's claim cards at the rebase.
-- `tests/auth/helpers.ts` `seedLeads` now deletes deals first: keep that line when 4c/4d change the helper.
+Done at the 4c rebase (commits 361e6a4 and after):
+- `20261015120000_deal_links.sql`: `public.log_activity` and `public.get_lead` re-copied from Day 4c's merged bodies (4c's
+  FOR NO KEY UPDATE lead lock, its digit rule for a working number, `p_from_queue` releasing the caller's claim,
+  `worked_by`) with the Day 5b parts applied again; `public.undo_activity` stays Day 4b's (4c did not change it);
+  `private.queue_card` (4c) re-copied with `open_deal`. Day 4c's `queue_attack.sql` and `queue_concurrency.sh` run against
+  these copies in `db-test.sh` and pass.
+- `scripts/db-mutations.py`: Day 4c's set merged in; rows aimed at those functions follow the live 5b copies (a check that
+  every edit lands in a live definition found one older row, day4a 25, still editing the dropped 4a insert policy:
+  re-aimed). Mutation results in `mutations.md` ("Verifier round 1").
+- Queue UI: the switch and the deal line (deviation 1); `src/lib/queue.ts` `QueueCard.open_deal`.
+- `tests/auth/helpers.ts` keeps `seedLeads`' `delete from public.deals` (merged cleanly).
+
+Still open for Day 4d (PR #16): every block marked `-- REBASE: re-copy after 4d merge` (the same three functions and
+the queue card if 4d changes them).
 
 ## Not done (and why)
 

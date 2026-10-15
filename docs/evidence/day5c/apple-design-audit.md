@@ -15,3 +15,10 @@ Checked by hand on the final build, the screenshots in `screens/` and the e2e ch
 | Fixed during the audit | KPI sub-lines and phone feed rows cut values ("4 20…"): they now wrap to two lines; the won value's separator left DM Mono (it looked spaced out); the card headings kept a visible focus ring when focus moves to them | fixed (6bd5a7d) |
 
 Not done here: the Taste Skill pass (see README "Not done").
+
+## Verifier round 1 and the 4c rebase (15 Oct)
+
+- Start calling carries 4c's G Q key caps (on the red button: black-on-red caps, `bg-brand-foreground/10`, hidden on phones);
+  the counts are 4c's queue_summary or "Nobody to call right now." (screens `v1-home-queue-*`, EN light and FR dark).
+- Today: a meeting with a lead in another zone shows "{time} their time" under its time (muted, DM Mono), as the Tasks page.
+- Needs attention: a row that leaves after a move hands the focus to the row now at its place (or the heading).

@@ -28,3 +28,11 @@ specs named below. Run on 42fda4c and re-checked after the fixes (d066c8e and th
 | 14 | Feedback | Every move answers at once on screen, then in the live region (EN and FR, `announcements_live_region_en_fr`), with a toast and Undo; a conflict names who moved it | Pass |
 
 Unresolved: none blocking. Item 6 is an accepted limitation of dnd-kit 6.
+
+## Verifier round 1 and the 4c rebase (15 Oct)
+
+| Area | Change | Result |
+|---|---|---|
+| Spatial consistency | Lose or Delete on a focused card: the focus goes to the next card in the same column (else the one before, else the column heading), so the keyboard user stays where the card was; Reopen from the card menu starts at the stage the deal came from | Pass (`lose_and_delete_focus_stays_in_column`) |
+| Restraint | The queue's Open a deal switch is the call panel's own (one shared component, same 44 px row, D key cap, knob without motion under reduced motion); the card's deal line is plain text under the location line, no new colour | Pass (screens `v1-queue-open-deal-*`) |
+| Feedback | Queue toast says "deal opened in Lead" or why not; Undo says when the deal was kept | Pass (`interested_opens_deal_in_queue`) |
