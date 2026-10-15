@@ -5,15 +5,16 @@ import { Check, Clock } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { pickerChangeEvent, type PickerChangeEvent } from "@/lib/pickers/event";
-import { formatTime, isTime, isTimeOutOfRange, localeHourCycle, nearestTimeIndex, parseTypedTime, timeList, type HourCycle } from "@/lib/pickers/time";
+import { formatTime, isTime, isTimeOutOfRange, nearestTimeIndex, parseTypedTime, timeList, type HourCycle } from "@/lib/pickers/time";
 import { cn } from "@/lib/utils";
 import { floatingPanel, idList } from "./picker-styles";
 
 // The app's own time picker (Haider 15 Oct 2026: no native time input). A WAI-ARIA combobox: type the time ("9:15",
 // "0915", "9h15", "9:15 pm") or open the list of 15-minute steps with Alt+Down, Down or the clock button; arrows move,
 // Enter picks, Escape closes; the text is checked when the field loses focus. The value is "HH:MM" (24-hour) or "",
-// as <input type="time"> gave, submitted through a hidden input named `name`. French reads 24-hour; English follows
-// the locale (12-hour for "en") unless `hourCycle` is given.
+// as <input type="time"> gave, submitted through a hidden input named `name`. It reads 24-hour in both languages, as
+// every time in the app does (Day 4b decision 3, docs/log.md); `hourCycle` can ask for the locale's own clock.
+// Typed "9:15 pm" is still understood.
 
 export type TimePickerProps = {
   id?: string;
@@ -62,7 +63,7 @@ export function TimePicker({
 }: TimePickerProps) {
   const t = useTranslations("Pickers");
   const locale = useLocale();
-  const cycle = hourCycle ?? localeHourCycle(locale);
+  const cycle = hourCycle ?? "h23";
   const uid = useId();
   const [inner, setInner] = useState(defaultValue ?? "");
   const controlled = value !== undefined;

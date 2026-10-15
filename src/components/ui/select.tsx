@@ -72,6 +72,8 @@ export function Select({
       <SelectPrimitive.Root value={selected ? toRadix(current) : ""} onValueChange={pick} disabled={disabled}>
         <SelectPrimitive.Trigger
           aria-required={required || undefined}
+          // The submitted value, readable without opening the list (tests assert it; the hidden input needs a name).
+          data-value={current}
           className={cn(fieldTrigger, "data-[placeholder]:text-muted-foreground", className)}
           {...triggerProps}
         >
@@ -128,6 +130,7 @@ function Item({ option }: { option: PickerOption }) {
       value={toRadix(option.value)}
       textValue={option.textValue}
       disabled={option.disabled}
+      data-option={option.value}
       className="relative flex min-h-11 cursor-pointer items-center rounded-md py-2 pr-3 pl-9 text-sm outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-muted sm:min-h-9"
     >
       <SelectPrimitive.ItemIndicator className="absolute left-3 grid size-4 place-items-center">

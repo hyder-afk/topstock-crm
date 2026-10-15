@@ -66,6 +66,7 @@ export function Combobox({
   className,
   contentClassName,
   "aria-describedby": describedBy,
+  onKeyDown,
   ...triggerProps
 }: ComboboxProps) {
   const t = useTranslations("Pickers");
@@ -111,8 +112,19 @@ export function Combobox({
         <PopoverTrigger
           type="button"
           disabled={disabled}
+          // A select-only combobox whose popup is a dialog with a search box (WAI-ARIA 1.2 allows a dialog popup): the
+          // label names it and the chosen option is read as its value and its description.
+          role="combobox"
           aria-required={required || undefined}
-          // The label names the button; the chosen option is read as its description.
+          data-value={current}
+          // As a select-only combobox: Down or Up (and Alt+Down) open the list from the closed button.
+          onKeyDown={(e) => {
+            onKeyDown?.(e);
+            if (!e.defaultPrevented && !open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+              e.preventDefault();
+              onOpenChange(true);
+            }
+          }}
           aria-describedby={idList(valueId, describedBy)}
           className={cn(fieldTrigger, !shown && "text-muted-foreground", className)}
           {...triggerProps}
@@ -168,6 +180,7 @@ export function Combobox({
                       value={toItem(option.value)}
                       keywords={[option.textValue, ...(option.keywords ?? [])]}
                       disabled={option.disabled}
+                      data-option={option.value}
                       onSelect={(itemValue) => pick(fromItem(itemValue))}
                       className={listItem}
                     >

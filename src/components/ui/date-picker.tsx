@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Calendar } from "@/components/ui/calendar";
@@ -87,6 +87,9 @@ export function DatePicker({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [badText, setBadText] = useState(false);
+  // Typed field: a calendar opened from the text box (Alt+Down) gives focus back to the text box when it closes.
+  const textRef = useRef<HTMLInputElement>(null);
+  const fromText = useRef(false);
 
   const commit = (next: string) => {
     setBadText(false);
@@ -122,6 +125,12 @@ export function DatePicker({
       className={cn(floatingPanel, "w-auto p-3")}
       aria-label={t("chooseDate")}
       onOpenAutoFocus={(e) => e.preventDefault()} // the calendar focuses its own day
+      onCloseAutoFocus={(e) => {
+        if (!fromText.current) return;
+        fromText.current = false;
+        e.preventDefault();
+        textRef.current?.focus();
+      }}
     >
       <Calendar
         selected={current || null}
@@ -160,6 +169,7 @@ export function DatePicker({
         <PopoverAnchor asChild>
           <div className={cn("relative flex min-w-0 items-center", className)}>
             <input
+              ref={textRef}
               id={id}
               type="text"
               inputMode="numeric"
@@ -178,6 +188,7 @@ export function DatePicker({
                   commitText();
                 } else if (e.key === "ArrowDown" && e.altKey) {
                   e.preventDefault();
+                  fromText.current = true;
                   setOpen(true);
                 }
               }}
