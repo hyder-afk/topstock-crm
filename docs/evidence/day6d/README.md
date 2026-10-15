@@ -104,6 +104,15 @@ commit.
   54493 passes as it is and with the 5c stub created just before this migration (`sales_attack.sql`
   `stock_alerts_counts` reads the real body; the RPC rule loop still finds 13 authenticated-only invokers). The day6d
   mutation anchors are unchanged (24 edits on this file, every one found as often as before).
+- **Day 5's tests that read `stock_alerts()`** (Day 5 advisor, 15 Oct 2026): four places on day5a-local assumed the
+  5c stub's null and would break once this function replaces it; Day 5 made them work on either body (commit ceca0b5
+  on day5a-local), so nothing changes here, but check them after the rebase: `supabase/tests/home_attack.sql`
+  block 0 (`stock_alerts_stub_null`: null or exactly this function's keys and sample fields), and
+  `tests/auth/home.spec.ts` "low_stock_placeholder_when_null (or Day 6's live card)", `card_error_isolated` and
+  "low_stock_filled_from_day6_stock_alerts" (each reads the installed body: the stub's `return null;`, or this
+  function's `from private.stock_rows` and `'sample'`; any other body fails). If this body changes its keys, its
+  `from private.stock_rows` read or its `'sample'` key, update those helpers (`installedStockAlerts`) and the
+  `home_attack.sql` key lists with it.
 
 ## Docs used (Context7)
 
