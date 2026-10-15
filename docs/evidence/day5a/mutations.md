@@ -30,18 +30,24 @@ stopped by PID once their ranges were done). **Rows 64 to 73 were not re-run** (
 undo, owner and flood code, which this fix does not touch; `--anchors` finds every anchor of every set once.
 
 Result: rows 1 to 63 and 74 to 76 (66 rows): **59 caught, 6 documented two-layer rows not caught (20, 24, 27, 28, 39,
-63), 1 not as listed (58: caught although listed as a two-layer row)**. The three new rows are caught by the new tests:
+63), and row 58 caught incidentally (fixture volume in deal_links_attack.sql / log_activity_interested_opens_deal, user r1 …05a1); still a documented two-layer row; not counted as a new catch**. The three new rows are caught by the new tests:
 
 | 74 | Delete policy: a manager with a fresh code may delete (is_admin back to is_manager_or_admin) | caught | FAIL: deal_delete_manager_fresh_code_denied (direct) |
 | 75 | delete_deal: a manager passes the role check (is_admin back to is_manager_or_admin; the policy then gives P0002) | caught | FAIL: "select public.delete_deal('4b1f5aaa-e09c-45a6-96b6-a1f0699eecb0')" gave P0002 (hint "", deal not found), expected 42501 (hint "<NULL> |
 | 76 | Cards: Delete offered to managers (can_delete with is_manager_or_admin) | caught | FAIL: a manager is offered Delete |
 
-**Row 58 is not as listed**: documented as a two-layer row (NOT CAUGHT) on 2de7f9c, it is now caught, with the error
-"too many deals opened in an hour" (no FAIL line). Not investigated (deadline). It is not caused by the delete change
-(no new test opens more than one deal per person); the likely cause is that suites added after 2de7f9c (5b, 5c) insert
-deals as the superuser with `created_by` set, which the mutated guard (counting live deals by creator) counts and the real
-guard (counting `private.deal_opens`, written only for a signed-in opener) does not. To confirm on the next pass and,
-if so, re-list row 58 as caught.
+**Row 58: caught incidentally, still a documented two-layer row** (confirmed 15 Oct on a scratch copy of the PR head, code 74ba153,
+`db-test.sh` on port 54499, row 58 alone). The script prints "caught, but listed as NOT CAUGHT"; the catch is fixture
+volume, not a test of the property, so it is not counted as a new catch and the row stays listed as two layers (the
+statement-level recount, rows 66 to 73, is the real second layer). Exact cause: every suite up to `deal_concurrency`
+passes (`deals_attack` in full: its 30+5+3+2 board deals in block 9 are rolled back and are not the cause); the
+failure is `deal_links_attack.sql` block 3, test `log_activity_interested_opens_deal` (line 276), the first Interested
+open by r1 (`00000000-0000-0000-0000-0000000005a1`). The mutated guard counts r1's live deals created in the last hour.
+The file's setup empties `private.deal_opens` (line 120) but not `public.deals`: `deal_concurrency.sh` leaves 28
+committed deals created by r1 (20 on "Concurrency chain", 8 on the other cases), and block 2 adds 3 more through
+`pg_temp.su_deal(…, r1)` in its DECLARE section (initialisers run before the block's exception savepoint, so the TS001
+undo does not remove them). 31 >= 30, so the open is refused with "too many deals opened in an hour". The real guard
+counts `private.deal_opens` (0 for r1 at that point) and lets it through.
 
 Row 14's anchor follows `is_admin` (title "no fresh code for admins"); it is caught by `deal_delete_stale_code_denied (direct)`.
 
@@ -104,7 +110,7 @@ Row 14's anchor follows `is_admin` (title "no fresh code for admins"); it is cau
 | 55 | Guard: reopening a won deal without the Day 6 block check | caught | FAIL: "select pg_temp.mv('2bc03c16-166e-4aff-81a9-ba7d877a2125', 'negotiations')" succeeded, expected 42501 |
 | 56 | Guard: a shipping change on the same stage without the Day 6 block check | caught | FAIL: "select public.update_deal('49de9e1e-5abd-43c0-803d-2dbcce261a8f', 1, '{fulfilment}', p_fulfilment => 'direct_from_source')" succeeded |
 | 57 | delete_deal: no Day 6 block check | caught | FAIL: "select public.delete_deal('016fcd18-2a0b-4783-9e57-94f774bd2630')" succeeded, expected 42501 |
-| 58 | Guard: the open flood guard counts live deals only (since verifier round 2 the statement-level recount counts the open records) | caught, but listed as NOT CAUGHT | too many deals opened in an hour |
+| 58 | Guard: the open flood guard counts live deals only (since verifier round 2 the statement-level recount counts the open records) | caught incidentally (fixture volume in `deal_links_attack.sql` / `log_activity_interested_opens_deal`, user r1 `…05a1`); still a documented two-layer row; not counted as a new catch | too many deals opened in an hour |
 | 59 | History trigger: no open record written | caught | FAIL: an open should remove its author's open records older than an hour |
 | 60 | Open records: insert granted to clients | caught | FAIL: private.deal_opens protections |
 | 61 | move_deal: no move record for an Undo with a request id (a repeated Undo is not a replay) | caught | FAIL: undo_replay_returns_stored {"deal": {"id": "880171dc-9ba9-4944-bad7-a25a0b4fc770", "city": null, "stage": "lead", "title": "Owned", "v |

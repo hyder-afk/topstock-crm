@@ -125,7 +125,7 @@ so it is edited in place. No REBASE block is touched.
 |---|---|
 | `bash scripts/db-test.sh` (a copy on port 54497) | exit 0: rls, import (+ concurrency), activity (+), outcome (+), queue (+), files (+), deals_attack, deal_concurrency (case 9: 182 moved, 20 conflicts, 23 `reopen_first`, 75 unchanged, 0 deadlocks), deal_links_attack, home_attack |
 | Supabase advisors (in `db-test.sh`) | no ERROR. WARN `set_user_role` (accepted Day 1); INFO `unindexed_foreign_keys` 5, `unused_index` 5 (the same accepted kinds) |
-| Mutations (`mutations.md`, "Team advisor finding") | rows 1 to 63 and 74 to 76: 59 caught, 6 documented two-layer rows, **1 not as listed: row 58, now caught** (likely later suites' superuser deal inserts, not this fix; to confirm). New rows 74, 75, 76 caught. Rows 64 to 73 not re-run (deadline; code they edit unchanged). `--anchors`: every set found once (day3b 37, day4a 104, day4b 94, day4c 92, day4d 44, day5a 76, day5b 20, day5c 21) |
+| Mutations (`mutations.md`, "Team advisor finding") | rows 1 to 63 and 74 to 76: 59 caught, 6 documented two-layer rows, row 58 caught incidentally (fixture volume in `deal_links_attack.sql` / `log_activity_interested_opens_deal`, user r1 `…05a1`); still a documented two-layer row; not counted as a new catch (`mutations.md`: 28 deals left by `deal_concurrency.sh` plus 3 from block 2's DECLARE section reach the mutated live-deal count of 30). New rows 74, 75, 76 caught. Rows 64 to 73 not re-run (deadline; code they edit unchanged). `--anchors`: every set found once (day3b 37, day4a 104, day4b 94, day4c 92, day4d 44, day5a 76, day5b 20, day5c 21) |
 | `npm run lint` | 0 errors, the 2 existing React Compiler warnings |
 | `npm run typecheck` | exit 0 |
 | `npm run test:unit` | 471 passed |
@@ -310,6 +310,12 @@ merge, before 5a merges:
    and runs one statement-level count (one range read on an index, limit 31 or 121; the move recount only when a stage
    changed). Expected well under 1 ms per statement; `perf_day5.sql` should be re-run with the next perf pass.
 
+
+## For Day 7
+
+- Delete stays offered after the creator's 2-minute window until the card refreshes (the DB then refuses cleanly) — hide
+  it client-side once created_at + 120 s has passed.
+- Re-run day5a mutation rows 64-73 in the Day 7 full mutation pass.
 
 ## Docs used
 
