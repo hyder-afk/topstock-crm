@@ -1,5 +1,6 @@
 import { KpiRowSkeleton } from "@/components/home/kpi-card";
 import { RowSkeletons } from "@/components/home/home-card";
+import { LowStockSkeleton } from "@/components/home/low-stock-card";
 import { PipelineSnapshotSkeleton } from "@/components/home/pipeline-snapshot";
 import { cn } from "@/lib/utils";
 
@@ -7,9 +8,9 @@ import { cn } from "@/lib/utils";
 // width (KPIs 4 across from 1024, 2 x 2 below; cards 7 + 5 from 1024, full width below). Used by (app)/loading.tsx
 // (whole page) and by the page's Suspense boundary (the cards, under the greeting that is already on screen).
 
-function CardSkeleton({ span, children, action = false }: { span: string; children: React.ReactNode; action?: boolean }) {
+function CardSkeleton({ span, children, action = false, label }: { span: string; children: React.ReactNode; action?: boolean; label?: string }) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4 sm:p-6", span)} aria-hidden="true">
+    <div className={cn("flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4 sm:p-6", span)} aria-hidden="true" data-skeleton={label}>
       <div className="flex min-h-7 items-center justify-between gap-3">
         <div className="h-6 w-36 rounded-sm bg-muted motion-safe:animate-pulse" />
         {action ? <div className="h-5 w-24 rounded-sm bg-muted motion-safe:animate-pulse" /> : null}
@@ -49,8 +50,8 @@ export function HomeBodySkeleton() {
         <CardSkeleton span="col-span-12 lg:col-span-7">
           <RowSkeletons count={4} className="-mx-2 px-2" />
         </CardSkeleton>
-        <CardSkeleton span="col-span-12 lg:col-span-5">
-          <RowSkeletons count={3} className="-mx-2 px-2" />
+        <CardSkeleton span="col-span-12 lg:col-span-5" action label="low-stock">
+          <LowStockSkeleton />
         </CardSkeleton>
       </div>
     </>

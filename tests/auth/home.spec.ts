@@ -516,10 +516,11 @@ test("low_stock_filled_from_day6_stock_alerts, all clear, and a wrong shape fail
     const low = card(page, /^Low stock/);
     await expect(low).toContainText("3 low · 1 sold out · 2 deals waiting");
     await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("120 available · reorder at 200");
-    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("+300 In Transit");
-    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("Low");
+    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("+300 in transit");
+    // No per-row "Low" badge (every listed product is low; the count line says so once).
+    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toHaveText("Denim jacket120 available · reorder at 200+300 in transit");
     // Nothing in transit: no transit line.
-    await expect(low.getByRole("listitem").filter({ hasText: "Cargo trousers" })).not.toContainText("In Transit");
+    await expect(low.getByRole("listitem").filter({ hasText: "Cargo trousers" })).toHaveText("Cargo trousers12 available · reorder at 50");
     await expect(low.getByRole("link", { name: "Open inventory" })).toHaveAttribute("href", "/inventory?filter=low");
     const follow = low.getByRole("list", { name: "Also in inventory" });
     await expect(follow.getByRole("link", { name: "2 arrivals past their expected date" })).toHaveAttribute("href", "/inventory?tab=arriving");
@@ -534,6 +535,7 @@ test("low_stock_filled_from_day6_stock_alerts, all clear, and a wrong shape fail
     const bas = card(fr.page, /^Stock bas/);
     await expect(bas).toContainText("3 en stock bas · 1 épuisé · 2 affaires en attente");
     await expect(bas).toContainText("Disponible\u202f: 120 · seuil\u202f: 200");
+    await expect(bas).toContainText("+300 en transit");
     await expect(bas).toContainText("4 nouvelles demandes de stock");
     expect(fr.errors).toEqual([]);
     await fr.context.close();

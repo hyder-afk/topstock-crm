@@ -116,7 +116,6 @@
       "dealsWaiting": "{count, plural, one {# affaire en attente} other {# affaires en attente}}",
       "available": "Disponible : {available} · seuil : {reorder}",
       "inTransit": "+{count} en transit",
-      "low": "Bas",
       "followUps": "Aussi dans l’inventaire",
       "arrivingLate": "{count, plural, one {# arrivage en retard sur la date prévue} other {# arrivages en retard sur la date prévue}}",
       "requestsNew": "{count, plural, one {# nouvelle demande de stock} other {# nouvelles demandes de stock}}",

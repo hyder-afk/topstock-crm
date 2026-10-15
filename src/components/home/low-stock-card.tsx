@@ -3,16 +3,19 @@
 import Link from "next/link";
 import { Package } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { CardError, Dot, HomeCard, RowSkeletons } from "@/components/home/home-card";
+import { CardError, Dot, HomeCard } from "@/components/home/home-card";
 import type { LowStockCard as LowStock } from "@/lib/home";
 
 // Low stock (Day 5 design 7.12, D30), filled from Day 6's own contract stock_alerts() (Haider's decision B, 15 Oct
 // 2026). Before inventory is set up (the Day 5c stub answers null): a package icon and one calm sentence, no link, in the
 // same grid cell, so nothing moves when inventory lands. After: "3 low · 1 sold out · 2 deals waiting", up to 5 low
-// products with what is available against the reorder level (DM Mono), stock in transit (muted, never counted as
-// available) and a dot-plus-word "Low" badge, then up to three quiet follow-up lines that appear only when their count
-// is above zero (late arrivals, new stock requests, holds ending within 2 days), each opening its Inventory tab.
-// "Open inventory" opens the Low filter. Status colour stays in the dots and the badge word. The card fails alone.
+// products with what is available against the reorder level (DM Mono) and stock in transit (muted, never counted as
+// available), then up to three quiet follow-up lines that appear only when their count is above zero (late arrivals,
+// new stock requests, holds ending within 2 days), each opening its Inventory tab. No per-row "Low" badge: every
+// product listed is low by definition (the card's title and count say so once). The figures wrap rather than being cut,
+// so a narrow card (5 of 12 columns at 1024) never hides a number. "Open inventory" opens the Low filter. Status colour
+// stays in the follow-up dots. The card fails alone. Its loading state (LowStockSkeleton, also in Home's loading.tsx)
+// has the filled card's blocks: the action, the count line, three product rows and the follow-up lines.
 
 const FOLLOW_UPS = [
   { key: "arrivingLate", field: "arriving_late", href: "/inventory?tab=arriving", tone: "amber" },
@@ -31,7 +34,9 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
       className="col-span-12 lg:col-span-5"
       busy={loading}
       action={
-        lowStock ? (
+        loading ? (
+          <LowStockActionSkeleton />
+        ) : lowStock ? (
           <Link href="/inventory?filter=low" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
             {t("open")}
           </Link>
@@ -39,7 +44,7 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
       }
     >
       {loading ? (
-        <RowSkeletons count={3} />
+        <LowStockSkeleton />
       ) : lowStock === undefined ? (
         <CardError onRetry={onRetry} />
       ) : lowStock === null ? (
@@ -62,20 +67,14 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
               {lowStock.sample.length > 0 ? (
                 <ul className="-mx-2 flex flex-col">
                   {lowStock.sample.map((item) => (
-                    <li key={item.id} className="flex min-h-14 items-center gap-3 px-2 md:min-h-12">
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-medium">{item.name}</span>
-                        <span className="truncate font-mono text-xs">
-                          {t("available", { available: format.number(item.available), reorder: format.number(item.reorder_point) })}
-                        </span>
-                        {item.arriving > 0 ? (
-                          <span className="truncate text-xs text-muted-foreground">{t("inTransit", { count: format.number(item.arriving) })}</span>
-                        ) : null}
+                    <li key={item.id} className="flex min-h-14 min-w-0 flex-col justify-center px-2 py-2 md:min-h-12">
+                      <span className="truncate text-sm font-medium">{item.name}</span>
+                      <span className="font-mono text-xs break-words">
+                        {t("available", { available: format.number(item.available), reorder: format.number(item.reorder_point) })}
                       </span>
-                      <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-bold">
-                        <Dot tone="amber" />
-                        <span className="text-status-amber">{t("low")}</span>
-                      </span>
+                      {item.arriving > 0 ? (
+                        <span className="text-xs break-words text-muted-foreground">{t("inTransit", { count: format.number(item.arriving) })}</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -100,5 +99,52 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
         </>
       )}
     </HomeCard>
+  );
+}
+
+const bar = "rounded-sm bg-muted motion-safe:animate-pulse";
+
+/** "Open inventory"'s place in the card header while loading. */
+export function LowStockActionSkeleton() {
+  return <div aria-hidden="true" className={`h-5 w-24 ${bar}`} />;
+}
+
+/**
+ * The filled card's blocks at their own sizes (a typical Day 6 answer): the count line, three product rows (name and
+ * figures, the first and last with a stock-in-transit line) and three follow-up lines. Same paddings and minimum row
+ * heights as the real rows, so the card keeps its height when the data arrives.
+ */
+export function LowStockSkeleton() {
+  return (
+    <>
+      <div aria-hidden="true" className="flex h-5 items-center">
+        <div className={`h-3.5 w-56 max-w-full ${bar}`} />
+      </div>
+      <div aria-hidden="true" className="-mx-2 flex flex-col">
+        {[true, false, true].map((transit, i) => (
+          <div key={i} className="flex min-h-14 flex-col justify-center px-2 py-2 md:min-h-12">
+            <div className="flex h-5 items-center">
+              <div className={`h-3.5 w-1/2 ${bar}`} />
+            </div>
+            <div className="flex h-4 items-center">
+              <div className={`h-3 w-3/5 ${bar}`} />
+            </div>
+            {transit ? (
+              <div className="flex h-4 items-center">
+                <div className={`h-3 w-1/4 ${bar}`} />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <div aria-hidden="true" className="-mx-2 flex flex-col border-t border-border pt-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex min-h-11 items-center gap-2 px-2 md:min-h-9">
+            <span className="inline-block size-2 shrink-0" />
+            <div className={`h-3.5 w-3/5 ${bar}`} />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

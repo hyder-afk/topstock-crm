@@ -185,6 +185,9 @@ test.describe("import and lead page messages", () => {
     expect(tf("Home.lowStock.summary", { low: 3, soldOut: 1 })).toBe("3 en stock bas · 1 épuisé");
     expect(tf("Home.lowStock.summary", { low: 1200, soldOut: 2 })).toBe("1 200 en stock bas · 2 épuisés");
     expect(tf("Home.lowStock.available", { available: "120", reorder: "200" })).toBe("Disponible : 120 · seuil : 200");
+    // Sentence case mid-line, like the lines around it (the Day 6 status name "In Transit" is a label, not this line).
+    expect(te("Home.lowStock.inTransit", { count: "300" })).toBe("+300 in transit");
+    expect(tf("Home.lowStock.inTransit", { count: "1 200" })).toBe("+1 200 en transit");
     expect(te("Home.lowStock.arrivingLate", { count: 1 })).toBe("1 arrival past its expected date");
     expect(te("Home.lowStock.arrivingLate", { count: 2 })).toBe("2 arrivals past their expected date");
     expect(tf("Home.lowStock.arrivingLate", { count: 1 })).toBe("1 arrivage en retard sur la date prévue");
