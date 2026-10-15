@@ -28,8 +28,9 @@ B (the ops@ login), and about 3 hours in total (parts J and K can be another day
    (b) go live with the built-in sender and create Henri's and Kais's accounts by hand with a temporary password
    you give them in person (part K, route 2). Password reset by email stays unavailable until (a).
 3. **Henri and Kais as admins.** The database makes only the first account an admin; later accounts start as reps.
-   The app has no screen yet for changing a role (the safe database function exists). **Claude builds and reviews
-   that screen before part K**, and confirms it in part A. Never change roles with SQL in the production dashboard.
+   You change their role yourself in the app: **More > Team** (admins only; it asks for a code from your
+   authenticator app when the last one is older than 10 minutes). Claude confirms in part A that this screen is merged
+   and live. Never change roles with SQL in the production dashboard.
 4. **Vercel Pro** (money) and **Deployment Protection: keep Standard Protection** (part B).
 5. **Leaked password protection** (Supabase rejects passwords known from breaches) exists only on Supabase's paid
    plan. **Stay on Free for now** (the setting stays off; passwords are 12+ characters with mixed types plus
@@ -57,7 +58,8 @@ Why: production gets real data, so the Day 7 security gate must be passed first.
    - the `advisor` subagent's verdict on Day 7 and on this go-live kit: **APPROVED** (quoted);
    - CI green on `main`, and the **go-live commit SHA** (40 characters) you will deploy in part E;
    - the lead import page and the stock sheet import page are live, and where they are in the app;
-   - how Henri and Kais will be invited and made admins (decisions 2 and 3).
+   - how Henri and Kais will be invited (decision 2), and that **More > Team** is live in that commit, so you can make
+     them admins in part K (decision 3).
 
 **What you should see:** one REPORT with "APPROVED" in the advisor line and one commit SHA.
 **Done when:** Claude says "Part A: passed" and you have written the SHA down (it is not secret).
@@ -403,7 +405,18 @@ Why: everyone gets their own account with two-factor; nobody shares a login.
 3. Each signs in at the production address, sets up two-factor with their own phone, then opens
    `https://topstock-crm.vercel.app/set-password` and chooses their own password.
 
-**Then (both routes):** make each of them admin on the role screen (decision 3, confirmed in part A). Never with SQL.
+**Then (both routes):** make each of them admin in the app (decision 3, confirmed in part A). Never with SQL.
+Do it after the person has signed in, set up two-factor and chosen their own password (their account is in the
+list from the moment you create it, as a rep). Signed in as yourself:
+1. Open **More** (the last button in the dock) > **Team**.
+2. Find the person. With a name: their name. Without one yet: **No name yet** with a **User ID** that matches the
+   start of the UID shown for them in account B > **Authentication** > **Users**.
+3. On their row, press **Role** (the button that says **Rep**) > **Admin**.
+4. Check the confirmation names the right person and says "becomes an admin", then press **Confirm**.
+5. If it asks "Confirm it’s you", type the 6-digit code from your authenticator app.
+6. The row now says **Admin**. Do the same for the second person.
+
+If it says "You are the last admin", you tried to change your own role: leave yours as Admin.
 
 **What you should see:** account B lists 3 users; each of them reaches Home after entering a two-factor code.
 **Done when:** Henri and Kais are signed in with two-factor and have the role you chose. Tell Claude "Part K done".

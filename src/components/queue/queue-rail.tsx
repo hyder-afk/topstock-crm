@@ -2,13 +2,14 @@
 
 import { forwardRef, useEffect, useId, useRef } from "react";
 import { useTranslations } from "next-intl";
+import { OpenDealSwitch } from "@/components/activity/open-deal-switch";
 import { FollowUpPicker, OutcomePad, type FollowUp } from "@/components/activity/outcome-pad";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { followUpRule, type CallOutcome } from "@/lib/activities";
 import { cn } from "@/lib/utils";
 
-// The queue's outcome rail (Day 4 design 7.4): the shared outcome pad (keys 1 to 7 and 0, 56 px on phones), the note
+// The queue's outcome rail (Day 4 design 7.4; Day 5b adds "Open a deal" to Interested and Book meeting): the shared outcome pad (keys 1 to 7 and 0, 56 px on phones), the note
 // (N), Skip (S) and this session's counts ("1 outcome not saved · Retry" is in the page header, in every phase). Outcomes 5, 6 and 0 open their follow-up
 // inline (the default chip highlighted, ↩ confirms, Esc cancels; Book meeting needs a time); 7 asks once more. On a lead
 // marked Do not contact meanwhile only 7 and Skip work.
@@ -30,6 +31,8 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
   noNumber: boolean;
   stats: { calls: number; talks: number };
   disabled: boolean;
+  /** Day 5b: the "Open a deal" switch for Interested and Book meeting; null for people who may not change the lead. */
+  deal: React.ComponentProps<typeof OpenDealSwitch> | null;
 }>(function QueueRail(p, noteRef) {
   const t = useTranslations("Queue");
   const tOut = useTranslations("Outcomes");
@@ -87,6 +90,7 @@ export const QueueRail = forwardRef<HTMLTextAreaElement, {
                 legend={rule === "time" ? tOut("meetingWhen") : undefined}
               />
             )}
+            {(p.choice === "interested" || p.choice === "meeting_booked") && p.deal ? <OpenDealSwitch {...p.deal} /> : null}
             {needsTime ? <p className="text-sm text-status-red">{t("needTime")}</p> : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="neutral" onClick={p.onConfirm} aria-disabled={needsTime || undefined} aria-keyshortcuts="Enter">

@@ -27,8 +27,8 @@ update public.profiles set org_id = '00000000-0000-0000-0000-0000000000cc', role
  where id = '00000000-0000-0000-0000-0000000000c1';
 
 -- One lead (company) per person, a contact at each, and one row per owned table.
-insert into public.pipeline_stages (id, org_id, name, position)
-values ('20000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000cc', 'Other stage', 1);
+insert into public.pipeline_stages (id, org_id, name, position, key)  -- stages have a key since Day 5a
+values ('20000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000cc', 'Other stage', 1, 'lead');
 do $$
 declare
   main_org uuid := (select id from public.orgs where name = 'TopStock Wholesale');
@@ -242,7 +242,8 @@ begin
 end $$;
 
 -- 3b. Deals, tasks and files stay with their owner: rep B's and the other org's rows are invisible ----------
--- (Each table is updated through a column the client may write: tasks have column grants since Day 4a, files since 4d.)
+-- (Each table is updated through a column the client may write: tasks have column grants since Day 4a, files since 4d,
+-- deals since Day 5a, so the deal probe changes its title.)
 do $$
 declare
   t text;
@@ -254,7 +255,7 @@ begin
     execute format('select count(*) from public.%I where id::text like %L', t, '%a1') into n;
     if n <> 1 then raise exception 'FAIL: rep A should see own row in %', t; end if;
     execute format('update public.%I set %s where id::text like %L or id::text like %L', t,
-                   case t when 'tasks' then 'title = ''x''' when 'files' then 'status = ''deleting''' else 'updated_at = now()' end, '%b1', '%c1');
+                   case t when 'files' then 'status = ''deleting''' else 'title = ''x''' end, '%b1', '%c1');
     get diagnostics n = row_count;
     if n <> 0 then raise exception 'FAIL: rep A updated a foreign row in %', t; end if;
     execute format('delete from public.%I where id::text like %L or id::text like %L', t, '%b1', '%c1');
@@ -283,14 +284,17 @@ begin
     -- a contact of another lead, or of another org
     $q$insert into public.activities (company_id, contact_id, type) values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000b1', 'note')$q$,
     $q$insert into public.activities (company_id, type) values ('30000000-0000-0000-0000-0000000000c1', 'note')$q$,
+    -- another lead's deal (Day 5b: refused by the insert policy's same-lead deal check, no longer by the column grant)
     $q$insert into public.activities (company_id, deal_id, type) values ('30000000-0000-0000-0000-0000000000a1', '40000000-0000-0000-0000-0000000000b1', 'note')$q$,
     $q$insert into public.tasks (contact_id, title) values ('10000000-0000-0000-0000-0000000000c1', 'x')$q$,
     $q$insert into public.tasks (deal_id, title) values ('40000000-0000-0000-0000-0000000000b1', 'x')$q$,
-    $q$insert into public.deals (contact_id, stage_id) values ('10000000-0000-0000-0000-0000000000c1', (select id from public.pipeline_stages where position = 1))$q$,
+    -- (Since Day 5a a deal always opens at Lead, set by the server: the probes name no stage, so the policy refuses them.)
+    $q$insert into public.deals (company_id, contact_id) values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000c1')$q$,
     -- a deal on a lead the caller may not change
-    $q$insert into public.deals (company_id, stage_id) values ('30000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
-    $q$insert into public.deals (contact_id, stage_id) values ('10000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
-    $q$insert into public.deals (company_id, contact_id, stage_id) values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000b1', (select id from public.pipeline_stages where position = 1))$q$,
+    $q$insert into public.deals (company_id) values ('30000000-0000-0000-0000-0000000000b1')$q$,
+    $q$insert into public.deals (company_id, contact_id) values ('30000000-0000-0000-0000-0000000000b1', '10000000-0000-0000-0000-0000000000b1')$q$,
+    $q$insert into public.deals (company_id, contact_id) values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000b1')$q$,
+    -- another org's stage: refused by the column grant now (a stage is never chosen by the client on insert)
     $q$insert into public.deals (stage_id) values ('20000000-0000-0000-0000-0000000000c1')$q$,
     -- a contact on someone else's lead, or another org's
     $q$insert into public.contacts (first_name, company_id) values ('x', '30000000-0000-0000-0000-0000000000b1')$q$,
@@ -298,6 +302,7 @@ begin
     $q$update public.contacts set company_id = '30000000-0000-0000-0000-0000000000b1' where id = '10000000-0000-0000-0000-0000000000a1'$q$,
     $q$insert into public.files (company_id, name, mime, size) values ('30000000-0000-0000-0000-0000000000c1', 'x.pdf', 'application/pdf', 1)$q$,
     $q$update public.activities set contact_id = '10000000-0000-0000-0000-0000000000b1' where id = '50000000-0000-0000-0000-0000000000a1'$q$,
+    -- (the deal guard refuses another org's stage: 42501, hint stage)
     $q$update public.deals set stage_id = '20000000-0000-0000-0000-0000000000c1' where id = '40000000-0000-0000-0000-0000000000a1'$q$
   ] loop
     begin
@@ -307,13 +312,13 @@ begin
     end;
   end loop;
   -- Linking to one's own records still works, and anyone may log on any lead of the org. (Since Day 4a a call
-  -- needs its outcome, and deal_id is not a client column until Day 5; a task names its lead with its contact.)
+  -- needs its outcome; deal_id is a client column again since Day 5b, for a deal on the same lead; a task names its
+  -- lead with its contact.)
   insert into public.activities (company_id, contact_id, type, outcome)
   values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'call', 'no_answer');
   insert into public.tasks (company_id, contact_id, title)
   values ('30000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000000a1', 'Follow up');
-  insert into public.deals (company_id, stage_id)
-  values ('30000000-0000-0000-0000-0000000000a1', (select id from public.pipeline_stages where position = 1));
+  insert into public.deals (company_id) values ('30000000-0000-0000-0000-0000000000a1');
 end $$;
 
 -- 3d. The leads API as rep A ------------------------------------------------------------------------------

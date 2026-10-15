@@ -1,19 +1,17 @@
 import { getTranslations } from "next-intl/server";
-import { EmptyStateSkeleton } from "@/components/shell/empty-state";
+import { HomeBodySkeleton, HomeHeaderSkeleton } from "@/components/home/home-skeleton";
 
-// Skeleton matching Home as people normally see it, with their name saved (date line, greeting, dashboard card,
-// tagline). The add-your-name link only shows until a first name is saved, so it has no placeholder. No spinners.
+// Home's skeleton, block for block (Day 5 design 7.10): date line and greeting, the calm line, the KPI row and the six
+// cards in the page's own grid at every width, then the tagline. The add-your-name link only shows until a first name is
+// saved, and the Team · Mine switch only for managers and admins, so neither has a placeholder. No spinners.
 export default async function Loading() {
-  const t = await getTranslations("Common");
+  const t = await getTranslations("Home");
   return (
-    <div aria-busy="true" className="flex flex-col gap-8 pt-4">
+    <div aria-busy="true" className="flex flex-col gap-2 pt-4">
       <span className="sr-only">{t("loading")}</span>
-      <div className="flex flex-col gap-2">
-        <div className="h-5 w-40 rounded-sm bg-muted motion-safe:animate-pulse" />
-        <div className="h-10 w-56 rounded-sm bg-muted motion-safe:animate-pulse sm:h-12" />
-      </div>
-      <EmptyStateSkeleton />
-      <div className="h-5 w-72 max-w-full rounded-sm bg-muted motion-safe:animate-pulse" />
+      <HomeHeaderSkeleton />
+      <HomeBodySkeleton />
+      <div className="mt-6 h-5 w-72 max-w-full rounded-sm bg-muted motion-safe:animate-pulse" />
     </div>
   );
 }

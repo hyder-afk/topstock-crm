@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronLeft, ChevronRight, Handshake, Package } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Package } from "lucide-react";
 import { useStepUp } from "@/components/auth/step-up-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
@@ -23,6 +23,14 @@ import { Card, ContactsCard, NextStepCard } from "@/components/lead/lead-cards";
 import { LeadHeader } from "@/components/lead/lead-header";
 import { listNeighbours, readListReturn } from "@/components/lead/lead-nav";
 import { QuickActions } from "@/components/lead/quick-actions";
+import { DealChip } from "@/components/lead/deal-chip";
+import { DealSummaryCard } from "@/components/lead/deal-summary-card";
+import { DealsTab } from "@/components/lead/deals-tab";
+import { useDealFlows } from "@/components/pipeline/deal-flows";
+import { DealSheet } from "@/components/pipeline/deal-sheet";
+import { OpenDealSheet } from "@/components/pipeline/open-deal-sheet";
+import type { DealCard } from "@/lib/deals";
+import { fetchLeadDealsClient, leadDealsKey } from "@/lib/prefetch";
 import type { TimelineFilter, TimelinePage } from "@/lib/activities";
 import { LEAD_TABS, personName, type LeadDetail, type LeadStatus, type LeadTab, type TeamMember } from "@/lib/leads";
 import { isTyping } from "@/lib/shortcuts";
@@ -69,6 +77,7 @@ export function LeadPage({
   stepUpSeconds,
   initialTab,
   initialFilter,
+  initialDeal = null,
 }: {
   initialLead: LeadDetail;
   initialTimeline: TimelinePage | null;
@@ -79,6 +88,7 @@ export function LeadPage({
   stepUpSeconds: number;
   initialTab: LeadTab;
   initialFilter: TimelineFilter;
+  initialDeal?: string | null;
 }) {
   const t = useTranslations("LeadPage");
   const tLeads = useTranslations("Leads");
@@ -109,6 +119,23 @@ export function LeadPage({
   const [nav, setNav] = useState<ReturnType<typeof listNeighbours>>(null);
   const [backUrl, setBackUrl] = useState("/leads");
   const canAssign = me.role === "admin" || me.role === "manager";
+  // Day 5b (design 7.9): the deal sheet over the page (?deal=), New deal, and the Win/Lose/Reopen/Delete dialogs.
+  const dealFlows = useDealFlows(stepUpSeconds, "recent", { undoKey: true });
+  const [dealSheet, setDealSheet] = useState<string | null>(initialDeal);
+  const [newDeal, setNewDeal] = useState(false);
+  const openDealSheet = useCallback((dealId: string | null) => {
+    setDealSheet(dealId);
+    const url = new URL(window.location.href);
+    if (dealId) url.searchParams.set("deal", dealId);
+    else url.searchParams.delete("deal");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+  }, []);
+  // Reopen from the Deals tab: the stage the deal was closed from (design 7.6, from its history), then the focus goes
+  // to the deal's row in the Open section (its row menu went with the closed row).
+  const reopenDeal = useCallback(
+    (deal: DealCard, done?: (ok: boolean) => void) => void dealFlows.reopenFromHistory(deal, done),
+    [dealFlows],
+  );
 
   // The list this lead was opened from (this tab only): Back, J/K and "3 of 1,204". Read once in the browser (storage
   // and the list's cache are not on the server), during render as React suggests for outside state.
@@ -200,6 +227,9 @@ export function LeadPage({
   const ownerName = lead.owner ? personName(lead.owner) || tLeads("noName") : null;
   const tabs = LEAD_TABS.map((tabId) => ({ id: tabId, label: t(`tabs.${tabId}`) }));
   const prefetchTab = (tabId: LeadTab) => {
+    if (tabId === "deals") {
+      void queryClient.prefetchQuery({ queryKey: leadDealsKey(id), queryFn: () => fetchLeadDealsClient(id), staleTime: 30_000 });
+    }
     if (tabId === "timeline") {
       void queryClient.prefetchInfiniteQuery({
         queryKey: timelineKey(id, "all"),
@@ -259,15 +289,20 @@ export function LeadPage({
       </div>
 
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-        <LeadHeader
-          lead={lead}
-          team={team}
-          canAssign={canAssign}
-          latestCall={latestCall}
-          onStatus={onStatus}
-          onOwner={onOwner}
-          onShowDetails={showDetails}
-        />
+        <div className="flex min-w-0 flex-col gap-2">
+          <LeadHeader
+            lead={lead}
+            team={team}
+            canAssign={canAssign}
+            latestCall={latestCall}
+            onStatus={onStatus}
+            onOwner={onOwner}
+            onShowDetails={showDetails}
+          />
+          <div className="sm:pl-14">
+            <DealChip lead={lead} onShow={() => setTab("deals")} />
+          </div>
+        </div>
         {dnc ? (
           <div role="note" className="flex max-w-md items-start gap-2 rounded-lg bg-card p-4 text-sm xl:shrink-0">
             <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-status-red" />
@@ -337,9 +372,7 @@ export function LeadPage({
                   <EntryList entries={recent} leadId={id} me={me} stepUp={stepUp} grouped={false} compact />
                 )}
               </Card>
-              <Card title={t("tabs.deals")}>
-                <p className="text-sm text-muted-foreground">{t("dealsEmpty")}</p>
-              </Card>
+              <DealSummaryCard lead={lead} onOpenDeal={openDealSheet} onNewDeal={() => setNewDeal(true)} onShowDeals={() => setTab("deals")} />
             </TabPanel>
           </Activity>
           <Activity mode={tab === "timeline" ? "visible" : "hidden"}>
@@ -349,7 +382,7 @@ export function LeadPage({
           </Activity>
           <Activity mode={tab === "deals" ? "visible" : "hidden"}>
             <TabPanel idBase={`lead-${id}`} id="deals" className="flex min-w-0 flex-col gap-4">
-              <EmptyState icon={Handshake} title={t("dealsTitle")} body={t("dealsEmpty")} />
+              <DealsTab lead={lead} onOpenDeal={openDealSheet} onNewDeal={() => setNewDeal(true)} onReopen={reopenDeal} />
             </TabPanel>
           </Activity>
           <Activity mode={tab === "stock" ? "visible" : "hidden"}>
@@ -386,6 +419,26 @@ export function LeadPage({
         </DialogContent>
       </Dialog>
       {stepUpHook.dialog}
+      <DealSheet dealId={dealSheet} onClose={() => openDealSheet(null)} flows={dealFlows} team={team} canAssign={canAssign} />
+      <OpenDealSheet
+        open={newDeal}
+        initialLead={{ id: lead.id, name: lead.name }}
+        onClose={() => setNewDeal(false)}
+        onOpened={(dealId) => {
+          setNewDeal(false);
+          setTab("deals");
+          openDealSheet(dealId);
+        }}
+        onOpenExisting={(dealId) => {
+          setNewDeal(false);
+          openDealSheet(dealId);
+        }}
+        actions={dealFlows.actions}
+        team={team}
+        canAssign={canAssign}
+        meId={me.id}
+      />
+      {dealFlows.dialogs}
     </div>
   );
 }

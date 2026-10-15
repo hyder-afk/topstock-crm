@@ -19,6 +19,7 @@ export default async function LeadRoute({ params, searchParams }: PageProps<"/le
   const tab: LeadTab = (LEAD_TABS as readonly string[]).includes(tabParam ?? "") ? (tabParam as LeadTab) : "summary";
   const filterParam = Array.isArray(query.filter) ? query.filter[0] : query.filter;
   const filter: TimelineFilter = (TIMELINE_FILTERS as readonly string[]).includes(filterParam ?? "") ? (filterParam as TimelineFilter) : "all";
+  const deal = z.uuid().safeParse(Array.isArray(query.deal) ? query.deal[0] : query.deal);
   const [lead, timeline, tasks, files, team] = await Promise.all([
     supabase.rpc("get_lead", { p_id: id.data }),
     fetchTimelinePage(supabase, id.data, null, null),
@@ -41,6 +42,7 @@ export default async function LeadRoute({ params, searchParams }: PageProps<"/le
       stepUpSeconds={stepUpSecondsLeft(claims)}
       initialTab={tab}
       initialFilter={filter}
+      initialDeal={deal.success ? deal.data : null}
     />
   );
 }

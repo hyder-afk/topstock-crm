@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { logActivityInput, outcomeForKey, type CallOutcome, type LogActivityInput } from "@/lib/activities";
+import type { StageKey } from "@/lib/deals";
 import { nextOpening } from "@/lib/timezones";
 
 // The work queue (Day 4 design 4.2, 5.4, 7.4): types of what the database answers, the requests the server actions
@@ -70,6 +71,8 @@ export type QueueCard = {
   contacts: QueueContact[];
   recent: { id: string; type: string; outcome: string | null; body: string | null; truncated: boolean; created_at: string; user_first_name: string | null }[];
   my_open_tasks: { id: string; title: string; kind: string; due_date: string | null; due_at: string | null }[];
+  /** Day 5b (design 3.2): the open deals the caller sees on the lead and the newest in stage (value a decimal string). */
+  open_deal?: { count: number; latest: { id: string; stage: StageKey; value: string | null } | null } | null;
 };
 
 export type QueueSummary = {

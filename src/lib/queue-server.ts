@@ -49,6 +49,11 @@ export async function logOutcome(supabase: SupabaseClient, input: z.output<typeo
     p_task_title: taskTitle,
     p_request_id: v.requestId,
     p_from_queue: true,
+    // Day 5b: Interested and Book meeting may open a deal in the same call (design 7.9, D17); the queue never links one.
+    p_deal: null,
+    p_open_deal: !!v.openDeal,
+    p_deal_title: v.openDeal?.title ?? null,
+    p_deal_value: v.openDeal?.value ?? null,
   });
   if (error) return toActionFailure(error);
   const logged = data as LoggedActivity;

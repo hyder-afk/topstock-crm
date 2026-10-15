@@ -607,6 +607,27 @@ test("show older files: a failed page says so and keeps the focus; the last page
   await context.close();
 });
 
+test("show older files: a last page that comes back empty (the older files were deleted meanwhile) puts the focus on the heading", async ({ browser }) => {
+  const lead = makeLead(`Grossiste Vide ${run}`, adminEmail);
+  sql(`insert into public.files (org_id, company_id, name, mime, size, uploaded_by, status, ready_at, created_at)
+       select c.org_id, c.id, format('Lot %s.pdf', lpad(g::text, 2, '0')), 'application/pdf', 1000 + g, '${userId(adminEmail)}', 'ready', now(),
+              now() - make_interval(mins => g)
+       from public.companies c, generate_series(1, 51) g where c.id = '${lead}'`);
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoFiles(page, lead);
+  const panel = filesPanel(page);
+  await expect(panel.getByRole("link", { name: /^Lot 50\.pdf/ })).toBeVisible();
+  // Someone else deletes the one older file before this page asks for it.
+  sql(`delete from public.files where company_id = '${lead}' and name = 'Lot 51.pdf'`);
+  const more = panel.getByRole("button", { name: "Show older files" });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(more).toHaveCount(0);
+  await expect(panel.getByRole("heading", { name: "Files" })).toBeFocused();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 // ---------------------------------------------------------------------------------------------------------------------
 // CI only (E2E_STORAGE=1): real Storage.
 // ---------------------------------------------------------------------------------------------------------------------

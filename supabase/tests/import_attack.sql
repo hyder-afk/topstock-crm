@@ -522,10 +522,9 @@ begin
   insert into public.activities (company_id, type, outcome)  -- the author is the caller (Day 4a)
   values ((select id from public.companies where import_batch_id = batch and name = 'Beta'), 'call', 'no_answer');
   perform public.add_contact((select id from public.companies where import_batch_id = batch and name = 'Café Gamma S.A.R.L.'), 'Ana');
-  insert into public.deals (company_id, stage_id, owner_id)
-  select (select id from public.companies where import_batch_id = batch and name = '東京商事'), s.id,
-         '00000000-0000-0000-0000-00000000000a'
-    from public.pipeline_stages s order by s.position limit 1;
+  insert into public.deals (company_id, owner_id)  -- the stage is the server's since Day 5a (a deal opens at Lead)
+  values ((select id from public.companies where import_batch_id = batch and name = '東京商事'),
+          '00000000-0000-0000-0000-00000000000a');
   perform set_config('test.untagged', untagged::text, false);
 end $$;
 
