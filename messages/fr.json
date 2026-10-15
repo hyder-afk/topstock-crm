@@ -229,8 +229,8 @@
     },
     "roleDescription": {
       "admin": "Tout ce que fait un manager, plus l’import de prospects et le changement des rôles.",
-      "manager": "Modifie tous les prospects, contacts et tâches, et peut supprimer des prospects avec un code.",
-      "rep": "Voit tous les prospects ; modifie ceux dont il est responsable et ses propres tâches."
+      "manager": "Modifie tous les prospects, contacts, tâches, affaires et fichiers ; supprime prospects et affaires avec un code.",
+      "rep": "Voit tous les prospects, mais seulement ses affaires ; modifie ce qui lui appartient : prospects, affaires, tâches et fichiers."
     },
     "roleMenu": "Rôle de {who} : {role}",
     "rolesTitle": "Rôles",
