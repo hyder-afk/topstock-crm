@@ -64,13 +64,22 @@ restrictive `require_mfa`); no change. `set_user_role` (core schema) already che
 `supabase/tests/rls_attack.sql` (rep promoting self, aal1, code 660 s old, no code time, applied, last admin, other
 organisation, audit row).
 
-Verifier round: `supabase/migrations/20261021090000_role_change_lock.sql` replaces `set_user_role` (same signature,
+Verifier round: `supabase/migrations/20261015200000_role_change_lock.sql` (written as `20261021090000_…`, re-dated on
+15 Oct, see below) replaces `set_user_role` (same signature,
 SECURITY DEFINER, `search_path = ''`, constant messages, grants re-stated). It locked only the target's row before
 counting admins, so two admins demoting each other at the same moment both counted two and both committed (the new
 test failed exactly that way on the old function: "both demotions committed (admins left: '')"). Now, after the admin
 and fresh-code check, it locks every admin row of the organisation in id order, checks again that the caller is an
-admin (one demoted while the call waited is refused), then locks the target and counts. The timestamp is after every
-migration on the other open branches (up to 20261020090000); none of them touches this function.
+admin (one demoted while the call waited is refused), then locks the target and counts. None of the other open
+branches (4d, Day 5, Day 6) touches this function; only the core schema defines it.
+
+Re-dated on 15 Oct (advisor's pre-PR review): `.github/workflows/deploy-dev-db.yml` runs `supabase db push` without
+`--include-all`, so a migration that sorts before one already applied on the dev project would be refused. Team merges
+before Day 6, whose migrations are `20261016090000` to `20261020090000`, so the old name `20261021090000` would have
+sorted after them and Day 6's would then sort before an applied one. `git mv` to `20261015200000`: after Day 5's latest
+(`20261015150000_home_dashboard.sql`, not on this branch yet) and 4d's `20261014090000_lead_files.sql`, before Day 6's
+first (`20261016090000_stock_engine.sql`). Content unchanged except its header comment. It was never deployed
+(`deploy-dev-db` runs only on `main`).
 `supabase/tests/team_concurrency.sh` (in `scripts/db-test.sh` and the CI `db` job): `demote_each_other_keeps_an_admin`,
 `demoted_admin_cannot_demote` (a deadlock answer 40P01 also fails it), `demoted_admin_cannot_promote`. Mutation set
 `team` in `scripts/db-mutations.py` (run in a throwaway worktree, db-test copy on port 54416):
@@ -84,6 +93,34 @@ migration on the other open branches (up to 20261020090000); none of them touche
 
 The id order of the admin locks is by design: each call takes all of them at its start, so no test can interleave two
 calls between those locks (dropping `order by id` would not be seen by a test, so it is not listed as a row).
+
+## Advisor's pre-PR review (15 Oct 2026, CHANGES NEEDED): re-date and evidence fixes
+
+Done: the migration re-dated to `20261015200000_role_change_lock.sql` (5235f52, `git mv`, see "Database"); the expected
+4d and Day 5 merge conflicts, the migration order rule, the words to re-check and the `/security-review` residual under
+"Open risks"; `security-review.md` scope corrected and the real `/security-review` run recorded; the shots' commit in
+`apple-design-audit.md`; Haider's question at the end. Waiting for the merge with 4d and Day 5 (recorded only): the
+`Team.roleDescription` / `Team.confirm.self` re-check and the final shots, `/security-review` on the final head.
+
+Checks after the re-date (head 5235f52, scratch copy made with `git archive`):
+
+```
+db          scripts/db-test.sh copy, port 54495        exit 0: rls_attack, import_attack, import_concurrency,
+                                                       activity_attack, activity_concurrency, outcome_attack,
+                                                       outcome_concurrency, queue_attack, queue_concurrency,
+                                                       team_concurrency all passed; advisors: no ERROR (WARN
+                                                       set_user_role SECURITY DEFINER, accepted Day 1; INFO
+                                                       unindexed_foreign_keys 4, unused_index 3: usage counts on a
+                                                       throwaway database, 2 on the earlier run)
+mutations   db-mutations.py --set team (scratch copy)  exit 0, 4 rows run, 4 caught
+anchors     every row of the five sets (day3b 37,      0 not applying exactly once (this branch's script has no
+            day4a 104, day4b 94, day4c 92, team 4)     --anchors flag, Day 5 adds it; checked with the same count rule)
+lint        npm run lint                               exit 0 (0 errors; the 2 existing TanStack Virtual warnings)
+typecheck   npm run typecheck                          exit 0
+gitleaks    git --log-opts=5f1a966..HEAD               exit 0, no leaks found (code head 5235f52)
+e2e         not run                                    the shared local auth stack is in use by a Day 5 builder;
+                                                       nothing on the screen changed (a file name and documents)
+```
 
 ## Merge of main (5f1a966), 15 Oct 2026
 
@@ -103,7 +140,7 @@ commit (cbfb1f8, no rebase). Ten files conflicted; each keeps both sides:
 | `docs/log.md` | every row from both sides, in date order |
 
 `src/app/(app)/more/loading.tsx` merged on its own (Team block and main's time zone block); its comment now names the time
-zone. The migration `20261021090000_role_change_lock.sql` is unchanged: main's migrations (up to
+zone. The migration (then `20261021090000_role_change_lock.sql`, now `20261015200000_…`) is unchanged: main's migrations (up to
 `20261013090000_tasks_queue.sql`) never redefine `set_user_role` after the core schema, so the lock still sits on main's
 latest version. `tests/auth/helpers.ts`, the shell and `next.config.ts` did not conflict (no `turbopack.root` committed).
 
@@ -129,7 +166,7 @@ e2e                 team.spec.ts, team-screens.spec.ts     not run: the shared l
 
 E2E on the merged code (15 Oct 2026, head bc79fa6, Chromium, `playwright.auth.config.ts --project=chromium --trace=off`).
 The shared local auth stack was restarted from this worktree (`scripts/local-auth/start.sh`, so this branch's migrations
-including `20261021090000_role_change_lock.sql`); `next build` failed in this worktree (Turbopack: "Symlink node_modules
+including the role-change lock, then named `20261021090000_role_change_lock.sql`); `next build` failed in this worktree (Turbopack: "Symlink node_modules
 could not be resolved", `node_modules` links to the main checkout), so the build and `next start -p 3100` ran from a
 scratch copy of bc79fa6 (`git archive`, real `node_modules`, same lockfile):
 
@@ -246,8 +283,9 @@ Context7 pages consulted (14 Oct, first round):
 - Confirm is the neutral button, not Signal Red: a role change is not the page's primary action.
 - The profiles read has no `.order()` or `.limit()`: the organisation is a handful of people, `sortPeople` orders it,
   and the local REST stand-in (`scripts/local-auth/gateway.mjs`) serves only `select` plus `eq` filters.
-- `/security-review` was applied by hand to this branch's diff (the skill reads the primary checkout, which is on
-  another branch); see `security-review.md`.
+- `/security-review` was applied by hand to this branch's diff in the 12 and 14 Oct rounds (the skill read the primary
+  checkout, which is on another branch); on 15 Oct it ran on the branch diff 5f1a966...7d7c2f2 (Team-only commits),
+  no findings; see `security-review.md`.
 
 ## Open risks
 
@@ -260,5 +298,26 @@ Context7 pages consulted (14 Oct, first round):
 - ~~`docs/go-live.md` comes from the unmerged go-live kit branch~~: merged with main on 15 Oct (main's text, this
   branch's part A and K paragraphs).
 - ~~The Team e2e specs have not run on the merged code yet~~: run on 15 Oct on bc79fa6 (Chromium), all passed (see
-  "Merge of main (5f1a966)"). The Day 4d and Day 5 merges are still to come.
+  "Merge of main (5f1a966)"). The Day 4d and Day 5 merges are still to come. Expected conflicts (from
+  `git diff origin/main...day4d-local` and `...day5a-local`): files both change: `.github/workflows/db.yml`,
+  `scripts/db-test.sh`, `playwright.auth.config.ts` (WebKit `testMatch`), `scripts/db-mutations.py` (`SETS` and the
+  usage line), `messages/en.json` and `messages/fr.json`, `docs/log.md`; Day 5 only: `src/components/auth/step-up-dialog.tsx`
+  (Day 5 adds `bodyReopenWon` and `bodyDeleteDeal` to the same body key union as `bodyRole`). No message-namespace clash
+  (no `Team` key on either branch; `StepUp` gets both sides' keys). Neither branch redefines `set_user_role` (only the
+  core schema mentions it); if a later version of either does, the lock must be applied again on top of it.
+- Migration order rule: Team's `20261015200000_role_change_lock.sql` must sort after `main`'s latest migration at the
+  time Team merges and before Day 6's first (`20261016090000`). Re-check it when 4d and Day 5 are merged in (their
+  latest today: `20261014090000`, `20261015150000`); if either gains a later one, re-date again before the PR.
+- After the 4d and Day 5 merge: re-check `Team.roleDescription` (messages EN and FR, about line 117) and
+  `Team.confirm.self` (about line 127, "Team and Import leads") against the merged RLS (4d: lead files permissions;
+  Day 5: deals use `is_manager_or_admin`, deal delete is admin-only), in both languages, and re-take the affected shots.
+- `/security-review` (15 Oct, 5f1a966...7d7c2f2): residual window, theoretical: a promotion and a demotion running at
+  the same moment, all by admins with fresh codes, has a window that could in theory lose the last admin. Ruled out
+  by the reviewer as theoretical, and no privilege is gained. The review must be repeated on the final head after the
+  4d and Day 5 merge.
 - WebKit and Semgrep run only in CI.
+
+## HAIDER DECIDES (for the REPORT)
+
+Ship the role-change lock (stops two admins removing each other at the same moment) together with the Team screen?
+Recommended: yes, before go-live.

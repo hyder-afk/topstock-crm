@@ -2,8 +2,9 @@
 
 Skill `anthropic-skills:apple-design` (Designing Fluid Interfaces; feedback, spatial consistency, restraint), applied
 to `src/components/team/*`, `src/app/(app)/more/team/*` and the screenshots in `screens/` (every width, light and
-dark, English and French; taken 14 Oct on ed2ad60). DESIGN.md is the source of truth where they differ. The 14 Oct
-re-run looked at the screenshots one by one (the 12 Oct round had no saved set) and at the e2e run that found row 11.
+dark, English and French; first taken 14 Oct on ed2ad60; the current set was taken on bc79fa6, the merge with main, on
+15 Oct; the final set comes after the next merge, with Day 4d and Day 5). DESIGN.md is the source of truth where they
+differ. The 14 Oct re-run looked at the screenshots one by one (the 12 Oct round had no saved set) and at the e2e run that found row 11.
 
 | # | Principle | Finding | Outcome |
 |---|---|---|---|

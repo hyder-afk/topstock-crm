@@ -1,9 +1,12 @@
-# Team screen: security review, 12 Oct 2026 (re-checked 14 Oct 2026 on ed2ad60 and after the verifier round)
+# Team screen: security review, 12 Oct 2026 (re-checked 14 Oct 2026 on ed2ad60 and after the verifier round; `/security-review` run 15 Oct 2026)
 
 Scope: this branch's diff against `origin/main` a7aa89e (branch `team-local`): `src/lib/team.ts`,
 `src/app/(app)/more/team/{actions,page,loading}.tsx`, `src/components/team/{team-list,team-entry}.tsx`, the More page
-and skeleton, the step-up dialog's `bodyRole`, messages, tests. No migration, no new database function, no new route
-handler, no new dependency.
+and skeleton, the step-up dialog's `bodyRole`, messages, tests; since the verifier round also one migration,
+`supabase/migrations/20261015200000_role_change_lock.sql` (re-dated on 15 Oct from `20261021090000_…`, content
+unchanged), which redefines the existing `public.set_user_role` with a role-change lock, and one server action
+(`src/app/(app)/more/team/actions.ts`). No new table, no new database function, no new route handler, no new
+dependency.
 
 How it was run: the `/security-review` skill was invoked from this session, but it reads the primary checkout
 (`/home/user/topstock-crm`, another branch), so its diff was not this change. The same method (threat rows below,
@@ -15,7 +18,7 @@ kept until the server's list shows them, and a `router.refresh()` after a save).
 data shown; the server action and the database function are unchanged. Same result.
 
 Verifier round (14 Oct, NOT READY, 7 findings): this round adds one migration,
-`supabase/migrations/20261021090000_role_change_lock.sql`, which replaces `public.set_user_role` (same signature,
+`supabase/migrations/20261021090000_role_change_lock.sql` (now `20261015200000_role_change_lock.sql`), which replaces `public.set_user_role` (same signature,
 same SECURITY DEFINER and `search_path = ''`, same grants re-stated, same constant messages and SQLSTATEs, same audit
 row). After the admin and fresh-code check it locks every admin row of the caller's organisation in id order, checks
 the caller is still an admin (an admin demoted while the call waited is refused), then locks the target and counts.
@@ -44,3 +47,29 @@ Residual (not vulnerabilities):
 - the Supabase advisor's existing WARN on `set_user_role` (SECURITY DEFINER executable by
 `authenticated`, accepted Day 1: it must update `profiles.role`, which `authenticated` has no grant for); the action
 reads the caller's role once more after a 42501 to word the refusal (one extra query on a refusal only).
+
+## /security-review on the branch diff (15 Oct 2026, 5f1a966...7d7c2f2, Team-only commits)
+
+Result: **NO FINDINGS** at >= 80% confidence.
+
+Checked:
+- `set_user_role` (the role-change lock migration): SECURITY DEFINER, `search_path = ''`; grants re-stated (revoked
+  from `public` and `anon`, granted to `authenticated`); `private.is_admin()` first; the `role` column is not
+  client-updatable (the UPDATE grant on `profiles` covers only `first_name`, `last_name`, `language`, `timezone`);
+  `caller_org` from `private.current_org_id()`, a target in another organisation gets P0002, the same as a missing
+  user; `has_recent_aal2(600)` checked first with the admin check; the lock: every admin row of the organisation
+  `FOR UPDATE` in id order before the target, the caller re-checked with `is_admin()` after the wait (READ COMMITTED
+  re-checks the rows it waited on), the admins counted after the locks, the fixed lock order avoids deadlocks;
+  stepping yourself down only while another admin remains.
+- Server action `src/app/(app)/more/team/actions.ts`: `requireSession` (aal2), `z.strictObject({ userId: uuid, role:
+  enum })`, named RPC args, only codes returned (through `roleChangeError`), no logging.
+- Pages: `requireAdmin()` before any read, 404 for everyone else; the list reads `id, first_name, last_name, role,
+  created_at` under RLS; no email, nothing new exposed.
+- Client code: no unsafe sinks, fixed navigation paths.
+- CI and scripts: local throwaway credentials only.
+
+Residual noted by the reviewer (recorded under open risks in `README.md`): a promotion and a demotion running at the
+same moment, all by admins with fresh codes, have a theoretical window that could lose the last admin. Ruled out as
+theoretical; no privilege is gained.
+
+The review must be repeated on the final head after the 4d and Day 5 merge.
