@@ -236,7 +236,7 @@ held two raw bidi characters; now written as `\u202E`/`\u2066` escapes, same str
   three mutation runs shared the CPU (no count frames: hydration later than the 800 ms rule); a diagnostic load loop
   (not committed) showed both builds hydrating on that 800 ms edge under load (pre-merge 8 of 10 loads counted, merged
   6 of 10; same JS bytes, 383 KB), and the pre-merge build passed the spec once under the same load. Read as a
-  load-sensitive test, not a merge change; listed below.
+  load-sensitive test, not a merge change; listed below. Fixed since in the test ("Count-up test made deterministic").
 
 **Speed (decision A condition)**: `day5-perf` and `home-perf` once on the merged head, recorded next to the accepted
 baseline in `docs/evidence/day5b/perf.md` and `perf.md` here ("Merge of Day 4d"), with a second merged run and a
@@ -249,6 +249,51 @@ budget). **Possibly from the merge, not proven**: the skeleton without a hover (
 **For the advisor and security re-review**: the delta is `931af08..HEAD` minus Day 4d's own content, i.e. the merge
 resolution `git diff efbbbb4 dd24bb6 -- <the 15 files above>` (or `git show --remerge-diff dd24bb6`), plus d107fd2 and
 the docs commits after it. Day 4d itself (`5f1a966..efbbbb4`) was reviewed and approved in PR #16.
+
+## Count-up test made deterministic (15 Oct 2026)
+
+`home.spec`'s `count_up_first_visit_hard_load` failed under CPU load (4 times locally; WebKit in CI is slower): the
+product counts up only when hydration lands before `COUNT_UP_HYDRATION_MS` (800 ms, `decideFirstVisit`), by design, and
+under load hydration landed later, so the app showed the final number with no count. Root cause in the test, not the
+app: it let the machine's speed pick the branch. Fixed in 1e5623f; no product code changed, nothing skipped, loosened or
+retried.
+
+**How** (Context7 `/microsoft/playwright` Clock docs, and the clock code in `playwright-core` 1.64): `page.clock` fakes
+`performance`, `Date`, timers and `requestAnimationFrame` from before the page's first script. A document loaded after
+`install()` replays the clock's log, so `performance.now()` starts at the ticks the log adds up to, stands still after
+`pauseAt()`, and follows wall time after `resume()`; `runFor()` fires the frames and timers due in that span.
+- Counted test: `install()`, then `pauseAt()` at once, then `goto`. React's inline runtime reveals the streamed Home on
+  an animation frame and hydrates it a frame or two later, so the test steps the page's time one 16 ms frame per poll
+  until hydration writes the start frame `€0`. Each step waits for the page's main thread, so a slow CPU stretches
+  wall time, not page time. It then asserts `performance.now()` is below 800, plays `runFor(1000)` (Motion runs on the
+  faked frames), `resume()`s, and keeps the old checks: more than 3 frames, contains `€0`, ends not on `€0`, the second
+  visit writes no `€0`. New checks: intermediate frames, the moving copy ends on `€55,000`, CLS ≤ 0.02 during the count.
+- New `count_up_late_hydration_shows_final_number`: `install()` plus `fastForward(1000)`, so `performance.now()` is past
+  800 whenever hydration runs. Hydration is confirmed (React's fibre on the number, then `appReady`). Checks: no `€0`
+  frame, no frame written at all over the server's numbers, `€55,000` on screen, CLS ≤ 0.02.
+
+**Proof** (Chromium 141, `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium`, shared local stack, `next start` on this
+worktree's build; `-g count_up --repeat-each 10`):
+
+| Run | Counted test | Late test | `performance.now()` at hydration (counted) |
+|---|---|---|---|
+| Normal | 10 of 10 passed | 10 of 10 passed | 36 to 40 ms |
+| CDP `Emulation.setCPUThrottlingRate` rate 6 | 10 of 10 passed | 10 of 10 passed | 39 to 46 ms |
+| Old test (1111717), rate 6, 3 runs | 0 of 3 passed ("frames written on the first hard load", received 0) | (not in the old spec) | real clock, past 800 |
+
+The throttle was a temporary env-gated line in `open()` (`context.newCDPSession(page)`), never committed. The old-test
+row runs the 1111717 spec under the same throttle: it shows the harness reproduces the original failure.
+
+**Mutations** (each built in a scratch copy of 1e5623f with hard-linked `node_modules`, served by `next start` on 3100,
+then removed and the worktree build served again):
+
+| # | App protection removed | Test | Result | First failure |
+|---|---|---|---|---|
+| A1 | `COUNT_UP_HYDRATION_MS = 0` (never counts) | counted test | caught | "hydration wrote the start frame (counted)": expected true, received false (no `€0` in 30 s of polling) |
+| A2 | `decideFirstVisit` always returns true (counts late and on every visit) | late test | caught | "no start frame after a late hydration": received 4 `€0` frames (one per figure) |
+| A2 | the same | counted test | caught | the second-visit check: received 4 `€0` frames |
+
+`mutations.md` lists database mutations only (`scripts/db-mutations.py`), so these app mutations are recorded here.
 
 ## Deviations from the design
 

@@ -80,3 +80,24 @@ second org exists.
 The advisor items fixed after it (ceca0b5, d29be68, a6f5dc2, 1118956, 7d5da6d) change tests, evidence, the Low stock
 card's markup and messages, and its skeleton: no migration, policy, grant, RPC, route or action changed (the e2e only
 take a grant away and give it back on the throwaway local stack).
+
+## /security-review of the Day 4d merge (15 Oct 2026, dd24bb6 remerge-diff, d107fd2, docs commits)
+
+Run on the merge delta only: the merge resolution (`git show --remerge-diff dd24bb6`), d107fd2 and the docs commits after
+it. Day 4d itself (`5f1a966..efbbbb4`) was reviewed and approved in PR #16. **Result: NO FINDINGS.**
+
+What it checked:
+- Migrations: `git diff 931af08 dd24bb6 -- supabase/migrations` only adds 4d's `20261014090000_lead_files.sql`, identical
+  to PR #16's. No Day 5 migration mentions 4d's objects, and 4d redefines nothing Day 5 changes.
+- `src/lib/db-errors.ts` is the exact union of both allowlists: only the SQLSTATE and a listed hint reach users.
+- `src/app/(app)/leads/[id]/page.tsx`: `requireSession` still first; `z.uuid()` on the id (404 otherwise); `?deal=` goes
+  through `z.uuid().safeParse` and becomes `initialDeal` or null; the files are read inside the same `Promise.all`, after
+  the checks.
+- The auto-merged `lead-page.tsx`, `leads.ts` and `import_attack.sql` are clean unions (FilesTab still gets `stepUp`).
+  4d's file routes and actions are unchanged.
+- `rls_attack.sql` block 3b keeps all four refusal checks for deals, tasks and files. Files probes `status='deleting'`,
+  deals and tasks probe `title='x'`: each is a column the client may write, so RLS is what refuses.
+- `db.yml`: still `pull_request` plus `push` to main only, `contents: read`, `persist-credentials: false`,
+  `github.base_ref` passed through `env`, no secrets. `ci.yml` and `gitleaks.yml` are identical to efbbbb4.
+- d107fd2: the bytes were checked to be U+202E and U+2066 (written as escapes, same strings at run time).
+- No secrets in the added lines.
