@@ -818,22 +818,27 @@ test.describe("with storage-api (CI)", () => {
     // The name travels in Storage's Content-Disposition as RFC 8187 `filename*` (UTF-8, percent-encoded), the part
     // RFC 6266 says browsers prefer. Checked on the header itself in every engine.
     const href = await link.getAttribute("href");
+    const [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
+    const saved = download.suggestedFilename();
     const redirect = await page.request.get(href!, { headers: { "Sec-Fetch-Site": "same-origin" }, maxRedirects: 0 });
     expect(redirect.status()).toBe(303);
-    const signed = await page.request.get(redirect.headers()["location"]);
+    const location = new URL(redirect.headers()["location"]);
+    const signed = await page.request.get(location.toString());
     expect(signed.status()).toBe(200);
     const disposition = signed.headers()["content-disposition"] ?? "";
-    test.info().annotations.push({ type: "content-disposition", description: disposition });
+    // Evidence for the README (the signed link's token is never printed, only its download parameter).
+    const seen = `content-disposition=${JSON.stringify(disposition)} download-param=${JSON.stringify(location.searchParams.get("download"))} saved=${JSON.stringify(saved)}`;
+    console.log(`[${browserName}] ${seen}`);
+    test.info().annotations.push({ type: "download-name", description: seen });
     const ext = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-    expect(disposition).toMatch(/^attachment;/);
-    expect(disposition.includes(`filename*=UTF-8''${ext};`) || disposition.endsWith(`filename*=UTF-8''${ext}`)).toBe(true);
-    const [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
-    test.info().annotations.push({ type: "suggested-filename", description: download.suggestedFilename() });
+    // Soft, so one run shows every check in both engines.
+    expect.soft(disposition, seen).toMatch(/^attachment;/);
+    expect.soft(disposition.includes(`filename*=UTF-8''${ext};`) || disposition.endsWith(`filename*=UTF-8''${ext}`), seen).toBe(true);
     // Playwright's WebKit (the Linux port) saved this name as undecoded percent-escapes, which matches neither header
     // part decoded; the cause in that engine is not established (Day 4d README, PR #16). So the exact saved name is
     // asserted in Chromium; every engine must keep the .docx ending; Safari on Mac and iPhone is checked by hand.
-    expect(download.suggestedFilename()).toMatch(/\.docx$/);
-    if (browserName === "chromium") expect(download.suggestedFilename()).toBe(name);
+    expect.soft(saved, seen).toMatch(/\.docx$/);
+    if (browserName === "chromium") expect.soft(saved, seen).toBe(name);
     expect(errors).toEqual([]);
     await context.close();
   });
