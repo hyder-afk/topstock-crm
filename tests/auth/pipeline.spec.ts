@@ -302,6 +302,38 @@ test("reopen_won_asks_code, delete_deal_asks_for_code", async ({ browser }) => {
   await context.close();
 });
 
+// A rep's own pages: Show more and See all won ask the database for the rep's own deals. They used to send the board's
+// "team" key, which list_stage_deals refuses for a rep (42501), so a rep's Show more and closed lists always failed.
+test("rep_show_more_and_closed_list_read_own_deals", async ({ browser }) => {
+  const lead = makeLead("Rep Pages");
+  sql(`insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, title, value, stage_entered_at, version)
+       select '${org}', '${lead}', s.id, '${admin}', '${admin}', 'Rep page ${run} ' || i, 100, now() - (i || ' minutes')::interval, 0
+         from public.pipeline_stages s, generate_series(1, 55) i where s.org_id = '${org}' and s.key = 'lead'`);
+  makeDeal({ lead, stage: "won", title: `Rep won ${run}` });
+  setRole(adminEmail, "rep");
+  try {
+    const { context, page, errors } = await open(browser);
+    await gotoBoard(page);
+    const leadColumn = column(page, "lead");
+    const stagePage = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/pipeline/stage");
+    await leadColumn.getByRole("button", { name: /^Show \d+ more$/ }).click();
+    const res = await stagePage;
+    expect(res.status()).toBe(200);
+    expect(new URL(res.url()).searchParams.get("scope")).toBe("mine");
+    await expect(leadColumn.getByText(/^Showing 50 of/)).toHaveCount(0);
+    await expect(leadColumn.getByRole("alert")).toHaveCount(0);
+    await page.getByRole("button", { name: "See all won" }).click();
+    const dialog = page.getByRole("dialog", { name: "Won deals" });
+    await expect(dialog).toContainText(`Rep won ${run}`);
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await context.close();
+  } finally {
+    setRole(adminEmail, "admin");
+    sql(`delete from public.deals where company_id = '${lead}' and title like 'Rep page ${run} %'`);
+  }
+});
+
 // Deleting is for admins (Haider, 11 Oct: "delete admin-only with code"): a manager is not offered Delete on the card's
 // menu, the Delete key or the sheet's menu (the database refuses it too: deals_attack.sql); an admin is, on the same deal.
 test("delete_not_offered_to_manager", async ({ browser }) => {
@@ -424,8 +456,10 @@ test("reduced_motion_no_settle, offline_disables_drag, quick_second_move_same_ca
   await page.waitForTimeout(150);
   expect(await card(page, deal).evaluate((el) => getComputedStyle(el).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
   // Right after one press the focus is on the moved card in its new column (never <body>).
+  // No page.reload() before gotoBoard: a reload leaves the page while the move's requests are still in flight, and the
+  // request tracker in settled() could keep them as pending (CI, PR #17: "4 pending" for 15 s). gotoBoard first waits
+  // for those requests to finish, then opens the board again, which also loads the deal made above.
   const single = makeDeal({ title: `Quiet single ${run}` });
-  await page.reload();
   await gotoBoard(page);
   await mainOf(page, single).focus();
   await page.keyboard.press("Shift+ArrowRight");
@@ -435,7 +469,6 @@ test("reduced_motion_no_settle, offline_disables_drag, quick_second_move_same_ca
   // The second press inside the first one's task, before the cards re-render from the cache (TanStack notifies on the
   // next task; CI's Chromium and WebKit sometimes ran the second key first): it steps from the moved stage, so both land.
   const burst = makeDeal({ title: `Quiet burst ${run}` });
-  await page.reload();
   await gotoBoard(page);
   await mainOf(page, burst).focus();
   await mainOf(page, burst).evaluate((el) => {

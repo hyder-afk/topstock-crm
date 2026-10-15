@@ -187,6 +187,10 @@ function Pipeline({
   const [stalledOnly, setStalledOnly] = useState(initialStalled);
   const [extraPages, setExtraPages] = useState(false);
   const key = useMemo(() => ({ scope: canTeam ? scope : ("team" as const), owner: canTeam && scope === "team" ? owner : null }), [canTeam, scope, owner]);
+  // The scope for the strict reads (a column's next page, See all won / lost): a rep may only ask for their own deals.
+  // The board itself keeps the "team" key (its first paint quietly narrows a rep to their own deals), but
+  // list_stage_deals refuses a rep's "team" with 42501, so a rep's Show more and closed lists failed every time.
+  const readScope = canTeam ? key.scope : "mine";
   const isFirstKey = key.scope === "team" && key.owner === null;
   const query = useBoard(key, isFirstKey ? first : undefined, extraPages);
   const board = query.data;
@@ -546,7 +550,7 @@ function Pipeline({
     setLoadingMore((s) => ({ ...s, [col.key]: true }));
     setMoreFailed((s) => ({ ...s, [col.key]: false }));
     try {
-      const p = new URLSearchParams({ stage: col.key, scope: key.scope });
+      const p = new URLSearchParams({ stage: col.key, scope: readScope });
       if (key.owner) p.set("owner", key.owner);
       if (stalledOnly) p.set("stalled", "1");
       if (cursor) {
@@ -801,7 +805,7 @@ function Pipeline({
       />
       <ClosedDealsDialog
         kind={closedList}
-        scope={key.scope}
+        scope={readScope}
         owner={key.owner}
         onClose={() => setClosedList(null)}
         onOpenDeal={(id) => {
