@@ -137,7 +137,10 @@ does; an API request always carries a signed JWT with a subject.
    needs a policy change to matter; a stray object would then wait for the Gate 1 sweeper.
 7. Signed upload links (`createSignedUploadUrl`, also signed resumable uploads) are checked against the policies only
    when made, for the uploader's own pending path within 15 minutes, and last 2 hours. Bytes sent after a cancel are
-   stray bytes in the organisation's folder, counted in the team space (spike S5). Bytes sent with upsert after the
+   stray bytes in the organisation's folder (spike S5): the files row is gone, so `take_stale_uploads` (pending rows
+   only) never sees them, and no user can see or remove them, but they count toward the 800 MiB team space through
+   `private.org_storage_bytes` until the Gate 1 sweeper (service key, removes `lead-files` objects with no files row)
+   exists. Bytes sent with upsert after the
    file is ready replace the object, but the file then no longer opens (round 2 finding 1: version, size and type
    bound at finish); an overwrite in the seconds between `open_file`'s check and the browser fetching the 60-second
    link would be served. Only the uploader (or someone holding their aal2 session) can do it, only to their own file.
