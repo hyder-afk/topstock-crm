@@ -46,6 +46,7 @@ const namespaces = [
   "Share",
   "ShareLinks",
   "ShareText",
+  "Pickers",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {
