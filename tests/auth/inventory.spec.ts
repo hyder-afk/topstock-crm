@@ -216,7 +216,9 @@ test("count_sets_quantity_then_movements_log", async ({ browser }) => {
 test("arrived_partial_moves_hold", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   // Its own product: 500 in transit, 100 of them held for Maison Verdane.
-  const lead = sql(`select id from public.companies where name = 'Maison Verdane' order by created_at limit 1`);
+  // The seed's own organisation: other specs (Home's fixture) make a 'Maison Verdane' in theirs, some backdated.
+  const lead = sql(`select c.id from public.companies c join public.profiles p on p.org_id = c.org_id
+                    where c.name = 'Maison Verdane' and p.id = '${userId(seedEmail)}' order by c.created_at limit 1`);
   const id = asUser(seedEmail, `select public.create_product(p_name => 'Housse coussin ${tag}', p_pieces_per_carton => 50,
                      p_opening_qty => 500, p_opening_location => 'transit')`).split("\n").find((l) => /^[0-9a-f-]{36}$/.test(l));
   asUser(seedEmail, `select public.post_stock_movement('${id}', 'reserve', 100, 'transit', p_company => '${lead}')`);

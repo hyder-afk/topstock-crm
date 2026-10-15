@@ -208,8 +208,29 @@ export function setRole(email: string, role: "admin" | "manager" | "rep") {
 // numbers), owned in turn by the given test users, with a contact on every third one. File rows and deals go first: since
 // Day 4d a lead with files cannot be deleted (their stored bytes, if any, are left to the throwaway stack), and a deal
 // keeps its lead (deals_company_id_fkey has no cascade), so earlier specs' made-up files and deals would block the reset.
+// Since Day 6 a lead with stock history (holds, sales) is kept too (lead_delete_blocked_by_stock_history), so the
+// earlier Day 6 specs' made-up stock history goes first, whole: movements, holds, sales, requests and client links, and
+// the levels they built (every product back to nothing, consistent with an empty movement log). Their guards make
+// that history append-only, so this throwaway-stack reset runs with triggers off (session_replication_role), which
+// also turns off the foreign key actions: every table below is listed, children included.
 export function seedLeads(ownerEmails: string[], count = 120) {
   const owners = ownerEmails.map(emailLiteral).join(", ");
+  sql(`
+    begin;
+    set local session_replication_role = replica;
+    delete from public.tasks where source_request_id is not null;
+    delete from private.order_line_costs;
+    delete from private.order_lines;
+    delete from private.stock_hold_uses;
+    delete from private.stock_request_lines;
+    delete from private.stock_requests;
+    delete from private.share_links;
+    delete from private.orders;
+    delete from private.stock_movements;
+    delete from private.stock_reservations;
+    delete from public.stock_levels;
+    commit;
+  `);
   sql(`
     delete from public.files;
     delete from public.deals;

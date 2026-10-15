@@ -97,7 +97,7 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
     await page.waitForTimeout(150);
     await page.mouse.up();
     await expect(page).toHaveURL(/\/inventory$/);
-    await expect(page.locator("main h1")).toHaveText("Inventory");
+    await expect(page.locator("main h1")).toContainText("Inventory"); // with products the heading also counts them (as Leads)
     await beadSettledOver(page, "Inventory");
     await context.close();
   });

@@ -134,7 +134,9 @@ test("enable_sharing_needs_admin_fresh_code", async ({ browser }) => {
   await nextWindow();
   await stepUp.getByLabel("6-digit code").fill(totp(adminSecret));
   await expect(toast(page)).toContainText("Sharing is on. Client links work now.");
-  expect(sql(`select bool_and(sharing_enabled) from private.inventory_settings`)).toBe("t");
+  // This admin's organisation (other specs make organisations of their own, with sharing off).
+  expect(sql(`select s.sharing_enabled from private.inventory_settings s join public.profiles p on p.org_id = s.org_id
+              where p.id = '${uid(adminEmail)}'`)).toBe("t");
   expect(errors).toEqual([]);
   adminState = await context.storageState(); // ageStepUp used the stored refresh token: keep the new session
   await context.close();
