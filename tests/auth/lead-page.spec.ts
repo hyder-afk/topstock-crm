@@ -518,7 +518,10 @@ test("timeline_pages_keyset (60 entries), deals_stock_empty_states and keyboard 
   await expect(page.getByRole("tab", { name: "Deals" })).toBeFocused();
   await expect(page.getByRole("tabpanel")).toContainText("No deals yet. Open one when this lead is interested.");
   await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("tabpanel")).toContainText("once inventory is set up");
+  // Day 6d's Stock tab (its code loads on this first showing): the empty sections, no Day 4 placeholder.
+  await expect(page.getByRole("tab", { name: "Stock" })).toBeFocused();
+  await expect(page.getByRole("tabpanel")).toContainText("No stock held for this lead.");
+  await expect(page.getByRole("tabpanel")).toContainText("No sales to this lead yet.");
   await page.keyboard.press("End");
   await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Home");
