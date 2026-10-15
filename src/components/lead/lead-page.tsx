@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -11,13 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { TabList, TabPanel, panelId } from "@/components/ui/tabs";
-import { LeadStockTab } from "@/components/lead/stock-tab";
 import { Composer, type ComposerMode } from "@/components/activity/composer";
 import { EntryList, Timeline } from "@/components/activity/timeline";
 import { fetchTimeline, timelineKey, useTimeline } from "@/components/activity/use-activities";
 import { fetchLead, leadKey, rowBefore, useLeadChanges } from "@/components/leads/use-leads";
 import { DetailsTab } from "@/components/lead/details-tab";
-import { FilesTab } from "@/components/files/files-tab";
 import { prefetchFiles } from "@/components/files/use-files";
 import { Card, ContactsCard, NextStepCard } from "@/components/lead/lead-cards";
 import { LeadHeader } from "@/components/lead/lead-header";
@@ -37,6 +36,23 @@ import { isTyping } from "@/lib/shortcuts";
 import type { LeadTask } from "@/lib/tasks";
 import type { FilesPage } from "@/lib/files/types";
 import { cardTitle, retryKeepingFocus } from "@/lib/focus";
+
+// The Stock (Day 6) and Files (Day 4d) tabs load their code when first shown (a deep link to ?tab=stock or ?tab=files,
+// a click, a shortcut), not with the page: the lead page's own JavaScript stays inside its 60 KB budget (design 8.6).
+// Pointing at or focusing the tab fetches the code ahead (prefetchTab), as it does the tab's data. While the code
+// arrives the panel shows the body's card skeleton (no spinner).
+const loadStockTab = () => import("@/components/lead/stock-tab");
+const loadFilesTab = () => import("@/components/files/files-tab");
+function PanelSkeleton() {
+  return (
+    <div aria-busy="true" className="flex flex-col gap-4">
+      <div className="h-32 rounded-lg bg-card motion-safe:animate-pulse" />
+      <div className="h-64 rounded-lg bg-card motion-safe:animate-pulse" />
+    </div>
+  );
+}
+const LeadStockTab = dynamic(() => loadStockTab().then((m) => m.LeadStockTab), { ssr: false, loading: PanelSkeleton });
+const FilesTab = dynamic(() => loadFilesTab().then((m) => m.FilesTab), { ssr: false, loading: PanelSkeleton });
 
 // The lead page (Day 4 design 7.1). Server-rendered with the lead, the first timeline page and its tasks; the browser
 // keeps them in the query cache (shared with the leads preview). 1440: the header full width with the actions on the
@@ -107,6 +123,9 @@ export function LeadPage({
   const { changeStatus, changeOwner } = useLeadChanges(team);
   const isWide = useSyncExternalStore(subscribeWide, () => window.matchMedia(wide).matches, () => true);
   const [tab, setTabState] = useState<LeadTab>(initialTab);
+  // The tabs shown so far: a lazily loaded tab mounts on its first showing and then stays (hidden, with its state).
+  const [seen, setSeen] = useState<ReadonlySet<LeadTab>>(() => new Set([initialTab]));
+  if (!seen.has(tab)) setSeen(new Set(seen).add(tab));
   const [mode, setMode] = useState<ComposerMode | null>(null);
   const [sheet, setSheet] = useState(false);
   // A quick action is used once: it is cleared when the sheet closes and when the window crosses 1024 px (an iPad
@@ -238,7 +257,11 @@ export function LeadPage({
         staleTime: 30_000,
       });
     }
-    if (tabId === "files") void prefetchFiles(queryClient, id);
+    if (tabId === "files") {
+      void prefetchFiles(queryClient, id);
+      void loadFilesTab();
+    }
+    if (tabId === "stock") void loadStockTab();
   };
 
   const composerCard = (
@@ -387,19 +410,21 @@ export function LeadPage({
           </Activity>
           <Activity mode={tab === "stock" ? "visible" : "hidden"}>
             <TabPanel idBase={`lead-${id}`} id="stock" className="flex min-w-0 flex-col gap-4">
-              <LeadStockTab
-                lead={{ id, name: lead.name, country: lead.country, phone: lead.phone, email: lead.email }}
-                me={me.id}
-                meFirstName={team.find((m) => m.id === me.id)?.first_name ?? null}
-                role={me.role}
-                active={tab === "stock"}
-                stepUp={stepUp}
-              />
+              {seen.has("stock") ? (
+                <LeadStockTab
+                  lead={{ id, name: lead.name, country: lead.country, phone: lead.phone, email: lead.email }}
+                  me={me.id}
+                  meFirstName={team.find((m) => m.id === me.id)?.first_name ?? null}
+                  role={me.role}
+                  active={tab === "stock"}
+                  stepUp={stepUp}
+                />
+              ) : null}
             </TabPanel>
           </Activity>
           <Activity mode={tab === "files" ? "visible" : "hidden"}>
             <TabPanel idBase={`lead-${id}`} id="files" className="flex min-w-0 flex-col gap-4">
-              <FilesTab leadId={id} initial={initialFiles} stepUp={stepUp} />
+              {seen.has("files") ? <FilesTab leadId={id} initial={initialFiles} stepUp={stepUp} /> : null}
             </TabPanel>
           </Activity>
           <Activity mode={tab === "details" ? "visible" : "hidden"}>
