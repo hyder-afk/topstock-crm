@@ -8,10 +8,11 @@
     "start": "next start -p 3100",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
+    "check:native": "node scripts/check-native-controls.mjs",
     "test:e2e": "playwright test",
     "test:unit": "playwright test -c playwright.unit.config.ts",
     "prepare": "simple-git-hooks",
-    "verify": "npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run test:e2e",
+    "verify": "npm run lint && npm run typecheck && npm run check:native && npm run test:unit && npm run build && npm run test:e2e",
     "test:db": "bash scripts/db-test.sh"
   },
   "dependencies": {
