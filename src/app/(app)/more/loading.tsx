@@ -86,7 +86,11 @@ export default async function Loading() {
         </div>
       </div>
 
-      <div className={`h-11 w-32 rounded-md ${bar}`} />
+      {/* Sign out and Sign out of all devices: stacked on phones, side by side from 640 px. */}
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+        <div className={`h-11 w-32 rounded-md ${bar}`} />
+        <div className={`h-11 w-56 rounded-md ${bar}`} />
+      </div>
     </div>
   );
 }

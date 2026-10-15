@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { timelineParams } from "@/lib/activities";
 import { apiSession } from "@/lib/auth";
+import { listRateLimited } from "@/lib/rate-limit";
 import { fetchTimelinePage } from "@/lib/leads-server";
 
 // GET /api/leads/<id>/activities?types=&before_at=&before_id= : one page of the lead's timeline (keyset, newest first).
@@ -12,6 +13,8 @@ const headers = { "Cache-Control": "private, no-store" };
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await apiSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers });
+  const limited = listRateLimited(session.claims.sub);
+  if (limited) return limited;
   const id = z.uuid().safeParse((await params).id);
   const query = timelineParams.safeParse(Object.fromEntries(request.nextUrl.searchParams));
   if (!id.success || !query.success || (query.data.before_at === undefined) !== (query.data.before_id === undefined)) {

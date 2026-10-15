@@ -47,6 +47,8 @@ const namespaces = [
   "ShareLinks",
   "ShareText",
   "Pickers",
+  // Day 7a: More (sign out of all devices).
+  "More",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

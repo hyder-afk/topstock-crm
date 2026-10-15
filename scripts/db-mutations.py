@@ -5,7 +5,7 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|day6|all]
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|day6|day7a|all]
 [numbers...]  (about 60 s per mutation, 90 s once the Day 6 stock tests run; default: all sets, numbers apply within one
 set). Writes one Markdown table per set to stdout, then a count line per set; exits 1 when a row does not behave as
 listed. --anchors [--set ...] only checks that every edit applies (its text is found exactly once where it is aimed) and
@@ -52,6 +52,7 @@ MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
 MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
 MIG_6E = ROOT / "supabase/migrations/20261020090000_client_share.sql"
 MIG_6F = ROOT / "supabase/migrations/20261020100000_deal_stock_blocks.sql"
+MIG_7A = ROOT / "supabase/migrations/20261021100000_day7a_security.sql"
 # Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
 # "untouched" rule (Day 4d's); Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
 # Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 5a's); Day 6e the
@@ -2183,12 +2184,77 @@ for (_set, _rows) in (("day4a", MUTATIONS_4A), ("day5a", MUTATIONS_5A), ("day5c"
 assert not ALSO_IN_6D, f"rows not found: {list(ALSO_IN_6D)}"
 
 
+# Day 7a (docs/evidence/day7a/README.md): the catalog-driven anon sweep (rls_attack.sql section 1) catches a grant to anon
+# on objects Day 1's hard-coded list never named; the same-organisation owner rule has two layers (the trigger for
+# signed-in callers, the composite keys for every path), each caught on its own because the tests expect the trigger's
+# 42501 from signed-in callers and the keys' 23503 from sessions with no user; the sign-in audit rows' policy, grants,
+# flood guard and INVOKER writer.
+AUTH_GRANT = "grant execute on function public.record_auth_event(text) to authenticated;\n"
+OWNER_KEYS = """alter table public.companies add constraint companies_owner_same_org
+  foreign key (owner_id, org_id) references public.profiles (id, org_id) on delete set null (owner_id);
+alter table public.deals add constraint deals_owner_same_org
+  foreign key (owner_id, org_id) references public.profiles (id, org_id) on delete set null (owner_id);
+alter table public.tasks add constraint tasks_assignee_same_org
+  foreign key (assignee_id, org_id) references public.profiles (id, org_id) on delete set null (assignee_id);
+"""
+TASK_KEY = """alter table public.tasks add constraint tasks_assignee_same_org
+  foreign key (assignee_id, org_id) references public.profiles (id, org_id) on delete set null (assignee_id);
+"""
+OWNER_TRIGGER_CHECK = """    if new_owner is not null and (tg_op = 'INSERT' or new_owner is distinct from old_owner)
+       and not exists (select 1 from public.profiles p where p.id = new_owner and p.org_id = caller_org) then
+      raise exception 'the owner must be a member of your organisation' using errcode = '42501';
+    end if;
+"""
+MUTATIONS_7A = [
+    ("Anon sweep: a later migration grants anon SELECT on a table Day 1's list never named (deal_stage_history)",
+     [(AUTH_GRANT, AUTH_GRANT + "grant select on public.deal_stage_history to anon;\n")]),
+    ("Anon sweep: anon gets USAGE on schema private and EXECUTE on a private function",
+     [(AUTH_GRANT, AUTH_GRANT + "grant usage on schema private to anon;\n"
+                                "grant execute on function private.current_org_id() to anon;\n")]),
+    ("Anon sweep: anon gets INSERT on a private table (no schema usage)",
+     [(AUTH_GRANT, AUTH_GRANT + "grant insert on private.deal_moves to anon;\n")]),
+    ("Anon sweep: anon may call a public RPC added after Day 1 (record_auth_event)",
+     [(AUTH_GRANT, AUTH_GRANT + "grant execute on function public.record_auth_event(text) to anon;\n")]),
+    ("Same-org owner: the composite keys removed (the trigger alone; service paths unchecked)",
+     [(OWNER_KEYS, "")]),
+    ("Same-org owner: the trigger's check removed (the keys alone; signed-in callers get 23503, not 42501)",
+     [(MIG_3A, OWNER_TRIGGER_CHECK, "")]),
+    ("Same-org owner: both layers removed",
+     [(OWNER_KEYS, ""), (MIG_3A, OWNER_TRIGGER_CHECK, "")]),
+    ("Same-org owner: the task assignee key alone removed",
+     [(TASK_KEY, "")]),
+    ("Sign-in rows: the insert policy does not pin the actor (another person's row)",
+     [("              and actor_id = (select auth.uid()) and org_id = (select private.current_org_id())",
+       "              and org_id = (select private.current_org_id())")]),
+    ("Sign-in rows: the insert policy does not pin the organisation",
+     [("              and actor_id = (select auth.uid()) and org_id = (select private.current_org_id())",
+       "              and actor_id = (select auth.uid())")]),
+    ("Sign-in rows: the insert policy allows any action (a forged role change)",
+     [("with check (table_name = 'auth' and action in ('sign_in', 'mfa_verify')", "with check (table_name = 'auth'")]),
+    ("Sign-in rows: the insert policy allows any table name",
+     [("with check (table_name = 'auth' and action in ('sign_in', 'mfa_verify')",
+       "with check (action in ('sign_in', 'mfa_verify')")]),
+    ("Sign-in rows: the insert grant also covers diff_json (details such as an IP address)",
+     [("grant insert (org_id, actor_id, action, table_name) on public.audit_log to authenticated;",
+       "grant insert (org_id, actor_id, action, table_name, diff_json) on public.audit_log to authenticated;")]),
+    ("Sign-in rows: no flood guard (30 an hour)",
+     [("create trigger auth_event_guard before insert on public.audit_log\n"
+       "  for each row when (new.table_name = 'auth') execute function private.auth_event_guard();\n", "")]),
+    ("Sign-in rows: the flood guard counts a forged row about another person (its 22023 tells their sign-in count)",
+     [("  if new.actor_id is distinct from auth.uid() then\n    return new;\n  end if;\n", "")]),
+    ("Sign-in rows: the writer runs as its owner (SECURITY DEFINER)",
+     [("language sql volatile security invoker set search_path = ''", "language sql volatile security definer set search_path = ''")]),
+]
+
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
         "day4c": (MIG_4C, MUTATIONS_4C), "day4d": (MIG_4D, MUTATIONS_4D), "day5a": (MIG_5A, MUTATIONS_5A),
         "day5b": (MIG_5B, MUTATIONS_5B), "day5c": (MIG_5C, MUTATIONS_5C),
         "team": (MIG_TEAM, MUTATIONS_TEAM),
         "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
-        "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E), "day6": (MIG_6F, MUTATIONS_6F)}
+        "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E), "day6": (MIG_6F, MUTATIONS_6F),
+        "day7a": (MIG_7A, MUTATIONS_7A)}
 
 
 FUNCTION_HEAD = re.compile(r"create (?:or replace )?function ([a-z_]+\.[a-z_0-9]+)\(")
