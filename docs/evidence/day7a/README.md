@@ -24,7 +24,7 @@ the new attack file; `scripts/db-mutations.py` has a `day7a` set.
 - No step-up for Sign out everywhere: it only removes access and is what someone does after losing a device; Master
   Plan section 8 lists step-up for adjustments, imports, exports, deletes and role changes. The server still requires a
   full aal2 session.
-- **Rate limit: deviation awaiting Haider (HAIDER DECIDES; recommended: accept as residual R1).** Master Plan section 8
+- **Rate limit: deviation accepted by Haider on 15 Oct 2026 ("1 yes"); recorded as residual R1.** Master Plan section 8
   item 28 and the plan's `private.rate_hits` table are not built; the limit is in the app, in memory, per server
   instance (on Vercel each function instance keeps its own window and a cold start resets it). It is a speed bump
   against a runaway client and casual scripting of the five routes, **not scrape protection**: authenticated has direct
@@ -114,7 +114,7 @@ No native picker or popup in anything new.
 
 | # | Residual | Why it stays | Later option |
 |---|---|---|---|
-| R1 | Direct PostgREST reads are limited only by RLS and `max_rows` (1000 per request). The in-app limit (300 a minute per person, per instance, reset by a cold start) covers five routes only; a stolen session reads `rest/v1/companies` directly | Deviation from Master Plan section 8 item 28 / `private.rate_hits`: **HAIDER DECIDES** (recommended: accept as residual). Every person in Release 1 may read every lead (Haider's "3 yes"), so a full session already sees them all | Two-factor sign-in (in place); Vercel Firewall rule (Day 8); later an RPC-only read path (revoke direct SELECT) |
+| R1 | Direct PostgREST reads are limited only by RLS and `max_rows` (1000 per request). The in-app limit (300 a minute per person, per instance, reset by a cold start) covers five routes only; a stolen session reads `rest/v1/companies` directly | Deviation from Master Plan section 8 item 28 / `private.rate_hits`: **accepted by Haider, 15 Oct 2026**. Every person in Release 1 may read every lead (Haider's "3 yes"), so a full session already sees them all | Two-factor sign-in (in place); Vercel Firewall rule (Day 8); later an RPC-only read path (revoke direct SELECT) |
 | R2 | After "Sign out of all devices", another device's current access token stays valid until it expires: `jwt_expiry` 3600 s, `getClaims` verifies an asymmetric token locally and PostgREST does not check that the session still exists, so up to 1 hour of reads and writes. Refresh tokens die at once, so nothing lasts past that hour. The sheet says so ("Other devices lose access within an hour at most.") | Supabase's design; a shorter expiry means more refreshes | Day 8: a shorter production `jwt_expiry` (for example 900 s), **Haider's call** |
 | R3 | A signed-in person can write up to 30 fake `sign_in` rows an hour about themselves (only about themselves, no details, own organisation) | They are the person the row is about; the flood guard caps the noise; admins see actor and time | None planned |
 | 3 (existing) | Auth cookies are readable by scripts (the Files tab's browser client) | CSP is the control | Revisit if the Files tab moves server-side |
