@@ -1246,9 +1246,9 @@ MUTATIONS_5A = [
      [("grant select on public.deal_stage_history to authenticated;", "grant select, insert on public.deal_stage_history to authenticated;")]),
     ("History: actor taken from the deal's owner",
      [(DEAL_HISTORY, "  values (new.org_id, new.id, (select auth.uid()), v_kind,", "  values (new.org_id, new.id, new.owner_id, v_kind,")]),
-    ("Delete policy: no fresh code for managers and admins",
-     [("       ((select private.has_recent_aal2(600)) and (select private.is_manager_or_admin()))\n    or (created_by",
-       "       ((select private.is_manager_or_admin()))\n    or (created_by")]),
+    ("Delete policy: no fresh code for admins",
+     [("       ((select private.has_recent_aal2(600)) and (select private.is_admin()))\n    or (created_by",
+       "       ((select private.is_admin()))\n    or (created_by")]),
     ("Delete policy: the creator's branch without version = 0 (a moved deal deleted without a code)",
      [("    or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds'",
        "    or (created_by = (select auth.uid()) and created_at > now() - interval '120 seconds'")]),
@@ -1411,6 +1411,15 @@ MUTATIONS_5A = [
      [(DEAL_GUARD, "    if (select count(*) from (select 1 from private.deal_opens o\n                               where o.user_id = caller and o.created_at > now() - interval '1 hour'",
        "    if (select count(*) from (select 1 from public.deals o\n                               where o.created_by = caller and o.created_at > now() - interval '1 hour'"),
       (OPEN_FLOOD, "                             limit 31) recent) > 30 then", "                             limit 31) recent) > 30 and false then")]),
+    # Team advisor, 15 Oct: deleting is admin-only with a code (Haider, 11 Oct), not manager or admin.
+    ("Delete policy: a manager with a fresh code may delete (is_admin back to is_manager_or_admin)",
+     [("       ((select private.has_recent_aal2(600)) and (select private.is_admin()))\n    or (created_by",
+       "       ((select private.has_recent_aal2(600)) and (select private.is_manager_or_admin()))\n    or (created_by")]),
+    ("delete_deal: a manager passes the role check (is_admin back to is_manager_or_admin; the policy then gives P0002)",
+     [(DELETE_DEAL, "    if not (select private.is_admin()) then\n      raise exception 'only an admin can delete a deal'",
+       "    if not (select private.is_manager_or_admin()) then\n      raise exception 'only an admin can delete a deal'")]),
+    ("Cards: Delete offered to managers (can_delete with is_manager_or_admin)",
+     [(CARDS, "         (select private.is_admin())\n         or (d.created_by", "         (select private.is_manager_or_admin())\n         or (d.created_by")]),
 ]
 
 

@@ -298,6 +298,41 @@ test("reopen_won_asks_code, delete_deal_asks_for_code", async ({ browser }) => {
   await context.close();
 });
 
+// Deleting is for admins (Haider, 11 Oct: "delete admin-only with code"): a manager is not offered Delete on the card's
+// menu, the Delete key or the sheet's menu (the database refuses it too: deals_attack.sql); an admin is, on the same deal.
+test("delete_not_offered_to_manager", async ({ browser }) => {
+  const del = makeDeal({ title: `Manager ${run}`, createdHoursAgo: 1 });
+  setRole(adminEmail, "manager");
+  try {
+    const { context, page, errors } = await open(browser);
+    await gotoBoard(page);
+    await mainOf(page, del).click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await mainOf(page, del).focus();
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(300);
+    await expect(page.getByRole("dialog", { name: "Delete this deal?" })).toHaveCount(0);
+    await page.goto(`/pipeline?deal=${del}`);
+    await appReady(page);
+    await page.getByRole("dialog").getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+    expect(sql(`select count(*) from public.deals where id = '${del}'`)).toBe("1");
+    expect(errors).toEqual([]);
+    await context.close();
+  } finally {
+    setRole(adminEmail, "admin");
+  }
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  await mainOf(page, del).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Delete…" })).toBeVisible();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("stalled_badge_with_clock, won_column_last_30_days, xss_deal_title_is_text", async ({ browser }) => {
   const stalled = makeDeal({ hoursInStage: 24 * 9, title: `Stalled ${run}` });
   const recentWin = makeDeal({ stage: "won", closedHoursAgo: 24 * 3, title: `Recent ${run}` });
