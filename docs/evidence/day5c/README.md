@@ -211,7 +211,7 @@ and its prefetch beside the deals prefetch and sheet), `src/lib/leads.ts` (`LEAD
 `deals`), `supabase/tests/import_attack.sql` (FK list with `files`; Day 5's deal insert). Of the expected list,
 `tests/auth/messages.spec.ts` does not exist (the messages spec is `tests/unit/messages.spec.ts`, above). One
 semantic conflict, found by Day 5a's `sql-bidi` unit spec (it scans every file): 4d's `tests/unit/file-name.spec.ts`
-held two raw bidi characters; now written as `‮`/`⁦` escapes, same strings at run time (**d107fd2**).
+held two raw bidi characters; now written as `\u202E`/`\u2066` escapes, same strings at run time (**d107fd2**).
 
 **Checks on the merged head** (d107fd2):
 - lint 0 errors (the 2 known warnings); typecheck clean; unit **471 passed**.
