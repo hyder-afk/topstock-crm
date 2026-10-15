@@ -5,10 +5,10 @@ import { makeOrg, moveTo, seedHome, userId } from "./home-fixture";
 
 // Day 5c evidence screenshots (design 8.5 "Screens", CLAUDE.md widths): Home with data (before Day 6, so Low stock shows
 // its placeholder) at 390, 768, 1024, 1280, 1440 and 1728, light and dark, English and French; a representative set in
-// EN light and FR dark at 390 and 1440: a new org's empty states, one card failing alone, Low stock filled from Day 6's
-// stock_alerts() shape, the deal sheet over Home, the loading skeleton, and the Work queue card with Day 4c's counts. The
-// person is an admin in an org made for this run, so the figures are the fixture's. URL asserted before each shot; no
-// console error and no sideways scroll first. Saved to test-results/home-screens, or DAY5C_SCREENS_DIR (locally
+// EN light and FR dark at 390 and 1440: a new org's empty states, one card failing alone, the deal sheet over Home, the
+// loading skeleton, and the Work queue card with Day 4c's counts; and Low stock filled from Day 6's stock_alerts() shape
+// at every width, light and dark, EN and FR. The person is an admin in an org made for this run, so the figures are the
+// fixture's. URL asserted before each shot; no console error and no sideways scroll first. Saved to test-results/home-screens, or DAY5C_SCREENS_DIR (locally
 // docs/evidence/day5c/screens).
 test.describe.configure({ mode: "serial", timeout: 900_000 });
 
@@ -35,6 +35,16 @@ const some = [
 // Day 4c's queue_summary is not on this branch (the card says the counts come with the work queue); the shots show the card as it
 // will look with 4c's contract, mocked, except the one shot named home-queue-before-4c.
 const queueMock = { callable_now: 412, later_today: 1030 };
+// The filled Low stock card's height per shot (locale-scheme-width), for its loading skeleton to be measured against.
+const filledLowStock = new Map<string, number>();
+
+// "en-light-390": the shot's locale, scheme and width, read back from the page.
+async function shotKey(page: Page) {
+  return page.evaluate(() => {
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return `${document.documentElement.lang}-${dark}-${window.innerWidth}`;
+  });
+}
 
 async function shoot(
   browser: Browser,
@@ -136,9 +146,12 @@ test("representative set: empty org, card error, deal sheet, skeleton, queue bef
 });
 
 // Low stock filled from Day 6's stock_alerts() shape (Haider's decision B, 15 Oct 2026): the counts, up to 5 low
-// products and the follow-up lines. Run alone with --grep "Low stock" to re-take only these shots.
+// products and the follow-up lines, at every width (the card is 5 of 12 columns from 1024, so 1024 and 1280 are its
+// narrowest desktop sizes), light and dark, EN and FR. Each product's "available against the reorder level" line must
+// show whole (no ellipsis), like the console and sideways-scroll checks every shot makes. Run alone with --grep
+// "Low stock" to re-take only these shots.
 test("Low stock filled from Day 6's stock_alerts", async ({ browser }) => {
-  await shoot(browser, "home-low-stock-day6", some, [390, 1440], {
+  await shoot(browser, "home-low-stock-day6", full, ALL, {
     act: async (page) => {
       await page.route((url) => url.pathname === "/api/home" && url.searchParams.get("scope") === "mine", async (route) => {
         const res = await route.fetch();
@@ -159,8 +172,45 @@ test("Low stock filled from Day 6's stock_alerts", async ({ browser }) => {
       const scope = page.getByRole("group", { name: /Figures for|Chiffres de/ }).getByRole("button", { name: /Mine|Moi/ });
       await scope.click();
       await expect(scope).toHaveAttribute("aria-pressed", "true");
-      await expect(page.getByRole("region", { name: /Low stock|Stock bas/ }).getByRole("listitem").first()).toBeVisible();
+      const low = page.getByRole("region", { name: /Low stock|Stock bas/ });
+      const products = low.getByRole("listitem").filter({ hasText: /available|Disponible/ });
+      await expect(products).toHaveCount(3);
       await page.waitForTimeout(300);
+      // Nothing in a product row is cut: every text line fits its box (scrollWidth within clientWidth).
+      const cut = await products.evaluateAll((items) =>
+        items.flatMap((li) => [...li.querySelectorAll("span")].filter((s) => !s.children.length && s.scrollWidth > s.clientWidth + 0.5).map((s) => s.textContent)),
+      );
+      expect(cut, "low stock lines cut").toEqual([]);
+      const box = await low.boundingBox();
+      filledLowStock.set(await shotKey(page), box!.height);
     },
   });
 });
+
+// The loading skeleton (Home's loading.tsx) against the filled card above: the Low stock skeleton has the filled card's
+// blocks (action, count line, three product rows, follow-up lines), so where the card is full width (390, 768: nothing
+// beside it stretches it) its height stays within one text line of the filled card's. Run after the test above.
+test("Low stock loading skeleton matches the filled card", async ({ browser }) => {
+  expect(filledLowStock.size, "run with the filled Low stock test").toBe(24);
+  await shoot(browser, "home-low-stock-loading", full, ALL, {
+    path: "/leads",
+    act: async (page) => {
+      await page.waitForTimeout(800);
+      await page.route((url) => url.pathname === "/" && url.searchParams.has("_rsc"), async (route) => {
+        await new Promise((r) => setTimeout(r, 8000));
+        await route.continue().catch(() => {});
+      });
+      await page.getByRole("navigation", { name: /Sections/ }).getByRole("link").first().click();
+      const skeleton = page.locator("[data-skeleton='low-stock']");
+      await expect(skeleton).toBeVisible();
+      const key = await shotKey(page);
+      if (stackedWidth(key)) {
+        const height = (await skeleton.boundingBox())!.height;
+        expect(Math.abs(height - filledLowStock.get(key)!), `${key}: skeleton ${height}, filled ${filledLowStock.get(key)}`).toBeLessThanOrEqual(20);
+      }
+    },
+  });
+});
+function stackedWidth(key: string) {
+  return /-(390|768)$/.test(key);
+}

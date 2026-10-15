@@ -30,3 +30,33 @@ Unresolved: none.
 - Focus is kept when the focused Needs attention row leaves (after the deal sheet closes, or while it is open);
   `attention_opens_deal_sheet and refetch_after_move` checks both orders with `toBeFocused`.
 - Start calling: `aria-keyshortcuts="G Q"`, key caps `aria-hidden`.
+
+## Advisor item 3 (15 Oct): the Low stock card and its skeleton
+
+Rules: vercel-labs/web-interface-guidelines at 434b7f9 (`command.md`, fetched again with WebFetch for this audit: not
+blocked). Files: `src/components/home/low-stock-card.tsx`, `src/components/home/home-skeleton.tsx`.
+
+### Findings and fixes (d29be68)
+
+- `low-stock-card.tsx` (product rows) - Content handling: the figures line was `truncate`, so a long line could hide a
+  number → it wraps (`break-words`); the name keeps its one-line ellipsis in a `min-w-0` row.
+- `low-stock-card.tsx` (loading) and `home-skeleton.tsx` (last card) - loading state shaped unlike the content (3
+  one-line rows, no action) → `LowStockSkeleton` and `LowStockActionSkeleton` at the content's sizes, `aria-hidden`,
+  pulse behind `motion-safe:`.
+- `messages/en.json` `Home.lowStock.inTransit` - Title Case inside a line ("In Transit"); the guideline's Title Case
+  is for headings and buttons, and the app's lines are sentence case → "in transit".
+
+### Checked, no change needed
+
+- Accessibility: the card is a region named by its heading; the follow-up list is labelled ("Also in inventory"); the
+  placeholder icon and the dots are `aria-hidden`; every status keeps its words; the skeleton is `aria-hidden` and the
+  card says `aria-busy` while loading.
+- Focus and hover: the links (Open inventory, follow-ups) use the global `:focus-visible` ring and a hover tone stronger
+  than rest; 44 px targets on phones.
+- Navigation: real links with each Inventory tab or filter in the URL.
+- Typography: DM Mono (tabular) for the figures; French narrow no-break spaces before colons (unit test).
+- Locale: numbers through `useFormatter` (Intl) in the page's locale.
+- Layout: no sideways scroll at any width (`home-screens`, 72 Low stock shots); flex children `min-w-0`.
+- Performance: at most 5 product rows (no virtualisation needed).
+
+Unresolved: none.

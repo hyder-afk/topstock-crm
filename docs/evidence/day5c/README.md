@@ -151,6 +151,21 @@ Verifier verdict on b6b360b: NOT READY. The Day 5c findings (the shared ones, 3,
   `home-screens --grep "Low stock"` 1 passed (4 shots).
 - **gitleaks**: `origin/main..HEAD` 77 commits and the 3 new ones alone: no leaks.
 
+## Advisor round (15 Oct, on 5f1a966..ea75fbf: CHANGES NEEDED, 4 items)
+
+1. **Day 5's own tests and Day 6's real `stock_alerts()`** (ceca0b5; 6d README note on day6a-local 400ff4e): see
+   "Rebase points" for the four places and how they now work on either body; mutation rows 20 and 21.
+2. **Low stock shots at every width** (`home-screens.spec.ts`): `home-low-stock-day6` now 390 to 1728 × EN/FR ×
+   light/dark (24 shots); each still fails on a console error or sideways scroll, and now also when a product row's text
+   is cut. Nothing was cut at 1024 or 1280 with the fixture, but the figures line could truncate: it wraps now (item 3).
+   `screens/README.md` lists every set.
+3. **Design audits of the Low stock card** (d29be68; `apple-design-audit.md`, `web-design-guidelines.md`): the per-row
+   "Low" badge removed (every listed product is low), "+300 in transit" in sentence case (FR "en transit" as before),
+   rows padded (three-line rows touched), figures wrap; `LowStockSkeleton` (action, count line, three product rows,
+   three follow-up lines) in the card's loading state and Home's `loading.tsx`, measured against the filled card in the
+   new `home-low-stock-loading` shots (24).
+4. Pipeline evidence gaps: in the 5b README.
+
 ## Deviations from the design
 
 1. **Tasks** (since the 4c rebase): K5's overdue and today are Day 4c's `count_tasks('mine')`; K6 (the day's meetings)
