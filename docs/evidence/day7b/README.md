@@ -5,6 +5,11 @@ Built 15 Oct 2026 by the builder on local branch `day7b-local` (worktree `/home/
 section 4 row **7b**, UI only. Rule: Haider 15 Oct 2026, "do not keep any native pickers or popups on the app". Out of
 scope here: plan items 24, 25, 47, 49, 28 and 42 (Day 7a or decided otherwise).
 
+**Merged with Day 7a** (`day7a-local` 33f3347: main, Day 5, Team, Day 6 with its latest fixes, and the 7a security
+work) at 35d5841, then finished for the advisor: the "Leave site?" decision recorded and enforced by `check:native`,
+the CLAUDE.md audits with three fixes, screenshots at every width, and the checks re-run on the merged code (sections
+"Merge with Day 7a", "Audits", "Screenshots", "Checks").
+
 The step was restarted after an interrupted builder (17:46 UTC): its 34 uncommitted files were read hunk by hunk and
 kept where sound (all of them were), with three fixes on top: a missing message key (`Leads.until.needDate`, the Cool
 off date error), an unused import, and the stock search moved onto `SearchInput` instead of a hand-made copy.
@@ -30,6 +35,13 @@ off date error), an unused import, and the stock search moved onto `SearchInput`
    | `native-dialog` | `confirm`/`alert`/`prompt`, bare (unless the file declares that name) or through `window`/`globalThis`/`self` |
    | `form-validate` | a `<form>` without `noValidate` (or with `noValidate={false}`) |
    | `native-validity` | `reportValidity()` / `setCustomValidity()` |
+   | `native-leave-prompt` | the browser's "Leave site?" prompt: `preventDefault()` or `returnValue =` in a `beforeunload` handler (inline, named and passed to `addEventListener("beforeunload", …)`, or typed `BeforeUnloadEvent`), or any `onbeforeunload =`; a `beforeunload` listener that never asks (the queue's goodbye beacon) is fine |
+   | `stale-allowance` | an `ALLOWED` entry whose use is gone or moved |
+
+   `ALLOWED` (in the script) holds the one native use Haider kept: the lead import's "Leave site?" prompt in
+   `src/components/import/import-workspace.tsx`, count 1, with a comment saying why. A second prompt in that file, the
+   same prompt in any other file, or the prompt gone from that file each fail the check (unit-tested with a scratch
+   tree in `native-controls.spec.ts`).
 
 3. **Picker fixes found at the call sites** (all in `src/components/ui`): the Combobox trigger is a select-only
    combobox (`role="combobox"`, Down/Up open it); TimePicker reads 24-hour in both languages, as every time in the app
@@ -102,8 +114,38 @@ After: **0** (`npm run check:native`, and the last test of `native-controls.spec
 Not findings, also moved: about 37 `ui/select` call sites (already the app's Select since `day7-local`, same API, no
 change needed); lead form country and import country/time zone (Select → Combobox).
 
-Left native on purpose (not in the 7b list; HAIDER DECIDES below): the browser's "Leave site?" prompt while an
-import is running (`import/import-workspace.tsx`, `beforeunload`). No page can draw its own dialog for a closing tab.
+Left native on purpose (**decided**, see "Decided" below): the browser's "Leave site?" prompt while an import is
+running (`import/import-workspace.tsx`, `beforeunload`). No page can draw its own dialog for a closing tab. It is the
+only entry in `check:native`'s `ALLOWED`.
+
+## Merge with Day 7a
+
+`git merge day7a-local` (33f3347) into `day7b-local` (adf799c), merge commit **35d5841**. Merge base 6f13709. Day 7a's
+side brought 104 files (Day 6's PR #17 fixes for pipeline and files, the 7a security work, its evidence and
+migration 20261021100000, the Paris time zone for DB tests). Seven files changed on both sides; four merged by
+themselves, three conflicted:
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `src/app/(app)/more/page.tsx` | 7b added `noValidate` to the Sign out form; 7a wrapped it with "Sign out of all devices" beside it | both: 7a's row (Sign out + `SignOutEverywhere`, stacked on phones) with `noValidate` on the form |
+| `tests/unit/messages.spec.ts` | each side added one namespace to the checked list | both: `Pickers` and `More` |
+| `docs/log.md` | each side appended rows | both sides' rows kept, in time order: the Day 7 planning rows (Haider's no-native rule, scope A, picker components), then Day 7a's rows, then Day 7b's |
+| `src/app/(app)/more/loading.tsx` | auto-merged | 7b's Administration-for-admins-only and 7a's two sign-out bars both present |
+| `src/components/files/files-tab.tsx` | auto-merged | 7a's layout-effect focus fix for "Show older files" with 7b's change elsewhere in the file |
+| `messages/en.json`, `fr.json` | auto-merged | 7a's `More.everywhere` and 7b's `Pickers` both present (`messages.spec.ts` checks EN/FR parity) |
+
+Watched points:
+
+- **Rate-limit route scan** (`tests/unit/rate-limit.spec.ts`): Day 7b added or changed no route under `src/app/api`,
+  so the scan's 19 limited and 12 named non-list routes hold unchanged (unit run passes).
+- **Pipeline board** (`board.tsx`, `column.tsx`, `pipeline-skeleton.tsx` from PR #17: CSS-only column height,
+  `initialOffset` from the column's own scrollTop, `readScope` for a rep): Day 7b did not touch these three files (its
+  pipeline edits are in `deal-card.tsx`, `deal-sheet.tsx`, `open-deal-sheet.tsx`), so 7a's versions stand as they were.
+  `pipeline.spec.ts` re-run below.
+- **Messages**: no key clashes; both namespaces checked for EN/FR parity.
+- **`npm run check:native` after the merge: 0 findings.** Day 6 code reached 7b through its base (6f13709), so 7b's
+  conversion already covered it; the 7a delta (`sign-out-everywhere.tsx`, the More page, files-tab, the pipeline
+  files) adds no native control, `title=` or form without `noValidate` (7a's sheet uses the app's Dialog).
 
 ## List states
 
@@ -132,11 +174,24 @@ error state on arrival).
 | Team | `more/team/loading.tsx` | "No one here yet" (cannot happen: the viewer is always listed) | server read error + Retry | team-screens "team route skeleton"; error: **no browser test** (open item 3) |
 | More (skeleton) | `more/loading.tsx`, Administration for admins only | n/a | n/a | day7b "skeleton: More draws Administration for admins only" |
 
-## Screenshots: each picker closed and open
+## Screenshots: each picker closed and open, and the changed screens whole
 
 `tests/auth/day7b.spec.ts` "screens: …", one test per picker; each shot is the picker and its panel with 24 px around
-them, after a check for console errors and sideways scroll. Files: `docs/evidence/day7b/screens/<picker>-<en|fr>-<light|dark>-<390|1440>-<closed|open>.png`
-(8 pickers × 2 languages × 2 schemes × 2 widths × 2 states = 128 shots).
+them, after a check for console errors and sideways scroll. Files: `docs/evidence/day7b/screens/<picker>-<en|fr>-<light|dark>-<width>-<closed|open>.png`
+at 390, 768, 1024, 1280, 1440 and 1728 (8 pickers × 2 languages × 2 schemes × 6 widths × 2 states = **384 shots**).
+
+The changed screens whole: `day7b.spec.ts` "changed screens" (Leads with its search, Add lead, lead Details with Next
+call, lead Stock with Link options, Tasks quick add with a picked day, Inventory's toolbar, More with Time zone):
+`screens/screen-<name>-<en|fr>-<light|dark>-<width>.png`, the visible screen at the same six widths, with the picker's
+field scrolled to the middle (7 × 2 × 2 × 6 = **168 shots**). Every shot asserts no console error and no sideways
+scroll.
+
+**CI cost unchanged.** CI still takes the picker shots at 390 and 1440 only (the 128 it took before); the other widths
+come from `DAY7B_WIDTHS`, and the whole-screen group is skipped unless `DAY7B_SCREENS=1`. Local evidence run (15 Oct,
+isolated stack, Chromium 141): `DAY7B_WIDTHS=390,768,1024,1280,1440,1728 DAY7B_SCREENS=1 npx playwright test
+tests/auth/day7b.spec.ts -g "screens: |changed screen"`, 15 passed in 10.5 min, 552 shots, committed under
+`screens/` (18 MB). Retaken after the audit fixes: 35 of the earlier 128 shots changed (the Combobox's new focus
+line; the calendars' today mark, now 16 Oct in Paris; small anti-aliasing differences), the other 93 are byte-identical.
 
 | Picker | Where | Open shows |
 |---|---|---|
@@ -184,8 +239,27 @@ Nothing inside a picker is clicked; each step asserts focus and the submitted va
 | `lead-deals.spec.ts` | `selectOption` ×2 | `choose` ×2 |
 | `tasks.spec.ts` | `fill` on the native date field; `selectOption` on the zone; a made-up `<option>` injected into the page to prove the server refuses an unknown zone | `pickDate`; `choose`; the save request is rewritten to the unknown zone on its way to the server, which still refuses it (the app's list can no longer be given an option in the page); `getByLabel("Time")` → `getByRole("combobox", { name: "Time", exact: true })` (the clock button's label also contains "time") |
 | `home.spec.ts` | `toHaveAttribute("title", /\d/)` on Recent activity's time | the sr-only full time inside `<time>` has a digit, and no `title` |
-| new `day7b.spec.ts` | | keyboard runs, list states, skeletons, screenshots |
-| new `tests/unit/native-controls.spec.ts` | | the source check |
+| new `day7b.spec.ts` | | keyboard runs, list states, skeletons, screenshots; picker shot widths from `DAY7B_WIDTHS` (CI default 390 and 1440), whole changed screens behind `DAY7B_SCREENS=1` (local evidence only) |
+| new `tests/unit/native-controls.spec.ts` | | the source check, plus `native-leave-prompt` cases and the `ALLOWED` count (one kept use; a second or none fails) |
+
+## Audits (CLAUDE.md, every UI change)
+
+Both run on the pickers and the changed screens, from the code and the 552 screenshots.
+
+- **Apple design** (`apple-design-audit.md`; anthropic-skills:apple-design and `docs/apple-design-audit.md`'s 12
+  items): three findings, all fixed in f3c98bc: (1) the field triggers (Select, Combobox, DatePicker, DateRangePicker)
+  had no hover answer: their border now darkens on hover, not when disabled or invalid; (2) the Combobox's search box
+  had no visible focus: the line under it takes the ring colour; (3) a Disclosure summary had no hover answer: its
+  chevron darkens. Everything else passes (press feedback, settle from the trigger, reduced motion, solid panels, DM
+  Mono digits, French without clipping, status never colour-only, focus back to the opener).
+- **Web Interface Guidelines** (`web-guidelines-audit.md`; `.claude/skills/web-design-guidelines`, rules fetched from
+  the pinned commit 434b7f9): the same three findings (hover on clickable buttons and summary, no `outline-none`
+  without a replacement), fixed; accepted with reasons: two lists not virtualised (time zones 419, quarter hours 96),
+  the kept `beforeunload` prompt (the rules ask for it), `type="text" role="searchbox"` (no native search field), and
+  pattern placeholders without "…".
+- **Combobox open time** (scratch Playwright probe on the isolated production build, 1440 × 900, More > Time zone, 7
+  presses each, press to the first painted list): 419 options; CPU ×1: median **46 ms** (39 to 76); CPU ×4: median
+  **242 ms** (217 to 402). Open item 4.
 
 ## Checks
 
@@ -225,8 +299,9 @@ that stack's keys), Chromium only.
   (the command menu already hides admin commands from others); every page and the database still check it.
 - Screenshots are clipped to the picker and its panel (24 px margin) instead of the whole screen, to keep the evidence
   small (128 shots).
-- `/apple-design` and web-design-guidelines audits of the pickers at their call sites were not run in this session
-  (open item 4).
+- The changed-screens shots and the extra widths are a local evidence run, not CI (keeps the Actions budget; plan
+  question 12).
+- `check:native` allows exactly one native popup (`ALLOWED`); any other needs a new decision and an entry there.
 
 ## Open items
 
@@ -235,14 +310,21 @@ that stack's keys), Chromium only.
 3. **Error states with no browser test**: lead tasks (Next step), past lead imports after a failed refresh, past stock
    imports, Team. Each exists in code (alert + retry) but is reached only when the page's own server read fails, which
    a browser test cannot cause without a server switch.
-4. `/apple-design` and web-design-guidelines audits, and the 1280/1728 (and 768/1024) screenshots CLAUDE.md asks for a
-   UI change, remain for the PR.
+4. The time zone Combobox (419 options, cmdk, not virtualised) paints its list 46 ms after a press on this machine but
+   about 240 ms with the CPU slowed 4× (a slow phone); the press itself answers at once. Left for the Day 7c phone
+   pass (render the list lazily or virtualise it); recorded in `web-guidelines-audit.md`.
 5. `screens.spec.ts` and `import-perf.spec.ts` were not run locally (only the import status menus changed in them).
-6. CI time: `day7b.spec.ts` adds about 5 minutes to a Chromium auth-journey half (about 2.5 for the 128 shots); the
-   shots could move behind a flag if the Actions budget runs low (plan question 12).
+6. CI time: `day7b.spec.ts` adds about 5 minutes to a Chromium auth-journey half (about 2.5 for the 128 shots), the
+   same as before this round; the extra widths and whole screens add nothing to CI. The 128 CI shots could move behind
+   `DAY7B_WIDTHS` too if the Actions budget runs low (plan question 12).
+7. Pages not photographed whole: the lead import's Match step (needs a file upload; its Combobox is the same component
+   as More's and `import.spec.ts` drives it), the deal sheets and the sale/hold sheets (need made-up deals and stock;
+   their Selects and DatePickers are the same components as in the picker shots).
 
-## HAIDER DECIDES
+## Decided
 
-- **The browser's "Leave site?" prompt during a lead import** is the one native popup left. A web page cannot replace
-  it with its own dialog when the tab is closing; without it a closed tab pauses the import silently (it can be
-  resumed from Past imports). **Recommended: keep it.**
+- **The browser's "Leave site?" prompt during a lead import STAYS** (Haider's standing instruction to take the
+  builder's recommendation; `docs/log.md` 15 Oct). A web page cannot replace it with its own dialog when the tab is
+  closing; without it a closed tab pauses the import silently (it can be resumed from Past imports). It is the only
+  native popup left; `check:native` allows exactly that one use (`ALLOWED`, with the reason in a comment) and fails on
+  any other.
