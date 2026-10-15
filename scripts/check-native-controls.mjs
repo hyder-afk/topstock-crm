@@ -12,6 +12,8 @@
 //                     (use the app's Dialog)
 //   form-validate     a <form> without noValidate (errors go in FormMessage, never the browser's bubble)
 //   native-validity   reportValidity() / setCustomValidity() (the bubble, called by hand)
+//   native-leave-prompt the browser's "Leave site?" prompt: preventDefault() or returnValue= in a beforeunload
+//                     handler, or any onbeforeunload= (ALLOWED below holds the one use Haider kept)
 // It reads the code with the TypeScript parser (no regex on JSX), so a component prop called `title` (Card, ListState)
 // or a local function called `confirm` is not a finding. Run: node scripts/check-native-controls.mjs [dir ...]
 // The rules are unit-tested in tests/unit/native-controls.spec.ts, which also runs this check over src/.
@@ -36,7 +38,21 @@ export const RULES = {
   "native-dialog": "window.confirm/alert/prompt: use the app's Dialog",
   "form-validate": "a <form> without noValidate: add noValidate and show errors in FormMessage",
   "native-validity": "reportValidity/setCustomValidity shows the browser's bubble: use FormMessage",
+  "native-leave-prompt": "the browser's \"Leave site?\" prompt: keep the work safe in the app instead (only ALLOWED may ask)",
+  "stale-allowance": "an ALLOWED native use is gone or moved: update ALLOWED in scripts/check-native-controls.mjs",
 };
+
+// The native uses Haider kept, each exactly once. Anything more in that file, or the same use anywhere else, fails.
+export const ALLOWED = [
+  {
+    file: "src/components/import/import-workspace.tsx",
+    rule: "native-leave-prompt",
+    // Haider's decision (15 Oct 2026, builder's recommendation, docs/log.md): while a lead import is sending or
+    // importing rows, the browser asks "Leave site?" before the tab closes or reloads. No page can replace it: once the
+    // tab is closing, only the browser can still ask, and closing would pause the import.
+    count: 1,
+  },
+];
 
 function tagName(node) {
   const t = node.tagName;
@@ -123,7 +139,47 @@ export function scanSource(text, fileName = "file.tsx") {
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return findings;
+  leavePromptFindings(sf, add);
+  return findings.sort((a, b) => a.line - b.line);
+}
+
+// A function that handles beforeunload: passed inline to addEventListener("beforeunload", ...), named and passed so,
+// or typed (event: BeforeUnloadEvent).
+function leavePromptFindings(sf, add) {
+  const handlerNames = new Set();
+  const inline = new Set();
+  const isBeforeUnload = (n) => n && (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && n.text === "beforeunload";
+  const collect = (n) => {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === "addEventListener" && isBeforeUnload(n.arguments[0])) {
+      const h = n.arguments[1];
+      if (h && ts.isIdentifier(h)) handlerNames.add(h.text);
+      else if (h) inline.add(h);
+    }
+    ts.forEachChild(n, collect);
+  };
+  collect(sf);
+  const isHandler = (fn) => {
+    if (inline.has(fn)) return true;
+    if (ts.isFunctionDeclaration(fn) && fn.name && handlerNames.has(fn.name.text)) return true;
+    if (fn.parent && ts.isVariableDeclaration(fn.parent) && ts.isIdentifier(fn.parent.name) && handlerNames.has(fn.parent.name.text)) return true;
+    return fn.parameters.some((p) => p.type && p.type.getText(sf) === "BeforeUnloadEvent");
+  };
+  const asks = (fn) => {
+    let found = false;
+    const look = (n) => {
+      if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === "preventDefault") found = true;
+      if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(n.left) && n.left.name.text === "returnValue") found = true;
+      if (!found) ts.forEachChild(n, look);
+    };
+    if (fn.body) look(fn.body);
+    return found;
+  };
+  const visit = (n) => {
+    if ((ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isFunctionDeclaration(n)) && isHandler(n) && asks(n)) add("native-leave-prompt", n);
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(n.left) && n.left.name.text === "onbeforeunload") add("native-leave-prompt", n);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
 }
 
 function walk(dir, out) {
@@ -143,7 +199,22 @@ export function scanTree(root, dirs = ["src"]) {
     for (const file of walk(join(root, d), [])) {
       const rel = relative(root, file).split(sep).join("/");
       if (EXEMPT_DIRS.some((x) => rel.startsWith(`${x}/`))) continue;
-      for (const f of scanSource(readFileSync(file, "utf8"), file)) findings.push({ file: rel, ...f });
+      const own = scanSource(readFileSync(file, "utf8"), file);
+      for (const allow of ALLOWED.filter((a) => a.file === rel)) {
+        const hits = own.filter((f) => f.rule === allow.rule);
+        // Exactly the kept number: more is a new use, fewer means the entry is stale.
+        if (hits.length === allow.count) for (const h of hits) own.splice(own.indexOf(h), 1);
+        else if (hits.length < allow.count) own.push({ rule: "stale-allowance", line: 1, text: `${allow.rule} expected ${allow.count}, found ${hits.length}` });
+      }
+      for (const f of own) findings.push({ file: rel, ...f });
+    }
+  }
+  for (const allow of ALLOWED) {
+    if (!dirs.some((d) => allow.file.startsWith(`${d}/`))) continue;
+    try {
+      statSync(join(root, allow.file));
+    } catch {
+      findings.push({ file: allow.file, rule: "stale-allowance", line: 1, text: "file not found" });
     }
   }
   return findings;

@@ -1,7 +1,9 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 // A plain ES module script, also run by CI as `node scripts/check-native-controls.mjs`.
-import { RULES, scanSource, scanTree } from "../../scripts/check-native-controls.mjs";
+import { ALLOWED, RULES, scanSource, scanTree } from "../../scripts/check-native-controls.mjs";
 
 // Day 7b (Haider 15 Oct 2026: "do not keep any native pickers or popups on the app"): the source check that keeps them
 // out. Each rule is shown firing on a planted break and staying quiet on its look-alikes, then the real src/ must be
@@ -12,7 +14,18 @@ const rules = (code: string, file = "x.tsx") => (scanSource(code, file) as Findi
 
 test("every rule has a fix-it message", () => {
   expect(Object.keys(RULES).sort()).toEqual(
-    ["form-validate", "native-datalist", "native-dialog", "native-disclosure", "native-input", "native-select", "native-validity", "title-tooltip"].sort(),
+    [
+      "form-validate",
+      "native-datalist",
+      "native-dialog",
+      "native-disclosure",
+      "native-input",
+      "native-leave-prompt",
+      "native-select",
+      "native-validity",
+      "stale-allowance",
+      "title-tooltip",
+    ].sort(),
   );
 });
 
@@ -78,6 +91,43 @@ test("form-validate: a <form> without noValidate (or with noValidate={false}) fa
 test("native-validity: reportValidity and setCustomValidity fail", () => {
   expect(rules(`input.setCustomValidity("x"); form.reportValidity();`, "x.ts")).toEqual(["native-validity", "native-validity"]);
   expect(rules(`form.checkValidity();`, "x.ts")).toEqual([]);
+});
+
+test("native-leave-prompt: preventDefault or returnValue in a beforeunload handler, and onbeforeunload=, fail; a beacon on beforeunload does not", () => {
+  expect(rules(`const h = (e: BeforeUnloadEvent) => e.preventDefault(); window.addEventListener("beforeunload", h);`, "x.ts")).toEqual(["native-leave-prompt"]);
+  expect(rules(`window.addEventListener("beforeunload", (e) => { e.returnValue = ""; });`, "x.ts")).toEqual(["native-leave-prompt"]);
+  expect(rules(`function h(e) { e.preventDefault(); } window.addEventListener("beforeunload", h);`, "x.ts")).toEqual(["native-leave-prompt"]);
+  expect(rules(`window.onbeforeunload = () => "Leave?";`, "x.ts")).toEqual(["native-leave-prompt"]);
+  expect(rules(`function f(e: BeforeUnloadEvent) { e.preventDefault(); }`, "x.ts")).toEqual(["native-leave-prompt"]);
+  // The queue's goodbye beacon listens to beforeunload but never asks; other preventDefault calls are not the prompt.
+  expect(rules(`const h = () => navigator.sendBeacon("/r"); window.addEventListener("beforeunload", h);`, "x.ts")).toEqual([]);
+  expect(rules(`form.addEventListener("submit", (e) => e.preventDefault()); window.addEventListener("pagehide", (e) => e.preventDefault());`, "x.ts")).toEqual([]);
+});
+
+test("ALLOWED holds exactly one kept use (the lead import's Leave site? prompt); a second one there, or none, fails", () => {
+  expect(ALLOWED).toEqual([{ file: "src/components/import/import-workspace.tsx", rule: "native-leave-prompt", count: 1 }]);
+  const one = `useEffect(() => { const h = (e: BeforeUnloadEvent) => e.preventDefault(); window.addEventListener("beforeunload", h); });`;
+  const root = mkdtempSync(path.join(os.tmpdir(), "native-allow-"));
+  try {
+    const file = path.join(root, "src/components/import/import-workspace.tsx");
+    mkdirSync(path.dirname(file), { recursive: true });
+    const run = (code: string) => {
+      writeFileSync(file, code);
+      return (scanTree(root, ["src"]) as (Finding & { file: string })[]).map((f) => `${f.file} ${f.rule}`);
+    };
+    expect(run(one)).toEqual([]);
+    expect(run(`${one}\n${one}`)).toEqual([
+      "src/components/import/import-workspace.tsx native-leave-prompt",
+      "src/components/import/import-workspace.tsx native-leave-prompt",
+    ]);
+    expect(run(`export const x = 1;`)).toEqual(["src/components/import/import-workspace.tsx stale-allowance"]);
+    // The same prompt in any other file is not covered.
+    writeFileSync(file, one);
+    writeFileSync(path.join(root, "src/other.tsx"), one);
+    expect((scanTree(root, ["src"]) as (Finding & { file: string })[]).map((f) => `${f.file} ${f.rule}`)).toEqual(["src/other.tsx native-leave-prompt"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("findings carry the line and the offending text", () => {
