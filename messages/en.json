@@ -2077,7 +2077,6 @@
     "toolbar": {
       "search": "Search products",
       "searchPlaceholder": "Search name, category or P-0042…",
-      "clearSearch": "Clear search",
       "category": "Category",
       "allCategories": "All categories",
       "sort": "Sort",

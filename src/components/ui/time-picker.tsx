@@ -77,13 +77,16 @@ export function TimePicker({
   const anchorRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const commit = (next: string) => {
-    setBadText(false);
-    setDraft(null);
+  const emit = (next: string) => {
     if (next === current) return;
     if (!controlled) setInner(next);
     onValueChange?.(next);
     onChange?.(pickerChangeEvent(name, next));
+  };
+  const commit = (next: string) => {
+    setBadText(false);
+    setDraft(null);
+    emit(next);
   };
 
   const commitText = () => {
@@ -148,6 +151,10 @@ export function TimePicker({
               setBadText(false);
               const typed = parseTypedTime(e.target.value);
               if (typed && open) setActive(Math.max(0, nearestTimeIndex(times, typed)));
+              // The value follows the typing, as the native field's did: a button that waits for a time is ready
+              // before the field loses focus (the text is tidied on blur or Enter).
+              if (!e.target.value.trim()) emit("");
+              else if (typed && !isTimeOutOfRange(typed, min, max)) emit(typed);
             }}
             onBlur={() => {
               commitText();

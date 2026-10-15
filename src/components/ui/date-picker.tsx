@@ -91,13 +91,16 @@ export function DatePicker({
   const textRef = useRef<HTMLInputElement>(null);
   const fromText = useRef(false);
 
-  const commit = (next: string) => {
-    setBadText(false);
-    setDraft(null);
+  const emit = (next: string) => {
     if (next === current) return;
     if (!controlled) setInner(next);
     onValueChange?.(next);
     onChange?.(pickerChangeEvent(name, next));
+  };
+  const commit = (next: string) => {
+    setBadText(false);
+    setDraft(null);
+    emit(next);
   };
 
   const commitText = () => {
@@ -180,6 +183,8 @@ export function DatePicker({
               onChange={(e) => {
                 setDraft(e.target.value);
                 setBadText(false);
+                // Checked on blur or Enter only: some call sites save on change (a product's ETA), and a half-typed day
+                // ("10/20/20") can already be a valid one.
               }}
               onBlur={commitText}
               onKeyDown={(e) => {
