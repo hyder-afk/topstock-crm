@@ -284,6 +284,9 @@ test("keyboard only: Tooltip (dock), SearchInput (leads), Disclosure (lead Stock
 // ---------------------------------------------------------------------------------------------------------------------
 // Screenshots: each picker closed and open, EN/FR, light/dark, 390 and 1440. The shot is the picker and its panel with
 // 24 px around them (clipped to the screen). Every shot checks for console errors and sideways scroll first.
+// CI takes 390 and 1440 only. The other widths CLAUDE.md asks for come from a local evidence run, committed as images,
+// so CI spends no extra minutes: DAY7B_WIDTHS=768,1024,1280,1728 (and DAY7B_SCREENS=1 for the whole changed screens below).
+const shotWidths = (process.env.DAY7B_WIDTHS ?? "390,1440").split(",").map((w) => Number(w.trim()));
 
 type Picker = {
   name: string;
@@ -410,10 +413,10 @@ async function clipShot(page: Page, file: string, parts: (Locator | Box)[]) {
 }
 
 for (const picker of pickers) {
-  test(`screens: ${picker.name} closed and open, EN/FR, light/dark, 390 and 1440`, async ({ browser }) => {
+  test(`screens: ${picker.name} closed and open, EN/FR, light/dark`, async ({ browser }) => {
     for (const locale of ["en", "fr"] as const) {
       for (const scheme of ["light", "dark"] as const) {
-        for (const width of [390, 1440]) {
+        for (const width of shotWidths) {
           const { context, page, errors } = await openPage(browser, { path: picker.path(), locale, scheme, width });
           const trigger = await picker.trigger(page, locale);
           // In the middle of the screen, clear of the floating dock (it would sit over a trigger near the bottom).
@@ -439,6 +442,68 @@ for (const picker of pickers) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The screens whose pickers changed, whole (the visible screen, with the picker's field in the middle), at every width
+// CLAUDE.md lists, EN/FR, light/dark. Local evidence run only (DAY7B_SCREENS=1): CI runs the picker shots above.
+
+type Screen = { name: string; path: () => string; prepare?: (page: Page, locale: "en" | "fr") => Promise<Locator | void> };
+const changedScreens: Screen[] = [
+  { name: "leads", path: () => "/leads", prepare: async (page, l) => page.getByRole("searchbox", { name: m(l, "Leads.searchLabel") }) },
+  {
+    name: "lead-add",
+    path: () => "/leads",
+    prepare: async (page, l) => {
+      await page.getByRole("button", { name: m(l, "Leads.add") }).first().click();
+      const dialog = page.getByRole("dialog", { name: m(l, "Leads.form.addTitle") });
+      await expect(dialog).toBeVisible();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: "lead-details",
+    path: () => `/leads/${lead}?tab=details`,
+    prepare: async (page) => page.getByRole("group").filter({ has: page.locator('input[name="next_action_at"]') }).first(),
+  },
+  { name: "lead-stock", path: () => `/leads/${lead}?tab=stock`, prepare: async (page, l) => page.locator("summary").filter({ hasText: m(l, "ShareLinks.options") }) },
+  {
+    name: "tasks",
+    path: () => "/tasks",
+    prepare: async (page, l) => {
+      await page.getByRole("button", { name: m(l, "Tasks.chips.pick") }).click();
+      return page.getByLabel(m(l, "Tasks.quickAdd.date"), { exact: true });
+    },
+  },
+  { name: "inventory", path: () => "/inventory" },
+  { name: "more", path: () => "/more", prepare: async (page, l) => page.getByRole("combobox", { name: m(l, "Profile.timezone") }) },
+];
+
+test.describe("changed screens", () => {
+  test.skip(!process.env.DAY7B_SCREENS, "local evidence run: set DAY7B_SCREENS=1");
+  const widths = (process.env.DAY7B_WIDTHS ?? "390,768,1024,1280,1440,1728").split(",").map((w) => Number(w.trim()));
+  for (const screen of changedScreens) {
+    test(`changed screen: ${screen.name}, EN/FR, light/dark`, async ({ browser }) => {
+      for (const locale of ["en", "fr"] as const) {
+        for (const scheme of ["light", "dark"] as const) {
+          for (const width of widths) {
+            const { context, page, errors } = await openPage(browser, { path: screen.path(), locale, scheme, width });
+            const focus = await screen.prepare?.(page, locale);
+            if (focus) {
+              await expect(focus.first()).toBeVisible();
+              await focus.first().evaluate((el) => el.scrollIntoView({ block: "center" }));
+            }
+            await page.mouse.move(0, 0);
+            await settled(page);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${screen.name} ${width}`).toBeLessThanOrEqual(0);
+            await page.screenshot({ path: `${dir}/screen-${screen.name}-${locale}-${scheme}-${width}.png` });
+            expect(errors, `${screen.name} ${locale} ${scheme} ${width}`).toEqual([]);
+            await context.close();
+          }
+        }
+      }
+    });
+  }
+});
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Skeletons this step fixed (plan section 2, design polish 6 and 7).
