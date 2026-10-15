@@ -89,7 +89,9 @@ commit.
 
 ## Rebase points (built before Day 4c, 4d and 5a are merged)
 
-- `private.task_guard` (from Day 4a's `20261011120000_activity_hardening.sql`; Day 4c may redefine it).
+- `private.task_guard` (from Day 4a's `20261011120000_activity_hardening.sql`; Day 4c left it as it was, and Day 5a's
+  `20261015090000_deals_pipeline.sql` redefines it: `deal_id` joins the referential exception, so a deleted deal can
+  empty the link. Re-copy from Day 5a's merged body at the rebase. Corrected 15 Oct 2026: this line said Day 4c.)
 - `private.lead_import_untouched` (from 6a, unmerged).
 - `private.stock_movement_a_guard`, `private.stock_movement_b_apply` (from 6c, unmerged); `private.movement_request_guard`
   and the `movement_requests` kind check (from 6a, unmerged).
@@ -113,6 +115,25 @@ commit.
   function's `from private.stock_rows` and `'sample'`; any other body fails). If this body changes its keys, its
   `from private.stock_rows` read or its `'sample'` key, update those helpers (`installedStockAlerts`) and the
   `home_attack.sql` key lists with it.
+
+## Hosted dev pre-check (15 Oct 2026)
+
+pg_cron on the DEV project, read through the read-only Supabase MCP (`swhkafqlmfhvgpsgdqjp`, `read_only=true`;
+nothing written):
+
+| Query | Hosted dev answer |
+|---|---|
+| `select * from pg_extension where extname = 'pg_cron';` | no row: **not installed** |
+| `select name, default_version, installed_version from pg_available_extensions where name = 'pg_cron';` | `pg_cron`, default 1.6.4, installed null: **available** |
+
+**Consequence.** 6a's migration schedules `topstock-nightly-stock` (`10 1 * * *` UTC, `private.nightly_stock_jobs()`)
+only `if exists (select 1 from pg_extension where extname = 'pg_cron')`, and runs once. With dev as it is today the
+dev deploy creates no schedule, and enabling pg_cron **after** that deploy does not add one: it would need a manual
+`cron.schedule` call or a later migration. Holds still end on every RPC and page-load sweep, but what only the
+nightly job does (as 6c defines it) would not run on dev: the integrity check and its "Stock check found a
+difference" task, pruning movement requests older than 7 days, and discarding stock imports left open for 24 hours
+together with their working rows (which hold costs). To decide (HAIDER DECIDES, recommendation): enable pg_cron on the dev project (Database, Extensions)
+before Day 6 merges, and the same on production before the production deploy.
 
 ## Docs used (Context7)
 

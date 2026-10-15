@@ -20,7 +20,7 @@
 --     the ship and return kinds;
 --   private.movement_request_guard and the movement_requests kind check (20261016090000_stock_engine.sql, 6a,
 --     unmerged): the sale and stock_request kinds;
---   private.task_guard (20261011120000_activity_hardening.sql; Day 4c may redefine it): the system task links never
+--   private.task_guard (20261011120000_activity_hardening.sql; Day 5a redefines it): the system task links never
 --     change and may be set to null by a cascade;
 --   private.lead_import_untouched (20261016090000_stock_engine.sql, 6a): a lead with a sale or a request is touched;
 --   public.stock_alerts() (20261015150000_home_dashboard.sql, Day 5c, merges first): its null-returning stub gets the
@@ -684,7 +684,7 @@ revoke all on function private.stock_task_title(text, text, text), private.inser
   private.stock_low_automation(), private.hold_arrived_task(), private.order_line_cost_snapshot()
   from public, anon, authenticated;
 
--- The task guard (REBASE: from 20261011120000_activity_hardening.sql; Day 4c may redefine it): the system links
+-- The task guard (REBASE: from 20261011120000_activity_hardening.sql; Day 5a redefines it): the system links
 -- (source_product_id, source_request_id) never change, except to null by a cascade from a deleted product or request.
 create or replace function private.task_guard() returns trigger
 language plpgsql set search_path = '' as $$
