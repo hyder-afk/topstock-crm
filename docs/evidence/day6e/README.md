@@ -155,6 +155,33 @@ worktree's own server first and checked its working directory.
 - `src/lib/http.ts` (`assertSameOrigin`, `readJsonCapped`) is added here because Day 4c is not merged; if 4c ships
   its own, keep one.
 
+## Hosted dev pre-check (15 Oct 2026)
+
+Advisor item 11 (Day 6 pre-PR review): `client_share.sql` lines 37 to 46 create `share_reader`, grant it to
+`postgres` `with set true` and hand it the two anon functions; that was proven only on the local PostgreSQL 16 shim,
+where `postgres` is a superuser. Read-only queries through the Supabase MCP, scoped to the DEV project
+(`swhkafqlmfhvgpsgdqjp`, `read_only=true`; the session ran as `supabase_read_only_user`). Nothing was written.
+
+| Query | Hosted dev answer |
+|---|---|
+| `select version();` | PostgreSQL 17.11 (`server_version_num` 170011): 16 or later, so `grant … with set true` parses and works |
+| `select rolname, rolcreaterole, rolsuper from pg_roles where rolname in ('postgres','share_reader');` | `postgres`: `rolcreaterole` true, `rolsuper` **false** (also `rolinherit` true, `rolbypassrls` true). `share_reader`: no row (the migration creates it) |
+| `current_setting('createrole_self_grant')` | empty: creating `share_reader` gives `postgres` ADMIN on it but neither SET nor INHERIT, hence the migration's explicit `grant share_reader to postgres with set true` |
+| `pg_namespace` for `public` | owner `pg_database_owner`; `PUBLIC` has USAGE only (no CREATE); `postgres` owns the database, so it reaches `public` through `pg_database_owner` and can grant on it |
+| `pg_database` | `postgres` database owned by `postgres` |
+
+**Reading.** No blocker: `postgres` has CREATEROLE and the server is 17. Because `postgres` is **not** a superuser on
+hosted, the ownership hand-over takes the non-superuser path the local runs skip: `ALTER FUNCTION … OWNER TO` needs
+SET on the new owner (the `with set true` grant) **and** CREATE for the new owner on the function's schema. The
+migration already lends `grant create on schema public to share_reader` around the two `alter function` lines and
+revokes it after (lines 1042 to 1046; spike S1). Simulated locally the same day on a scratch PostgreSQL 16.15
+cluster (port 54493) with a non-superuser CREATEROLE role that owns the database, `createrole_self_grant` empty, and
+`public` with PUBLIC USAGE only: the role block and the self-grant succeed (memberships: ADMIN without SET from the
+creation, SET + INHERIT from the explicit grant); `alter function … owner to share_reader` **fails with "permission
+denied for schema public"** without the lent CREATE, and succeeds with the migration's grant/revoke pair, leaving
+`share_reader` the owner and without CREATE afterwards. The real proof stays the dev deploy (`supabase db push` on
+merge to `main`); risk 2 below is narrowed to that run and to S5.
+
 ## Docs used (Context7)
 
 `/vercel/next.js` (next.config `headers()`: the last matching entry wins; route handlers; proxy; metadata robots and
@@ -170,7 +197,7 @@ and `CREATE` on the schema, policies `TO role`, `sha256`, `trim_scale`, pgcrypto
 1. **Switch on sharing in production?** (HAIDER DECIDES) Recommended after Gate 1 and the Vercel Pro upgrade (open
    question 11). Until then every link answers "This link isn't active".
 2. Spike S1 on the hosted database and S5 on Vercel are unverified here (`spikes.md`): the CI `db` job and the dev
-   deploy check S1; the preview check S5, now including whether Vercel overwrites `x-forwarded-host` (verifier
+   deploy check S1 (its hosted preconditions were read on 15 Oct: "Hosted dev pre-check" above); the preview check S5, now including whether Vercel overwrites `x-forwarded-host` (verifier
    finding 7).
 3. I9's p95 brushes 40 ms on this runner (average 30–33 ms) for 2,000 items.
 4. The client list renders up to 2,000 rows without virtualisation (design 10.5); fine at realistic sizes (hundreds),
