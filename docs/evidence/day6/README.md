@@ -163,7 +163,7 @@ the admin-only rule. Mutation rows 74 to 76 (Day 5a) are in the merged script an
 | `npm run lint` | 0 errors (3 warnings, as before: TanStack Virtual and the React Compiler) |
 | `npm run typecheck` | exit 0 |
 | `npm run test:unit` | 587 passed (sql-bidi, http.spec, share.spec included) |
-| `db-test.sh`, scratch copy on port 54493 | exit 0: all 25 suites passed (`rls_attack` to `share_concurrency`); advisors 0 ERROR (WARN `anon_security_definer_function_executable` for `share_view` / `share_request` by design, `set_user_role` as before; INFO unindexed FKs 5, unused indexes 13) |
+| `db-test.sh`, scratch copy on port 54493 | exit 0: all 25 suites passed (`rls_attack` to `share_concurrency`); advisors 0 ERROR (WARN `anon_security_definer_function_executable` for `share_view` / `share_request` by design, `set_user_role` as before; INFO unindexed FKs 5; the unused-index count varies between runs (13 to 14 seen) because the advisor reads it from usage statistics) |
 | `db-mutations.py --anchors` | 622 rows in 13 sets: every edit applies once, none dead |
 | Mutations re-run (own scratch copies, ports 54483 to 54507), the rows whose anchors or targets moved | Before the e038d65 merge (62e87c8): day3b 9, day4a 30, day4d 2 (rows 16, 28), day5a 5, day5c 5, day6a 1, day6c 1, day6d 8, day6e 2: all caught except the documented two-layer rows (day5a 28, day6d 15 and 16). After it (current migrations): day5a 14, 15, 19, 44, 47, 57, 65 and the new 74, 75, 76: 10 caught; day5c 11 to 13: caught; day3b 2, 4, 5, 6, 12, 13: 5 caught, row 4 documented two-layer; day6a 7 to 10, 15, 19, 23, 24, 31, 33 to 37, 58 to 60, 62, 66: caught except the documented two-layer rows 10, 31, 33; day6d 18: caught; **day6a 45: NOT CAUGHT, a dead row (above), re-aimed, then caught**. 104 row runs; every result as listed after the re-aim |
 | Chromium e2e (Chromium 141, local stack restarted fresh from this worktree, build of a083511) | One run in CI's order: home 15, inventory 11, lead-page 26, leads 9, pipeline 15, sales 8 + 1 failed + 2 not run (the picker item above, fixed), share 12, shell 21, team 5. After the fixes: sales 11 passed, import 11 passed, screens (command menu and shortcuts) 1 passed. Earlier run on the e038d65 build: files 12 (5 storage-api tests are CI only), lead-deals 9, stock-import 6, home 15, pipeline 15, team 5 passed |
@@ -301,8 +301,8 @@ Day 6d's rows now mirrored into the `order_guard` copy (12, 14): 2 caught. 29 ro
 
 **Checks (this section's commits).** Lint 0 errors (3 warnings as before); typecheck exit 0; unit 588 passed;
 `db-test.sh` on a scratch copy (port 54493): exit 0, all 25 suites (sales_concurrency with case 8), advisors 0 ERROR
-(WARN `share_view` / `share_request` anon definers by design, `set_user_role` as before; INFO unindexed FKs 5, unused
-indexes 13: unchanged); Chromium e2e on the shared local stack (migration applied, build of a083511's code; stock
+(WARN `share_view` / `share_request` anon definers by design, `set_user_role` as before; INFO unindexed FKs 5; unused
+indexes vary between runs, 13 to 14 seen, because the advisor counts them from usage statistics); Chromium e2e on the shared local stack (migration applied, build of a083511's code; stock
 history and the inventory catalogue reset first, so the run matches CI's fresh stack): inventory 11, lead-deals 9,
 lead-page 26, pipeline 16 (with the new test), sales 11: 73 passed. (A first run without that reset failed only
 `inventory.spec` stock_table_filters_and_panel: earlier runs' `clearStockHistory()` had emptied the levels while its

@@ -146,6 +146,10 @@ test("keyboard_space_arrows_space_moves, enter_opens_sheet_not_drag, shift_arrow
   await page.keyboard.press("Space");
   await expect(page.locator("[data-lost-band]")).toBeVisible();
   // The arrow is pressed straight after pick-up on purpose (targets are not measured yet); the announcement follows.
+  // "Straight after" is one timer task: dnd-kit's keyboard sensor adds its keydown listener in a setTimeout after
+  // pick-up, and Chromium runs input before timers, so a key sent in the same task was lost (CI, PR #17). A person
+  // cannot type inside one task; timers of equal delay run in order, so this one resolves after that listener exists.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   const live = page.locator("[id^=DndLiveRegion]").first();
   await page.keyboard.press("ArrowRight");
   await expect(live).toContainText("Over Qualified.");
