@@ -72,4 +72,37 @@ Residual noted by the reviewer (recorded under open risks in `README.md`): a pro
 same moment, all by admins with fresh codes, have a theoretical window that could lose the last admin. Ruled out as
 theoretical; no privilege is gained.
 
-The review must be repeated on the final head after the 4d and Day 5 merge.
+Repeated after the 4d and Day 5 merge: see the two sections below (both no findings).
+
+## /security-review of the Day 5 merge delta (15 Oct 2026, remerge-diff 4711172 + 4711172..877b9b5, Team files included)
+
+Result: **NO FINDINGS**.
+
+Checked:
+- The role-change lock migration (`20261015200000_role_change_lock.sql`) is byte-identical and sorts last, after Day
+  5's three migrations (`20261015090000_deals_pipeline`, `20261015120000_deal_links`, `20261015150000_home_dashboard`).
+- Only the core schema and the lock define `set_user_role`; no later migration redefines `is_admin`,
+  `is_manager_or_admin` or `has_recent_aal2`, or writes `profiles.role`.
+- The `role` column is not client-writable (the UPDATE grant on `profiles` covers only `first_name`, `last_name`,
+  `language`, `timezone`); `revoke` from `public`/`anon` and `grant` to `authenticated` on `set_user_role` intact.
+- `db.yml` only adds `team_concurrency` through `ci-report.sh`; triggers `pull_request` and `push` to `main`,
+  `contents: read`, no secrets, `base_ref` through `env`, checkout SHA-pinned with `persist-credentials: false`.
+- The step-up dialog's body-key union only picks message text; the team list still uses `bodyRole`; the database
+  enforces aal2.
+- No Team code changed after the merge (`src/components/team`, `src/app/(app)/more`, the proxy untouched).
+- `rls_attack.sql` identical to b9c05db (last-admin coverage kept); the conflict files are union resolutions; no
+  secrets in the added lines.
+
+## /security-review of the deal-delete delta (b9c05db..1e6b806)
+
+Result: **NO FINDINGS**.
+
+Checked:
+- `deals_delete` and `delete_deal` agree: `is_admin` and `has_recent_aal2(600)`, or the creator's untouched 120 s
+  branch. `delete_deal` is SECURITY INVOKER, so row level security is a second gate.
+- `created_by`, `created_at` and `version` cannot be forged: the guard forces them, there are no column grants, an
+  update refuses changes to them and `SET NULL` only nulls; `version` bumps on every real update, so the 120 s window
+  closes once the deal is touched.
+- `can_delete` is display-only (`deleteDeal` in `actions.ts` never reads it) and computed from data the caller can
+  already see; `home_attention` strips it.
+- No SECURITY DEFINER or grant changes.

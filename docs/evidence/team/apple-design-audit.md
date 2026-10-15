@@ -3,8 +3,11 @@
 Skill `anthropic-skills:apple-design` (Designing Fluid Interfaces; feedback, spatial consistency, restraint), applied
 to `src/components/team/*`, `src/app/(app)/more/team/*` and the screenshots in `screens/` (every width, light and
 dark, English and French; first taken 14 Oct on ed2ad60; then on bc79fa6, the merge with main, on 15 Oct;
-the current set on 2ab9969, after the merge with Day 4d and Day 5, also 15 Oct: only the manager and rep descriptions
-changed, still three lines at most in the 36ch column and the 390 role menu, nothing clipped). DESIGN.md is the source of truth where they
+then on 2ab9969, after the merge with Day 4d and Day 5, also 15 Oct; the current set on 74ba153 code, 15 Oct, with the
+634da7a wording (deal delete admin-only: the admin line gains "plus deleting deals" / "plus la suppression des
+affaires", the manager line drops deals). Looked at one 390 and one 1440 French shot for the longer admin line:
+`team-menu-fr-dark-390` (role menu) and `team-fr-light-1440` (list column and Roles card), plus `team-menu-fr-dark-1440`:
+still three lines at most in the 36ch column and the 390 role menu, nothing clipped). DESIGN.md is the source of truth where they
 differ. The 14 Oct re-run looked at the screenshots one by one (the 12 Oct round had no saved set) and at the e2e run that found row 11.
 
 | # | Principle | Finding | Outcome |
