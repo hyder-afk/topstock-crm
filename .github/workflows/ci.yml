@@ -12,6 +12,12 @@ env:
   NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-publishable-key
   NEXT_TELEMETRY_DISABLED: "1"
+# One run per PR: a new commit cancels the run for the older one (only the newest commit counts for merging, and it
+# always gets the full suite). Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   quality:
     runs-on: ubuntu-latest
