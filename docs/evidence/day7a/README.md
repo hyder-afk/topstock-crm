@@ -69,7 +69,7 @@ the new attack file; `scripts/db-mutations.py` has a `day7a` set.
 | Chromium e2e, throwaway isolated stack (Postgres 54540, GoTrue 9995, gateway 54541, `next start` 3400; never the shared stack) | `day7a.spec.ts` 6 passed; regression on what the change touches: `shell`, `team`, `leads`, `tasks`, `pipeline` 62 passed + 3 of `day4-security` before an artefact clash, then `day4-security` and `day5-security` 15 passed on a clean re-run (the first run's 2 failures were Playwright trace files deleted by a unit run sharing `test-results/`, ENOENT in `context.close()`, not app failures) |
 | Screens (`screens/`, Chromium 141) | More's sign-out row and the sheet at 390, 768, 1024, 1280, 1440, 1728, light and dark, EN and FR (48 shots): no console error, no sideways scroll; on phones the sheet rises from the bottom with the two buttons stacked, thumb-reachable; the button row stacks below 640 px; the loading skeleton has both buttons |
 | `npm audit --omit=dev` | 0 vulnerabilities |
-| gitleaks | see the commit list below |
+| gitleaks (`gitleaks git --log-opts=e038d65..HEAD`) | 3 commits scanned, no leaks (a directory scan only flags the ignored `.next` build output, which holds the throwaway local stack's anon key; not committed, deleted after the run) |
 
 Design notes (DESIGN.md, apple-design checklist, web-design-guidelines, kept short): reuses the existing quiet button,
 dialog and phone-sheet patterns (no new tokens, no red: the confirm is the neutral button since red is reserved for
