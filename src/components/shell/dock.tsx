@@ -60,7 +60,15 @@ export function Dock() {
   useLayoutEffect(() => {
     const bar = barRef.current;
     if (!bar) return;
+    // Measure on the next frame: a state update inside the ResizeObserver callback can change the bar's size in the
+    // same frame, which Safari reports as "ResizeObserver loop completed with undelivered notifications" (as in the
+    // timeline's afterPaint).
+    let frame = 0;
     const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(place);
+    });
+    function place() {
       const next = measure();
       setSlots(next);
       const section = sectionForPath(window.location.pathname);
@@ -68,9 +76,12 @@ export function Dock() {
       // jump(), not set(): an instant move must not leave a velocity behind for the next spring to inherit.
       if (!dragging.current) x.jump(next.find((s) => s.id === visible)?.x ?? 0);
       placed.current = true;
-    });
+    }
     observer.observe(bar);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [measure, x]);
 
   // On navigation the bead springs from wherever it is now (interruptible); reduced motion moves it instantly.
