@@ -82,3 +82,34 @@ home_summary Team 11.88 ms (30), Mine 6.57 ms (25), Team in the import week 23.9
 home_recent_activity Team 4.05 ms (5), Mine 3.80 ms; Today (list_tasks overdue + today, rep) 3.60 ms (4c's P5: 15 ms).
 Every budget met. Browser numbers not re-measured (accepted as the baseline by Haider on 15 Oct, decision A; polish in
 Day 7).
+
+
+## Merge of Day 4d (15 Oct): one browser run on the merged head (advisor condition, decision A)
+
+`tests/auth/home-perf.spec.ts`, `PERF=1`, code at d107fd2 (merge dd24bb6 of Day 4d's efbbbb4; no app code changed
+after it); same method, local stack restarted from this worktree, Chrome Headless Shell 156.0.8078.4, 4x CPU through
+CDP, the VM otherwise quiet. **The merged-head run is the record**; a second merged run and the pre-merge head 931af08
+(scratch-copy build, same browser, minutes apart) were taken only to read the spread. Not tuned.
+
+| Measure | Accepted baseline | **Merged head, run 1** | Merged head, run 2 | Pre-merge 931af08 | Budget |
+|---|---|---|---|---|---|
+| Cold deep link `/`: LCP | 1,732 / 1,664 / 1,532 ms | **1,008 / 932 / 1,116** | 1,108 / 992 / 984 | 1,032 / 1,016 / 1,060 | 2,000 (met) |
+| Cold deep link `/`: CLS | 0 / 0 / 0 | **0 / 0 / 0** | 0 / 0 / 0 | 0 / 0 / 0 | 0.02 (met) |
+| Layout-shift entries during the count-up | 0 / 0 / 0 | **0 / 0 / 0** | 0 / 0 / 0 | 0 / 0 / 0 | 0 (met) |
+| Longest frame in the first 1.2 s (÷ 4) | 26.2 / 25.9 / 18.7 ms | **45.8 / 38.9 / 33.3** | 62.6 / 31.2 / 29.9 | 31.1 / 30.4 / 32.1 | 8 (missed, as accepted) |
+| Pipeline → Home after the dock hover | 432 / 432 / 441 ms | **665.4 / 685.6 / 466.4** | 525.1 / 660.9 / 546.1 | 550.8 / 490.9 / 542.3 | 200 (missed, as accepted) |
+| Leads → Home without a hover: skeleton or content | 118 / 174 / 84 ms | **149.7 / 345.8 / 175.8** | 249.6 / 154.9 / 226.2 | 179.4 / 150.5 / 115.4 | 100 (missed, as accepted) |
+| Home's extra JavaScript (gzip) | 9.1 KB | **10.3 KB** | 10.3 KB | 10.3 KB | 20 (met) |
+
+**Reading** (for Haider; nothing tuned):
+- The met budgets stay met (LCP is faster than the baseline in all three runs, before and after the merge alike).
+- Worse than the accepted baseline beyond its recorded spread, **and already so on the pre-merge build** (not from
+  Day 4d): the longest frame in the first 1.2 s (30 to 63 against 19 to 26 ms), Pipeline → Home after the hover (466 to
+  686 against 432 to 441 ms; pre-merge 491 to 551) and Home's extra JavaScript (10.3 against 9.1 KB, identical before
+  and after the merge, under 20).
+- **Possibly from the merge, not proven:** the skeleton without a hover was 150 to 346 ms in the two merged runs against
+  115 to 179 ms in the one pre-merge run (baseline 84 to 174); the same pattern as the pipeline's skeleton (Day 5b
+  `perf.md`). Within this measure's spread on a shared VM; flagged to Haider (decision A: Day 7 polish).
+- Seen once with the local Chromium 141 (not the record): one layout-shift entry during the count-up in 1 of 9 samples
+  (CLS 0.004, under 0.02; the entry budget is 0); 0 in the other 8 samples on 141 and 0 in all 6 on Headless Shell 156.
+  Not reproduced; listed for Day 7 with the count-up frame measure.

@@ -194,7 +194,17 @@ last commit that changes code or tests is 2de7f9c, the mutation rows; later comm
     puts the flood guards in the guard only, which sees nothing the AFTER row triggers write in the same statement. The
     Day 6 contract ("AFTER triggers only" on deals) is kept: both are AFTER triggers and the BEFORE set is unchanged.
 
-## Rebase points (Day 4c and 4d are not merged)
+## Rebase points (Day 4c done 15 Oct; Day 4d merged in 15 Oct)
+
+**15 Oct: Day 4d merged in** (merge commit dd24bb6 of PR #16's final head efbbbb4; details in
+`docs/evidence/day5c/README.md`, "Merge of Day 4d"): rows 1 and 2 resolved with no change, because 4d's only migration
+(`20261014090000_lead_files.sql`) redefines neither `private.task_guard` nor `private.audit_row` (its one redefined
+function is `private.lead_import_untouched`), so the re-copied bodies stay byte for byte as they are; row 3 passes
+against efbbbb4 (`scripts/check-migration-order.sh efbbbb4`: newest there `20261014090000_lead_files.sql`, Day 5's
+`20261015*` sort after it); row 4 `--anchors` finds every row of every set once (day4d 44 included) and every edit lands
+in a live definition; row 5 the FK list is 4d's (`files` added; 5a adds none); rows 6 and 7 merged (4d's suites before
+5a's); row 8 `db-test.sh` all suites pass. The day5a mutation set was not re-run (none of its functions or anchors
+changed; `--anchors` clean); the sets the merge touched were (see the 5c README).
 
 **15 Oct: Day 4c done** (branch rebased onto `origin/main` 5f1a966): row 1 `task_guard` unchanged by 4c (kept); row 2
 `audit_row` re-copied from 4c's body with the deals rules; row 3 the order check passes (newest on main

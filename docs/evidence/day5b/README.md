@@ -195,7 +195,7 @@ Day 7 polish.
    for the sheet) to start at the stage it was closed from, as the sheet does; if that read fails, the stage chooser
    opens instead of guessing (verifier finding 4).
 
-## Rebase points (Day 4c done 15 Oct; Day 4d open)
+## Rebase points (Day 4c done 15 Oct; Day 4d merged in 15 Oct)
 
 Done at the 4c rebase (commits 361e6a4 and after):
 - `20261015120000_deal_links.sql`: `public.log_activity` and `public.get_lead` re-copied from Day 4c's merged bodies (4c's
@@ -209,8 +209,13 @@ Done at the 4c rebase (commits 361e6a4 and after):
 - Queue UI: the switch and the deal line (deviation 1); `src/lib/queue.ts` `QueueCard.open_deal`.
 - `tests/auth/helpers.ts` keeps `seedLeads`' `delete from public.deals` (merged cleanly).
 
-Still open for Day 4d (PR #16): every block marked `-- REBASE: re-copy after 4d merge` (the same three functions and
-the queue card if 4d changes them).
+~~Still open for Day 4d (PR #16): every block marked `-- REBASE: re-copy after 4d merge`.~~ **Resolved 15 Oct** at the
+merge of 4d's final head efbbbb4 (merge commit dd24bb6; `docs/evidence/day5c/README.md`, "Merge of Day 4d"): 4d's
+migration redefines none of `public.log_activity`, `public.undo_activity`, `public.get_lead` or `private.queue_card`
+(nor 5a's `audit_row` and `task_guard`), so every `-- REBASE` block keeps its body unchanged (no SQL edit at the merge;
+the in-file markers stay as pointers for the next re-copy). `scripts/db-mutations.py` carries 4d's `day4d` set and its
+re-aim of the "untouched" rule rows to the 4d migration; no 4d row aims inside a function Day 5b recreates. `seedLeads`
+deletes files, then deals, then leads.
 
 ## Not done (and why)
 

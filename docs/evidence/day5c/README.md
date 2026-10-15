@@ -5,7 +5,7 @@ Built on `day5a-local` (in `/home/user/topstock-crm-5a`) after Day 5b, per `docs
 Day 5 recommendation, including open question 9: Team by default for admins, Mine remembered per device). Not merged,
 not pushed. **15 Oct: rebased onto `origin/main` 5f1a966 (Day 4c merged)** and verifier round 1 fixed (section
 "Verifier round 1"). **15 Oct, Haider's decisions** (section "Decisions of 15 Oct"): A, the speed misses are the
-accepted baseline (Day 7 polish); B, the Low stock card reads Day 6's `stock_alerts()`. Days 4d and 6 are built elsewhere and not on this branch: see "Rebase points".
+accepted baseline (Day 7 polish); B, the Low stock card reads Day 6's `stock_alerts()`. Day 6 is built elsewhere and not on this branch; Day 4d (PR #16, efbbbb4) is merged in since 15 Oct: see "Merge of Day 4d" and "Rebase points".
 
 ## What changed
 
@@ -176,6 +176,80 @@ and 14 with Day 6's real `stock_alerts()` body over throwaway tables, empty and 
 passed (93 shots); `day5-screens` 5 passed (96 shots); `pipeline` 15, `pipeline-multi` 1, `shell` 20 passed. gitleaks
 `origin/main..HEAD` (84 commits): no leaks.
 
+## Merge of Day 4d (efbbbb4), 15 Oct 2026
+
+Why: PR #16 (Day 4d, lead files) will merge into main as a merge commit; bringing its final head in now makes the later
+`origin/main` merge trivial. `git merge --no-ff efbbbb4` on `day5a-local` (931af08), merge commit **dd24bb6**; no rebase,
+no force. efbbbb4 is the same commit as `day4d-local` and `claude/busy-darwin-xech8m`; 5f1a966 (main) is its ancestor.
+Checked after: a simulated main-after-PR-16 (5f1a966 + efbbbb4) merges into this head with no conflict and no change to
+the tree, and `scripts/check-migration-order.sh efbbbb4` passes (newest there `20261014090000_lead_files.sql`; Day 5's
+three `20261015*` migrations sort after it).
+
+**REBASE blocks.** Day 4d's only migration redefines one existing function, `private.lead_import_untouched`; it
+redefines none of `audit_row`, `task_guard` (5a), `log_activity`, `undo_activity`, `get_lead` or `queue_card` (5b), and
+4d changed no earlier migration. So every `-- REBASE` block keeps its body exactly (no SQL edit at the merge; the
+in-file markers stay as pointers). No red flag.
+
+| File (15 with textual conflicts) | Resolution (both sides kept) |
+|---|---|
+| `.github/workflows/db.yml` | Header names both; 4d's files attack and files concurrency steps, then Day 5a/5b/5c's four steps. Day 5's steps now go through 4d's `scripts/ci-report.sh` like every other step (same command and exit code; a failure also posts an annotation). The migration-order step (Day 5) and storage-api start (4d) merged cleanly |
+| `scripts/db-test.sh` | 4d's `files_attack.sql` and `files_concurrency.sh`, then `deals_attack`, `deal_concurrency`, `deal_links_attack`, `home_attack` (migration order) |
+| `scripts/db-perf.sh` | Header comment combined; the run lines merged cleanly (perf_day5 and P10 after perf_day4, perf_files last) |
+| `scripts/db-mutations.py` | Usage lists every set; both doc paragraphs; `MIG_4D` beside `MIG_5A..5C` and the Regions; `SETS` has day4d before day5a. 4d's re-aim of the five "untouched" rows (day3b 18 to 21, day4a 10) to the 4d migration merged cleanly; no day4d row aims inside a function Day 5 recreates, so `_relive`/`_relive_5b` need nothing new |
+| `messages/en.json`, `messages/fr.json` | Key-level three-way merge (base 5f1a966): no key changed on both sides, no duplicate; the result is Day 5's file plus exactly 4d's 73 added lines per locale (`Files`, `Lead.tabs.files`, `Errors.db.file_*`); EN/FR parity checked by the unit messages spec |
+| `src/lib/db-errors.ts` | 4d's four `file_*` hints, then Day 5's hint list |
+| `src/app/(app)/leads/[id]/page.tsx` | Day 5's `?deal=` parse and 4d's `fetchFilesPage` in the same `Promise.all`; `initialFiles` and `initialDeal` both passed |
+| `supabase/tests/rls_attack.sql` | Probe 3b: files update `status` (4d's only granted column), deals and tasks update `title` (Day 5a grants on deals); comment names both |
+| `tests/auth/helpers.ts` | `seedLeads` deletes files, then deals, then leads (a lead with files cannot be deleted since 4d; a deal keeps its lead) |
+| `tests/auth/import.spec.ts`, `tests/auth/import-perf.spec.ts` (2 hunks) | Same: `delete from public.files; delete from public.deals;` before companies |
+| `tests/unit/messages.spec.ts` | Namespace list has `Files` (4d) and `Home` (5c) |
+| `playwright.auth.config.ts` | WebKit `testMatch` is the union (`files` and `pipeline`, `lead-deals`, `home`) |
+| `docs/log.md` | All rows kept; the conflict region merged by date (4d's rows first on an equal date) |
+
+Changed on both sides and merged without a conflict (read and checked): `src/components/lead/lead-page.tsx` (Files tab
+and its prefetch beside the deals prefetch and sheet), `src/lib/leads.ts` (`LEAD_TABS` gains `files`; `LeadDetail` keeps
+`deals`), `supabase/tests/import_attack.sql` (FK list with `files`; Day 5's deal insert). Of the expected list,
+`tests/auth/messages.spec.ts` does not exist (the messages spec is `tests/unit/messages.spec.ts`, above). One
+semantic conflict, found by Day 5a's `sql-bidi` unit spec (it scans every file): 4d's `tests/unit/file-name.spec.ts`
+held two raw bidi characters; now written as `‮`/`⁦` escapes, same strings at run time (**d107fd2**).
+
+**Checks on the merged head** (d107fd2):
+- lint 0 errors (the 2 known warnings); typecheck clean; unit **471 passed**.
+- `db-test.sh` copy on port 54497: exit 0, **15 suites** pass (rls, import x2, activity x2, outcome x2, queue x2,
+  **files_attack, files_concurrency** with the storage shim, deals_attack, deal_concurrency, deal_links_attack,
+  **home_attack**); advisors 0 ERROR, WARN `set_user_role` (accepted since Day 1), INFO `unindexed_foreign_keys` 5 (4c's
+  four plus 5a's accepted `deal_moves_org_id_fkey`; 4d adds none), `unused_index` 3 to 4 (run statistics:
+  `companies_status_idx`, `companies_queue_owner_idx`, `files_pending_idx`, as in 4d's own runs).
+- Mutations: `--anchors` every row of every set found once (day3b 37, day4a 104, day4b 94, day4c 92, **day4d 44**,
+  day5a 73, day5b 20, day5c 21), and every edit lands in a live definition (a check that flags a row editing a function
+  a later migration redefines: 0 here; the pre-merge script against the merged migrations flags exactly the 5 untouched
+  rows 4d re-aimed). Run in scratch copies: **day4d 42 caught + 2 documented two-layer rows not caught (29, 40), 0 not
+  as listed** (as in 4d's `mutations.md`); **day5b 20 of 20 caught**; **day5c 21 of 21 caught**; the five rows the merge
+  re-aimed (day3b 18 to 21, day4a 10) **5 of 5 caught**. The day5a set was not re-run (none of its functions or anchors
+  changed).
+- gitleaks `5f1a966..HEAD` (132 commits with patches; the 3 merges carry none) and the working tree: no leaks.
+  `npm audit --omit=dev`: 0 vulnerabilities.
+- e2e, Chromium (local 141), shared stack restarted from this worktree with `scripts/local-auth/start.sh` (the old
+  gateway, GoTrue and its PostgreSQL stopped by PID), `next start` on this build: `files.spec` 12 passed, 5 skipped
+  (the "with storage-api (CI)" block); `lead-page.spec` 26 passed; `pipeline.spec` 14 passed; `shell.spec` 21 passed;
+  `home.spec` **14 passed** on a quiet machine. `home.spec`'s `count_up_first_visit_hard_load` failed 3 times while
+  three mutation runs shared the CPU (no count frames: hydration later than the 800 ms rule); a diagnostic load loop
+  (not committed) showed both builds hydrating on that 800 ms edge under load (pre-merge 8 of 10 loads counted, merged
+  6 of 10; same JS bytes, 383 KB), and the pre-merge build passed the spec once under the same load. Read as a
+  load-sensitive test, not a merge change; listed below.
+
+**Speed (decision A condition)**: `day5-perf` and `home-perf` once on the merged head, recorded next to the accepted
+baseline in `docs/evidence/day5b/perf.md` and `perf.md` here ("Merge of Day 4d"), with a second merged run and a
+pre-merge run on the same browser for the spread. Every met budget still met; every accepted miss the same size class.
+Worse than the baseline beyond its spread but equally so before the merge (not from 4d): pipeline drag frame p95 and
+settle, Home's longest early frame and Pipeline → Home after the hover, both extra-JavaScript figures (still under
+budget). **Possibly from the merge, not proven**: the skeleton without a hover (Pipeline 118 to 190 ms and Home 150 to
+346 ms in the merged runs, against 93 to 111 and 115 to 179 ms in one pre-merge run). Flagged to Haider; nothing tuned.
+
+**For the advisor and security re-review**: the delta is `931af08..HEAD` minus Day 4d's own content, i.e. the merge
+resolution `git diff efbbbb4 dd24bb6 -- <the 15 files above>` (or `git show --remerge-diff dd24bb6`), plus d107fd2 and
+the docs commits after it. Day 4d itself (`5f1a966..efbbbb4`) was reviewed and approved in PR #16.
+
 ## Deviations from the design
 
 1. **Tasks** (since the 4c rebase): K5's overdue and today are Day 4c's `count_tasks('mine')`; K6 (the day's meetings)
@@ -207,7 +281,7 @@ passed (93 shots); `day5-screens` 5 passed (96 shots); `pipeline` 15, `pipeline-
     when their count is above zero, as quiet muted links to the matching Inventory tab (amber dot for the two
     time-related ones; no colour in text).
 
-## Rebase points (Day 4c done 15 Oct; Day 4d and Day 6 open)
+## Rebase points (Day 4c done 15 Oct; Day 4d merged in 15 Oct; Day 6 open)
 
 Done at the 4c rebase (361e6a4, cad5528): `home_summary` K5 from `count_tasks('mine')`; `home_today_tasks` removed (its
 grant, `home_attack.sql` block 9 rewritten against `count_tasks`/`list_tasks`, mutation rows 7 and 16 re-aimed, the parity
@@ -216,6 +290,11 @@ line now checks `list_tasks`' bounds); `fetchHome` reads `list_tasks` and `count
 page. 4c's `check_profile_timezone` refuses an unknown zone on save, so `home_attack.sql` writes its unknown-zone case
 with triggers off. The 5a `sql-bidi` spec scans every file: two raw bidi characters in 4c's tests (`tests/unit/tasks.spec.ts`,
 `supabase/tests/queue_attack.sql`) are now written as escapes.
+
+Done at the 4d merge (15 Oct, dd24bb6, section "Merge of Day 4d"): Day 5c's migration recreates no Day 4 function and
+4d's adds nothing Home reads, so nothing in 5c moved; Day 4d's `files_attack.sql` and `files_concurrency.sh` run before
+Day 5's suites in `db-test.sh` and `db.yml`. Same bidi rule as at the 4c rebase: 4d's `tests/unit/file-name.spec.ts`
+now writes its two raw bidi characters as escapes (d107fd2).
 
 - Day 6: ~~the contract in design section 10 (`home_low_stock`) and Day 6's `stock_alerts()` differ~~ **resolved by
   Haider's decision B (15 Oct)**: Home reads Day 6's `stock_alerts()`. Day 5 merges first and creates the null stub;
@@ -263,8 +342,9 @@ with triggers off. The 5a `sql-bidi` spec scans every file: two raw bidi charact
    only to `loading.tsx`); the same limit as Day 5b's Home → Pipeline. **Accepted as the baseline by Haider on 15 Oct
    (decision A), with the skeleton (84 to 174 ms vs 100) and the first-seconds longest frame; polish in Day 7.**
 3. **P8 recent activity** sits close to its 5 ms budget (3.8 to 5.5 ms); about 2 ms is Day 5a's history select policy.
-4. ~~The 4c rebase touches `home_summary`, `fetchHome` and the queue route by hand.~~ Done 15 Oct and tested; the 4d
-   rebase will touch the same `-- REBASE` blocks in the Day 5 migrations again.
+4. ~~The 4c rebase touches `home_summary`, `fetchHome` and the queue route by hand.~~ Done 15 Oct and tested; ~~the 4d
+   rebase will touch the same `-- REBASE` blocks in the Day 5 migrations again~~ 4d merged in on 15 Oct with no change
+   to any `-- REBASE` block (see "Merge of Day 4d").
 5. During this step the shared local auth stack was taken over from the idle `topstock-crm-team` checkout as the task
    rules allow; the take-over script (copied from Day 5b) also stopped an isolated gateway on port 54421 that belonged
    to another session's stack. It was restarted at once with its own settings (health check 200); that session should

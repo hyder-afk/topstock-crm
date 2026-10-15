@@ -99,3 +99,40 @@ code at 083a348, one run on a quiet machine. Every Day 5 database budget still m
 P6 get_deal 4.75 ms (5), list_lead_deals 2.04 ms (3); get_lead with deals 4.26 ms.
 The browser numbers were not re-measured (verifier finding 5: accepted as the baseline by Haider on 15 Oct, decision A;
 polish in Day 7).
+
+
+## Merge of Day 4d (15 Oct): one browser run on the merged head (advisor condition, decision A)
+
+`tests/auth/day5-perf.spec.ts`, `PERF=1`, code at d107fd2 (merge dd24bb6 of Day 4d's efbbbb4 plus the bidi-escape fix;
+no app code changed after it), the same method as above: `next start` on the local stack restarted from this worktree,
+Chrome Headless Shell 156.0.8078.4 (the build CI runs; the local default Chromium is 141), 4x CPU through CDP, 1440 ×
+900, the VM otherwise quiet (no mutation or test run alongside; load 1 to 3). **The merged-head run is the record.**
+Two more runs were taken only to read the spread and to see whether the merge itself moved anything: the merged head
+again, and the pre-merge head 931af08 built from a scratch copy, both on the same browser minutes apart. Not tuned.
+
+| Measure | Accepted baseline (ee5312c) | **Merged head, run 1** | Merged head, run 2 | Pre-merge 931af08 | Budget |
+|---|---|---|---|---|---|
+| Cold deep link `/pipeline`: LCP | 1,560 / 1,316 / 1,088 ms | **1,824 / 1,608 / 1,524** | 1,448 / 1,116 / 1,216 | 1,776 / 1,444 / 972 | ≤ 2,000 (met) |
+| Cold deep link: CLS | 0 / 0 / 0 | **0.006 / 0.003 / 0.003** | 0 / 0.003 / 0.003 | 0.003 / 0 / 0.003 | ≤ 0.05 (met) |
+| Extra JavaScript for the pipeline | 53.6 KB | **56.3 KB** | 56.3 KB | 56.3 KB | ≤ 60 (met) |
+| Press feedback | 42.8 / 24.2 / 36.4 ms | **42.4 / 53.4 / 55.8** | 41.6 / 35.8 / 43.0 | 32.5 / 35.2 / 36.5 | ≤ 100 (met) |
+| Pipeline → Home after the dock hover | 39.7 / 17.8 / 25.3 ms | **29.7 / 19.1 / 37.3** | 27.7 / 24.7 / 30.5 | 14.2 / 22.5 / 27.4 | ≤ 200 (met) |
+| Move painted (30 moves): p95 (median) | 584.5 (~410) ms | **754.4 (432.5)** | 641.4 (398.3) | 713.0 (396.9) | ≤ 100 (missed, as accepted) |
+| Drag frame time p95 | 23.5 / 22.7 / 23.2 ms | **26.6 / 25.3 / 28.5** | 25.3 / 25.0 / 25.4 | 23.6 / 25.0 / 24.4 | ≤ 16.7 (missed, as accepted) |
+| Drag: longest task | 96 / 74 / 68 ms | **162 / 157 / 147** | 118 / 78 / 86 | 122 / 109 / 87 | ≤ 50 (missed, as accepted) |
+| Settle after pointer up | 690.8 / 709.5 / 668.8 ms | **764.2 / 785.7 / 721.4** | 781.9 / 726.9 / 778.4 | 750.2 / 727.1 / 777.3 | ≤ 450 (missed, as accepted) |
+| Home → Pipeline after the dock hover | 2,109 / 1,645 / 2,168 ms | **2,247 / 2,164 / 1,915** | 1,827 / 1,716 / 2,243 | 1,867 / 1,690 / 1,980 | ≤ 200 (missed, as accepted) |
+| Without a hover: time to the skeleton | 124.4 / 1,989.1 / 129.1 ms | **177.5 / 138.0 / 189.6** | 117.8 / 144.9 / 171.6 | 93.1 / 110.6 / 101.0 | ≤ 100 (missed, as accepted) |
+
+**Reading** (for Haider; nothing tuned):
+- Every budget the baseline met is still met (LCP, CLS, extra JavaScript, press, Pipeline → Home); every accepted miss
+  is still a miss of the same size class.
+- Worse than the accepted baseline beyond its recorded spread, **and the same on the pre-merge build** (so not from
+  Day 4d; they moved between ee5312c and 931af08, or with the browser and VM of this run): drag frame p95 (25 to 28.5
+  against 22.7 to 23.5 ms), settle (721 to 786 against 669 to 710 ms), the pipeline's extra JavaScript (56.3 against
+  53.6 KB, identical before and after the merge, still under 60) and a small non-zero CLS (0.003 to 0.006, under 0.05).
+- The longest drag task of run 1 (147 to 162 ms against 68 to 96) did not repeat: 78 to 118 ms in run 2 and 87 to 122 ms
+  before the merge, so it is read as run-to-run noise.
+- **Possibly from the merge, not proven:** the skeleton without a hover was 118 to 190 ms in both merged runs against 93
+  to 111 ms in the one pre-merge run (the baseline had 124 and 129 ms with one 1,989 ms outlier). The difference is about
+  the size of this measure's run-to-run spread; flagged to Haider rather than investigated (decision A: Day 7 polish).
