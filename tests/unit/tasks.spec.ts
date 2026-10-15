@@ -121,6 +121,6 @@ test("edit: a date or a time, a clean title, no extra fields", () => {
   expect(updateTaskInput.safeParse(base).success).toBe(true);
   expect(updateTaskInput.safeParse({ ...base, dueAt: "2026-10-13T08:00:00Z" }).success).toBe(false);
   expect(updateTaskInput.safeParse({ ...base, title: "  " }).success).toBe(false);
-  expect(updateTaskInput.safeParse({ ...base, title: "a‮b" }).success).toBe(false);
+  expect(updateTaskInput.safeParse({ ...base, title: "a\u202Eb" }).success).toBe(false);
   expect(updateTaskInput.safeParse({ ...base, kind: "meeting" }).success).toBe(false);
 });
