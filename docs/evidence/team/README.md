@@ -85,6 +85,47 @@ migration on the other open branches (up to 20261020090000); none of them touche
 The id order of the admin locks is by design: each call takes all of them at its start, so no test can interleave two
 calls between those locks (dropping `order by id` would not be seen by a test, so it is not listed as a row).
 
+## Merge of main (5f1a966), 15 Oct 2026
+
+`origin/main` at 5f1a966 (Day 4c tasks and work queue, plus the go-live kit docs) merged into this branch with a merge
+commit (cbfb1f8, no rebase). Ten files conflicted; each keeps both sides:
+
+| File | Resolution |
+|---|---|
+| `.github/workflows/db.yml` | main's queue attack and queue concurrency steps, then the Team role-change step; header lists both |
+| `scripts/db-test.sh` | `queue_attack.sql`, `queue_concurrency.sh`, then `team_concurrency.sh`, then the advisors |
+| `playwright.auth.config.ts` | WebKit runs `shell, leads, import, lead-page, queue, queue-multi, tasks, team`; comment names both |
+| `scripts/db-mutations.py` | `MIG_4C` and `MIG_TEAM`; the day4c set, then the team set; `--set day3b, day4a, day4b, day4c, team, all` |
+| `src/components/auth/step-up-dialog.tsx` | body key union `body, bodyDelete, bodyDeleteTask, bodyRole` |
+| `src/app/(app)/more/page.tsx` | both imports: main's time zone section and the Team entry with `ArrivalFocus` on the title |
+| `messages/en.json`, `messages/fr.json` | `StepUp.bodyDeleteTask` and `StepUp.bodyRole`; key union checked against both parents (1015 keys, EN = FR, no duplicates) |
+| `docs/go-live.md` | main's text, with this branch's paragraphs in part A (decision 3, the part A check) and part K (More > Team steps) |
+| `docs/log.md` | every row from both sides, in date order |
+
+`src/app/(app)/more/loading.tsx` merged on its own (Team block and main's time zone block); its comment now names the time
+zone. The migration `20261021090000_role_change_lock.sql` is unchanged: main's migrations (up to
+`20261013090000_tasks_queue.sql`) never redefine `set_user_role` after the core schema, so the lock still sits on main's
+latest version. `tests/auth/helpers.ts`, the shell and `next.config.ts` did not conflict (no `turbopack.root` committed).
+
+Checks on the merge (npm ci, lint, typecheck and unit in a scratch copy, because this worktree's `node_modules` links to the
+main checkout):
+
+```
+npm ci              scratch copy                           exit 0 (lockfile unchanged by either side)
+lint                npm run lint                           exit 0 (0 errors; the 2 existing TanStack Virtual warnings)
+typecheck           npm run typecheck                      exit 0
+unit                npm run test:unit                      366 passed
+db                  scripts/db-test.sh copy, port 54495,   all ten suites pass: rls, import (+ concurrency), activity
+                    ROOT = this worktree                   (+ concurrency), outcome (+ concurrency), queue_attack,
+                                                           queue_concurrency, team_concurrency; advisors: no ERROR
+                                                           (WARN set_user_role SECURITY DEFINER, accepted Day 1;
+                                                           INFO unindexed_foreign_keys 4 (2 from 4c, accepted), unused_index 2)
+mutations           db-mutations.py --set team (scratch)   4 rows run, 4 caught; every row of all five sets still applies once
+gitleaks            git --log-opts=origin/main..HEAD       no leaks found (14 commits)
+e2e                 team.spec.ts, team-screens.spec.ts     not run: the shared local auth stack on 3100 was busy with
+                                                           another builder's Playwright run (Day 5a); run before the PR
+```
+
 ## Check results after the verifier round (14 Oct 2026, code head 6d07187)
 
 ```text
@@ -192,6 +233,8 @@ Context7 pages consulted (14 Oct, first round):
   roles diverge, non-admins will see that block's place close once More loads.
 - The role button's name for someone without a name says "Account c9b5074f" while the row shows "User ID c9b5074f"
   (same characters; kept).
-- `docs/go-live.md` comes from the unmerged go-live kit branch; if that branch changes parts A or K before merging,
-  the rebase needs a look at those two paragraphs.
+- ~~`docs/go-live.md` comes from the unmerged go-live kit branch~~: merged with main on 15 Oct (main's text, this
+  branch's part A and K paragraphs).
+- The Team e2e specs have not run on the merged code yet (local auth stack busy); the Day 4d and Day 5 merges are still
+  to come.
 - WebKit and Semgrep run only in CI.
