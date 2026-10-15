@@ -111,7 +111,7 @@ probe expecting no change does not survive. Each is still a failing check of tha
 | 42 | Levels readable across organisations | caught | FAIL: the other org sees this org's stock | 1 (fa74b6c) |
 | 43 | Reps may create products (policy) | caught | FAIL: "insert into public.products (name, pieces_per_carton) values ('Rep product', 12)" succeeded, expected 42501 | 1 (fa74b6c) |
 | 44 | Reps see costs (policy) | caught | FAIL: rep_cost_null: a rep sees costs | 2 (6f37e23); round 1: NOT CAUGHT |
-| 45 | Managers change the settings (policy) | caught | new row violates row-level security policy for table "inventory_settings" | 1 (fa74b6c) |
+| 45 | Managers change the settings (policy; since 6e also the guard's admin check, as 6e replaces this policy) | caught | 6a: new row violates row-level security policy for table "inventory_settings"; re-aimed at the Day 5 merge (15 Oct): `update private.inventory_settings set hold_days = 30` succeeded, expected 42501 (stock_attack) | 1 (fa74b6c), 1 (re-aimed) |
 | 46 | The alert assignee may be outside the organisation | caught | FAIL: "update private.inventory_settings set alert_assignee_id = '00000000-0000-0000-0000-0000000000c1'" succeeded, expected 22023 | 1 (fa74b6c) |
 | 47 | Import undo does not count holds (it would try to delete a lead with stock history) | caught | FAIL: undo preview with a hold {"kept": 0, "tagged": 2, "removable": 2} | 1 (fa74b6c) |
 | 48 | Holds deleted with their lead (on delete cascade) | caught | FAIL: hold foreign key actions | 1 (fa74b6c) |

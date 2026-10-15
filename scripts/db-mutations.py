@@ -1807,9 +1807,13 @@ MUTATIONS_6A = [
     ("Reps see costs (policy)",
      [("create policy product_costs_rw on private.product_costs for all to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_manager_or_admin()))",
        "create policy product_costs_rw on private.product_costs for all to authenticated\n  using (org_id = (select private.current_org_id()))")]),
+    # 6e replaces this policy (managers reach the row to switch sharing off) and moves the admin-only rule for the
+    # other settings into its guard: the row also removes that live check (found dead at the Day 5 merge re-run).
     ("Managers change the settings (policy)",
      [("create policy inventory_settings_update on private.inventory_settings for update to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()))",
-       "create policy inventory_settings_update on private.inventory_settings for update to authenticated\n  using (org_id = (select private.current_org_id()))")]),
+       "create policy inventory_settings_update on private.inventory_settings for update to authenticated\n  using (org_id = (select private.current_org_id()))"),
+      (MIG_6E, "  if (new.hold_days is distinct from old.hold_days or new.alert_assignee_id is distinct from old.alert_assignee_id)\n     and not private.is_admin() then",
+       "  if (new.hold_days is distinct from old.hold_days or new.alert_assignee_id is distinct from old.alert_assignee_id)\n     and false then")]),
     ("The alert assignee may be outside the organisation",
      [("     and not exists (select 1 from public.profiles p where p.id = new.alert_assignee_id and p.org_id = new.org_id) then",
        "     and false then")]),
