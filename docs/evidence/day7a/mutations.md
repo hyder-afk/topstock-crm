@@ -1,4 +1,3 @@
-
 ### day7a
 
 | # | Protection removed | Result | First failure |
@@ -17,6 +16,7 @@
 | 12 | Sign-in rows: the insert policy allows any table name | caught | FAIL: "insert into public.audit_log (org_id, actor_id, action, table_name) |
 | 13 | Sign-in rows: the insert grant also covers diff_json (details such as an IP address) | caught | FAIL: authenticated has more than the four insert columns on audit_log |
 | 14 | Sign-in rows: no flood guard (30 an hour) | caught | FAIL: "select public.record_auth_event('sign_in')" succeeded, expected 22023 |
-| 15 | Sign-in rows: the writer runs as its owner (SECURITY DEFINER) | caught | FAIL: record_auth_event must be SECURITY INVOKER |
+| 15 | Sign-in rows: the flood guard counts a forged row about another person (its 22023 tells their sign-in count) | caught | FAIL: "insert into public.audit_log (org_id, actor_id, action, table_name) |
+| 16 | Sign-in rows: the writer runs as its owner (SECURITY DEFINER) | caught | FAIL: record_auth_event must be SECURITY INVOKER |
 
-day7a: 15 rows run: 15 caught, 0 documented two-layer rows not caught, 0 not as listed
+day7a: 16 rows run: 16 caught, 0 documented two-layer rows not caught, 0 not as listed
