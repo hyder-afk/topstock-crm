@@ -721,12 +721,12 @@ create policy deals_update on public.deals for update to authenticated
               and (contact_id is null or exists (select 1 from public.contacts k
                    where k.id = deals.contact_id and k.company_id = deals.company_id))
               and exists (select 1 from public.pipeline_stages s where s.id = deals.stage_id));
--- Deleting: a manager or admin with a fresh code; or, without a code, one's own untouched deal opened under 120 s ago,
--- and one opened from a call only once that call's undo record is consumed (undo_activity, 5b), so the lead comes back
--- first (Day 4's tasks_delete pattern).
+-- Deleting: an admin with a fresh code (Haider, 11 Oct: "delete admin-only with code"; a manager is refused); or, without
+-- a code, one's own untouched deal opened under 120 s ago, and one opened from a call only once that call's undo record
+-- is consumed (undo_activity, 5b), so the lead comes back first (Day 4's tasks_delete pattern).
 create policy deals_delete on public.deals for delete to authenticated using (
   org_id = (select private.current_org_id()) and (
-       ((select private.has_recent_aal2(600)) and (select private.is_manager_or_admin()))
+       ((select private.has_recent_aal2(600)) and (select private.is_admin()))
     or (created_by = (select auth.uid()) and version = 0 and created_at > now() - interval '120 seconds'
         and (source_activity_id is null
              or not exists (select 1 from private.activity_undo u where u.activity_id = deals.source_activity_id)))));
@@ -813,7 +813,7 @@ returns table (
   contact_id uuid, contact_name text, value text, currency text, status text, stage_entered_at timestamptz,
   closed_at timestamptz, expected_close date, fulfilment text, owner_id uuid, owner_first_name text,
   owner_last_name text, version integer, last_activity_at timestamptz, is_stalled boolean, quiet_days integer,
-  lost_reason text, created_at timestamptz, can_edit boolean
+  lost_reason text, created_at timestamptz, can_edit boolean, can_delete boolean
 )
 language sql stable set search_path = '' as $$
   select d.id, s.key, d.title, d.company_id, c.name, c.city, c.country, c.lead_status, d.contact_id,
@@ -826,7 +826,13 @@ language sql stable set search_path = '' as $$
          case when d.status = 'open' then floor(extract(epoch from now() - greatest(d.stage_entered_at,
                 coalesce(c.last_activity_at, '-infinity'::timestamptz))) / 86400)::integer end,
          d.lost_reason, d.created_at,
-         (select private.is_manager_or_admin()) or d.owner_id = (select auth.uid())
+         (select private.is_manager_or_admin()) or d.owner_id = (select auth.uid()),
+         -- can_delete: whether Delete is offered (deals_delete's two branches; the admin's code is asked on use): an
+         -- admin, or the creator inside the untouched 120 s window once a call's undo record is consumed.
+         (select private.is_admin())
+         or (d.created_by = (select auth.uid()) and d.version = 0 and d.created_at > now() - interval '120 seconds'
+             and (d.source_activity_id is null
+                  or not exists (select 1 from private.activity_undo u where u.activity_id = d.source_activity_id)))
     from unnest(p_ids) with ordinality as u (deal_id, n)
     join public.deals d on d.id = u.deal_id
     join public.pipeline_stages s on s.id = d.stage_id
@@ -1383,7 +1389,8 @@ $$;
 
 -- Delete a deal (design 4.1, D8 and threat 15). Lead lock first (5.7). Inside the creator's window (own untouched deal,
 -- opened under 120 s ago): no code, and the lead is put back from the open's move record (compare-and-restore).
--- Otherwise a fresh code (hint step_up), then a manager or admin (42501). Day 6's stock records can block it.
+-- Otherwise a fresh code (hint step_up), then an admin (42501, no hint: a manager or a rep is refused; Haider, 11 Oct).
+-- Day 6's stock records can block it.
 create function public.delete_deal(p_id uuid) returns void
 language plpgsql volatile set search_path = '' as $$
 declare
@@ -1412,8 +1419,8 @@ begin
     if not (select private.has_recent_aal2(600)) then
       raise exception 'confirm it is you first' using errcode = '42501', hint = 'step_up';
     end if;
-    if not (select private.is_manager_or_admin()) then
-      raise exception 'only a manager or an admin can delete a deal' using errcode = '42501';
+    if not (select private.is_admin()) then
+      raise exception 'only an admin can delete a deal' using errcode = '42501';
     end if;
   end if;
   v_block := private.deal_closing_blocked(p_id);
@@ -1442,6 +1449,7 @@ end;
 $$;
 
 -- One deal for the deal sheet; null when it is missing or not visible. Activities are listed without their text.
+-- can_edit and can_delete come from the card (private.deal_cards).
 create function public.get_deal(p_id uuid) returns jsonb
 language sql stable set search_path = '' as $$
   select private.deal_card(d.id) || jsonb_build_object(
@@ -1452,11 +1460,6 @@ language sql stable set search_path = '' as $$
                                                                   'last_name', k.last_name) end,
     'owner', case when o.id is not null then jsonb_build_object('id', o.id, 'first_name', o.first_name,
                                                                 'last_name', o.last_name) end,
-    'can_delete', ((select private.has_recent_aal2(600)) and (select private.is_manager_or_admin()))
-                  or (d.created_by = (select auth.uid()) and d.version = 0
-                      and d.created_at > now() - interval '120 seconds'
-                      and (d.source_activity_id is null
-                           or not exists (select 1 from private.activity_undo u where u.activity_id = d.source_activity_id))),
     'stall_days', s.stall_days,
     'undo', (select jsonb_build_object('history_id', h.id, 'to_stage', h.from_stage,
                                        'until', h.created_at + interval '120 seconds')
@@ -1505,7 +1508,7 @@ create function public.list_stage_deals(
   contact_id uuid, contact_name text, value text, currency text, status text, stage_entered_at timestamptz,
   closed_at timestamptz, expected_close date, fulfilment text, owner_id uuid, owner_first_name text,
   owner_last_name text, version integer, last_activity_at timestamptz, is_stalled boolean, quiet_days integer,
-  lost_reason text, created_at timestamptz, can_edit boolean
+  lost_reason text, created_at timestamptz, can_edit boolean, can_delete boolean
 )
 language plpgsql stable set search_path = '' as $$
 declare
@@ -1710,7 +1713,7 @@ returns table (
   contact_id uuid, contact_name text, value text, currency text, status text, stage_entered_at timestamptz,
   closed_at timestamptz, expected_close date, fulfilment text, owner_id uuid, owner_first_name text,
   owner_last_name text, version integer, last_activity_at timestamptz, is_stalled boolean, quiet_days integer,
-  lost_reason text, created_at timestamptz, can_edit boolean
+  lost_reason text, created_at timestamptz, can_edit boolean, can_delete boolean
 )
 language plpgsql stable set search_path = '' as $$
 begin
