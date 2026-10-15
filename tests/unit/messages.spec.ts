@@ -30,6 +30,7 @@ const namespaces = [
   "Profile",
   "Palette",
   "Files",
+  "Pickers",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

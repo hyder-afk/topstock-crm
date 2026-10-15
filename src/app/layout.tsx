@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 // Brand fonts, self-hosted (no request to Google): Outfit Regular/Bold, DM Mono Medium.
@@ -47,7 +48,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           >
             {t("skipToContent")}
           </a>
-          <NextIntlClientProvider>{children}</NextIntlClientProvider>
+          <NextIntlClientProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </NextIntlClientProvider>
         </ThemeProvider>
       </body>
     </html>

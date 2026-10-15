@@ -1223,5 +1223,31 @@
     "keysHint": "T new task · J/K move · X done · E edit · D dismiss · ⌫ delete · ↩ open the lead",
     "dueCount": "{count, plural, one {# task due today or overdue} other {# tasks due today or overdue}}",
     "listLabel": "{tab} tasks"
+  },
+  "Pickers": {
+    "choose": "Choose…",
+    "search": "Search…",
+    "loading": "Loading…",
+    "noMatch": "No match",
+    "chosen": "chosen",
+    "chooseDate": "Choose a date",
+    "changeDate": "Change the date, now {date}",
+    "noDate": "No date chosen",
+    "chooseDates": "Choose dates",
+    "rangeValue": "{from} to {to}",
+    "rangeFromOnly": "From {from}",
+    "pickEnd": "Now choose the end date.",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "clear": "Clear",
+    "dayLetters": "dd",
+    "monthLetters": "mm",
+    "yearLetters": "yyyy",
+    "chooseTime": "Choose a time",
+    "times": "Times",
+    "time": "Time",
+    "timePattern24": "hh:mm",
+    "timePattern12": "h:mm am",
+    "clearSearch": "Clear search"
   }
 }
