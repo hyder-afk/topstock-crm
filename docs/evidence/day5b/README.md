@@ -149,6 +149,25 @@ Day 7 polish.
 - **gitleaks** (`origin/main..HEAD`): no leaks. **npm audit --omit=dev**: 0 vulnerabilities.
 - Not run here: WebKit, Semgrep (CI), the browser speed specs (finding 5), the Taste Skill pass, the advisor loop.
 
+## Advisor round (15 Oct, on 5f1a966..ea75fbf: CHANGES NEEDED; item 4 here, items 1 to 3 in the 5c README)
+
+**Pipeline evidence gaps** (`tests/auth/day5-screens.spec.ts`, `tests/auth/pipeline.spec.ts`; `screens/README.md`):
+- 28 new shots in EN light and FR dark at 390 and 1440, like the Win dialog: the Lose dialog with its reason picker,
+  the Reopen dialog (a won deal), the Delete confirmation, the board's own error (the first read fails), the refresh
+  error (`/api/pipeline/board` answers 502 via `page.route`), the column error (Show more: `/api/pipeline/stage` 502),
+  and an empty board (a second rep with no deal).
+- The board's first read happens on the server (D32), out of `page.route`'s reach: `BoardError` is reached by taking
+  `execute` on `pipeline_board` from `authenticated` for a moment on the local stack (given back in `finally`, checked);
+  the browser-side read is the advisor's `page.route` 502. Both are covered.
+- e2e: `board_read_fails_shows_retry_and_recovers` (server read refused: the error with Retry, the shell standing, no
+  database text; Retry after the grant is back renders the board; then the 30 s refresh on Playwright's fake clock
+  gets 502 twice (one retry): "Couldn't refresh" with Retry, the cards kept; Retry once the route answers brings a deal
+  made meanwhile) and `column_read_fails_shows_retry_and_recovers` (Show more 502: "Couldn't load more" with Retry in
+  that column only, the loaded cards kept; Retry shows 100). Both allow only Chromium's console line for the 502s they
+  inject, and count them (2 and 1).
+- Checks: `pipeline.spec` 15 passed, `pipeline-multi` 1, `shell` 20 (36 passed); `day5-screens` 5 passed (full run,
+  128 shots, into a scratch folder; the 28 new ones copied here).
+
 ## Deviations from the design
 
 1. ~~Queue pieces wait for 4c~~: built at the 4c rebase (15 Oct): `claim_next_lead`'s cards carry `open_deal {count,

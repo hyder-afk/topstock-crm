@@ -481,3 +481,101 @@ test("lose_and_delete_focus_stays_in_column, reopen_menu_defaults_to_closing_sta
   expect(errors).toEqual([]);
   await context.close();
 });
+
+// Console errors these two tests cause on purpose: Chromium logs every failed request ("Failed to load resource: the
+// server responded with a status of 502"). Nothing else is allowed.
+const injected502 = /the server responded with a status of 502/;
+
+test("board_read_fails_shows_retry_and_recovers (the first read on the server, a refresh in the browser)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const deal = makeDeal({ title: `Retry board ${run}` });
+  // 1. The first read fails (board.tsx BoardError): pipeline_board is refused for a moment (the local stack's superuser
+  // takes the grant away, and gives it back in finally). The board's own error with Retry; the shell stays; no
+  // database text. Retry after the grant is back renders the board.
+  const first = await open(browser);
+  sql("revoke execute on function public.pipeline_board from authenticated");
+  try {
+    await settled(first.page);
+    await first.page.goto("/pipeline");
+    const alert = first.page.getByRole("alert").filter({ hasText: "Couldn’t load the pipeline" });
+    await expect(alert).toBeVisible();
+    await expect(alert.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+    await expect(first.page.getByRole("navigation", { name: /Sections/ })).toBeVisible();
+    await expect(first.page.getByRole("region", { name: "Pipeline board" })).toHaveCount(0);
+    await expect(first.page.locator("body")).not.toContainText(/permission denied|pipeline_board|42501/);
+  } finally {
+    sql("grant execute on function public.pipeline_board to authenticated");
+  }
+  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer)', 'EXECUTE')")).toBe("t");
+  await first.page.getByRole("alert").getByRole("button", { name: "Retry" }).click();
+  await expect(first.page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await expect(card(first.page, deal)).toBeVisible();
+  await expect(first.page.getByRole("alert").filter({ hasText: "Couldn’t load the pipeline" })).toHaveCount(0);
+  expect(first.errors).toEqual([]);
+  await first.context.close();
+
+  // 2. A later read fails in the browser (the 30 s refresh, run at once on a fake clock: GET /api/pipeline/board
+  // answers 502, and its one retry too): "Couldn't refresh" with Retry, the cards already shown stay. Retry once the
+  // route answers again brings the deal made meanwhile.
+  const second = await open(browser);
+  await second.page.clock.install();
+  await gotoBoard(second.page);
+  await expect(card(second.page, deal)).toBeVisible();
+  const added = makeDeal({ title: `After retry ${run}` });
+  let failing = true;
+  let failed = 0;
+  await second.page.route((url) => url.pathname === "/api/pipeline/board", (route) => {
+    if (!failing) return route.continue();
+    failed += 1;
+    return route.fulfill({ status: 502, contentType: "application/json", body: "{}" });
+  });
+  await second.page.clock.fastForward(31_000);
+  await expect.poll(() => failed).toBeGreaterThanOrEqual(1);
+  await second.page.clock.fastForward(2_000);
+  const status = second.page.getByRole("status").filter({ hasText: "Couldn’t refresh" });
+  await expect(status).toBeVisible();
+  expect(failed).toBe(2);
+  await expect(card(second.page, deal)).toBeVisible();
+  await expect(card(second.page, added)).toHaveCount(0);
+  failing = false;
+  await status.getByRole("button", { name: "Retry" }).click();
+  await expect(card(second.page, added)).toBeVisible();
+  await expect(status).toHaveCount(0);
+  expect(second.errors.filter((e) => !injected502.test(e))).toEqual([]);
+  expect(second.errors.length).toBe(2);
+  await second.context.close();
+});
+
+test("column_read_fails_shows_retry_and_recovers (Show more)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const lead = makeLead("Column Retry");
+  // 120 more deals in Lead, so the column has more than its first 50 whatever earlier tests left there.
+  sql(`insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, title, value, stage_entered_at)
+       select '${org}', '${lead}', s.id, '${admin}', '${admin}', 'Column retry ${run} ' || i, (i * 10)::numeric, now() - (i || ' minutes')::interval
+         from public.pipeline_stages s, generate_series(1, 120) i where s.org_id = '${org}' and s.key = 'lead'`);
+  try {
+    const { context, page, errors } = await open(browser);
+    await gotoBoard(page);
+    const leadColumn = column(page, "lead");
+    const before = await leadColumn.locator("[data-deal-card]").count();
+    let failing = true;
+    await page.route((url) => url.pathname === "/api/pipeline/stage", (route) =>
+      failing ? route.fulfill({ status: 502, contentType: "application/json", body: "{}" }) : route.continue(),
+    );
+    await leadColumn.getByRole("button", { name: /^Show \d+ more$/ }).click();
+    const alert = leadColumn.getByRole("alert");
+    await expect(alert).toHaveText(/^Couldn’t load more\s*Retry$/);
+    // The cards already shown stay; the other columns are untouched.
+    expect(await leadColumn.locator("[data-deal-card]").count()).toBe(before);
+    await expect(column(page, "qualified").getByRole("alert")).toHaveCount(0);
+    failing = false;
+    await alert.getByRole("button", { name: "Retry" }).click();
+    await expect(leadColumn.getByText(/^Showing 100 of \d+$/)).toBeVisible();
+    await expect(leadColumn.getByRole("alert")).toHaveCount(0);
+    expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
+    expect(errors.length).toBe(1);
+    await context.close();
+  } finally {
+    sql(`delete from public.deals where company_id = '${lead}'`);
+  }
+});
