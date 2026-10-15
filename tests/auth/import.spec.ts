@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { ageStepUp, appReady, clearStockHistory, createUser, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // Lead import (Day 3b): an admin imports the fake sample files end to end (choose, match, check, import, undo), the
 // problems file, a check that fails part way (thrown away, choices kept), a paused import resumed, a checked import
@@ -31,6 +31,7 @@ const profileOf = (email: string) => `(select id from auth.users where email = '
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   // A clean slate: no leads, no imports, and nobody else called "Haider/Henri/Kais Test" (the owners in the files).
+  clearStockHistory();
   sql(`delete from public.files; delete from public.deals; delete from public.companies; delete from public.import_batches;
        update public.profiles set last_name = 'Earlier run'
        where last_name = 'Test' and first_name in ('Haider', 'Henri', 'Kais')`);

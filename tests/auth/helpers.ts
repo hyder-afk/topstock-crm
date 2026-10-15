@@ -204,17 +204,12 @@ export function setRole(email: string, role: "admin" | "manager" | "rep") {
   sql(`update public.profiles set role = '${role}' where id = (select id from auth.users where email = ${emailLiteral(email)})`);
 }
 
-// Replaces every lead with `count` made-up companies (names from fixed word lists, @example.com emails, +33 6 00
-// numbers), owned in turn by the given test users, with a contact on every third one. File rows and deals go first: since
-// Day 4d a lead with files cannot be deleted (their stored bytes, if any, are left to the throwaway stack), and a deal
-// keeps its lead (deals_company_id_fkey has no cascade), so earlier specs' made-up files and deals would block the reset.
-// Since Day 6 a lead with stock history (holds, sales) is kept too (lead_delete_blocked_by_stock_history), so the
-// earlier Day 6 specs' made-up stock history goes first, whole: movements, holds, sales, requests and client links, and
-// the levels they built (every product back to nothing, consistent with an empty movement log). Their guards make
-// that history append-only, so this throwaway-stack reset runs with triggers off (session_replication_role), which
-// also turns off the foreign key actions: every table below is listed, children included.
-export function seedLeads(ownerEmails: string[], count = 120) {
-  const owners = ownerEmails.map(emailLiteral).join(", ");
+// Since Day 6 a lead with stock history (holds, sales) is kept (lead_delete_blocked_by_stock_history), so a spec that
+// resets the leads first clears the earlier Day 6 specs' made-up stock history, whole: movements, holds, sales, requests
+// and client links, a stock import's undo records, and the levels they built (every product back to nothing, consistent with an empty movement log).
+// Their guards make that history append-only, so this throwaway-stack reset runs with triggers off
+// (session_replication_role), which also turns off the foreign key actions: every table below is listed, children included.
+export function clearStockHistory() {
   sql(`
     begin;
     set local session_replication_role = replica;
@@ -229,8 +224,18 @@ export function seedLeads(ownerEmails: string[], count = 120) {
     delete from private.stock_movements;
     delete from private.stock_reservations;
     delete from public.stock_levels;
+    delete from private.stock_import_changes;
     commit;
   `);
+}
+
+// Replaces every lead with `count` made-up companies (names from fixed word lists, @example.com emails, +33 6 00
+// numbers), owned in turn by the given test users, with a contact on every third one. File rows and deals go first: since
+// Day 4d a lead with files cannot be deleted (their stored bytes, if any, are left to the throwaway stack), and a deal
+// keeps its lead (deals_company_id_fkey has no cascade), so earlier specs' made-up files and deals would block the reset.
+export function seedLeads(ownerEmails: string[], count = 120) {
+  const owners = ownerEmails.map(emailLiteral).join(", ");
+  clearStockHistory();
   sql(`
     delete from public.files;
     delete from public.deals;

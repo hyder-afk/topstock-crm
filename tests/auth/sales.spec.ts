@@ -352,7 +352,8 @@ test("empty_sections_and_palette_record_sale", async ({ browser }) => {
   const sheet = page.getByRole("dialog", { name: "Record sale" });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole("combobox", { name: "Lead" })).toBeFocused();
-  await page.keyboard.type(emptyLeadName.split(" ")[0]);
+  // The whole name: in CI's order leads.spec has just made 120 leads, many of them "Atelier …", before this spec.
+  await page.keyboard.type(emptyLeadName);
   await expect(sheet.getByRole("option", { name: new RegExp(emptyLeadName) })).toBeVisible();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
