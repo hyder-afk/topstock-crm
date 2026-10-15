@@ -18,7 +18,7 @@ What was checked:
 | Flood guard | `private.auth_event_guard` | DEFINER trigger function, not callable (revoked from PUBLIC, anon, authenticated), `search_path = ''` |
 | Same-org owner keys | composite FKs `companies/deals/tasks (owner, org_id) → profiles (id, org_id)` | `profiles_id_org_key` unique; MATCH SIMPLE (a null owner passes, as before); `ON DELETE SET NULL (owner column)` keeps `org_id` |
 | Anon sweep | `rls_attack.sql` section 1 | relkinds r, p, v, m, f, S; every `pg_proc` row in `public` and `private`; schema USAGE and CREATE; function allowlist by full signature (Day 6's two share functions only) |
-| Rate limiter | `src/lib/rate-limit.ts`, five routes | keyed on the verified `claims.sub`, checked after the aal2 session check; no counts in the 429 answer. Not scrape protection (README decisions and residual R1) |
+| Rate limiter | `src/lib/rate-limit.ts`, five routes (19 after the merge: last section) | keyed on the verified `claims.sub`, checked after the aal2 session check; no counts in the 429 answer. Not scrape protection (README decisions and residual R1) |
 | Sign out everywhere | `signOutEverywhere` | requires an aal2 session (server-checked); a server action (POST, Next's Origin check); cookies SameSite=Lax |
 | Cookie flags | `authCookieOptions` | Secure from the request URL or `x-forwarded-proto`: a forged header can only add Secure (tightens), never remove it |
 | Secrets | the diff | none; no keys, no service-role use in client code, nothing logged |
@@ -46,3 +46,14 @@ held), and `db-mutations.py` day7a row 15 (removing the early return is caught b
 
 - A signed-in person can write up to 30 fake `sign_in` rows an hour about themselves (only about themselves, no
   details, own organisation). README residual R3.
+
+## Merge with Day 6 (08b0ae7) and the fixes after it
+
+Delta reviewed: the merge of `day6a-local` 9bbbf1c and the commits after it.
+
+| Change | Checked | Holds because |
+|---|---|---|
+| 14 more rate-limited routes (19 in all): Day 6's `/api/inventory/stock`, `/movements`, `/sales`, `/requests`, `/reservations`, `/share-links`, `/api/leads/[id]/stock`, `/api/stock-imports/[id]/changes` and `/issues`; the lead page's `/api/leads/[id]/activities`, `/deals`, `/files`, `/tasks`; the lead import's `/api/imports/[id]/issues` | each GET handler | `listRateLimited(session.claims.sub)` straight after `apiSession()`: keyed on the verified user id, never on request input, before any parsing or database call; the same generic 429 (no counts). A unit scan pins the order on all 19 and makes every GET route under `src/app/api` either limited or named as not a list (one record, counts, a file download, the client whitelist). Still a speed bump, not scrape protection (README residual R1) |
+| `src/proxy.ts` imports `./lib/supabase/cookie-options` instead of `@/lib/supabase/cookie-options` | the proxy's cookie options | the same file and module at runtime (`@/*` maps to `./src/*`); the proxy still passes `authCookieOptions(isHttps(request))` and the auth-cookies unit scan still checks it. Changed only because Playwright's loader does not map `@/` inside the proxy when Day 6's `proxy-share` test imports it dynamically |
+
+Result: NO FINDINGS at 80 % confidence or more on the delta.
