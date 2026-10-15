@@ -197,6 +197,27 @@ with triggers off. The 5a `sql-bidi` spec scans every file: two raw bidi charact
   **Day 6 must define its function with `create or replace`** (done on the Day 6 branch in its 6d migration, with a note;
   its db tests pass with the 5c stub created first). If Day 6 ever merges first, the stub is skipped (created only if
   absent).
+- **Day 5's own tests that read `stock_alerts()`** (advisor, 15 Oct: they assumed the stub, and Day 6's real function
+  always answers an object). Now each one works on whichever function is installed, and stays as strict as before on
+  the stub:
+  1. `supabase/tests/home_attack.sql` block 0 (`stock_alerts_stub_null`): passes for null (the stub) or an object with
+     exactly Day 6's keys (`low`, `sold_out`, `arriving_late`, `requests_new`, `holds_ending_soon`, `deals_waiting`,
+     `sample`), whole non-negative counts and at most 5 sample rows of exactly `id`, `name`, `available`,
+     `reorder_point`, `arriving`; anything else fails (mutation rows 20 and 21: an extra key, an empty object).
+  2. `tests/auth/home.spec.ts` "win_rate_hidden_under_5 … low_stock_placeholder_when_null (or Day 6's live card)" and
+  3. `card_error_isolated`: both call `expectInstalledLowStock`, which reads the installed body
+     (`installedStockAlerts()`: the stub is `return null;` with no other `private.` read; Day 6's reads
+     `from private.stock_rows` and builds `'sample'`; any other body fails). Stub: the placeholder sentence and no link
+     (unchanged). Day 6: the card as the server parsed `/api/home`'s `lowStock` (never the placeholder, never "Couldn't
+     load", "Open inventory" to the Low filter, the all-clear line or the count line and each sample row's figures).
+  4. `tests/auth/home.spec.ts` "low_stock_filled_from_day6_stock_alerts …": saves whichever body is installed (stub:
+     must contain `return null`; Day 6: `private.stock_rows`), installs its fixed stand-in, and puts the saved body back
+     (checked identical after).
+  Checked both ways on the local stack: as is (stub), and with Day 6's real `stock_alerts()` body copied from day6a-local
+  over minimal throwaway tables (`private.stock_rows`, `private.stock_requests`, `private.stock_reservations`,
+  `public.locations`), empty and with one low and one sold-out fake product: `home.spec` 14 of 14 each time; the stub
+  and its grants put back after (definition identical). `home_attack.sql` checked with the stub, and with the stub's
+  body answering a Day 6-shaped object (filled, and all zeros with an empty sample): all pass.
 - Rename the migration at merge if main moved (D35).
 
 ## Not done (and why)

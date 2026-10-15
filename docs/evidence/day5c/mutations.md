@@ -69,3 +69,18 @@ new. Rows 17 to 19 re-run in a throwaway worktree of c6c8afb (its `db-test.sh` c
 | 17 | stock_alerts stub callable by anon | caught | FAIL: Home function rules broken by stock_alerts() |
 | 18 | stock_alerts stub without the two-factor check (an aal1 session gets an answer) | caught | FAIL: "select public.stock_alerts()" succeeded, expected 42501 |
 | 19 | stock_alerts stub runs as its owner (SECURITY DEFINER) | caught | FAIL: Home function rules broken by stock_alerts() |
+
+## Advisor item 1 (15 Oct): `stock_alerts()` answers null or exactly Day 6's shape
+
+`home_attack.sql` now accepts what Day 6's real `stock_alerts()` answers (it always returns an object) as well as the
+stub's null, so two rows prove any other answer still fails. Rows 20 and 21 run in a scratch copy of the working tree
+(its `db-test.sh` on port 54497); rows 1 to 19 are unchanged (the edit touches only the test's last check).
+**2 of 2 caught**; `--anchors` finds every row of every set once (day5c: 21 rows).
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 20 | stock_alerts answers Day 6's keys plus an extra one (a purchase cost) | caught | FAIL: stock_alerts_stub_null (neither null nor Day 6's shape: {"low": 0, "sample": [], "sold_out": 0, "requests_new": 0, "arriving_late": 0, |
+| 21 | stock_alerts answers an empty object | caught | FAIL: stock_alerts_stub_null (neither null nor Day 6's shape: {}) |
+
+And the other way: with the stub's body answering a Day 6-shaped object (3 low, 1 sold out, two sample rows; and all
+zeros with an empty sample), the whole `db-test.sh` passes.

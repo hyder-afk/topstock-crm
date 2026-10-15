@@ -55,6 +55,48 @@ const card = (page: Page, title: RegExp) => page.getByRole("region", { name: tit
 // The figure as screen readers get it (the final value, whatever frame the count-up is on).
 const figure = (page: Page, label: RegExp) => kpi(page, label).locator("[data-kpi-number] .sr-only");
 
+// Which public.stock_alerts() the local stack holds (rebase point, docs/evidence/day5c/README.md): the Day 5c stub
+// (answers null: the calm placeholder) until Day 6's 6d migration replaces its body with create or replace (live counts
+// and up to 5 low products). The body is recognised by what it does; any other body (a stand-in left behind, say) fails.
+type StockAlerts = { kind: "stub" | "day6"; def: string };
+function installedStockAlerts(): StockAlerts {
+  const def = sql("select pg_get_functiondef('public.stock_alerts()'::regprocedure)");
+  const src = sql("select prosrc from pg_proc where oid = 'public.stock_alerts()'::regprocedure");
+  const stub = /\breturn null;/.test(src) && !/jsonb_build_object|private\./.test(src.replace("private.has_aal2()", ""));
+  const day6 = /\bfrom private\.stock_rows\b/.test(src) && /'sample'/.test(src) && !/\breturn null;/.test(src);
+  if (stub === day6) throw new Error(`stock_alerts() is neither the Day 5c stub nor Day 6's function:\n${def}`);
+  return { kind: stub ? "stub" : "day6", def };
+}
+const en = new Intl.NumberFormat("en-GB");
+// The Low stock card for whatever stock_alerts() is installed (no stand-in): the stub's placeholder and no link, or
+// Day 6's live answer as the server parsed it (the strict schema), drawn as the card draws it.
+async function expectInstalledLowStock(page: Page) {
+  const low = card(page, /^Low stock/);
+  if (installedStockAlerts().kind === "stub") {
+    await expect(low).toContainText("Stock alerts will show here once inventory is set up.");
+    await expect(low.getByRole("link")).toHaveCount(0);
+    return;
+  }
+  const api = await (await page.request.get("/api/home?scope=team")).json();
+  expect(api.lowStock.ok).toBe(true);
+  const d = api.lowStock.data;
+  expect(d).not.toBeNull();
+  await expect(low).not.toContainText("Stock alerts will show here once inventory is set up.");
+  await expect(low).not.toContainText("Couldn’t load");
+  await expect(low.getByRole("link", { name: "Open inventory" })).toHaveAttribute("href", "/inventory?filter=low");
+  if (d.low + d.sold_out === 0) {
+    await expect(low).toContainText("All products are above their reorder level.");
+    await expect(low.getByRole("listitem").filter({ hasText: /available · reorder at/ })).toHaveCount(0);
+  } else {
+    const waiting = d.deals_waiting > 0 ? ` · ${en.format(d.deals_waiting)} deal${d.deals_waiting === 1 ? "" : "s"} waiting` : "";
+    await expect(low).toContainText(`${en.format(d.low)} low · ${en.format(d.sold_out)} sold out${waiting}`);
+    for (const item of d.sample as { name: string; available: number; reorder_point: number }[]) {
+      await expect(low.getByRole("listitem").filter({ hasText: item.name }).first())
+        .toContainText(`${en.format(item.available)} available · reorder at ${en.format(item.reorder_point)}`);
+    }
+  }
+}
+
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   const adminSecret = await createUser(adminEmail, password, true);
@@ -375,7 +417,7 @@ test("karachi_today_boundary", async ({ browser }) => {
   }
 });
 
-test("win_rate_hidden_under_5 and recent_activity_has_no_note_text and low_stock_placeholder_when_null", async ({ browser }) => {
+test("win_rate_hidden_under_5 and recent_activity_has_no_note_text and low_stock_placeholder_when_null (or Day 6's live card)", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await gotoHome(page);
   await expect(card(page, /^Pipeline/)).toContainText("Not enough closed deals yet");
@@ -388,9 +430,7 @@ test("win_rate_hidden_under_5 and recent_activity_has_no_note_text and low_stock
   const api = await (await page.request.get("/api/home?scope=team")).text();
   expect(api).not.toContain("SECRET-NOTE");
   await expect(recent.locator("time").first()).toHaveAttribute("title", /\d/);
-  const low = card(page, /^Low stock/);
-  await expect(low).toContainText("Stock alerts will show here once inventory is set up.");
-  await expect(low.getByRole("link")).toHaveCount(0);
+  await expectInstalledLowStock(page);
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -425,7 +465,8 @@ async function viaScopeSwitch(page: Page, mutate: (data: Record<string, unknown>
 
 // Day 6's stock_alerts() stand-in for the filled card (Haider's decision B): installed as the database superuser on the
 // local stack only, with Day 6's signature and checks, answering a fixed payload in Day 6's exact shape; the 5c stub is
-// put back afterwards from its own definition (pg_get_functiondef), grants kept by create or replace. The page then
+// put back afterwards from its own definition (pg_get_functiondef), grants kept by create or replace (after Day 6's 6d
+// migration it is Day 6's real function that is put back, the same way). The page then
 // reads it through the real server path (fetchHome, the strict Zod parse). Auth specs run one worker at a time.
 function fakeStockAlerts(payload: Record<string, unknown>) {
   const json = JSON.stringify(payload).replaceAll("'", "''");
@@ -458,7 +499,7 @@ test("card_error_isolated", async ({ browser }) => {
   // Every other card keeps working.
   await expect(kpi(page, /Open pipeline/)).toContainText("€50,000");
   await expect(card(page, /^Recent activity/)).toContainText(`Comptoir Brécy ${run}`);
-  await expect(card(page, /^Low stock/)).toContainText("Stock alerts will show here once inventory is set up.");
+  await expectInstalledLowStock(page);
   expect(errors).toEqual([]);
   await page.getByRole("group", { name: "Figures for" }).getByRole("button", { name: "Team" }).click();
   await settled(page);
@@ -466,8 +507,8 @@ test("card_error_isolated", async ({ browser }) => {
 });
 
 test("low_stock_filled_from_day6_stock_alerts, all clear, and a wrong shape failing alone", async ({ browser }) => {
-  const stub = sql("select pg_get_functiondef('public.stock_alerts()'::regprocedure)");
-  expect(stub).toContain("return null");
+  const installed = installedStockAlerts();
+  expect(installed.def).toContain(installed.kind === "stub" ? "return null" : "private.stock_rows");
   try {
     fakeStockAlerts(day6Alerts);
     const { context, page, errors } = await open(browser, adminState);
@@ -522,9 +563,9 @@ test("low_stock_filled_from_day6_stock_alerts, all clear, and a wrong shape fail
     expect(bad.errors).toEqual([]);
     await bad.context.close();
   } finally {
-    sql(stub);
+    sql(installed.def);
   }
-  expect(sql("select pg_get_functiondef('public.stock_alerts()'::regprocedure)")).toBe(stub);
+  expect(installedStockAlerts()).toEqual(installed);
 });
 
 test("phone_390_no_horizontal_scroll", async ({ browser }) => {

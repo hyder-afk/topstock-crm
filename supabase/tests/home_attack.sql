@@ -165,6 +165,7 @@ do $$
 declare
   f record;
   n integer;
+  j jsonb;
 begin
   -- Every Home function: SECURITY INVOKER, search_path '', callable by signed-in people only, static SQL.
   for f in select p.oid, p.oid::regprocedure::text as sig, p.prosecdef, p.proconfig, p.prosrc
@@ -202,7 +203,11 @@ begin
   end if;
   -- stock_alerts_stub (decision B): Day 6's exact signature, so Day 6's create or replace keeps every grant: no
   -- argument, returns jsonb, plpgsql, stable, SECURITY INVOKER (checked above with search_path and the grants), one
-  -- overload only. It answers null for a two-factor caller (inventory not set up yet: the card's calm placeholder).
+  -- overload only. For a two-factor caller the 5c stub answers null (inventory not set up yet: the card's calm
+  -- placeholder); once Day 6's 6d migration has replaced the body (create or replace, rebase point), it answers an
+  -- object with exactly Day 6's keys, whole non-negative counts and at most 5 sample rows of exactly Day 6's fields
+  -- (the shape the app's strict lowStockCard schema parses). Anything else fails: a number, an array, a missing or an
+  -- extra key (a purchase cost, say).
   perform pg_temp.eq('stock_alerts overloads', (select count(*)::integer from pg_proc p join pg_namespace s on s.oid = p.pronamespace
                                                  where s.nspname = 'public' and p.proname = 'stock_alerts'), 1);
   select count(*) into n from pg_proc p
@@ -211,10 +216,24 @@ begin
      and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql');
   perform pg_temp.eq('stock_alerts stub properties', n, 1);
   perform pg_temp.act('00000000-0000-0000-0000-0000000005c0');
-  if public.stock_alerts() is not null then
-    raise exception 'FAIL: stock_alerts_stub_null';
-  end if;
+  j := public.stock_alerts();
   perform pg_temp.su();
+  if j is not null then
+    if jsonb_typeof(j) <> 'object'
+       or (select array_agg(k order by k) from jsonb_object_keys(j) k)
+          is distinct from array['arriving_late', 'deals_waiting', 'holds_ending_soon', 'low', 'requests_new', 'sample', 'sold_out']
+       or exists (select 1 from unnest(array['low', 'sold_out', 'arriving_late', 'requests_new', 'holds_ending_soon',
+                                            'deals_waiting']) k
+                   where case when jsonb_typeof(j -> k) = 'number'
+                              then (j ->> k)::numeric < 0 or (j ->> k)::numeric <> trunc((j ->> k)::numeric) else true end)
+       or jsonb_typeof(j -> 'sample') <> 'array' or jsonb_array_length(j -> 'sample') > 5
+       or exists (select 1 from jsonb_array_elements(j -> 'sample') e
+                   where jsonb_typeof(e) <> 'object'
+                      or (select array_agg(k order by k) from jsonb_object_keys(e) k)
+                         is distinct from array['arriving', 'available', 'id', 'name', 'reorder_point']) then
+      raise exception 'FAIL: stock_alerts_stub_null (neither null nor Day 6''s shape: %)', left(j::text, 200);
+    end if;
+  end if;
 end $$;
 
 -- 1. The caller's day and month at fixed instants (threat 24; mutations "month start in UTC", "day end = start + 24 h")

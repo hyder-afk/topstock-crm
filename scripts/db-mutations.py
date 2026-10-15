@@ -1498,6 +1498,14 @@ MUTATIONS_5C = [
     ("stock_alerts stub runs as its owner (SECURITY DEFINER)",
      [("    language plpgsql stable security invoker set search_path = '' as $f$",
        "    language plpgsql stable security definer set search_path = '' as $f$")]),
+    # Rows 20 and 21 (advisor, 15 Oct 2026): home_attack accepts null (this stub) or exactly Day 6's shape (6d's real
+    # body after its create or replace); any other answer fails, e.g. Day 6's keys plus a purchase cost, or an empty object.
+    ("stock_alerts answers Day 6's keys plus an extra one (a purchase cost)",
+     [("      return null;  -- inventory not set up yet",
+       "      return jsonb_build_object('low', 0, 'sold_out', 0, 'arriving_late', 0, 'requests_new', 0, "
+       "'holds_ending_soon', 0, 'deals_waiting', 0, 'sample', '[]'::jsonb, 'cost_per_piece', 4.1);")]),
+    ("stock_alerts answers an empty object",
+     [("      return null;  -- inventory not set up yet", "      return '{}'::jsonb;")]),
 ]
 
 
