@@ -475,7 +475,7 @@ function ColumnRow({
             </span>
           ) : null}
         </div>
-        <p className="min-w-0 truncate text-sm text-muted-foreground" title={examples.join(" · ")}>
+        <p className="min-w-0 text-sm text-muted-foreground wrap-anywhere">
           {examples.length ? examples.join(" · ") : t("emptyColumn")}
         </p>
       </div>
@@ -528,7 +528,7 @@ function ValueRow({
         {needsChoice || amber ? (
           <span aria-hidden="true" className={needsChoice ? "size-1.5 shrink-0 rounded-full bg-status-red" : "size-1.5 shrink-0 rounded-full bg-status-amber"} />
         ) : null}
-        <span className="truncate" title={label}>
+        <span className="min-w-0 wrap-anywhere">
           {label}
         </span>
         {count !== null ? (

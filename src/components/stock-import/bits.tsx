@@ -47,7 +47,7 @@ export function ValueRow({
         {needsChoice || amber ? (
           <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", needsChoice ? "bg-status-red" : "bg-status-amber")} />
         ) : null}
-        <span className="truncate" title={label} translate="no">
+        <span className="min-w-0 wrap-anywhere" translate="no">
           {label}
         </span>
         {count !== null ? (

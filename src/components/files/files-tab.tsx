@@ -596,7 +596,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
 function FileName({ name, className }: { name: string; className?: string }) {
   const { stem, ext } = splitName(name);
   return (
-    <span className={cn("flex min-w-0", className)} title={name} translate="no">
+    <span className={cn("flex min-w-0", className)} translate="no">
       <span className="sr-only">{name}</span>
       <span aria-hidden="true" dir="auto" className="truncate">
         {stem}

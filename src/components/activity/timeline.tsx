@@ -639,7 +639,7 @@ const EntryItem = memo(function EntryItem({
               {entry.pending ? (
                 <span>{t("saving")}</span>
               ) : (
-                <time dateTime={entry.created_at} title={absolute}>
+                <time dateTime={entry.created_at}>
                   {now ? format.relativeTime(created, now) : format.dateTime(created, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}
                   <span className="sr-only"> ({absolute})</span>
                 </time>
@@ -688,7 +688,7 @@ const EntryItem = memo(function EntryItem({
         </div>
 
         {editing ? (
-          <form
+          <form noValidate
             ref={formRef}
             className="flex flex-col gap-2"
             onSubmit={(e) => {

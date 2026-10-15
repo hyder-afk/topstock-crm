@@ -75,12 +75,9 @@ export function RecentActivity({
                 <span className="line-clamp-2 min-w-0 flex-1 text-sm md:line-clamp-1">
                   <Line row={row} />
                 </span>
-                <time
-                  dateTime={row.at}
-                  title={format.dateTime(at, { dateStyle: "medium", timeStyle: "short" })}
-                  className="shrink-0 text-xs text-muted-foreground"
-                >
+                <time dateTime={row.at} className="shrink-0 text-xs text-muted-foreground">
                   {format.relativeTime(at, now)}
+                  <span className="sr-only"> ({format.dateTime(at, { dateStyle: "medium", timeStyle: "short" })})</span>
                 </time>
               </>
             );

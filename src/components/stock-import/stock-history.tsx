@@ -62,7 +62,7 @@ export function StockHistory({
               <li key={item.id} className="flex flex-col gap-2 p-4">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate font-bold" title={item.filename} translate="no">
+                    <span className="font-bold wrap-anywhere" translate="no">
                       {item.filename}
                     </span>
                     <span className="text-xs text-muted-foreground">{t("when", { who, when })}</span>

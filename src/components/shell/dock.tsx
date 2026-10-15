@@ -11,6 +11,7 @@ import { prefetchHome } from "@/components/home/use-home";
 import { prefetchPipeline } from "@/lib/prefetch";
 import { sectionForPath, sections, type SectionId } from "@/lib/nav";
 import { goKeys } from "@/lib/shortcuts";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const BEAD = 56; // px, the red bead that marks the current section
@@ -148,35 +149,35 @@ export function Dock() {
           const Icon = s.icon;
           const on = shown === s.id;
           return (
-            <Link
-              key={s.id}
-              href={s.href}
-              ref={(el) => {
-                if (el) links.current.set(s.id, el);
-                else links.current.delete(s.id);
-              }}
-              aria-current={active === s.id ? "page" : undefined}
-              // Day 5b (design D32): the pipeline's data goes into the cache on hover or focus, so the route renders at once.
-              onPointerEnter={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
-              onFocus={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
-              title={tShortcut("tooltip", { key: goKeys[s.id].toUpperCase() })}
-              className={cn(
-                "group flex min-w-0 flex-col items-center justify-end gap-0.5 rounded-lg pb-2 text-[0.6875rem] tracking-[0.01em] transition-colors duration-150",
-                on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
-                !s.phone && "hidden lg:flex",
-                "focus-visible:outline-offset-[-4px]",
-              )}
-            >
-              <Icon
-                aria-hidden="true"
-                strokeWidth={1.75}
+            <Tooltip key={s.id} content={tShortcut("tooltip", { key: goKeys[s.id].toUpperCase() })}>
+              <Link
+                href={s.href}
+                ref={(el) => {
+                  if (el) links.current.set(s.id, el);
+                  else links.current.delete(s.id);
+                }}
+                aria-current={active === s.id ? "page" : undefined}
+                // Day 5b (design D32): the pipeline's data goes into the cache on hover or focus, so the route renders at once.
+                onPointerEnter={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
+                onFocus={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
                 className={cn(
-                  "size-[22px] transition-[opacity,transform] duration-150 group-active:scale-[0.86]",
-                  on ? "opacity-0" : "opacity-100",
+                  "group flex min-w-0 flex-col items-center justify-end gap-0.5 rounded-lg pb-2 text-[0.6875rem] tracking-[0.01em] transition-colors duration-150",
+                  on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                  !s.phone && "hidden lg:flex",
+                  "focus-visible:outline-offset-[-4px]",
                 )}
-              />
-              <span className="max-w-full truncate px-1">{t(s.id)}</span>
-            </Link>
+              >
+                <Icon
+                  aria-hidden="true"
+                  strokeWidth={1.75}
+                  className={cn(
+                    "size-[22px] transition-[opacity,transform] duration-150 group-active:scale-[0.86]",
+                    on ? "opacity-0" : "opacity-100",
+                  )}
+                />
+                <span className="max-w-full truncate px-1">{t(s.id)}</span>
+              </Link>
+            </Tooltip>
           );
         })}
 

@@ -159,8 +159,8 @@ function LeadDetailView({
     {
       label: t("lastActivity"),
       value: lead.last_activity_at ? (
-        <time dateTime={lead.last_activity_at} title={format.dateTime(new Date(lead.last_activity_at), { dateStyle: "long", timeStyle: "short" })}>
-          {format.relativeTime(new Date(lead.last_activity_at))}
+        <time dateTime={lead.last_activity_at}>
+          {format.relativeTime(new Date(lead.last_activity_at))}<span className="sr-only"> ({format.dateTime(new Date(lead.last_activity_at), { dateStyle: "long", timeStyle: "short" })})</span>
         </time>
       ) : (
         <span className="text-muted-foreground">{tLeads("never")}</span>

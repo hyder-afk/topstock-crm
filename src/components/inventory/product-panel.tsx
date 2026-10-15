@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
@@ -232,6 +232,7 @@ function SellHoldActions({ onSheet }: { onSheet: (kind: "sale" | "hold") => void
 
 function PanelActions({ p, role, stepUp, onDialog }: { p: ProductDetail; role: Role; stepUp: StepUp; onDialog: (d: Dialogs) => void }) {
   const t = useTranslations("Inventory.panel");
+  const archiveWhy = useId();
   const toast = useToast();
   const errorText = useStockErrorText();
   const queryClient = useQueryClient();
@@ -306,12 +307,18 @@ function PanelActions({ p, role, stepUp, onDialog }: { p: ProductDetail; role: R
         variant="quiet"
         className={action}
         aria-disabled={!empty || undefined}
-        title={!empty ? t("archiveNeedsEmpty") : undefined}
+        aria-describedby={!empty ? archiveWhy : undefined}
         onClick={() => (empty ? onDialog("archive") : toast.show(t("archiveNeedsEmpty")))}
       >
         <Archive aria-hidden="true" strokeWidth={1.75} className="size-4" />
         <span className="flex-1 text-left">{t("archive")}</span>
       </Button>
+      {/* Why Archive is not available: visible text, never a tooltip (phones show none; Day 7b). */}
+      {!empty ? (
+        <p id={archiveWhy} className="col-span-2 text-xs text-muted-foreground">
+          {t("archiveNeedsEmpty")}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -440,8 +447,8 @@ function RecentMovements({ p }: { p: ProductDetail }) {
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate font-bold">{say(m)}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    <time dateTime={m.created_at} title={format.dateTime(new Date(m.created_at), { dateStyle: "medium", timeStyle: "short" })}>
-                      {format.relativeTime(new Date(m.created_at))}
+                    <time dateTime={m.created_at}>
+                      {format.relativeTime(new Date(m.created_at))}<span className="sr-only"> ({format.dateTime(new Date(m.created_at), { dateStyle: "medium", timeStyle: "short" })})</span>
                     </time>
                     {" · "}
                     {m.kind === "transfer_in" ? t("toWarehouse") : tPlace(m.location)}
