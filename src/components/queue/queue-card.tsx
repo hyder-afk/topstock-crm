@@ -12,6 +12,7 @@ import { callHref } from "@/lib/phone";
 import type { QueueCard as Card } from "@/lib/queue";
 import { isOpen, localDate, openUntilMinutes, primaryZone, spanEnds, zonedInstant } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
+import { Disclosure } from "@/components/ui/disclosure";
 
 /** The number a call goes to: the lead's main line, or one contact's. */
 export type Dialled = { kind: "lead" } | { kind: "contact"; contactId: string };
@@ -222,8 +223,8 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
                   </span>
                   {a.user_first_name ? <span>{a.user_first_name}</span> : null}
                   {now ? (
-                    <time dateTime={a.created_at} title={format.dateTime(new Date(a.created_at), { dateStyle: "medium", timeStyle: "short" })}>
-                      {format.relativeTime(new Date(a.created_at), now)}
+                    <time dateTime={a.created_at}>
+                      {format.relativeTime(new Date(a.created_at), now)}<span className="sr-only"> ({format.dateTime(new Date(a.created_at), { dateStyle: "medium", timeStyle: "short" })})</span>
                     </time>
                   ) : null}
                 </span>
@@ -265,11 +266,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
         </section>
       ) : null}
 
-      <details className="group rounded-md bg-muted/60 px-3 py-2 [&_summary::-webkit-details-marker]:hidden">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold sm:min-h-9">
-          {t("script.title")}
-          <span aria-hidden="true" className="text-muted-foreground transition-transform duration-150 group-open:rotate-90">›</span>
-        </summary>
+      <Disclosure className="rounded-md bg-muted/60 px-3 py-2" summaryClassName="sm:min-h-9" summary={t("script.title")}>
         <div className="flex flex-col gap-2 pb-1">
           <p lang={lang} className="max-w-[65ch] text-sm text-pretty">
             {me ? t(`script.${lang}`, { me, lead: card.name }) : t(`script.${lang}NoName`, { lead: card.name })}
@@ -282,7 +279,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
             {lang === "fr" ? t("script.inEnglish") : t("script.inFrench")}
           </button>
         </div>
-      </details>
+      </Disclosure>
 
       {next || claiming ? (
         <p className="text-sm text-muted-foreground">

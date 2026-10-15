@@ -8,6 +8,9 @@ import { createShareLink, extendShareLink, revokeShareLink } from "@/app/(app)/i
 import { runWithStepUp, useStockErrorText, type StepUp } from "@/components/inventory/stock-actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { ShareItem } from "@/lib/share/schema";
 import { defaultLinkLanguage, type MadeLink, type ShareLinkList, type ShareLinkRow } from "@/lib/share/team";
@@ -146,36 +149,37 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
 
       {canEdit ? (
         <>
-          <details className="group rounded-md border border-border">
-            <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-bold">{t("options")}</summary>
+          <Disclosure className="rounded-md border border-border" summaryClassName="px-3" summary={t("options")}>
             <div className="grid gap-3 border-t border-border p-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm font-bold">
-                {t("language")}
-                <select
+              <div className="flex flex-col gap-1 text-sm font-bold">
+                <Label htmlFor={`${id}-language`}>{t("language")}</Label>
+                <Select
+                  id={`${id}-language`}
                   name="language"
                   value={language}
                   onChange={(e) => setLanguage(e.target.value === "fr" ? "fr" : "en")}
-                  className="min-h-11 rounded-md border border-border bg-background px-3 font-normal text-foreground"
+                  className="font-normal"
                 >
                   <option value="fr">Français</option>
                   <option value="en">English</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm font-bold">
-                {t("expiry")}
-                <select
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1 text-sm font-bold">
+                <Label htmlFor={`${id}-expiry`}>{t("expiry")}</Label>
+                <Select
+                  id={`${id}-expiry`}
                   name="expiry"
-                  value={days}
+                  value={String(days)}
                   onChange={(e) => setDays(Number(e.target.value) as (typeof EXPIRY)[number])}
-                  className="min-h-11 rounded-md border border-border bg-background px-3 font-normal text-foreground"
+                  className="font-normal"
                 >
                   {EXPIRY.map((d) => (
                     <option key={d} value={d}>
                       {t("days", { count: d })}
                     </option>
                   ))}
-                </select>
-              </label>
+                </Select>
+              </div>
               <label className="flex flex-col gap-1 text-sm font-bold sm:col-span-2">
                 {t("label")}
                 <input
@@ -197,7 +201,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
                 {t("allowRequests")}
               </label>
             </div>
-          </details>
+          </Disclosure>
 
           {made ? (
             <div className="flex flex-col gap-2 rounded-md bg-muted p-3">

@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { updateLead } from "@/app/(app)/leads/actions";
 import { setLeadTimezone, setNextAction } from "@/app/(app)/leads/[id]/actions";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { refreshLead } from "@/components/activity/use-activities";
@@ -199,17 +200,18 @@ export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { 
                 {t("nextCall")}
               </label>
               <div className="flex flex-wrap items-center gap-2">
-                <input
+                <DateTimePicker
                   id={`${id}-next`}
                   name="next_action_at"
                   data-focus="next"
-                  type="datetime-local"
                   value={next}
                   min={`${addDays(today, -365)}T00:00`}
                   max={`${addDays(today, 730)}T23:59`}
-                  onChange={(e) => setNext(e.target.value)}
+                  defaultTime="09:00"
+                  timeZone={zone}
+                  onValueChange={setNext}
                   aria-describedby={`${id}-next-hint`}
-                  className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground"
+                  className="w-auto"
                 />
                 <Button variant="neutral" className="min-h-11" aria-disabled={!next || next === nextValue || undefined} onClick={() => next && next !== nextValue && void saveNext(next)}>
                   {t("save")}

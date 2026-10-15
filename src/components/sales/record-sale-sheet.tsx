@@ -13,6 +13,8 @@ import { refreshSales, useLeadStock } from "@/components/sales/use-sales";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { parsePrice } from "@/lib/inventory/units";
 import type { QtyUnit } from "@/lib/inventory/units";
@@ -225,6 +227,7 @@ export function RecordSaleSheet({
       >
         <form
           id={formId}
+          noValidate
           className="flex flex-col gap-5 p-5 sm:p-6"
           onSubmit={(e) => {
             e.preventDefault();
@@ -405,22 +408,17 @@ export function RecordSaleSheet({
           </Button>
 
           {deals.length > 0 ? (
-            <label className="flex flex-col gap-2 text-sm font-bold">
-              {t("deal")}
-              <select
-                name="deal"
-                value={dealId ?? ""}
-                onChange={(e) => setDealId(e.target.value || null)}
-                className="min-h-11 rounded-md border border-border bg-background px-3 text-base font-normal"
-              >
+            <div className="flex flex-col gap-2 text-sm font-bold">
+              <Label htmlFor={`${formId}-deal`}>{t("deal")}</Label>
+              <Select id={`${formId}-deal`} name="deal" value={dealId ?? ""} onValueChange={(v) => setDealId(v || null)} className="text-base font-normal">
                 <option value="">{t("noDeal")}</option>
                 {deals.map((d) => (
                   <option key={d.id} value={d.id}>
                     {dealOptionLabel(d, dealWords)}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </div>
           ) : null}
 
           {fulfilment === "direct_from_source" ? (

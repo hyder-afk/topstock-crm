@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Truck } from "lucide-react";
 import { markArrived, setProductEta } from "@/app/(app)/inventory/actions";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { useQtyText } from "@/components/inventory/bits";
@@ -192,15 +193,16 @@ function EtaField({ row, onSaved }: { row: StockRow; onSaved: () => void }) {
       <label htmlFor={id} className="sr-only">
         {t("etaFor", { name: row.name })}
       </label>
-      <input
+      <DatePicker
         id={id}
         name="eta"
-        type="date"
+        typed
         value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={async () => {
-          if ((value || null) === row.transit_eta) return;
-          const res = await setProductEta({ productId: row.id, eta: value || null }).catch(() => null);
+        className="w-44"
+        onValueChange={async (next) => {
+          setValue(next);
+          if ((next || null) === row.transit_eta) return;
+          const res = await setProductEta({ productId: row.id, eta: next || null }).catch(() => null);
           if (!res || !res.ok) {
             setValue(row.transit_eta ?? "");
             toast.show(res ? errorText(res) : t("failed"));
@@ -209,7 +211,6 @@ function EtaField({ row, onSaved }: { row: StockRow; onSaved: () => void }) {
           onSaved();
           toast.show(t("etaSaved"));
         }}
-        className="min-h-11 w-40 rounded-md border border-border bg-background px-2 font-mono text-sm sm:min-h-9"
       />
     </span>
   );
@@ -341,11 +342,11 @@ export function MovementsList({
         </div>
         <div className="flex flex-[1_1_140px] flex-col gap-1">
           <label htmlFor={`${id}-f`} className="text-xs text-muted-foreground">{t("from")}</label>
-          <input id={`${id}-f`} name="from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="min-h-11 rounded-md border border-border bg-card px-2 font-mono text-sm sm:min-h-10" />
+          <DatePicker id={`${id}-f`} name="from" typed value={from} max={to || undefined} onValueChange={setFrom} className="bg-card sm:min-h-10" />
         </div>
         <div className="flex flex-[1_1_140px] flex-col gap-1">
           <label htmlFor={`${id}-t`} className="text-xs text-muted-foreground">{t("to")}</label>
-          <input id={`${id}-t`} name="to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="min-h-11 rounded-md border border-border bg-card px-2 font-mono text-sm sm:min-h-10" />
+          <DatePicker id={`${id}-t`} name="to" typed value={to} min={from || undefined} onValueChange={setTo} className="bg-card sm:min-h-10" />
         </div>
       </div>
       {product ? (
@@ -370,8 +371,8 @@ export function MovementsList({
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate font-bold">{say(m)}</span>
                   <span className="truncate text-xs text-muted-foreground">
-                    <time dateTime={m.created_at} title={format.dateTime(new Date(m.created_at), { dateStyle: "medium", timeStyle: "short" })}>
-                      {format.relativeTime(new Date(m.created_at))}
+                    <time dateTime={m.created_at}>
+                      {format.relativeTime(new Date(m.created_at))}<span className="sr-only"> ({format.dateTime(new Date(m.created_at), { dateStyle: "medium", timeStyle: "short" })})</span>
                     </time>
                     {" · "}
                     {who}

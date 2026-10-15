@@ -569,6 +569,7 @@
       "d30": "In 30 days",
       "d90": "In 90 days",
       "pick": "Pick a date",
+      "needDate": "Pick a date from tomorrow up to two years ahead.",
       "cancel": "Cancel",
       "confirm": "Set Cool off"
     },

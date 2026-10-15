@@ -569,6 +569,7 @@
       "d30": "Dans 30 jours",
       "d90": "Dans 90 jours",
       "pick": "Choisir une date",
+      "needDate": "Choisissez une date entre demain et dans deux ans.",
       "cancel": "Annuler",
       "confirm": "Mettre en pause"
     },

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { saveTimezone } from "@/app/(app)/more/actions";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { FormMessage } from "@/components/ui/form-message";
 import { Label } from "@/components/ui/label";
 import { browserZone } from "@/lib/timezones";
@@ -40,7 +41,7 @@ export function TimezoneForm({ current, zones, unavailable = false }: { current:
   };
 
   return (
-    <form
+    <form noValidate
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
@@ -49,7 +50,7 @@ export function TimezoneForm({ current, zones, unavailable = false }: { current:
     >
       <div className="flex flex-col gap-2">
         <Label htmlFor={id}>{t("timezone")}</Label>
-        <select
+        <Combobox
           id={id}
           name="timezone"
           value={value}
@@ -59,14 +60,9 @@ export function TimezoneForm({ current, zones, unavailable = false }: { current:
             setState("idle");
           }}
           aria-describedby={`${id}-help ${msg}`}
-          className="min-h-11 w-full max-w-md rounded-md border border-border bg-background px-3 text-base text-foreground disabled:opacity-60"
-        >
-          {options.map((z) => (
-            <option key={z} value={z}>
-              {z.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
+          className="max-w-md"
+          options={options.map((z) => ({ value: z, label: z.replace(/_/g, " ") }))}
+        />
         <p id={`${id}-help`} className="text-sm text-muted-foreground">
           {t("timezoneHelp")}
         </p>

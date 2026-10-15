@@ -7,9 +7,11 @@ import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal, Trash2, Copy, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { StageStepper } from "@/components/pipeline/stage-stepper";
 import { fetchLead, leadKey } from "@/components/leads/use-leads";
@@ -258,9 +260,10 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
         <CloseDate deal={deal} disabled={!editable} flows={flows} />
 
         <Field label={t("fields.contact")}>
-          <select
+          <Select
             name="contact"
-            className="min-h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+            aria-label={t("fields.contact")}
+            className="text-sm"
             value={deal.contact_id ?? ""}
             disabled={!deal.can_edit || !leadQuery.data}
             onChange={(e) => void saveField(deal, flows, toast, t, ["contact_id"], { contactId: e.target.value || null }, (d) => d.contact_id === deal.contact_id)}
@@ -271,7 +274,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                 {personName(c)}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field label={t("fields.fulfilment")}>
@@ -300,9 +303,10 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
         {canAssign ? (
           <Field label={t("fields.owner")}>
-            <select
+            <Select
               name="owner"
-              className="min-h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+              aria-label={t("fields.owner")}
+              className="text-sm"
               value={deal.owner_id ?? ""}
               disabled={!deal.can_edit}
               onChange={(e) => e.target.value && void saveField(deal, flows, toast, t, ["owner_id"], { ownerId: e.target.value }, (d) => d.owner_id === deal.owner_id)}
@@ -312,7 +316,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                   {personName(m)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         ) : ownerName ? (
           <Field label={t("fields.owner")}>
@@ -359,8 +363,8 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                     {text}
                     {h.undone ? <span className="sr-only"> ({t("history.undoneTag")})</span> : null}
                   </span>
-                  <time dateTime={h.created_at} title={format.dateTime(new Date(h.created_at), { dateStyle: "medium", timeStyle: "short" })} className="shrink-0 font-mono text-xs text-muted-foreground">
-                    {format.dateTime(new Date(h.created_at), { day: "numeric", month: "short" })}
+                  <time dateTime={h.created_at} className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {format.dateTime(new Date(h.created_at), { day: "numeric", month: "short" })}<span className="sr-only"> ({format.dateTime(new Date(h.created_at), { dateStyle: "medium", timeStyle: "short" })})</span>
                   </time>
                 </li>
               );
@@ -607,14 +611,13 @@ function CloseDate({ deal, disabled, flows }: { deal: DealDetail; disabled: bool
         ) : null}
       </div>
       {picking ? (
-        <input
-          type="date"
+        <DatePicker
           name="expected_close"
           aria-label={t("closeChips.pick")}
           defaultValue={deal.expected_close ?? ""}
           disabled={disabled}
-          onChange={(e) => e.target.value && set(e.target.value)}
-          className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground"
+          clearable={false}
+          onValueChange={(v) => v && set(v)}
         />
       ) : null}
     </Field>
