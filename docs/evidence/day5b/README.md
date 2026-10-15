@@ -166,7 +166,7 @@ Day 7 polish.
   that column only, the loaded cards kept; Retry shows 100). Both allow only Chromium's console line for the 502s they
   inject, and count them (2 and 1).
 - Checks: `pipeline.spec` 15 passed, `pipeline-multi` 1, `shell` 20 (36 passed); `day5-screens` 5 passed (full run,
-  128 shots, into a scratch folder; the 28 new ones copied here).
+  96 shots, into a scratch folder; the 28 new ones copied here).
 
 ## Deviations from the design
 

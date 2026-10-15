@@ -58,3 +58,25 @@ who may read every task). Win rate leaves out "Opened by mistake" and shows only
   unknown key such as a cost fails the card instead of reaching the browser; the 5c stub has Day 6's two-factor check,
   invoker and grants) is enforced on the app side by Zod; Day 6's own function must keep PP out of its
   payload (design section 10).
+
+## /security-review before the PR (15 Oct 2026, ea75fbf)
+
+Run by another reviewer on the whole Day 5 range `5f1a966..ea75fbf`. **Result: NO FINDINGS.**
+
+What it checked:
+- `20261015090000_deals_pipeline.sql`: the deals policies and grants, `deal_guard`, the SECURITY DEFINER trigger
+  functions and the RPCs.
+- `20261015120000_deal_links.sql`: `activities_insert`, `log_activity`, `undo_activity`.
+- `20261015150000_home_dashboard.sql`: the `home_*` functions and the `stock_alerts()` stub.
+- `src/app/(app)/pipeline/actions.ts` (its 8 actions), the 6 API routes, the pages.
+
+By design (noted, not findings): one's own win can be undone within 2 minutes without a fresh code; reopening a lost
+deal needs no code (a won one does).
+
+Side note (hardening item for multi-org, logged in `docs/log.md`): the core `enforce_org_and_owner` does not check that
+an owner chosen by a manager belongs to the same org. Not exploitable with one org (TopStock has one); to add before a
+second org exists.
+
+The advisor items fixed after it (ceca0b5, d29be68, a6f5dc2, 1118956, 7d5da6d) change tests, evidence, the Low stock
+card's markup and messages, and its skeleton: no migration, policy, grant, RPC, route or action changed (the e2e only
+take a grant away and give it back on the throwaway local stack).
