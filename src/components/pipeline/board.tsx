@@ -585,17 +585,6 @@ function Pipeline({
     setInView(key);
   };
 
-  // The board's top on the page, for the columns' height (they end above the dock).
-  useLayoutEffect(() => {
-    const el = boardRef.current;
-    if (!el) return;
-    const set = () => el.style.setProperty("--board-top", `${Math.round(el.getBoundingClientRect().top + window.scrollY)}px`);
-    set();
-    const ro = new ResizeObserver(set);
-    ro.observe(document.body);
-    return () => ro.disconnect();
-  }, []);
-
   if (!board || !display) return null;
   const dragging = !!activeId;
   const status = !online ? (
@@ -611,7 +600,11 @@ function Pipeline({
 
   return (
     <BoardHandlersContext.Provider value={stableHandlers}>
-      <div className="flex min-w-0 flex-col gap-5 pt-2">
+      {/* From tablet width the page fills the screen down to 118 px above its bottom (clear of the dock; the 72 px top bar
+          above it) and the columns take what the toolbar leaves, in CSS alone. The server's HTML has the final column
+          height: a height measured after hydration moved a column under a pointer pressed during hydration, so the tap
+          on Show more was lost (PR #17 CI). */}
+      <div className="flex min-w-0 flex-col gap-5 pt-2 md:min-h-[calc(100dvh-190px)]">
         <BoardToolbar
           total={board.open_total}
           canTeam={canTeam}
@@ -706,12 +699,12 @@ function Pipeline({
             aria-label={t("boardLabel")}
             data-dragging={dragging || undefined}
             onKeyDown={onBoardKeyDown}
-            className="min-w-0"
+            className="min-w-0 md:flex md:grow md:basis-0 md:flex-col"
           >
             <div
               ref={scrollerRef}
               className={cn(
-                "-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-8 sm:px-8 lg:mx-0 lg:grid lg:grid-cols-[repeat(4,minmax(220px,1fr))] lg:gap-3 lg:overflow-visible lg:px-0 xl:gap-4",
+                "-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-8 sm:px-8 md:min-h-min md:grow md:basis-0 lg:mx-0 lg:grid lg:grid-cols-[repeat(4,minmax(220px,1fr))] lg:gap-3 lg:overflow-visible lg:px-0 xl:gap-4",
                 dragging ? "snap-none select-none" : "snap-x snap-mandatory lg:snap-none",
               )}
             >

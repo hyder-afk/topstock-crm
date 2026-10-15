@@ -643,3 +643,50 @@ test("column_read_fails_shows_retry_and_recovers (Show more)", async ({ browser 
     sql(`delete from public.deals where company_id = '${lead}'`);
   }
 });
+
+test("show_more_press_across_hydration_lands: the column keeps its place and height (PR #17 lost click)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const lead = makeLead("Hydration Press");
+  sql(`insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, title, value, stage_entered_at)
+       select '${org}', '${lead}', s.id, '${admin}', '${admin}', 'Hydration press ${run} ' || i, (i * 10)::numeric, now() - (i || ' minutes')::interval
+         from public.pipeline_stages s, generate_series(1, 120) i where s.org_id = '${org}' and s.key = 'lead'`);
+  try {
+    const { context, page, errors } = await open(browser);
+    // The app's JavaScript is held back: the server's board is on screen but not hydrated (a slow laptop or phone, a
+    // busy CI runner). The person scrolls the Lead column down to Show more and presses it; the press ends after the
+    // board has hydrated. A press that starts before hydration is how React hydrates a part of the page at once.
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    await page.route(/\/_next\/static\/chunks\/.+\.js$/, async (route) => {
+      await held;
+      await route.continue();
+    });
+    // "commit": the load event would wait for the held scripts.
+    await page.goto("/pipeline", { waitUntil: "commit" });
+    const leadColumn = column(page, "lead");
+    const more = leadColumn.getByRole("button", { name: /^Show \d+ more$/ });
+    await expect(more).toBeVisible();
+    const scroller = leadColumn.locator("[data-column-scroll]");
+    await scroller.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    const place = () => scroller.evaluate((el) => ({ top: el.scrollTop, height: el.clientHeight }));
+    const before = await place();
+    expect(before.top).toBeGreaterThan(0);
+    await page.route((url) => url.pathname === "/api/pipeline/stage", (route) => route.fulfill({ status: 502, contentType: "application/json", body: "{}" }));
+    const box = (await more.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    release();
+    // Hydrated: dnd-kit adds its live region once the board has mounted (after the columns' layout effects).
+    await expect(page.locator('[id^="DndLiveRegion-"]')).toBeAttached();
+    // The column did not move under the pointer: TanStack Virtual used to scroll it back to the top when it attached,
+    // and its height used to be measured after hydration (both sent the press's end to another element: no click).
+    expect(await place()).toEqual(before);
+    await page.mouse.up();
+    await expect(leadColumn.getByRole("alert")).toHaveText(/^Couldn’t load more\s*Retry$/);
+    expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
+    expect(errors.length).toBe(1);
+    await context.close();
+  } finally {
+    sql(`delete from public.deals where company_id = '${lead}'`);
+  }
+});
