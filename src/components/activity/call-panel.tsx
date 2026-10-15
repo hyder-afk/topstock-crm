@@ -437,7 +437,7 @@ function CallPanel({
         ) : null}
 
         {phase === "outcome" ? (
-          <form
+          <form noValidate
             className="flex flex-col gap-3"
             onSubmit={(e) => {
               e.preventDefault();

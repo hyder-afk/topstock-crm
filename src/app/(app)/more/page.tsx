@@ -114,7 +114,7 @@ export default async function MorePage() {
         </p>
       </section>
 
-      <form action={signOut}>
+      <form noValidate action={signOut}>
         <Button type="submit" variant="quiet">
           {t("signOut")}
         </Button>

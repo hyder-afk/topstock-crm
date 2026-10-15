@@ -25,7 +25,7 @@ export function ProfileForm({
   const last = useId();
   const msg = useId();
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form noValidate action={action} className="flex flex-col gap-4">
       <fieldset disabled={unavailable} className="grid min-w-0 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor={first}>{t("firstName")}</Label>
