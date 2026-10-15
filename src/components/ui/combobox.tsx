@@ -148,7 +148,8 @@ export function Combobox({
             vimBindings={false}
             className="flex flex-col"
           >
-            <div className="flex items-center gap-2 border-b border-border px-3">
+            {/* The box has no outline of its own: the line under it takes the focus colour instead. */}
+            <div className="flex items-center gap-2 border-b border-border px-3 focus-within:border-ring">
               <Search aria-hidden="true" strokeWidth={1.75} className="size-4 shrink-0 text-muted-foreground" />
               <Command.Input
                 value={search}

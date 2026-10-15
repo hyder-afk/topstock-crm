@@ -20,7 +20,7 @@ export function Disclosure({
     <details className={cn("group", className)} {...props}>
       <summary
         className={cn(
-          "flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold [&::-webkit-details-marker]:hidden",
+          "flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 text-sm font-bold hover:[&>svg]:text-foreground [&::-webkit-details-marker]:hidden",
           summaryClassName,
         )}
       >
