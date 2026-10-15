@@ -62,6 +62,8 @@ export function Tooltip({
   onOpenChange?: (open: boolean) => void;
   delayDuration?: number;
 }) {
+  // Nothing to say (e.g. a date not known before hydration): the child alone, no empty bubble.
+  if (content === null || content === undefined || content === false || content === "") return children;
   return (
     <TooltipRoot open={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange} delayDuration={delayDuration}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
