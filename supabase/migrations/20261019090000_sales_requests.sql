@@ -20,9 +20,11 @@
 --     the ship and return kinds;
 --   private.movement_request_guard and the movement_requests kind check (20261016090000_stock_engine.sql, 6a,
 --     unmerged): the sale and stock_request kinds;
---   private.task_guard (20261011120000_activity_hardening.sql; Day 5a redefines it): the system task links never
---     change and may be set to null by a cascade;
---   private.lead_import_untouched (20261016090000_stock_engine.sql, 6a): a lead with a sale or a request is touched;
+--   private.task_guard (Day 5a's body in 20261015090000_deals_pipeline.sql, from Day 4a's; rebased at the merge of
+--     Day 5, 15 Oct 2026, so deal_id stays in the referential exception): the system task links never change and may
+--     be set to null by a cascade;
+--   private.lead_import_untouched (20261016090000_stock_engine.sql, 6a, itself rebased on Day 4d's body): a lead with
+--     a sale or a request is touched;
 --   public.stock_alerts() (20261015150000_home_dashboard.sql, Day 5c, merges first): its null-returning stub gets the
 --   real body (create or replace, same signature; decision B, 15 Oct 2026).
 -- The client stock link (6e) adds the share branch of stock_request_guard and its request task.
@@ -600,8 +602,8 @@ create function private.insert_system_task(p_org uuid, p_assignee uuid, p_title_
                                            p_company uuid, p_product uuid, p_request uuid) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
-  v_claims text := current_setting('request.jwt.claims', true);
-  v_sub text := current_setting('request.jwt.claim.sub', true);
+  v_claims text := nullif(current_setting('request.jwt.claims', true), '');
+  v_sub text := nullif(current_setting('request.jwt.claim.sub', true), '');
   v_lang text;
   v_tz text;
   v_id uuid;
@@ -684,8 +686,10 @@ revoke all on function private.stock_task_title(text, text, text), private.inser
   private.stock_low_automation(), private.hold_arrived_task(), private.order_line_cost_snapshot()
   from public, anon, authenticated;
 
--- The task guard (REBASE: from 20261011120000_activity_hardening.sql; Day 5a redefines it): the system links
--- (source_product_id, source_request_id) never change, except to null by a cascade from a deleted product or request.
+-- The task guard (rebased on Day 5a's body in 20261015090000_deals_pipeline.sql, itself from Day 4a's
+-- 20261011120000_activity_hardening.sql; this copy sorts later, so it must keep every earlier day's behaviour: Day 5a's
+-- deal_id in the referential exception, so a deleted deal can empty the link): the system links (source_product_id,
+-- source_request_id) never change, except to null by a cascade from a deleted product or request.
 create or replace function private.task_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -729,13 +733,14 @@ begin
       from jsonb_each(to_jsonb(new)) n
       join jsonb_each(to_jsonb(old)) o using (key)
      where n.value is distinct from o.value and n.key <> 'updated_at';
-    -- A referential SET NULL from a contact, entry, profile, product or request delete (spike S5).
+    -- A referential SET NULL from a contact, deal, entry, profile, product or request delete (spike S5).
     if pg_trigger_depth() > 1
-       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'source_activity_id', 'source_product_id',
-                            'source_request_id']
+       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',
+                            'source_product_id', 'source_request_id']
        and (new.assignee_id is null or new.assignee_id is not distinct from old.assignee_id)
        and (new.contact_id is null or new.contact_id is not distinct from old.contact_id)
        and (new.created_by is null or new.created_by is not distinct from old.created_by)
+       and (new.deal_id is null or new.deal_id is not distinct from old.deal_id)
        and (new.source_activity_id is null or new.source_activity_id is not distinct from old.source_activity_id)
        and (new.source_product_id is null or new.source_product_id is not distinct from old.source_product_id)
        and (new.source_request_id is null or new.source_request_id is not distinct from old.source_request_id) then
@@ -793,7 +798,8 @@ begin
 end;
 $$;
 
--- A lead with a sale or a stock request has history: an import undo keeps it (REBASE: 6a's definition).
+-- A lead with a sale or a stock request has history: an import undo keeps it (6a's definition, with Day 4d's file
+-- check since the merge of Day 5, 15 Oct 2026).
 create or replace function private.lead_import_untouched(p_batch uuid, p_limit integer) returns setof uuid
 language sql stable set search_path = '' as $$
   select c.id from public.companies c
@@ -802,6 +808,7 @@ language sql stable set search_path = '' as $$
      and not exists (select 1 from public.contacts k where k.company_id = c.id)
      and not exists (select 1 from public.deals d where d.company_id = c.id)
      and not exists (select 1 from public.tasks t where t.company_id = c.id)
+     and not private.lead_has_files(c.id)
      and not exists (select 1 from private.stock_reservations r where r.company_id = c.id)
      and not exists (select 1 from private.orders o where o.company_id = c.id)
      and not exists (select 1 from private.stock_requests q where q.company_id = c.id)
@@ -920,7 +927,7 @@ begin
       if not private.has_recent_aal2(600) then
         raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';
       end if;
-      if current_setting('topstock.stock_batch_op', true) is distinct from new.import_batch_id::text then
+      if nullif(current_setting('topstock.stock_batch_op', true), '') is distinct from new.import_batch_id::text then
         raise exception 'this document is not available' using errcode = '22023', hint = 'document';
       end if;
     end if;
@@ -1536,7 +1543,10 @@ begin
       values (v_group, ln.product_id, v_wh, 'return', ln.quantity, ln.id);
     end loop;
     for h in select r.product_id, r.company_id, r.hold_until, r.note, u.pieces,
-                    case when dl.status = 'open' and dl.fulfilment = 'from_stock' then r.deal_id end as deal_id
+                    -- An open deal keeps its hold unless it was set to Supplier Stock meanwhile (Day 5: fulfilment
+                    -- is null until Win, and such a deal may hold stock, as the guard and apply step allow).
+                    case when dl.status = 'open' and dl.fulfilment is distinct from 'direct_from_source'
+                         then r.deal_id end as deal_id
                from private.stock_hold_uses u
                join private.stock_movements m on m.id = u.movement_id
                join private.order_lines ol on ol.id = m.order_line_id
@@ -1798,7 +1808,9 @@ begin
 end;
 $$;
 
--- Open, from-stock deals of the lead that the caller can see (the sale sheet's deal picker; empty until Day 5).
+-- Open deals of the lead that the caller can see (the hold and sale sheets' deal picker; the sheets keep the kinds they
+-- may use). Day 5's deal schema (merged 15 Oct 2026): title and value may be null (not estimated yet), fulfilment is
+-- chosen at Win (null while open), and the stage goes out as its key, which the app translates (Day 5's Stages words).
 create function public.list_lead_deals_for_stock(p_company uuid) returns jsonb
 language plpgsql stable security invoker set search_path = '' as $$
 begin
@@ -1806,8 +1818,8 @@ begin
     raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
   end if;
   return (select coalesce(jsonb_agg(jsonb_build_object(
-                   'id', d.id, 'value', d.value, 'currency', d.currency, 'expected_close', d.expected_close,
-                   'stage', s.name, 'fulfilment', d.fulfilment,
+                   'id', d.id, 'title', d.title, 'value', d.value, 'currency', d.currency,
+                   'expected_close', d.expected_close, 'stage', s.key, 'fulfilment', d.fulfilment,
                    'held', (select coalesce(sum(r.remaining), 0) from private.stock_reservations r
                              where r.deal_id = d.id and r.status = 'active'))
                  order by d.created_at desc), '[]'::jsonb)

@@ -14,8 +14,9 @@
 -- every CHECK that user input can reach has a pre-check with a constant message first, so "Failing row contains ..."
 -- never reaches the logs; clients get column grants only. "Safe text" refuses C0 and C1 controls, DEL, zero-width
 -- characters, bidi embeddings, overrides and isolates, and the byte order mark (design 3.0 plus C1, as Day 4a decided).
--- Shared objects of earlier days: only private.lead_import_untouched is redefined (marked REBASE below); audit uses the
--- existing private.audit_row on products and locations and a new trigger function for the other stock tables.
+-- Shared objects of earlier days: only private.lead_import_untouched is redefined (rebased on Day 4d's body, see
+-- below); audit uses the existing private.audit_row on products and locations and a new trigger function for the other
+-- stock tables.
 
 -- ===========================================================================
 -- Part 1. Products, places, costs and settings
@@ -1671,7 +1672,8 @@ create trigger audit_inventory_row after insert or update or delete on private.i
 
 -- Import undo (Day 3b, G7): a lead with a hold (any status) has stock history, so an undo keeps it (its foreign key
 -- would refuse the delete anyway).
--- REBASE: copied from 20261011120000_activity_hardening.sql; re-copy from the newest definition before merge
+-- Rebased (15 Oct 2026, at the merge of main, Day 4d and Day 5) on Day 4d's body in 20261014090000_lead_files.sql,
+-- the newest earlier definition (4c and Day 5 leave it alone): Day 4d's file check stays, holds are added.
 create or replace function private.lead_import_untouched(p_batch uuid, p_limit integer) returns setof uuid
 language sql stable set search_path = '' as $$
   select c.id from public.companies c
@@ -1680,6 +1682,7 @@ language sql stable set search_path = '' as $$
      and not exists (select 1 from public.contacts k where k.company_id = c.id)
      and not exists (select 1 from public.deals d where d.company_id = c.id)
      and not exists (select 1 from public.tasks t where t.company_id = c.id)
+     and not private.lead_has_files(c.id)
      and not exists (select 1 from private.stock_reservations r where r.company_id = c.id)
    order by c.id
    limit p_limit

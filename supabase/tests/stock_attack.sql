@@ -128,25 +128,27 @@ begin
     ('33000000-0000-0000-0000-0000000000e1', main_org, 'Stock E', '00000000-0000-0000-0000-0000000000e1'),
     ('33000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000cc', 'Stock C',
      '00000000-0000-0000-0000-0000000000c1');
-  -- Deals: b1's open, direct and won deals on LB; a1's deal on LB (b1 cannot see it); d1's on LD; a deal with no lead;
-  -- two for the random operations.
+  -- Deals: b1's open, direct and won deals on LB; a1's deal on LB (b1 cannot see it); d1's on LD; two for the random
+  -- operations. (Since Day 5 merged, 15 Oct 2026, a deal always has a lead (company_id not null), so the old "deal with no
+  -- lead" fixture is gone; a won deal has its final value and close time, as Day 5's deals_won_shape and
+  -- deals_closed_at_matches require.)
   insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment) values
     ('43000000-0000-0000-0000-0000000000b1', main_org, '33000000-0000-0000-0000-0000000000b1', stage,
      '00000000-0000-0000-0000-0000000000b1', 'open', 'from_stock'),
     ('43000000-0000-0000-0000-0000000000b2', main_org, '33000000-0000-0000-0000-0000000000b1', stage,
      '00000000-0000-0000-0000-0000000000b1', 'open', 'direct_from_source'),
-    ('43000000-0000-0000-0000-0000000000b3', main_org, '33000000-0000-0000-0000-0000000000b1', stage,
-     '00000000-0000-0000-0000-0000000000b1', 'won', 'from_stock'),
     ('43000000-0000-0000-0000-0000000000b4', main_org, '33000000-0000-0000-0000-0000000000b1', stage,
      '00000000-0000-0000-0000-0000000000a1', 'open', 'from_stock'),
     ('43000000-0000-0000-0000-0000000000d1', main_org, '33000000-0000-0000-0000-0000000000d1', stage,
      '00000000-0000-0000-0000-0000000000d1', 'open', 'from_stock'),
-    ('43000000-0000-0000-0000-0000000000a0', main_org, null, stage,
-     '00000000-0000-0000-0000-0000000000b1', 'open', 'from_stock'),
     ('43000000-0000-0000-0000-0000000000f1', main_org, '33000000-0000-0000-0000-0000000000b1', stage,
      '00000000-0000-0000-0000-0000000000a1', 'open', 'from_stock'),
     ('43000000-0000-0000-0000-0000000000f2', main_org, '33000000-0000-0000-0000-0000000000d1', stage,
      '00000000-0000-0000-0000-0000000000a1', 'open', 'from_stock');
+  insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment, value, closed_at) values
+    ('43000000-0000-0000-0000-0000000000b3', main_org, '33000000-0000-0000-0000-0000000000b1',
+     (select s.id from public.pipeline_stages s where s.org_id = main_org and s.key = 'won'),
+     '00000000-0000-0000-0000-0000000000b1', 'won', 'from_stock', 1000, now());
   -- Products: one per area of the tests (48 pieces a carton), five for the random operations, one archived and empty,
   -- one in the other org.
   insert into public.products (id, org_id, name, pieces_per_carton, price_min, price_max)
@@ -1082,11 +1084,14 @@ do $$
 declare
   p constant uuid := '7a000000-0000-0000-0000-000000000003';
 begin
-  -- reserve_deal_other_lead_refused, reserve_deal_null_company_refused (a manager sees every deal).
+  -- reserve_deal_other_lead_refused (a manager sees every deal). reserve_deal_null_company_refused is now the schema's:
+  -- Day 5 made deals.company_id not null, so no deal without a lead can exist (checked here; the engine's
+  -- "d.company_id is null" branch stays as a second layer).
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, deal => %L)', p, 'reserve', 5,
     '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000d1'), '22023', 'deal_mismatch');
-  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, deal => %L)', p, 'reserve', 5,
-    '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000a0'), '22023', 'deal_mismatch');
+  if (select attnotnull from pg_attribute where attrelid = 'public.deals'::regclass and attname = 'company_id') is not true then
+    raise exception 'FAIL: reserve_deal_null_company_refused: deals.company_id may be null again (test a lead-less deal)';
+  end if;
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, deal => %L)', p, 'reserve', 5,
     '33000000-0000-0000-0000-0000000000b1', gen_random_uuid()), '22023', 'deal_mismatch');
   -- The manager may hold for any lead, and for a deal on it.
@@ -1135,7 +1140,8 @@ begin
   -- The lead's owner may release a hold a manager made on the lead.
   perform pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'release', reservation => current_setting('t.ha1')::uuid);
 end $$;
--- deal_lost_releases_holds: b1 marks the deal lost; its holds at both places are released (reason deal_lost, by b1).
+-- deal_lost_releases_holds: b1 marks the deal lost the way the app does since Day 5 (move_deal to Closed/lost with a
+-- reason; Day 5's guard sets status 'lost'); its holds at both places are released (reason deal_lost, by b1).
 do $$
 declare
   p constant uuid := '7a000000-0000-0000-0000-000000000003';
@@ -1143,7 +1149,11 @@ begin
   if pg_temp.rv(p, 'warehouse') <> 100 or pg_temp.rv(p, 'transit') <> 50 then
     raise exception 'FAIL: deal holds before: % %', pg_temp.rv(p, 'warehouse'), pg_temp.rv(p, 'transit');
   end if;
-  update public.deals set status = 'lost', lost_reason = 'price' where id = '43000000-0000-0000-0000-0000000000b1';
+  perform public.move_deal('43000000-0000-0000-0000-0000000000b1', 'lost',
+    (select version from public.deals where id = '43000000-0000-0000-0000-0000000000b1'), p_lost_reason => 'price');
+  if (select status from public.deals where id = '43000000-0000-0000-0000-0000000000b1') <> 'lost' then
+    raise exception 'FAIL: deal_lost_releases_holds: move_deal did not lose the deal';
+  end if;
   if pg_temp.rv(p, 'warehouse') <> 0 or pg_temp.rv(p, 'transit') <> 0
      or exists (select 1 from private.stock_reservations where deal_id = '43000000-0000-0000-0000-0000000000b1' and status = 'active')
      or (select count(*) from private.stock_reservations where deal_id = '43000000-0000-0000-0000-0000000000b1'
@@ -1156,7 +1166,9 @@ begin
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, deal => %L)', p, 'reserve', 5,
     '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000b1'), '22023', 'deal_closed');
 end $$;
--- deal_delete_releases_holds: d1 deletes a deal with a hold; the hold is released (deal_deleted) and loses the link.
+-- deal_delete_releases_holds: d1 holds for a deal; manager a1 deletes the deal (since Day 5, deleting a deal someone
+-- worked on takes a manager or an admin with a fresh code, through delete_deal); the hold is released (deal_deleted, in
+-- a1's name) and loses the link.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
 do $$
 declare
@@ -1164,13 +1176,15 @@ declare
 begin
   v_hold := (pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'reserve', 30, company => '33000000-0000-0000-0000-0000000000d1',
                         deal => '43000000-0000-0000-0000-0000000000d1') ->> 'reservation_id')::uuid;
-  delete from public.deals where id = '43000000-0000-0000-0000-0000000000d1';
-  if not exists (select 1 from private.stock_reservations where id = v_hold and status = 'released'
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2', 30);
+  perform public.delete_deal('43000000-0000-0000-0000-0000000000d1');
+  if exists (select 1 from public.deals where id = '43000000-0000-0000-0000-0000000000d1')
+     or not exists (select 1 from private.stock_reservations where id = v_hold and status = 'released'
                    and close_reason = 'deal_deleted' and deal_id is null)
      or pg_temp.rv('7a000000-0000-0000-0000-000000000003', 'warehouse') <> 0
      or not exists (select 1 from private.stock_movements where reservation_id = v_hold and kind = 'release'
                       and reason = 'deal_deleted' and deal_id = '43000000-0000-0000-0000-0000000000d1'
-                      and user_id = '00000000-0000-0000-0000-0000000000d1') then
+                      and user_id = '00000000-0000-0000-0000-0000000000a1') then
     raise exception 'FAIL: deal_delete_releases_holds';
   end if;
 end $$;
@@ -1198,19 +1212,9 @@ begin
     raise exception 'FAIL: a maintenance deal delete should release its holds as the system';
   end if;
 end $$;
--- deal_lost_by_before_trigger_releases_holds: Day 5 may move a deal to Closed/lost through a BEFORE trigger (here a
--- stand-in that sets status when a lost reason is given). The update never names status, and the holds still go.
-create function public.day6a_stand_in_lost() returns trigger
-language plpgsql set search_path = '' as $$
-begin
-  if new.lost_reason is not null and old.lost_reason is null then
-    new.status := 'lost';
-  end if;
-  return new;
-end;
-$$;
-create trigger a_day6a_stand_in_lost before update on public.deals
-  for each row execute function public.day6a_stand_in_lost();
+-- deal_lost_by_before_trigger_releases_holds: Day 5 moves a deal to Closed/lost through its BEFORE trigger (guard_deal:
+-- a stage change to 'lost' with a reason sets status). Until Day 5 merged this used a stand-in trigger; since the merge
+-- (15 Oct 2026) it is Day 5's real guard. The update never names status, and the holds still go.
 do $$
 declare
   main_org uuid := current_setting('t.org')::uuid;
@@ -1225,7 +1229,9 @@ begin
   set local role authenticated;
   v_hold := (pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'reserve', 3, company => '33000000-0000-0000-0000-0000000000b1',
                         deal => '43000000-0000-0000-0000-0000000000b5') ->> 'reservation_id')::uuid;
-  update public.deals set lost_reason = 'price' where id = '43000000-0000-0000-0000-0000000000b5';
+  update public.deals set stage_id = (select s.id from public.pipeline_stages s where s.org_id = main_org and s.key = 'lost'),
+                          lost_reason = 'price'
+   where id = '43000000-0000-0000-0000-0000000000b5';
   reset role;
   if (select status from public.deals where id = '43000000-0000-0000-0000-0000000000b5') is distinct from 'lost'
      or not exists (select 1 from private.stock_reservations where id = v_hold and status = 'released'
@@ -1234,8 +1240,6 @@ begin
   end if;
   perform set_config('request.jwt.claims', '', false);
 end $$;
-drop trigger a_day6a_stand_in_lost on public.deals;
-drop function public.day6a_stand_in_lost();
 -- expired_hold_released_before_write and expire_rows_have_no_user: P6 has 300 on hand, all held; one hold ended
 -- yesterday. A correction that needs that room succeeds because the RPC ends the hold first.
 set role authenticated;
@@ -1378,7 +1382,10 @@ begin
     perform pg_temp.mv(p, 'reserve', 1, company => '33000000-0000-0000-0000-0000000000e1',
                        deal => '43000000-0000-0000-0000-0000000000e2');
   end loop;
-  update public.deals set status = 'lost', lost_reason = 'price' where id = '43000000-0000-0000-0000-0000000000e2';
+  update public.deals set stage_id = (select s.id from public.pipeline_stages s join public.deals d on d.org_id = s.org_id
+                                       where d.id = '43000000-0000-0000-0000-0000000000e2' and s.key = 'lost'),
+                          lost_reason = 'price'
+   where id = '43000000-0000-0000-0000-0000000000e2';
   if (select count(*) from private.stock_movements where kind = 'release' and reason = 'deal_lost'
         and user_id = '00000000-0000-0000-0000-000000000521') <> 118 or pg_temp.rv(p, 'warehouse') <> 0 then
     raise exception 'FAIL: rate_guard_skips_deal_lost_releases: the deal''s holds were not released in g''s name';
@@ -1643,8 +1650,16 @@ begin
           select r.id into h from private.stock_reservations r where r.product_id = p and r.status = 'active'
            order by random() limit 1;
           perform pg_temp.mv(p, 'release', case when random() < 0.5 then null else q end, reservation => h);
-        when 'deal_lost' then update public.deals set status = 'lost', lost_reason = 'random' where id = rdeals[di];
-        when 'deal_open' then update public.deals set status = 'open', lost_reason = null where id = rdeals[di];
+        -- Day 5's way (guard_deal): lose with a stage change and a reason; reopen with a stage change back to Lead.
+        when 'deal_lost' then
+          update public.deals d
+             set stage_id = (select s.id from public.pipeline_stages s where s.org_id = d.org_id and s.key = 'lost'),
+                 lost_reason = 'price'
+           where d.id = rdeals[di];
+        when 'deal_open' then
+          update public.deals d
+             set stage_id = (select s.id from public.pipeline_stages s where s.org_id = d.org_id and s.key = 'lead')
+           where d.id = rdeals[di];
         else perform pg_temp.mv(p, 'adjust_in', 0, place, 'found');
       end case;
       ok := ok + 1;

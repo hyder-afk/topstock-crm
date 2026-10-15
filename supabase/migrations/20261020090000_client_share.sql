@@ -101,20 +101,20 @@ alter table private.inventory_settings
 -- ===========================================================================
 create function private.share_token_hash() returns bytea
 language sql stable set search_path = '' as $$
-  select case when current_setting('topstock.share_token_hash', true) ~ '^[0-9a-f]{64}$'
-              then decode(current_setting('topstock.share_token_hash', true), 'hex') end
+  select case when nullif(current_setting('topstock.share_token_hash', true), '') ~ '^[0-9a-f]{64}$'
+              then decode(nullif(current_setting('topstock.share_token_hash', true), ''), 'hex') end
 $$;
 create function private.share_link_id() returns uuid
 language sql stable set search_path = '' as $$
-  select case when current_setting('topstock.share_link', true)
+  select case when nullif(current_setting('topstock.share_link', true), '')
                    ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-              then current_setting('topstock.share_link', true)::uuid end
+              then nullif(current_setting('topstock.share_link', true), '')::uuid end
 $$;
 create function private.share_org() returns uuid
 language sql stable set search_path = '' as $$
-  select case when current_setting('topstock.share_org', true)
+  select case when nullif(current_setting('topstock.share_org', true), '')
                    ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-              then current_setting('topstock.share_org', true)::uuid end
+              then nullif(current_setting('topstock.share_org', true), '')::uuid end
 $$;
 
 -- ===========================================================================
@@ -483,7 +483,8 @@ begin
 end;
 $$;
 
--- Import undo: a lead with a link is touched (REBASE: from 20261019090000_sales_requests.sql, 6d, unmerged).
+-- Import undo: a lead with a link is touched (6d's definition, with Day 4d's file check since the merge of Day 5,
+-- 15 Oct 2026).
 create or replace function private.lead_import_untouched(p_batch uuid, p_limit integer) returns setof uuid
 language sql stable set search_path = '' as $$
   select c.id from public.companies c
@@ -492,6 +493,7 @@ language sql stable set search_path = '' as $$
      and not exists (select 1 from public.contacts k where k.company_id = c.id)
      and not exists (select 1 from public.deals d where d.company_id = c.id)
      and not exists (select 1 from public.tasks t where t.company_id = c.id)
+     and not private.lead_has_files(c.id)
      and not exists (select 1 from private.stock_reservations r where r.company_id = c.id)
      and not exists (select 1 from private.orders o where o.company_id = c.id)
      and not exists (select 1 from private.stock_requests q where q.company_id = c.id)
@@ -863,7 +865,7 @@ begin
   insert into private.share_links (company_id, label, language, show_in_transit, allow_requests, expires_at)
   values (p_company, p_label, p_language, p_show_in_transit, p_allow_requests, now() + make_interval(days => p_expires_days))
   returning id, expires_at into v_id, v_expires;
-  v_token := current_setting('topstock.new_share_token', true);
+  v_token := nullif(current_setting('topstock.new_share_token', true), '');
   perform set_config('topstock.new_share_token', '', true);
   if v_token is null or v_token !~ '^tss_[A-Za-z0-9_-]{43}$' then
     raise exception 'the link could not be made' using errcode = '22023', hint = 'unavailable';

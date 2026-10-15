@@ -249,7 +249,7 @@ begin
   if n.kind is distinct from o.kind or n.uploaded_by is distinct from o.uploaded_by then
     raise exception 'this change is not allowed' using errcode = '22023', hint = 'bad_transition';
   end if;
-  if current_setting('topstock.stock_batch_op', true) is distinct from n.id::text then
+  if nullif(current_setting('topstock.stock_batch_op', true), '') is distinct from n.id::text then
     raise exception 'this change is not allowed' using errcode = '22023', hint = 'bad_transition';
   end if;
   if n.status = o.status and n.status <> 'dry_run' then
@@ -1401,7 +1401,7 @@ begin
       if not private.has_recent_aal2(600) then
         raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';
       end if;
-      if current_setting('topstock.stock_batch_op', true) is distinct from new.import_batch_id::text then
+      if nullif(current_setting('topstock.stock_batch_op', true), '') is distinct from new.import_batch_id::text then
         raise exception 'this document is not available' using errcode = '22023', hint = 'document';
       end if;
     end if;

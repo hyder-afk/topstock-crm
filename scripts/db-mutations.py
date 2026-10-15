@@ -1881,7 +1881,7 @@ MUTATIONS_6C = [
     ("The batch guard keeps the stock working rows when an import closes [design 22]",
      [("    delete from private.stock_import_staging s where s.batch_id = n.id;\n", "    null;\n")]),
     ("No stock marker check in the batch guard (a lead RPC or a direct PATCH moves a stock batch) [design 23]",
-     [("  if current_setting('topstock.stock_batch_op', true) is distinct from n.id::text then\n    raise exception",
+     [("  if nullif(current_setting('topstock.stock_batch_op', true), '') is distinct from n.id::text then\n    raise exception",
        "  if false then\n    raise exception")]),
     ("One writer per organisation again instead of per organisation and kind [design 24]",
      [("create unique index import_batches_one_writer_idx on public.import_batches (org_id, kind)",

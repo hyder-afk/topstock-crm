@@ -265,12 +265,26 @@ begin
     end if;
   end loop;
   -- Day 6 contract (section 10): no BEFORE trigger on deals other than these three; the history triggers fire on
-  -- insert and on a stage change (WHEN, never UPDATE OF status).
+  -- insert and on a stage change (WHEN, never UPDATE OF status). Since the merge into Day 6 (15 Oct 2026) Day 6a's two
+  -- hold-release triggers are on the table too: release_deal_holds_lost AFTER UPDATE (row, WHEN the status becomes
+  -- 'lost', which this file's Closed/lost path sets) and release_deal_holds_deleted BEFORE DELETE; neither writes the
+  -- deal row, so the BEFORE INSERT/UPDATE set stays exactly the three below.
   if (select array_agg(tgname::text order by tgname) from pg_trigger
        where tgrelid = 'public.deals'::regclass and not tgisinternal)
      is distinct from array['audit_row', 'enforce_org_and_owner', 'flood_deal_move', 'flood_deal_open', 'guard_deal',
-                            'history_deal', 'history_deal_stage', 'set_updated_at'] then
+                            'history_deal', 'history_deal_stage', 'release_deal_holds_deleted', 'release_deal_holds_lost',
+                            'set_updated_at'] then
     raise exception 'FAIL: the triggers on deals changed';
+  end if;
+  -- tgtype bits: 1 row, 2 before, 4 insert, 8 delete, 16 update. BEFORE row INSERT or UPDATE: only these three.
+  if (select array_agg(tgname::text order by tgname) from pg_trigger
+       where tgrelid = 'public.deals'::regclass and not tgisinternal and tgtype & 2 = 2 and tgtype & (4 | 16) <> 0)
+     is distinct from array['enforce_org_and_owner', 'guard_deal', 'set_updated_at'] then
+    raise exception 'FAIL: a new BEFORE INSERT or UPDATE trigger on deals';
+  end if;
+  if (select tgtype from pg_trigger where tgrelid = 'public.deals'::regclass and tgname = 'release_deal_holds_lost') <> 1 | 16
+     or (select tgtype from pg_trigger where tgrelid = 'public.deals'::regclass and tgname = 'release_deal_holds_deleted') <> 1 | 2 | 8 then
+    raise exception 'FAIL: Day 6a''s release triggers must stay AFTER UPDATE and BEFORE DELETE (row)';
   end if;
   -- Constraints the design names (G2, G5 to G7, S6), the tasks FK (G8) and the lead FK.
   if (select array_agg(conname::text order by conname) from pg_constraint

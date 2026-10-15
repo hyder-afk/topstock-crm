@@ -80,15 +80,17 @@ begin
     ('5a000000-0000-0000-0000-0000000000d1', main_org, 'SA Lead D1', '00000000-0000-0000-0000-0000000000d1', 'cold', 'BE'),
     ('5a000000-0000-0000-0000-0000000000b2', main_org, 'SA Lead DNC', '00000000-0000-0000-0000-0000000000b1', 'do_not_contact', 'FR'),
     ('5a000000-0000-0000-0000-0000000000b3', main_org, 'SA Lead First', '00000000-0000-0000-0000-0000000000b1', 'negotiation', 'FR');
-  insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment, lost_reason) values
+  -- The lost deal has its close time (Day 5's deals_closed_at_matches, since the merge of 15 Oct 2026).
+  insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment, lost_reason, closed_at) values
     ('5d000000-0000-0000-0000-0000000000b1', main_org, '5a000000-0000-0000-0000-0000000000b1', stage,
-     '00000000-0000-0000-0000-0000000000b1', 'open', 'from_stock', null),
-    ('5d000000-0000-0000-0000-0000000000b2', main_org, '5a000000-0000-0000-0000-0000000000b1', stage,
-     '00000000-0000-0000-0000-0000000000b1', 'lost', 'from_stock', 'price'),
+     '00000000-0000-0000-0000-0000000000b1', 'open', 'from_stock', null, null),
+    ('5d000000-0000-0000-0000-0000000000b2', main_org, '5a000000-0000-0000-0000-0000000000b1',
+     (select s.id from public.pipeline_stages s where s.org_id = main_org and s.key = 'lost'),
+     '00000000-0000-0000-0000-0000000000b1', 'lost', 'from_stock', 'price', now()),
     ('5d000000-0000-0000-0000-0000000000b3', main_org, '5a000000-0000-0000-0000-0000000000b1', stage,
-     '00000000-0000-0000-0000-0000000000b1', 'open', 'direct_from_source', null),
+     '00000000-0000-0000-0000-0000000000b1', 'open', 'direct_from_source', null, null),
     ('5d000000-0000-0000-0000-0000000000d1', main_org, '5a000000-0000-0000-0000-0000000000d1', stage,
-     '00000000-0000-0000-0000-0000000000d1', 'open', 'from_stock', null);
+     '00000000-0000-0000-0000-0000000000d1', 'open', 'from_stock', null, null);
   insert into public.products (org_id, name, pieces_per_carton, price_min, price_max, reorder_point)
   select main_org, 'SA P' || g, 10, 2, 3, case when g in (5, 6) then 50 end from generate_series(1, 8) g;
   insert into private.product_costs (product_id, org_id, cost_per_piece, source)
@@ -655,6 +657,57 @@ begin
     raise exception 'FAIL: lead_delete_with_request_task';
   end if;
 end $$;
+
+-- 11c. Day 5's deal schema (merge of Day 5 into Day 6, 15 Oct 2026): an open deal may have no title, no value and no
+--      fulfilment yet (chosen at Win). deal_picker_day5_shape: the picker read gives the title, the stage key and a
+--      null value (never 0); hold_and_undo_keep_undecided_deal: such a deal takes a hold, a sale uses it, and Undo
+--      puts the hold back still naming the deal.
+reset role;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment, title, value)
+select '5d000000-0000-0000-0000-0000000000b4', c.org_id, c.id,
+       (select s.id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'qualified'),
+       '00000000-0000-0000-0000-0000000000b1', 'open', null, null, null
+  from public.companies c where c.id = '5a000000-0000-0000-0000-0000000000b1';
+update public.deals set title = 'SA Denim, 2 pallets', value = 4200 where id = '5d000000-0000-0000-0000-0000000000b1';
+set role authenticated;
+do $$
+declare
+  v jsonb;
+  d jsonb;
+  r jsonb;
+  u jsonb;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  v := public.list_lead_deals_for_stock('5a000000-0000-0000-0000-0000000000b1');
+  d := (select e from jsonb_array_elements(v) e where e ->> 'id' = '5d000000-0000-0000-0000-0000000000b4');
+  if d is null or d -> 'value' <> 'null'::jsonb or d -> 'title' <> 'null'::jsonb or d ->> 'stage' <> 'qualified'
+     or d -> 'fulfilment' <> 'null'::jsonb then
+    raise exception 'FAIL: deal_picker_day5_shape (undecided deal): %', d;
+  end if;
+  d := (select e from jsonb_array_elements(v) e where e ->> 'id' = '5d000000-0000-0000-0000-0000000000b1');
+  if d ->> 'title' <> 'SA Denim, 2 pallets' or (d ->> 'value')::numeric <> 4200 or d ->> 'stage' <> 'lead' then
+    raise exception 'FAIL: deal_picker_day5_shape (titled deal, stage key not name): %', d;
+  end if;
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform public.post_stock_movement(pg_temp.pid('SA P8'), 'receive', 20, 'warehouse', 'received');
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  perform public.post_stock_movement(pg_temp.pid('SA P8'), 'reserve', 5, p_company => '5a000000-0000-0000-0000-0000000000b1',
+                                     p_deal => '5d000000-0000-0000-0000-0000000000b4');
+  r := public.record_sale('5a000000-0000-0000-0000-0000000000b1', 'from_stock', jsonb_build_array(pg_temp.l('SA P8', 5)),
+                          p_deal => '5d000000-0000-0000-0000-0000000000b4');
+  if (r -> 'lines' -> 0 ->> 'used_held')::int <> 5 then
+    raise exception 'FAIL: hold_and_undo_keep_undecided_deal: the sale did not use the deal''s hold: %', r;
+  end if;
+  u := public.undo_sale((r ->> 'order_id')::uuid);
+  if (u ->> 'holds_restored')::int <> 1
+     or (select count(*) from private.stock_reservations r2 where r2.product_id = pg_temp.pid('SA P8') and r2.status = 'active'
+           and r2.deal_id = '5d000000-0000-0000-0000-0000000000b4' and r2.remaining = 5) <> 1 then
+    raise exception 'FAIL: hold_and_undo_keep_undecided_deal: Undo lost the deal on the hold: % %', u,
+      (select jsonb_agg(to_jsonb(r2)) from private.stock_reservations r2 where r2.product_id = pg_temp.pid('SA P8'));
+  end if;
+end $$;
+do $$ begin perform pg_temp.integrity_clean('the undecided deal'); end $$;
 
 -- 12. lead_delete_blocked_by_stock_history, lead_import_untouched_counts_stock (catalog), ledger_sums_match_levels -----
 do $$

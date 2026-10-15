@@ -382,24 +382,29 @@ mv "$CB" "$(p 12)" count null "p_target => 55" || fail "count_vs_receive: the co
 wait $p1 || fail "count_vs_receive: the receipt failed"
 [ "$(level "$(p 12)" warehouse)" = "55/0" ] || fail "count_vs_receive: on hand $(level "$(p 12)" warehouse), expected the counted 55"
 
+# Since Day 5 merged (15 Oct 2026) a person loses a deal the app's way: a stage change to Closed/lost with a reason, and
+# Day 5's BEFORE trigger (guard_deal) sets status 'lost' and the close time (status itself is not granted). The owner
+# (no signed-in user, guard skipped) puts it back to open at Lead, keeping Day 5's CHECKs (closed_at null when open).
+LOSE_DEAL="update public.deals d set stage_id = (select s.id from public.pipeline_stages s where s.org_id = d.org_id and s.key = 'lost'), lost_reason = 'price' where d.id = '$DEAL';"
+REOPEN_DEAL="update public.deals d set status = 'open', closed_at = null, lost_reason = null, stage_id = (select s.id from public.pipeline_stages s where s.org_id = d.org_id and s.key = 'lead') where d.id = '$DEAL';"
 # 9. reserve_vs_deal_lost ------------------------------------------------------------------------------------------------------
 # a) a hold for the deal holds its transaction; the deal is lost meanwhile: its trigger waits and releases the hold.
 opening "$(p 13)" 100 0
-as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+as_owner "$REOPEN_DEAL" >/dev/null
 as_user "$CR1" "begin;
 select public.post_stock_movement(p_product => '$(p 13)', p_kind => 'reserve', p_qty => 30, p_company => '$LB', p_deal => '$DEAL') \g /dev/null
 select pg_sleep(2) \g /dev/null
 commit;" & p1=$!
 sleep 0.5
-as_user "$CR1" "update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';" >/dev/null \
+as_user "$CR1" "$LOSE_DEAL" >/dev/null \
   || fail "reserve_vs_deal_lost (a): losing the deal failed"
 wait $p1 || fail "reserve_vs_deal_lost (a): the hold failed"
 [ "$(as_owner "select count(*) from private.stock_reservations where deal_id = '$DEAL' and status = 'active';")" = "0" ] \
   && [ "$(level "$(p 13)" warehouse)" = "100/0" ] || fail "reserve_vs_deal_lost (a): a lost deal kept an active hold"
 # b) the deal is being lost; a hold for it waits on the deal and is refused.
-as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+as_owner "$REOPEN_DEAL" >/dev/null
 as_user "$CR1" "begin;
-update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';
+$LOSE_DEAL
 select pg_sleep(2) \g /dev/null
 commit;" & p1=$!
 sleep 0.5
@@ -413,15 +418,15 @@ expect_refused "$out" 22023 deal_closed
 #    The deal is locked first (by an unrelated change), then lost, which needs that level to release the deal's hold.
 #    The hold's RPC locks the deal before any expiry row, so it waits and is refused: never a deadlock (40P01).
 opening "$(p 15)" 100 0
-as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+as_owner "$REOPEN_DEAL" >/dev/null
 mv "$CR1" "$(p 15)" reserve 10 "p_company => '$LB', p_deal => '$DEAL'" || fail "reserve_vs_deal_lost (c): the deal's hold failed"
 mv "$CR1" "$(p 15)" reserve 5 "p_company => '$LB'" || fail "reserve_vs_deal_lost (c): the hold to expire failed"
 as_owner "update private.stock_reservations set hold_until = current_date - 1
            where product_id = '$(p 15)' and deal_id is null and status = 'active';" >/dev/null
 as_user "$CR1" "begin;
-update public.deals set value = value + 1 where id = '$DEAL';
+update public.deals set value = coalesce(value, 0) + 1 where id = '$DEAL';
 select pg_sleep(2) \g /dev/null
-update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';
+$LOSE_DEAL
 commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
 sleep 0.5
 out=$(as_user "$CR1" "select public.post_stock_movement(p_product => '$(p 15)', p_kind => 'reserve', p_qty => 30, p_company => '$LB', p_deal => '$DEAL') \g /dev/null" 2>&1) \
@@ -434,7 +439,7 @@ expect_refused "$out" 22023 deal_closed
 # d) as (a), with the hold inserted straight into the ledger (a client may insert ledger rows; no RPC, so no lock before
 #    the apply step): the apply step's own deal lock makes the deal lost wait and release the hold.
 opening "$(p 16)" 100 0
-as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+as_owner "$REOPEN_DEAL" >/dev/null
 as_user "$CR1" "begin;
 insert into private.stock_movements (group_id, product_id, location_id, kind, qty, company_id, deal_id, hold_until)
 select gen_random_uuid(), '$(p 16)', l.id, 'reserve', 30, '$LB', '$DEAL', current_date + 7
@@ -442,7 +447,7 @@ select gen_random_uuid(), '$(p 16)', l.id, 'reserve', 30, '$LB', '$DEAL', curren
 select pg_sleep(2) \g /dev/null
 commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
 sleep 0.5
-as_user "$CR1" "update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';" >/dev/null \
+as_user "$CR1" "$LOSE_DEAL" >/dev/null \
   || fail "reserve_vs_deal_lost (d): losing the deal failed"
 wait $p1 || fail "reserve_vs_deal_lost (d): the direct hold failed: $(head -3 "$WORKDIR/x.out")"
 [ "$(as_owner "select count(*) from private.stock_reservations where deal_id = '$DEAL' and status = 'active';")" = "0" ] \
@@ -452,7 +457,7 @@ wait $p1 || fail "reserve_vs_deal_lost (d): the direct hold failed: $(head -3 "$
 #    holds, so it waits for Arrived and then releases all three where they are now (read before the lock, the moved
 #    hold and the split part were missed and the lost deal kept 50 pieces held).
 opening "$(p 17)" 0 100
-as_owner "update public.deals set status = 'open', lost_reason = null where id = '$DEAL';" >/dev/null
+as_owner "$REOPEN_DEAL" >/dev/null
 mv "$CR1" "$(p 17)" reserve 30 "p_location => 'transit', p_company => '$LB', p_deal => '$DEAL'" \
   || fail "reserve_vs_deal_lost (e): the first hold failed"
 mv "$CR1" "$(p 17)" reserve 40 "p_location => 'transit', p_company => '$LB', p_deal => '$DEAL'" \
@@ -462,7 +467,7 @@ select public.post_stock_movement(p_product => '$(p 17)', p_kind => 'transfer', 
 select pg_sleep(2) \g /dev/null
 commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!
 sleep 0.5
-as_user "$CR1" "update public.deals set status = 'lost', lost_reason = 'price' where id = '$DEAL';" >/dev/null \
+as_user "$CR1" "$LOSE_DEAL" >/dev/null \
   || fail "reserve_vs_deal_lost (e): losing the deal failed"
 wait $p1 || fail "reserve_vs_deal_lost (e): Arrived failed: $(head -3 "$WORKDIR/x.out")"
 [ "$(as_owner "select count(*) from private.stock_reservations where product_id = '$(p 17)' and split_from is not null;")" = "1" ] \
