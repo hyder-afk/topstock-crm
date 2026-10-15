@@ -2,8 +2,9 @@
 
 Skill `anthropic-skills:apple-design` (Designing Fluid Interfaces; feedback, spatial consistency, restraint), applied
 to `src/components/team/*`, `src/app/(app)/more/team/*` and the screenshots in `screens/` (every width, light and
-dark, English and French; first taken 14 Oct on ed2ad60; the current set was taken on bc79fa6, the merge with main, on
-15 Oct; the final set comes after the next merge, with Day 4d and Day 5). DESIGN.md is the source of truth where they
+dark, English and French; first taken 14 Oct on ed2ad60; then on bc79fa6, the merge with main, on 15 Oct;
+the current set on 2ab9969, after the merge with Day 4d and Day 5, also 15 Oct: only the manager and rep descriptions
+changed, still three lines at most in the 36ch column and the 390 role menu, nothing clipped). DESIGN.md is the source of truth where they
 differ. The 14 Oct re-run looked at the screenshots one by one (the 12 Oct round had no saved set) and at the e2e run that found row 11.
 
 | # | Principle | Finding | Outcome |

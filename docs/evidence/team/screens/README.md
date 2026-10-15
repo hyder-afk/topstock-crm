@@ -5,10 +5,11 @@ organisation made for the run: Inès Garnier (admin, the signed-in person), Malo
 and one account without a name yet (rep). Each shot waits for the real screen (not the skeleton, except the skeleton
 shots) and fails on any console error or sideways scroll.
 
-**Current set: taken on 15 Oct 2026 on bc79fa6** (the merge of main 5f1a966; More now also shows main's "Your time
-zone" section). Run: `team-screens.spec.ts`, Chromium, 4 tests passed, 50 shots, no console error (cancelled prefetches
-filtered with `isCancelledPrefetch`, each page `settled()` before it closes, as `lead-page.spec.ts`), no sideways scroll.
-Previous set: 14 Oct 2026 on 6d07187 (verifier round), same 50 file names.
+**Current set: taken on 15 Oct 2026 on 2ab9969** (after the merge of Day 5 with 4c and 4d, 4711172; the manager and
+rep role descriptions now name deals and files). Run: `team-screens.spec.ts`, Chrome Headless Shell 156, 4 tests
+passed, 50 shots, no console error (cancelled prefetches filtered with `isCancelledPrefetch`, each page `settled()`
+before it closes, as `lead-page.spec.ts`), no sideways scroll. Previous sets: 15 Oct on bc79fa6 (the merge of main
+5f1a966), 14 Oct 2026 on 6d07187 (verifier round), same 50 file names.
 
 | State | Matrix | Shots |
 |---|---|---|
