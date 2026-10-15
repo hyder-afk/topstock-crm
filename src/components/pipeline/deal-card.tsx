@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
 // the same menu. Press feedback is a 0.97 scale within 100 ms; hover is a tint, never a lift. Memoised per card.
 export type BoardHandlers = {
   onKey: (card: Card, action: Exclude<CardKeyAction, null>) => void;
+  /** The card as the board's cache holds it now. A move writes the cache in the key's own event, but the cards re-render
+   *  one task later (TanStack's notify), so a second key in between must read the cache, not this render's props. */
+  live: (card: Card) => Card;
   onNext: (card: Card) => void;
   menu: (card: Card) => DealMenuActions;
   onFocusCard: (id: string) => void;
@@ -98,7 +101,10 @@ export const DealCardView = memo(function DealCardView({
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    const action = cardKeyAction(e, card.stage, {
+    // A quick second Shift+→ arrives before this card has re-rendered from the first move: step from the cache's stage
+    // (already the new one), not the stale prop, or both presses would ask for the same stage.
+    const live = handlers?.live(card) ?? card;
+    const action = cardKeyAction(e, live.stage, {
       typing: isTyping(e.target),
       dialogOpen: !!document.querySelector("[role=dialog]"),
       chordPending: shell.isChordPending(),
@@ -111,7 +117,7 @@ export const DealCardView = memo(function DealCardView({
     if (action && handlers) {
       e.preventDefault();
       e.stopPropagation();
-      handlers.onKey(card, action);
+      handlers.onKey(live, action);
       return;
     }
     listeners?.onKeyDown?.(e);

@@ -392,6 +392,10 @@ function Pipeline({
         else if (card.stage === "qualified") moveCard(card, "negotiations", rectOf(card.id), false);
       },
       menu: menuFor,
+      live: (card) => {
+        const latest = qc.getQueryData<Board>(boardKey(key.scope, key.owner));
+        return (latest && findCard(latest, card.id)?.card) || card;
+      },
       onKey: (card, action) => {
         switch (action.kind) {
           case "move":
@@ -415,7 +419,7 @@ function Pipeline({
         }
       },
     }),
-    [menuFor, askWin, askLose, moveCard, openSheet, router, actions, askDelete],
+    [menuFor, askWin, askLose, moveCard, openSheet, router, actions, askDelete, qc, key],
   );
   // The cards read one handlers object that never changes (each call goes to this render's handlers), so a move, a
   // focus change or a drag over a column does not re-render every memoised card through the context (day5-perf).
@@ -428,6 +432,7 @@ function Pipeline({
       onFocusCard: (id) => latestHandlers.current.onFocusCard(id),
       onNext: (card) => latestHandlers.current.onNext(card),
       menu: (card) => latestHandlers.current.menu(card),
+      live: (card) => latestHandlers.current.live(card),
       onKey: (card, action) => latestHandlers.current.onKey(card, action),
     }),
     [],
