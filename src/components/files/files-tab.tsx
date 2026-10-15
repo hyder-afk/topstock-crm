@@ -268,24 +268,25 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
   };
 
   // "Show older files" stays one button (it becomes Try again under the error), so it keeps the focus while it loads or
-  // fails; when the last page arrives and it goes, the focus moves to the first file that arrived (verifier 4d round 2
-  // finding 10). The move happens in the commit that shows the page: waiting two frames after the fetch raced the
-  // render, so the button could still hold the focus at the check and then leave with it (WebKit e2e, PR #17).
+  // fails; when the last page arrives and it goes, the focus moves to the first file that arrived, or to the heading
+  // when that page came back empty (the older files were deleted meanwhile) (verifier 4d round 2 finding 10). It settles
+  // in the commit that ends the fetch: waiting two frames after the fetch raced the render, so the button could still
+  // hold the focus at the check and then leave with it (WebKit e2e, PR #17). An error or a cancelled fetch keeps the
+  // button (or Try again), so the focus stays where it is.
   const olderFrom = useRef<number | null>(null);
-  const loadOlder = async () => {
+  const loadOlder = () => {
     if (files.isFetchingNextPage) return;
     olderFrom.current = rows.length;
-    const result = await files.fetchNextPage();
-    if (result.isError) olderFrom.current = null;
+    void files.fetchNextPage();
   };
   useLayoutEffect(() => {
     const before = olderFrom.current;
-    if (before === null || rows.length <= before) return;
+    if (before === null || files.isFetchingNextPage) return;
     olderFrom.current = null;
     if (document.activeElement && document.activeElement !== document.body) return;
-    const first = files.hasNextPage ? null : listRef.current?.children[before]?.querySelector<HTMLElement>("a, button");
+    const first = rows.length > before && !files.hasNextPage ? listRef.current?.children[before]?.querySelector<HTMLElement>("a, button") : null;
     (first ?? headingRef.current)?.focus();
-  }, [rows.length, files.hasNextPage]);
+  }, [rows.length, files.hasNextPage, files.isFetchingNextPage]);
 
   /** The row's own button (Actions, or Retry while stuck deleting) for a file still listed, else the heading. */
   const rowTarget = useCallback(
@@ -557,7 +558,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
               <span>{t("errorOlder")}</span>
             </p>
           ) : null}
-          <Button variant="quiet" className="aria-disabled:opacity-60" aria-disabled={files.isFetchingNextPage || undefined} onClick={() => void loadOlder()}>
+          <Button variant="quiet" className="aria-disabled:opacity-60" aria-disabled={files.isFetchingNextPage || undefined} onClick={loadOlder}>
             {files.isFetchNextPageError ? t("retry") : t("loadOlder")}
           </Button>
         </div>
