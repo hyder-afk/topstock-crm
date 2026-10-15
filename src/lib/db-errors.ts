@@ -36,6 +36,10 @@ export const INVALID_HINTS = [
   "lead_has_files",
   "bad_bucket",
   "timezone",
+  "file_type",
+  "file_size",
+  "file_name",
+  "file_lead",
   // Day 5 (deals; design 4, error contract)
   "value",
   "value_required",

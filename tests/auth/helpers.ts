@@ -205,11 +205,13 @@ export function setRole(email: string, role: "admin" | "manager" | "rep") {
 }
 
 // Replaces every lead with `count` made-up companies (names from fixed word lists, @example.com emails, +33 6 00
-// numbers), owned in turn by the given test users, with a contact on every third one. Deals go first: a deal keeps its
-// lead (deals_company_id_fkey has no cascade), so earlier specs' made-up deals would block the reset.
+// numbers), owned in turn by the given test users, with a contact on every third one. File rows and deals go first: since
+// Day 4d a lead with files cannot be deleted (their stored bytes, if any, are left to the throwaway stack), and a deal
+// keeps its lead (deals_company_id_fkey has no cascade), so earlier specs' made-up files and deals would block the reset.
 export function seedLeads(ownerEmails: string[], count = 120) {
   const owners = ownerEmails.map(emailLiteral).join(", ");
   sql(`
+    delete from public.files;
     delete from public.deals;
     delete from public.companies;
     with o as (select array_agg(p.id order by u.email) as ids, min(p.org_id::text)::uuid as org

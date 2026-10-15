@@ -12,6 +12,12 @@ env:
   NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-publishable-key
   NEXT_TELEMETRY_DISABLED: "1"
+# One run per PR: a new commit cancels the run for the older one (only the newest commit counts for merging, and it
+# always gets the full suite). Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -60,6 +66,7 @@ jobs:
     timeout-minutes: ${{ matrix.timeout }}
     env:
       BROWSER: ${{ matrix.browser }}
+      E2E_STORAGE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,8 +76,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Start local Supabase (database, auth, REST, gateway, mail inbox)
-        run: npx supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      # Storage runs from Day 4d (files: uploads, the check on every open, deletes; tests/auth/files.spec.ts and the
+      # storage spikes S2 to S4 in tests/auth/files-spikes.spec.ts, which only run with E2E_STORAGE=1).
+      - name: Start local Supabase (database, auth, REST, storage, gateway, mail inbox)
+        run: npx supabase start -x realtime,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
       - name: Read the local stack's URL and demo keys
         run: |
           npx supabase status -o json > "$RUNNER_TEMP/sb.json"
@@ -111,6 +120,17 @@ jobs:
           name: auth-screens
           path: test-results/screens/
           retention-days: 14
+      # Storage spikes S2 to S4 as measured on this stack (tests/auth/files-spikes.spec.ts; Day 4d README).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && matrix.browser == 'chromium'
+        with:
+          name: storage-spikes
+          path: test-results/spikes/
+          retention-days: 30
+      # The same results as annotations (readable through the API, unlike the artifact).
+      - name: Storage spikes S2 to S5 as annotations
+        if: always() && matrix.browser == 'chromium' && hashFiles('test-results/spikes/day4d.json') != ''
+        run: jq -r 'to_entries[] | select(.key != "recorded_at") | "::notice title=Spike \(.key)::\(.value | tojson)"' test-results/spikes/day4d.json
       # Home and the command menu at 1280/1440/1728 in this engine (shell.spec).
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success()

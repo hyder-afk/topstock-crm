@@ -1,10 +1,10 @@
 # Database checks on every PR: apply all migrations to the real Supabase Postgres (local, throwaway, no keys),
 # run the two-user RLS attack test, the lead import attack test and its two-session test, the activity and task
 # hardening attack test and its two-session test, the lead page attack and concurrency tests, the work queue attack and
-# concurrency tests, the deals attack test and its two- and three-session test (Day 5a), the deal links test (Day 5b),
-# the Home figures test (Day 5c), the Supabase advisors (splinter) and lint the SQL functions. On pull
-# requests, first check that every migration the PR adds sorts after main's newest (Day 5 D35: deploy-dev-db pushes
-# without --include-all).
+# concurrency tests, the files attack and concurrency tests (with the real storage schema: storage-api runs from Day 4d),
+# the deals attack test and its two- and three-session test (Day 5a), the deal links test (Day 5b), the Home figures
+# test (Day 5c), the Supabase advisors (splinter) and lint the SQL functions. On pull requests, first check that every
+# migration the PR adds sorts after main's newest (Day 5 D35: deploy-dev-db pushes without --include-all).
 name: db
 on:
   pull_request:
@@ -14,6 +14,12 @@ on:
     paths: ["supabase/**"]
 permissions:
   contents: read
+# One run per PR: a new commit cancels the run for the older one (only the newest commit counts for merging, and it
+# always gets the full suite). Pushes to main are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   rls:
     runs-on: ubuntu-latest
@@ -34,33 +40,59 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Start local Supabase (applies supabase/migrations)
-        run: npx supabase start -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+        # storage-api runs from Day 4d (spike S1's decision rule): the files migration needs the real storage schema
+        # (storage.buckets with file_size_limit and allowed_mime_types, storage.objects, storage.foldername).
+        run: npx supabase start -x realtime,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: "Spike S1: record the storage schema the migrations met (job summary)"
+        run: |
+          {
+            echo "### Spike S1 (Day 4d): storage schema in CI"
+            echo '```'
+            psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -A -F ' | ' -c "
+              select 'storage.buckets columns' as fact, string_agg(column_name, ', ' order by column_name) as value
+                from information_schema.columns where table_schema = 'storage' and table_name = 'buckets'
+              union all
+              select 'storage migrations run', count(*)::text from storage.migrations
+              union all
+              select 'bucket lead-files (made by our migration)', coalesce((select format('public=%s limit=%s types=%s', public, file_size_limit, cardinality(allowed_mime_types)) from storage.buckets where id = 'lead-files'), 'MISSING')
+              union all
+              select 'storage.objects policies (made by our migration)', coalesce((select string_agg(polname, ', ' order by polname) from pg_policy where polrelid = 'storage.objects'::regclass), 'MISSING')"
+            echo '```'
+            echo "Reading: a bucket row with limit=10485760 and three policies means the project migrations ran after storage-api's own (no fallback needed)."
+          } > "$RUNNER_TEMP/s1.md"
+          cat "$RUNNER_TEMP/s1.md" >> "$GITHUB_STEP_SUMMARY"
+          # The same rows as annotations (readable through the API, unlike the summary).
+          grep ' | ' "$RUNNER_TEMP/s1.md" | while IFS= read -r row; do echo "::notice title=Spike S1::$row"; done
       - name: Two-user RLS attack test
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_attack.sql
+        run: bash scripts/ci-report.sh "Two-user RLS attack test" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/rls_attack.sql
       - name: Lead import attack test
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/import_attack.sql
+        run: bash scripts/ci-report.sh "Lead import attack test" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/import_attack.sql
       - name: Lead import under concurrency (two sessions)
-        run: bash supabase/tests/import_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+        run: bash scripts/ci-report.sh "Lead import under concurrency (two sessions)" bash supabase/tests/import_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Activity and task hardening attack test (Day 4a)
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/activity_attack.sql
+        run: bash scripts/ci-report.sh "Activity and task hardening attack test (Day 4a)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/activity_attack.sql
       - name: Last activity under concurrency (two sessions, Day 4a)
-        run: bash supabase/tests/activity_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+        run: bash scripts/ci-report.sh "Last activity under concurrency (two sessions, Day 4a)" bash supabase/tests/activity_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lead page attack test (Day 4b outcomes, undo, zones)
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/outcome_attack.sql
+        run: bash scripts/ci-report.sh "Lead page attack test (Day 4b outcomes, undo, zones)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/outcome_attack.sql
       - name: Outcomes under concurrency (two sessions)
-        run: bash supabase/tests/outcome_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+        run: bash scripts/ci-report.sh "Outcomes under concurrency (two sessions)" bash supabase/tests/outcome_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Work queue and tasks attack test (Day 4c claims, order, calling hours, task buckets)
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/queue_attack.sql
+        run: bash scripts/ci-report.sh "Work queue and tasks attack test (Day 4c claims, order, calling hours, task buckets)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/queue_attack.sql
       - name: Work queue under concurrency (three sessions)
-        run: bash supabase/tests/queue_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+        run: bash scripts/ci-report.sh "Work queue under concurrency (three sessions)" bash supabase/tests/queue_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Files attack test (Day 4d bucket, policies, guards, limits)
+        run: bash scripts/ci-report.sh "Files attack test (Day 4d bucket, policies, guards, limits)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/files_attack.sql
+      - name: File space under concurrency (two sessions)
+        run: bash scripts/ci-report.sh "File space under concurrency (two sessions)" bash supabase/tests/files_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Deals attack test (Day 5a pipeline database)
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/deals_attack.sql
+        run: bash scripts/ci-report.sh "Deals attack test (Day 5a pipeline database)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/deals_attack.sql
       - name: Deals under concurrency (two and three sessions)
-        run: bash supabase/tests/deal_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+        run: bash scripts/ci-report.sh "Deals under concurrency (two and three sessions)" bash supabase/tests/deal_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Day 5b deal links attack tests (entries naming a deal, Interested opens a deal, one Undo)
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/deal_links_attack.sql
+        run: bash scripts/ci-report.sh "Day 5b deal links attack tests (entries naming a deal, Interested opens a deal, one Undo)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/deal_links_attack.sql
       - name: Day 5c Home figures attack tests (scope, zones, exact figures, no entry text)
-        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/home_attack.sql
+        run: bash scripts/ci-report.sh "Day 5c Home figures attack tests (scope, zones, exact figures, no entry text)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/home_attack.sql
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions

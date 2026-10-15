@@ -60,9 +60,11 @@ begin
     values (('60000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
             ('30000000-0000-0000-0000-0000000000' || who.tag)::uuid,
             ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'Call back', who.usr);
-    insert into public.files (id, org_id, contact_id, storage_path, mime, size, uploaded_by)
+    -- Since Day 4d a file belongs to the lead; the guard builds its path. Ready, so managers and admins see it.
+    insert into public.files (id, org_id, company_id, name, mime, size, uploaded_by, status, ready_at)
     values (('70000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.org,
-            ('10000000-0000-0000-0000-0000000000' || who.tag)::uuid, 'f/' || who.tag || '.pdf', 'application/pdf', 100, who.usr);
+            ('30000000-0000-0000-0000-0000000000' || who.tag)::uuid, who.tag || '.pdf', 'application/pdf', 100, who.usr,
+            'ready', now());
   end loop;
   insert into public.saved_views (id, org_id, user_id, section, name)
   values ('80000000-0000-0000-0000-0000000000b1', main_org, '00000000-0000-0000-0000-0000000000b1', 'leads', 'B only');
@@ -240,8 +242,8 @@ begin
 end $$;
 
 -- 3b. Deals, tasks and files stay with their owner: rep B's and the other org's rows are invisible ----------
--- (Each table is updated through a column the client may write: tasks have column grants since Day 4a, deals since
--- Day 5a, so the deal probe changes its title.)
+-- (Each table is updated through a column the client may write: tasks have column grants since Day 4a, files since 4d,
+-- deals since Day 5a, so the deal probe changes its title.)
 do $$
 declare
   t text;
@@ -253,7 +255,7 @@ begin
     execute format('select count(*) from public.%I where id::text like %L', t, '%a1') into n;
     if n <> 1 then raise exception 'FAIL: rep A should see own row in %', t; end if;
     execute format('update public.%I set %s where id::text like %L or id::text like %L', t,
-                   case t when 'files' then 'updated_at = now()' else 'title = ''x''' end, '%b1', '%c1');
+                   case t when 'files' then 'status = ''deleting''' else 'title = ''x''' end, '%b1', '%c1');
     get diagnostics n = row_count;
     if n <> 0 then raise exception 'FAIL: rep A updated a foreign row in %', t; end if;
     execute format('delete from public.%I where id::text like %L or id::text like %L', t, '%b1', '%c1');
@@ -298,7 +300,7 @@ begin
     $q$insert into public.contacts (first_name, company_id) values ('x', '30000000-0000-0000-0000-0000000000b1')$q$,
     $q$insert into public.contacts (first_name, company_id) values ('x', '30000000-0000-0000-0000-0000000000c1')$q$,
     $q$update public.contacts set company_id = '30000000-0000-0000-0000-0000000000b1' where id = '10000000-0000-0000-0000-0000000000a1'$q$,
-    $q$insert into public.files (contact_id, storage_path, mime, size) values ('10000000-0000-0000-0000-0000000000c1', 'f/x.pdf', 'application/pdf', 1)$q$,
+    $q$insert into public.files (company_id, name, mime, size) values ('30000000-0000-0000-0000-0000000000c1', 'x.pdf', 'application/pdf', 1)$q$,
     $q$update public.activities set contact_id = '10000000-0000-0000-0000-0000000000b1' where id = '50000000-0000-0000-0000-0000000000a1'$q$,
     -- (the deal guard refuses another org's stage: 42501, hint stage)
     $q$update public.deals set stage_id = '20000000-0000-0000-0000-0000000000c1' where id = '40000000-0000-0000-0000-0000000000a1'$q$

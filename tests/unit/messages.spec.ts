@@ -35,6 +35,7 @@ const namespaces = [
   "LostReasons",
   "Fulfilment",
   "Palette",
+  "Files",
   // Day 5c: the Home dashboard.
   "Home",
 ];
