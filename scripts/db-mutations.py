@@ -5,7 +5,7 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|day6|day7a|all]
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|day6|day7a|day7c|all]
 [numbers...]  (about 60 s per mutation, 90 s once the Day 6 stock tests run; default: all sets, numbers apply within one
 set). Writes one Markdown table per set to stdout, then a count line per set; exits 1 when a row does not behave as
 listed. --anchors [--set ...] only checks that every edit applies (its text is found exactly once where it is aimed) and
@@ -53,6 +53,7 @@ MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
 MIG_6E = ROOT / "supabase/migrations/20261020090000_client_share.sql"
 MIG_6F = ROOT / "supabase/migrations/20261020100000_deal_stock_blocks.sql"
 MIG_7A = ROOT / "supabase/migrations/20261021100000_day7a_security.sql"
+MIG_7C = ROOT / "supabase/migrations/20261022090000_orphan_sweeper.sql"
 # Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
 # "untouched" rule (Day 4d's); Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
 # Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 5a's); Day 6e the
@@ -2247,6 +2248,48 @@ MUTATIONS_7A = [
 ]
 
 
+# Day 7c (docs/evidence/day7c/README.md): the orphan sweeper's candidates (no files row of any status, older than the
+# grace period, lead-files only, the exact path shape), its bounds, its service-role-only privileges and its counts-only
+# audit row (supabase/tests/sweeper_attack.sql).
+SWEEP_REVOKE = """revoke all on function public.lead_file_orphans(interval, integer), public.lead_file_sweep_stats(),
+  public.record_file_sweep(integer, integer, bigint, boolean) from public, anon, authenticated;
+"""
+SWEEP_SHAPE = ("       and o.name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-"
+               "[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+               "\\.(pdf|png|jpg|docx|xlsx)$'\n")
+MUTATIONS_7C = [
+    ("Sweeper: no \"not exists files row\" (objects with a pending, ready or deleting row become candidates)",
+     [("       and not exists (select 1 from public.files f where f.storage_path = o.name)\n", "")]),
+    ("Sweeper: no age check (young objects, an upload in flight, become candidates)",
+     [("       and o.created_at < now() - p_min_age\n", "")]),
+    ("Sweeper: the grace period may be under 24 hours (a caller asks for 1 hour)",
+     [("p_min_age < interval '24 hours' or", "p_min_age < interval '1 minute' or")]),
+    ("Sweeper: no bucket filter (another bucket's objects become candidates)",
+     [("     where o.bucket_id = 'lead-files'\n       and o.name ~", "     where o.name ~")]),
+    ("Sweeper: no path shape check (any name in the bucket becomes a candidate)",
+     [(SWEEP_SHAPE, "")]),
+    ("Sweeper: the three functions granted to authenticated (any signed-in person lists or records sweeps)",
+     [(SWEEP_REVOKE, SWEEP_REVOKE + "grant execute on function public.lead_file_orphans(interval, integer), "
+       "public.lead_file_sweep_stats(), public.record_file_sweep(integer, integer, bigint, boolean) to authenticated;\n")]),
+    ("Sweeper: the candidates function granted to anon",
+     [(SWEEP_REVOKE, SWEEP_REVOKE + "grant execute on function public.lead_file_orphans(interval, integer) to anon;\n")]),
+    ("Sweeper: the candidates function runs as its owner (SECURITY DEFINER)",
+     [("returns table (name text, org_id uuid, size bigint, created_at timestamptz)\n"
+       "language plpgsql stable security invoker", "returns table (name text, org_id uuid, size bigint, created_at timestamptz)\n"
+       "language plpgsql stable security definer")]),
+    ("Sweeper: the sanity counts do not count names outside the shape",
+     [("           count(*) filter (where o.name is null or o.name !~", "           0 * count(*) filter (where o.name is null or o.name !~")]),
+    ("Sweeper audit row: removed may exceed found",
+     [("or p_removed not between 0 and p_found", "or p_removed < 0")]),
+    ("Sweeper audit row: a dry run may report removals",
+     [(" or (p_dry and p_removed <> 0) then", " then")]),
+    ("Sweeper audit row: carries an organisation (a later reader could tie a sweep to a team's leads)",
+     [("  insert into public.audit_log (action, table_name, diff_json)\n  values ('file_sweep', 'storage.objects',",
+       "  insert into public.audit_log (org_id, action, table_name, diff_json)\n  values ('00000000-0000-0000-0000-0000d7c000cc', "
+       "'file_sweep', 'storage.objects',")]),
+]
+
+
 
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
         "day4c": (MIG_4C, MUTATIONS_4C), "day4d": (MIG_4D, MUTATIONS_4D), "day5a": (MIG_5A, MUTATIONS_5A),
@@ -2254,7 +2297,7 @@ SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b
         "team": (MIG_TEAM, MUTATIONS_TEAM),
         "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
         "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E), "day6": (MIG_6F, MUTATIONS_6F),
-        "day7a": (MIG_7A, MUTATIONS_7A)}
+        "day7a": (MIG_7A, MUTATIONS_7A), "day7c": (MIG_7C, MUTATIONS_7C)}
 
 
 FUNCTION_HEAD = re.compile(r"create (?:or replace )?function ([a-z_]+\.[a-z_0-9]+)\(")
