@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
+import { createTranslator } from "use-intl/core";
+import enMessages from "../../messages/en.json";
+import frMessages from "../../messages/fr.json";
 import { stockError } from "@/lib/inventory/errors";
 import { parseTab } from "@/lib/inventory/filters";
 import { addDays, extendedUntil } from "@/lib/sales/dates";
+import { dealOptionLabel, dealsForHold, dealsForSale } from "@/lib/sales/deal-option";
 import { rankByName } from "@/lib/sales/rank";
+import type { LeadDealOption } from "@/lib/sales/types";
 import { cancelSaleSchema, extendHoldSchema, logRequestSchema, recordSaleSchema, requestStatusSchema, saleListParams } from "@/lib/sales/schemas";
 
 // Day 6d pure rules: the action schemas (shapes only, unknown keys refused), the hold dates, the error contract's new
@@ -90,5 +95,45 @@ test.describe("picker ranking", () => {
     expect(rankByName(rows, "tablier coton").map((r) => r.name)).toEqual(["Tablier coton 1", "Gobelet bambou 1", "Coton bio tablier"]);
     expect(rankByName(rows, "TABLIER").map((r) => r.name)).toEqual(["Tablier coton 1", "Coton bio tablier", "Gobelet bambou 1"]);
     expect(rankByName(rows, " ")).toBe(rows);
+  });
+});
+
+// The deal picker on Day 5's deal schema (merge of Day 5, 15 Oct 2026): the label reads like Day 5's deal chips, a
+// deal with no value yet never shows "€0.00", the stage is translated, and undecided deals (fulfilment null) are offered.
+test.describe("deal picker", () => {
+  const deal = (over: Partial<LeadDealOption>): LeadDealOption => ({
+    id: "d1", title: null, value: null, currency: "EUR", expected_close: null, stage: "negotiations", fulfilment: null, held: 0, ...over,
+  });
+  const words = (locale: "en" | "fr") => {
+    const messages = (locale === "en" ? enMessages : frMessages) as Record<string, unknown>;
+    const t = createTranslator({ locale, messages }) as unknown as (key: string) => string;
+    return {
+      untitled: t("Deals.untitled"),
+      stage: (key: NonNullable<LeadDealOption["stage"]>) => t(`Stages.${key}`),
+      money: (value: number, currency: string) => new Intl.NumberFormat(locale, { style: "currency", currency }).format(value),
+    };
+  };
+  test("a deal with no value shows no amount (never €0.00)", () => {
+    const label = dealOptionLabel(deal({}), words("en"));
+    expect(label).toBe("Deal · Negotiations");
+    expect(label).not.toMatch(/0[.,]00/);
+    expect(dealOptionLabel(deal({ value: 0 }), words("en"))).toBe("Deal · Negotiations · €0.00");
+  });
+  test("title, translated stage and value", () => {
+    expect(dealOptionLabel(deal({ title: "Denim, 2 pallets", value: 4200, stage: "qualified" }), words("en"))).toBe("Denim, 2 pallets · Qualified · €4,200.00");
+  });
+  test("French: the stage in French, French number format, no English stage name", () => {
+    const label = dealOptionLabel(deal({ title: null, value: 4200, stage: "negotiations" }), words("fr"));
+    expect(label).toBe(`Affaire · Négociation · ${new Intl.NumberFormat("fr", { style: "currency", currency: "EUR" }).format(4200)}`);
+    expect(label).toMatch(/^Affaire · Négociation · 4\s?200,00\s?€$/u);
+    expect(label).not.toContain("Negotiations");
+    expect(dealOptionLabel(deal({ stage: "lead" }), words("fr"))).toBe("Affaire · Prospect");
+  });
+  test("undecided deals are offered; a deal set to the other kind is not", () => {
+    const deals = [deal({ id: "open" }), deal({ id: "stock", fulfilment: "from_stock" }), deal({ id: "supplier", fulfilment: "direct_from_source" })];
+    expect(dealsForHold(deals).map((d) => d.id)).toEqual(["open", "stock"]);
+    expect(dealsForSale(deals, "from_stock", null).map((d) => d.id)).toEqual(["open", "stock"]);
+    expect(dealsForSale(deals, "direct_from_source", null).map((d) => d.id)).toEqual(["open", "supplier"]);
+    expect(dealsForSale(deals, "direct_from_source", "stock").map((d) => d.id)).toEqual(["open", "stock", "supplier"]);
   });
 });

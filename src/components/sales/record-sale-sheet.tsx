@@ -18,6 +18,8 @@ import { parsePrice } from "@/lib/inventory/units";
 import type { QtyUnit } from "@/lib/inventory/units";
 import type { StockFailure } from "@/lib/inventory/errors";
 import type { StockRow } from "@/lib/inventory/types";
+import type { StageKey } from "@/lib/deals";
+import { dealOptionLabel, dealsForSale } from "@/lib/sales/deal-option";
 import type { Fulfilment } from "@/lib/sales/types";
 import { useModKey } from "@/lib/use-platform";
 import { cn } from "@/lib/utils";
@@ -61,6 +63,13 @@ export function RecordSaleSheet({
   const t = useTranslations("Sales.sheet");
   const tc = useTranslations("Sales");
   const format = useFormatter();
+  const tDeal = useTranslations("Deals");
+  const tStage = useTranslations("Stages");
+  const dealWords = {
+    untitled: tDeal("untitled"),
+    stage: (key: StageKey) => tStage(key),
+    money: (value: number, currency: string) => format.number(value, { style: "currency", currency }),
+  };
   const qty = useQtyText();
   const modKey = useModKey();
   const errorText = useStockErrorText();
@@ -101,10 +110,7 @@ export function RecordSaleSheet({
   if (!open && openedFor !== null) setOpenedFor(null);
 
   const leadStock = useLeadStock(open ? (chosenLead?.id ?? null) : null);
-  const deals = useMemo(
-    () => (leadStock.data?.deals ?? []).filter((d) => d.fulfilment === fulfilment || d.id === dealId),
-    [leadStock.data, fulfilment, dealId],
-  );
+  const deals = useMemo(() => dealsForSale(leadStock.data?.deals ?? [], fulfilment, dealId), [leadStock.data, fulfilment, dealId]);
   const heldFor = useMemo(() => {
     const m: Record<string, number> = {};
     for (const h of leadStock.data?.holds ?? []) if (h.location === "warehouse") m[h.product_id] = (m[h.product_id] ?? 0) + h.remaining;
@@ -410,7 +416,7 @@ export function RecordSaleSheet({
                 <option value="">{t("noDeal")}</option>
                 {deals.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {[d.stage, format.number(Number(d.value), { style: "currency", currency: d.currency })].filter(Boolean).join(" · ")}
+                    {dealOptionLabel(d, dealWords)}
                   </option>
                 ))}
               </select>

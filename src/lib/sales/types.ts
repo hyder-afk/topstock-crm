@@ -1,4 +1,6 @@
 // What the Day 6d sale, hold and request RPCs return (design 5.4), shared by the actions, routes and screens.
+import type { StageKey } from "@/lib/deals";
+
 export type Fulfilment = "from_stock" | "direct_from_source";
 export type SaleStatus = "confirmed" | "cancelled";
 export type RequestStatus = "new" | "in_progress" | "done" | "declined";
@@ -99,13 +101,19 @@ export type LeadHold = {
   pieces_per_carton: number;
   price_max: number | null;
 };
+/**
+ * An open deal of the lead, for the hold and sale pickers (list_lead_deals_for_stock). Day 5's deal schema: a deal may
+ * have no title and no value yet ("not estimated", never shown as €0), its fulfilment is chosen at Win (null while
+ * open: either kind of sale may use it), and its stage is the stage key (translated with Day 5's Stages words).
+ */
 export type LeadDealOption = {
   id: string;
-  value: number;
+  title: string | null;
+  value: number | null;
   currency: string;
   expected_close: string | null;
-  stage: string | null;
-  fulfilment: Fulfilment;
+  stage: StageKey | null;
+  fulfilment: Fulfilment | null;
   held: number;
 };
 export type LeadStock = {

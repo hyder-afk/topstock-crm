@@ -17,6 +17,8 @@ import { useToast } from "@/components/ui/toast";
 import type { StockFailure } from "@/lib/inventory/errors";
 import type { StockRow } from "@/lib/inventory/types";
 import type { QtyUnit } from "@/lib/inventory/units";
+import type { StageKey } from "@/lib/deals";
+import { dealOptionLabel, dealsForHold } from "@/lib/sales/deal-option";
 import type { LeadDealOption } from "@/lib/sales/types";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +51,13 @@ export function HoldSheet({
   const tp = useTranslations("Sales.sheet");
   const qty = useQtyText();
   const format = useFormatter();
+  const tDeal = useTranslations("Deals");
+  const tStage = useTranslations("Stages");
+  const dealWords = {
+    untitled: tDeal("untitled"),
+    stage: (key: StageKey) => tStage(key),
+    money: (value: number, currency: string) => format.number(value, { style: "currency", currency }),
+  };
   const errorText = useStockErrorText();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -87,7 +96,7 @@ export function HoldSheet({
   const room = product ? (place === "warehouse" ? product.wh_available : product.tr_available) : 0;
   const until = days === "pick" ? picked : plusDays(days);
   const leadStock = useLeadStock(open && !deals ? (chosenLead?.id ?? null) : null);
-  const fromStockDeals = (deals ?? leadStock.data?.deals ?? []).filter((d) => d.fulfilment === "from_stock");
+  const fromStockDeals = dealsForHold(deals ?? leadStock.data?.deals ?? []);
   const reason = !chosenLead
     ? tp("needLead")
     : !product
@@ -240,7 +249,7 @@ export function HoldSheet({
                 <option value="">{t("noDeal")}</option>
                 {fromStockDeals.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {[d.stage, format.number(Number(d.value), { style: "currency", currency: d.currency })].filter(Boolean).join(" · ")}
+                    {dealOptionLabel(d, dealWords)}
                   </option>
                 ))}
               </select>
