@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, nextWindow, setRole, settled, signedInPage, sql, totp } from "./helpers";
+import { ageStepUp, appReady, choose, createUser, fullSession, nextWindow, pickDate, setRole, settled, signedInPage, sql, totp } from "./helpers";
 
 // The Tasks page (Day 4c, design 7.5 and 8.5): quick add with date chips lands in the right tab; done and dismiss with
 // Undo; "Today" follows the person's own time zone (Karachi); Team is for admins only; delete asks for a fresh code;
@@ -78,7 +78,7 @@ test("quick_add_chips_buckets: Today, Tomorrow and a picked date land in their t
   expect(sql(`select due_date || ' ' || kind from public.tasks where ${mine()} and title = 'Call Brasserie Verdane back'`)).toBe(`${dayIn("Europe/Paris", 1)} call`);
   // A picked date in the past: Overdue (the red count).
   await page.getByRole("button", { name: "Pick a date" }).click();
-  await page.getByLabel("Date", { exact: true }).fill(dayIn("Europe/Paris", -2));
+  await pickDate(page.getByLabel("Date", { exact: true }), dayIn("Europe/Paris", -2));
   await page.getByRole("group", { name: "Kind" }).getByRole("button", { name: "To-do" }).click();
   await input.fill("Chase the unpaid invoice");
   await input.press("Enter");
@@ -90,7 +90,7 @@ test("quick_add_chips_buckets: Today, Tomorrow and a picked date land in their t
   await input.press("Enter");
   await expect(page.getByRole("form", { name: "New task" }).getByRole("alert")).toHaveText("A meeting needs a date and a time.");
   expect(sql(`select count(*) from public.tasks where ${mine()} and title = 'Showroom visit'`)).toBe("0");
-  await page.getByLabel("Time").fill("15:30");
+  await page.getByRole("combobox", { name: "Time", exact: true }).fill("15:30");
   await input.press("Enter");
   await expect.poll(() => sql(`select kind || ' ' || (due_at is not null) from public.tasks where ${mine()} and title = 'Showroom visit'`)).toBe("meeting true");
 
@@ -179,20 +179,22 @@ test("karachi_today_boundary: Today and Tomorrow follow the profile's zone, not 
   await page.goto("/more");
   await appReady(page);
   const zone = page.getByRole("combobox", { name: "Time zone" });
-  await zone.selectOption("Europe/Paris");
+  await choose(zone, "Europe/Paris");
   await page.getByRole("button", { name: "Save time zone" }).click();
   await expect(page.getByText("Time zone saved.")).toBeVisible();
   expect(sql(`select timezone from public.profiles where id = '${userId(adminEmail)}'`)).toBe("Europe/Paris");
-  // A zone nobody knows is refused (a made-up option added to the list in the page): an error, and nothing changes.
-  await zone.evaluate((el) => {
-    const option = document.createElement("option");
-    option.value = "Mars/Olympus_Mons";
-    option.textContent = "Mars";
-    el.appendChild(option);
+  // A zone nobody knows is refused: an error, and nothing changes. The app's own list cannot be given a made-up option
+  // in the page (Day 7b), so the request that saves the zone is rewritten on its way to the server instead.
+  await page.route("**/more", async (route) => {
+    const request = route.request();
+    if (request.method() !== "POST" || !request.headers()["next-action"]) return route.continue();
+    const body = request.postData() ?? "";
+    expect(body).toContain("Europe/Paris");
+    return route.continue({ postData: body.replaceAll("Europe/Paris", "Mars/Olympus_Mons") });
   });
-  await zone.selectOption("Mars/Olympus_Mons");
   await page.getByRole("button", { name: "Save time zone" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "time zone" })).toBeVisible();
+  await page.unroute("**/more");
   expect(sql(`select timezone from public.profiles where id = '${userId(adminEmail)}'`)).toBe("Europe/Paris");
   // The same timed task in Paris: its time and day there worked out by the database (22:00 or 23:00 depending on
   // daylight saving; Paris's today, or tomorrow while Paris is still on the day before Karachi's).

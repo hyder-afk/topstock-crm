@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page, type Request } from "@playwright/test";
 import { callZone, isOpen } from "../../src/lib/timezones";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
@@ -342,4 +342,56 @@ export async function signedInPage(
   page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => !isCancelledPrefetch(e.message) && errors.push(e.message));
   return { context, page, errors };
+}
+
+// Day 7b: the app's own pickers (no native <select> or date inputs, docs/evidence/day7/pickers.md). These replace
+// selectOption and fill on a native field with what a person does: open the trigger, pick an option, or type.
+
+/**
+ * Picks an option in a Select or Combobox the way a person does: click the trigger (role combobox), then the option.
+ * `option` is the option's value (as selectOption took it: matched on data-option) or `{ label }` for its words. For a
+ * Combobox, `search` is typed into its search box first (long lists such as time zones).
+ */
+export async function choose(trigger: Locator, option: string | { label: string | RegExp }, search?: string) {
+  const page = trigger.page();
+  await trigger.click();
+  if (search !== undefined) await page.getByRole("dialog").last().getByRole("combobox").fill(search);
+  const item =
+    typeof option === "string"
+      ? page.locator(`[role="option"][data-option="${option.replace(/"/g, '\\"')}"]`)
+      : // The first option with those words, as selectOption({ label }) took it.
+        page.getByRole("option", { name: option.label, exact: typeof option.label === "string" }).first();
+  await item.click();
+  await expect(item).toBeHidden();
+}
+
+/** The value a Select or Combobox submits (data-value on its trigger, which matches its hidden input). */
+export async function expectChosen(trigger: Locator, value: string) {
+  await expect(trigger).toHaveAttribute("data-value", value);
+}
+
+/**
+ * Types a day into a DatePicker with `typed` (the locale's digit order, as a person types it) and leaves the field, or
+ * picks it from the calendar when the picker is a button. `iso` is YYYY-MM-DD.
+ */
+export async function pickDate(field: Locator, iso: string, locale: "en" | "fr" = "en") {
+  const [y, m, d] = iso.split("-");
+  const tag = await field.evaluate((el) => el.tagName);
+  if (tag === "INPUT") {
+    await field.fill(locale === "fr" ? `${d}/${m}/${y}` : `${m}/${d}/${y}`);
+    await field.press("Enter");
+    return;
+  }
+  // A button: open the calendar, walk to the month, click the day.
+  await field.click();
+  const page = field.page();
+  const grid = page.getByRole("grid");
+  await expect(grid).toBeVisible();
+  const target = grid.locator(`button[data-iso="${iso}"]`);
+  for (let i = 0; i < 36 && !(await target.count()); i++) {
+    const first = (await grid.locator("button[data-iso]").first().getAttribute("data-iso")) ?? "";
+    await page.getByRole("button", { name: iso < first ? /^(Previous month|Mois précédent)$/ : /^(Next month|Mois suivant)$/ }).click();
+  }
+  await target.click();
+  await expect(grid).toBeHidden();
 }
