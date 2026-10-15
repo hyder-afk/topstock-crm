@@ -179,3 +179,142 @@ deal, so the deal picker is covered by `sales.spec` (unit) and sales_attack 11c 
 build's `sales.spec` screens run.
 `docs/evidence/day6/screens/`: `palette-*` and `shortcuts-*` (14 each, `screens.spec` "command menu and shortcuts
 list": EN/FR, light/dark, 390 to 1728), the menu and `?` sheet with every day's commands and shortcuts.
+
+## Day 5's seam filled in: stock records hold a deal (advisor item 2)
+
+Day 5 left `private.deal_closing_blocked(p_deal)` returning null (`supabase/migrations/20261015090000_deals_pipeline.sql`
+:295-301; called by the deal guard at :456, :489, :517, :554 and by `delete_deal` at :1426; design
+`docs/evidence/day5/design.md` :87, :169 (D8), :362, :400-413, :1070; Haider accepted on 11 Oct that Day 6 replaces it so
+stock records block reopening a won deal, undoing a win, changing the fulfilment and deleting the deal). The new
+migration `20261020100000_deal_stock_blocks.sql` sorts after 6e's `20261020090000` and before Day 7a's `20261021100000`.
+
+**The answers.** The callers raise 42501 with hint `'blocked_' || answer`, and `src/lib/db-errors.ts` maps
+`blocked_order`, `blocked_sales` and `blocked_reservation` to `blocked` ("Stock records hold this deal. Sort them out
+first."). The function returns:
+
+| Answer | When | Why this key |
+|---|---|---|
+| `'sales'` | a confirmed (not cancelled) sale in `private.orders` names the deal | Day 6's `orders` table is the sale record (shown as "Sale"); `blocked_sales` is already mapped |
+| `'reservation'` | no confirmed sale, and an active hold in `private.stock_reservations` names the deal | `blocked_reservation` is already mapped |
+| null | nothing holds it; a cancelled sale, a released (or used, or expired) hold; another organisation's caller; an open deal whose shipping is not chosen yet | |
+
+`'order'` (Day 5's third reserved key) is never returned: Day 6 has no separate order record beside the sale. A sale is
+checked first because it is the stronger record (a hold can be released in one click; a sale needs a manager's cancel).
+
+**Seeing every record.** `SECURITY DEFINER`, owned by postgres, `search_path ''`, read in the deal's own organisation
+(the record helper `private.deal_stock_records` joins on `deal_id` and the deal's `org_id`): a rep's guard is stopped by
+a manager's sale the rep cannot read (test `deal_blocked_by_sale_the_caller_cannot_see`). Day 5's grants stay (revoked
+from public and anon, executable by authenticated: the guard and `delete_deal` run as the caller; `private` has no API
+endpoint). A signed-in caller of another organisation gets null, so the function answers nothing by id across
+organisations. Day 5's catalog check (deals_attack.sql, helpers INVOKER) now lists it separately as DEFINER owned by
+postgres.
+
+**The first shipping choice.** Day 6d lets an open deal with no shipping chosen take holds and either kind of sale; its
+Win (or a choice while open) is the first decision, and Day 5's guard calls the seam on it without the new value. So the
+seam answers null for an open, undecided deal, and the AFTER UPDATE trigger `fit_deal_fulfilment_to_stock` (WHEN the
+shipping goes from null to a value) checks the chosen value: a confirmed sale of the other kind gives `blocked_sales`;
+Supplier Stock while an active hold names the deal gives `blocked_reservation`. A choice that fits (the usual Win after a
+hold or a warehouse sale) goes through. Without this, every deal that took a hold before its Win could never be won.
+
+**Delete and the hold-release trigger (stock_attack `deal_delete_releases_holds`).** Decision: an active hold or a
+confirmed sale blocks every signed-in delete. `delete_deal` (the user path) is blocked by the seam; an undecided deal,
+and a direct `DELETE` through the API (`deals_delete` lets an admin with a fresh code, or the creator in the first
+120 s, delete), are blocked by the new BEFORE DELETE trigger `block_deal_delete_on_stock`, which sorts before
+`release_deal_holds_deleted` so it sees the holds still active. A session with no signed-in user (maintenance, the
+service role, a test reset) is not blocked: Day 6a's release trigger stays and releases the holds (`deal_deleted`, no
+person). The test now checks the block (through `delete_deal` and a direct delete: 42501 `blocked_reservation`, the
+hold still active and linked), then releases the hold and deletes (the hold ends `manual`, loses the link, no
+`deal_deleted` row); the maintenance delete test beside it is unchanged.
+
+**Found while testing: a sale's deal could never be deleted.** `orders.deal_id` is `on delete set null`, but that update
+reached Day 6d's sale guard and was refused (`not_editable` for a person, `sign in first` for maintenance), so a deal
+named by any sale, even a cancelled one, could not be deleted by anyone (the pipeline spec's maintenance cleanup only
+worked because `clearStockHistory()` runs first). `private.order_guard` is redefined here (6d's body verbatim plus one
+first branch): the foreign key's action (trigger depth 2) may empty `deal_id` and change nothing else; the same change
+made straight is still refused (test `deal_delete_by_maintenance_unlinks_sale`). A cancelled sale's deal can now be
+deleted (the sale keeps its lines and ledger rows); a confirmed sale still blocks a signed-in delete.
+
+**A sale must fit its deal.** `order_guard` checked only the lead and Closed/lost (sales_requests.sql :307-313) and the
+UI filter in `src/lib/sales/deal-option.ts` is not a control. The new BEFORE INSERT trigger `order_guard_deal_fit`
+(after `order_guard`, so the deal is already known visible, on this lead and not lost) refuses a sale whose kind differs
+from the deal's chosen shipping: 22023, the existing hint `fulfilment`, already worded in the sale sheet as "Choose
+Warehouse inventory or Supplier Stock (it must match the deal)." (no app change). An undecided deal takes either kind.
+It locks the deal row (`FOR SHARE`): a concurrent shipping change and sale are ordered, and whichever waits sees the
+other's committed row (sales_concurrency case 8, both orders).
+
+**Tests.**
+- sales_attack.sql 11d: catalog (the seam a postgres-owned definer, not anon; the helper and trigger functions definers
+  nobody can call; the three triggers' kinds); `deal_blocked_by_sale_on_reopen`, `_on_undo_win`, `_on_fulfilment_change`
+  (a patch, `update_deal`, emptying it), `_on_delete` (`delete_deal` and a direct DELETE by an admin with a fresh code);
+  the seam answers null to another organisation; `deal_unblocked_after_sale_cancelled` (both sales undone: reopen,
+  shipping change, `delete_deal` and a direct delete go through); `deal_blocked_by_sale_the_caller_cannot_see`;
+  `deal_delete_by_maintenance_unlinks_sale`; `deal_blocked_by_hold_on_fulfilment_change` (to Supplier Stock and to
+  none), `first_choice_supplier_blocked_by_hold` (a patch and a Win; Warehouse fits), a Win that keeps Warehouse with a
+  hold, then its undo and a reopen blocked, `_on_delete` (both ways); `deal_unblocked_after_hold_released`;
+  `first_choice_blocked_by_other_kind_sale` (a patch and a Win; the fitting Win passes); `sale_kind_must_fit_deal`
+  (`record_sale` both ways, a direct insert; no kind, the same kind and no deal pass). Integrity checked after each.
+- stock_attack.sql: `deal_delete_blocked_by_active_hold`, then `deal_delete_releases_holds` (released first).
+- deals_attack.sql (Day 5's seam test unchanged and passing: its stub swap still works, a random id still gives null):
+  the catalog check above, and the trigger list with the two new deal triggers.
+- sales_concurrency.sh case 8 `sale_vs_deal_shipping_change`.
+- e2e `pipeline.spec` `shipping_change_blocked_by_sale_says_why`: an open Warehouse deal named by a confirmed sale; the
+  sheet's switch to Supplier Stock answers "Stock records hold this deal. Sort them out first." and nothing changes. The board's Reopen
+  and Delete use the same mapping (`toActionFailure`, `Errors.blocked`), so one e2e covers the words.
+
+**UI.** The design's line "From Day 6 the button is hidden when `deal_closing_blocked` says so" (:1070) is not done:
+the card and sheet reads (`private.deal_cards`, Day 5's) carry no blocked flag, and adding one means recreating them in
+a Day 6 migration. Reopen, Undo, the shipping switch and Delete stay offered and answer with the mapped words; the
+database decides either way. Open for Haider as a small follow-up if he wants the buttons hidden.
+
+**Mutations (set `day6`, `scripts/db-mutations.py`; own scratch copy, port 54493).** The new migration is added to
+`REDEFINERS`, so Day 6d's rows aimed inside `order_guard` are made in its copy too (`--anchors`: 644 rows in 14 sets,
+every edit applies once, none dead).
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 1 | Seam: a confirmed sale does not hold the deal | caught | the seam answers null for a won deal with a sale |
+| 2 | Seam: a cancelled sale still holds the deal | caught | a cancelled sale still blocks |
+| 3 | Seam: an active hold does not hold the deal | caught | stock_attack: delete_deal succeeded, expected 42501 |
+| 4 | Seam: a released hold still holds the deal | caught | a released hold's deal blocked ("this deal is held by stock records") |
+| 5 | Seam: answers null always (Day 5's stub back) | caught | the seam answers null for a won deal with a sale |
+| 6 | Seam: no exception for an undecided deal | caught | an undecided deal is blocked before its first shipping choice |
+| 7 | Seam: the exception covers every open deal | caught | e2 shipping change succeeded, expected 42501 |
+| 8 | Seam: runs as the caller (SECURITY INVOKER) | caught | deals_attack catalog |
+| 9 | Seam: answers a caller of another organisation | caught | the seam answers another organisation |
+| 10 | Seam: callable by anon | caught | deals_attack catalog |
+| 11 | The record helper callable by signed-in people | caught | sales_attack catalog |
+| 12 | First shipping choice not checked (trigger dropped) | caught | deals_attack trigger list |
+| 13 | First shipping choice: a sale of the other kind ignored | caught | e5 switch to Warehouse succeeded |
+| 14 | First shipping choice: Supplier Stock with an active hold allowed | caught | e4 switch to Supplier Stock succeeded |
+| 15 | Delete: no BEFORE DELETE block (trigger dropped) | caught | deals_attack trigger list |
+| 16 | Delete: the block lets signed-in sessions through | caught | stock_attack: a direct delete succeeded |
+| 17 | Delete: maintenance deletes blocked too | caught | the maintenance delete refused |
+| 18 | Sale kind guard dropped (trigger) | caught | record_sale of the other kind succeeded |
+| 19 | Sale kind guard: kinds not compared | caught | record_sale of the other kind succeeded |
+| 20 | Sale kind guard: the deal not locked (FOR SHARE) | caught | sales_concurrency case 8 (a): a warehouse sale named a Supplier Stock deal |
+| 21 | Sale guard: a deal delete's set null refused again | caught | not_editable on the cancelled sale's deal delete |
+| 22 | Sale guard: the deal-delete branch at any depth | caught | a straight update of deal_id succeeded |
+
+day6: 22 rows run, 22 caught. Day 5a's rows that remove a call of the seam (53 undo of a win, 54 a win that changes the
+shipping, 55 reopening a won deal, 56 a same-stage shipping change, 57 `delete_deal`): 5 caught (Day 5's stub test).
+Day 6d's rows now mirrored into the `order_guard` copy (12, 14): 2 caught. 29 row runs, every result as listed.
+
+**Checks (this section's commits).** Lint 0 errors (3 warnings as before); typecheck exit 0; unit 588 passed;
+`db-test.sh` on a scratch copy (port 54493): exit 0, all 25 suites (sales_concurrency with case 8), advisors 0 ERROR
+(WARN `share_view` / `share_request` anon definers by design, `set_user_role` as before; INFO unindexed FKs 5, unused
+indexes 13: unchanged); Chromium e2e on the shared local stack (migration applied, build of a083511's code; stock
+history and the inventory catalogue reset first, so the run matches CI's fresh stack): inventory 11, lead-deals 9,
+lead-page 26, pipeline 16 (with the new test), sales 11: 73 passed. (A first run without that reset failed only
+`inventory.spec` stock_table_filters_and_panel: earlier runs' `clearStockHistory()` had emptied the levels while its
+seed marker stayed, so Polo was no longer Low; not this change.) gitleaks on `de0c7c3..HEAD`: no leaks found.
+
+## Day 6 merge: /security-review
+
+Result: **NO FINDINGS.** Checked on the merged Day 6 branch: the bidi rewrites refuse the same characters as before;
+the `task_guard`, `lead_import_untouched` and `stock_alerts` copies are supersets of the bodies they replace; `http.ts`
+keeps `Sec-Fetch-Site`, the first entry of `x-forwarded-host`, the refusal of `Origin: null` and the streaming byte cap;
+the share routes keep the order same-origin, capped read, Zod, per-IP limiter; the `next/dynamic` tabs leak nothing;
+`list_lead_deals_for_stock` is security invoker under the deals policies; `clearStockHistory()` is test-only; the command
+palette has no sinks; CSP and security headers are intact; CI permissions are unchanged. The deal stock blocks migration
+above adds four definer functions, each with `search_path ''`, revoked from every client role (the seam keeps Day 5's
+authenticated-only grant), constant error messages and hints only, no dynamic SQL and no user text in any error.
