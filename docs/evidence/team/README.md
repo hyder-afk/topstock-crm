@@ -127,6 +127,29 @@ e2e                 team.spec.ts, team-screens.spec.ts     not run: the shared l
                                                            its Playwright run; run on this branch's build before the PR
 ```
 
+E2E on the merged code (15 Oct 2026, head bc79fa6, Chromium, `playwright.auth.config.ts --project=chromium --trace=off`).
+The shared local auth stack was restarted from this worktree (`scripts/local-auth/start.sh`, so this branch's migrations
+including `20261021090000_role_change_lock.sql`); `next build` failed in this worktree (Turbopack: "Symlink node_modules
+could not be resolved", `node_modules` links to the main checkout), so the build and `next start -p 3100` ran from a
+scratch copy of bc79fa6 (`git archive`, real `node_modules`, same lockfile):
+
+```
+team.spec.ts                       5 passed, 0 failed
+team-screens.spec.ts               4 passed, 0 failed; run again alone to keep its shots (Playwright empties
+                                   test-results/ at each run): 4 passed, 50 shots copied to screens/, each with no
+                                   console error and no sideways scroll (asserted per shot); a few checked by eye
+                                   (team fr light 390, en dark 1728, confirm-self fr dark 390, more-admin en light 1440)
+tasks.spec.ts (Day 4c)             13 passed, 0 failed (karachi_today_boundary sets the zone on More > Your time zone)
+day4-security.spec.ts (Day 4/4c)   9 passed, 0 failed (incl. "no console errors and no CSP violations on the Tasks page,
+                                   the queue and More (4c)": the time zone combobox on More)
+screens.spec.ts -g "tasks, queue   1 passed, 0 failed (More's skeleton with the time zone block at 1440 and 390);
+  and more"                        its shots stayed in the scratch copy (main's evidence, not this branch's)
+shell.spec.ts                      21 passed, 0 failed
+```
+
+No failures, no fixes. More on the merged build shows Administration > Team above main's "Your time zone" section.
+Not run locally (CI only): WebKit, Semgrep, `journey.spec.ts` (Mailpit).
+
 ## Check results after the verifier round (14 Oct 2026, code head 6d07187)
 
 ```text
@@ -236,6 +259,6 @@ Context7 pages consulted (14 Oct, first round):
   (same characters; kept).
 - ~~`docs/go-live.md` comes from the unmerged go-live kit branch~~: merged with main on 15 Oct (main's text, this
   branch's part A and K paragraphs).
-- The Team e2e specs have not run on the merged code yet (local auth stack busy); the Day 4d and Day 5 merges are still
-  to come.
+- ~~The Team e2e specs have not run on the merged code yet~~: run on 15 Oct on bc79fa6 (Chromium), all passed (see
+  "Merge of main (5f1a966)"). The Day 4d and Day 5 merges are still to come.
 - WebKit and Semgrep run only in CI.
