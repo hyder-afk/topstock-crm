@@ -3,6 +3,9 @@
 # No keys; the only network call fetches the pinned advisor rules (scripts/db-advisors.sh).
 # CI runs the same migrations and tests against the real Supabase Postgres image.
 set -euo pipefail
+# The app's day is the Paris day ((now() at time zone 'Europe/Paris')::date), so the tests' current_date must be too:
+# with the session on UTC, checks at a day limit (a hold up to 90 days out) flipped between 22:00 and 24:00 UTC.
+export PGTZ=Europe/Paris
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
 WORK="$(mktemp -d -p /tmp)"
