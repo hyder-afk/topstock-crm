@@ -70,8 +70,8 @@ not target it: e2e helpers click the trigger (`getByRole("combobox", { name })`)
 
 ### Combobox (`ui/combobox.tsx`)
 
-For long lists: countries, IANA time zones, teammates, deals. A field-like button opens a popover with a search box
-and the list. Type to filter (accents and case ignored, every word must match the start of a word, a match inside a
+For long lists: countries, IANA time zones, teammates, deals. A field-like button (role `combobox`, a select-only
+combobox whose popup is a dialog; Down or Up opens it; Day 7b) opens a popover with a search box and the list. Type to filter (accents and case ignored, every word must match the start of a word, a match inside a
 word ranks lower), arrows move, Enter picks, Escape closes and focus returns to the button. Options by `options=[{
 value, label, textValue?, keywords?, disabled? }]` or the same `<option>` children as Select. Server search: pass
 `shouldFilter={false}`, `onSearchChange`, `loading` (skeleton rows, no spinner) and the rows you got, plus
@@ -94,8 +94,9 @@ the grid; an impossible or out-of-range day leaves the value empty and sets `ari
 
 A WAI-ARIA combobox text box. Type "9", "915", "9:15", "9h15", "9:15 pm", or open the 15-minute list (`step`) with
 Down, Alt+Down or the clock button; arrows and PageUp/PageDown move, Enter picks, Escape closes the list only (not a
-dialog around it). Value always `HH:MM` 24-hour. Shows 24-hour in French; English follows the locale (12-hour with AM/PM
-for `en`) unless `hourCycle` is given. `min`/`max` bound the list and the typed time.
+dialog around it). Value always `HH:MM` 24-hour. Shows 24-hour in both languages (Day 7b: every time in the app is
+24-hour, Day 4b decision 3); `hourCycle` can ask for the locale's own clock. `min`/`max` bound the list and the typed
+time.
 
 ### DateTimePicker (`ui/date-time-picker.tsx`)
 

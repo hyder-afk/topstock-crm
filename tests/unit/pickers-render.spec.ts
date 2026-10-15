@@ -96,13 +96,18 @@ test("DateRangePicker submits both ends", () => {
   expect(html).toContain('<input type="hidden" name="to" value="2026-10-15"/>');
 });
 
-test("TimePicker is a combobox text box: 24-hour in French, 12-hour in English, HH:MM submitted", () => {
+// Day 7b: 24-hour in both languages by default, as every time in the app (Day 4b decision 3); 12-hour only on request.
+test("TimePicker is a combobox text box: 24-hour in French and English, 12-hour on request, HH:MM submitted", () => {
   const fr24 = render(h(TimePicker, { name: "at", defaultValue: "21:15" }), "fr");
   noNative(fr24);
   expect(fr24).toContain('role="combobox"');
   expect(fr24).toContain('value="21:15"');
   expect(fr24).toContain('<input type="hidden" name="at" value="21:15"/>');
-  const en12 = render(h(TimePicker, { name: "at", defaultValue: "21:15" }), "en");
+  const en24 = render(h(TimePicker, { name: "at", defaultValue: "21:15" }), "en");
+  expect(en24).toContain('value="21:15"');
+  expect(en24).not.toMatch(/PM/i);
+  expect(en24).toContain('<input type="hidden" name="at" value="21:15"/>');
+  const en12 = render(h(TimePicker, { name: "at", defaultValue: "21:15", hourCycle: "h12" }), "en");
   expect(en12).toMatch(/value="9:15\s?PM"/i);
   expect(en12).toContain('<input type="hidden" name="at" value="21:15"/>');
 });
