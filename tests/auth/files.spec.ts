@@ -834,9 +834,9 @@ test.describe("with storage-api (CI)", () => {
     // Soft, so one run shows every check in both engines.
     expect.soft(disposition, seen).toMatch(/^attachment;/);
     expect.soft(disposition.includes(`filename*=UTF-8''${ext};`) || disposition.endsWith(`filename*=UTF-8''${ext}`), seen).toBe(true);
-    // Playwright's WebKit (the Linux port) saved this name as undecoded percent-escapes, which matches neither header
-    // part decoded; the cause in that engine is not established (Day 4d README, PR #16). So the exact saved name is
-    // asserted in Chromium; every engine must keep the .docx ending; Safari on Mac and iPhone is checked by hand.
+    // Playwright's WebKit is the Linux port, whose parser reads only the ASCII `filename=` fallback (WebCore
+    // filenameFromHTTPContentDisposition, "doesn't comply with RFC 6266"), so the exact saved name is asserted in
+    // Chromium; every engine must keep the .docx ending; Safari on Mac and iPhone is checked by hand (Day 4d README).
     expect.soft(saved, seen).toMatch(/\.docx$/);
     if (browserName === "chromium") expect.soft(saved, seen).toBe(name);
     expect(errors).toEqual([]);

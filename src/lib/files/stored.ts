@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { publicEnv } from "@/lib/env";
+import { withDownloadName } from "@/lib/files/link";
 import { readAndSniff, type StoredCheck } from "@/lib/files/stored-bytes";
 import { BUCKET, type FileMime } from "@/lib/files/types";
 
@@ -14,11 +15,13 @@ const origin = new URL(publicEnv.NEXT_PUBLIC_SUPABASE_URL).origin;
 
 /** A signed link, only when it points at our Supabase project. */
 export async function signedLink(supabase: SupabaseClient, path: string, seconds: number, download?: string) {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, seconds, download ? { download } : undefined);
+  // The name is never handed to storage-js (it encodes it twice); withDownloadName adds it once.
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, seconds);
   if (error || !data?.signedUrl) return null;
   try {
     const url = new URL(data.signedUrl);
-    return url.origin === origin ? url : null;
+    if (url.origin !== origin) return null;
+    return download ? withDownloadName(url, download) : url;
   } catch {
     return null;
   }
