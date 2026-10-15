@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { newerUndo } from "@/lib/undo-pick";
+import { isUndoKey, newerUndo } from "@/lib/undo-pick";
 
 // U and Cmd/Ctrl+Z outside the board take back the newer of the last logged entry and the last deal move (design 5.3).
 const now = 1_000_000;
@@ -18,4 +18,15 @@ test("only what is still in its window counts", () => {
   expect(newerUndo(null, move(now - 130_000), now)).toBeNull();
   expect(newerUndo(null, null, now)).toBeNull();
   expect(newerUndo(entry(now - 5_000), null, now)?.kind).toBe("entry");
+});
+
+test("the undo keys: U, or Cmd/Ctrl+Z without Shift or Alt", () => {
+  const k = (key: string, o: Partial<KeyboardEventInit> = {}) => ({ key, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...o }) as KeyboardEvent;
+  expect(isUndoKey(k("u"))).toBe(true);
+  expect(isUndoKey(k("U"))).toBe(true);
+  expect(isUndoKey(k("z", { metaKey: true }))).toBe(true);
+  expect(isUndoKey(k("z", { ctrlKey: true }))).toBe(true);
+  expect(isUndoKey(k("z", { metaKey: true, shiftKey: true }))).toBe(false);
+  expect(isUndoKey(k("u", { ctrlKey: true }))).toBe(false);
+  expect(isUndoKey(k("z"))).toBe(false);
 });

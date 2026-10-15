@@ -17,3 +17,12 @@ export function newerUndo<E extends Undoable, M extends Undoable>(
   if (e) return { kind: "entry", entry: e };
   return null;
 }
+
+/** U, or Cmd/Ctrl+Z without Shift or Alt (the app's undo keys). */
+export function isUndoKey(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
+  return (
+    (key === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) ||
+    (key === "u" && !event.metaKey && !event.ctrlKey && !event.altKey)
+  );
+}

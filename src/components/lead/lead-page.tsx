@@ -115,7 +115,7 @@ export function LeadPage({
   const [backUrl, setBackUrl] = useState("/leads");
   const canAssign = me.role === "admin" || me.role === "manager";
   // Day 5b (design 7.9): the deal sheet over the page (?deal=), New deal, and the Win/Lose/Reopen/Delete dialogs.
-  const dealFlows = useDealFlows(stepUpSeconds);
+  const dealFlows = useDealFlows(stepUpSeconds, "recent", { undoKey: true });
   const [dealSheet, setDealSheet] = useState<string | null>(initialDeal);
   const [newDeal, setNewDeal] = useState(false);
   const openDealSheet = useCallback((dealId: string | null) => {

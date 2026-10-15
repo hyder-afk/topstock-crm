@@ -10,8 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { OpenDealSwitch } from "@/components/activity/open-deal-switch";
 import { FollowUpPicker, OutcomePad, followUpArgs, followUpReady, noFollowUp, type FollowUp } from "@/components/activity/outcome-pad";
 import { lastUndoable, useLogActivity, useUndoActivity } from "@/components/activity/use-activities";
-import { lastUndoableMove, useDealActions } from "@/components/pipeline/use-pipeline";
-import { newerUndo } from "@/lib/undo-pick";
+import { lastUndoableMove } from "@/lib/last-move";
+import { isUndoKey, newerUndo } from "@/lib/undo-pick";
 import { followUpRule, outcomeForKey, type CallOutcome } from "@/lib/activities";
 import type { StageKey } from "@/lib/deals";
 import { parseMoney } from "@/lib/money";
@@ -119,29 +119,24 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
   // Only the open call may change the slot: a panel still playing its exit animation must not bring itself back.
   const change = useCallback((c: CallState) => setSlot((s) => (s.call?.startedAt === c.startedAt ? { ...s, call: c } : s)), []);
 
-  // U or Cmd/Ctrl+Z: undo the latest change this tab made within 2 minutes, a logged entry or a deal move (design 5.3:
-  // the newer of the two), when nobody is typing, no dialog is open and the page does not own U (data-owns-undo: the
-  // work queue; the pipeline board takes U for its moves before this listener).
-  const dealActions = useDealActions();
-  const undoMove = dealActions.undo;
+  // U or Cmd/Ctrl+Z: undo the latest change this tab made within 2 minutes (design 5.3), when nobody is typing, no dialog
+  // is open and the page does not own U (data-owns-undo: the work queue). When the newest change is a deal move, the page
+  // whose deal flows made it undoes it (useDealFlows with undoKey: the lead page and Home's deal sheet; the board has
+  // its own key): this listener then leaves the key alone, so U never takes back an older entry instead.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isTyping(event.target)) return;
       // A page that owns U (the work queue undoes its own outcomes) handles it; this listener was added first.
       if (document.querySelector("[role=dialog],[data-owns-undo]")) return;
-      const isUndo =
-        (event.key.toLowerCase() === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) ||
-        (event.key.toLowerCase() === "u" && !event.metaKey && !event.ctrlKey && !event.altKey);
-      if (!isUndo) return;
+      if (!isUndoKey(event)) return;
       const pick = newerUndo(lastUndoable(), lastUndoableMove());
-      if (!pick) return;
+      if (pick?.kind !== "entry") return;
       event.preventDefault();
-      if (pick.kind === "move") void undoMove(pick.move);
-      else void undo(pick.entry.activityId, pick.entry.leadId);
+      void undo(pick.entry.activityId, pick.entry.leadId);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo, undoMove]);
+  }, [undo]);
 
   // Closing (Save, Don't log, second close): focus goes back to the Call button before the panel unmounts, because the
   // exit animation keeps the focused element alive until it leaves and the focus would then drop to <body>.

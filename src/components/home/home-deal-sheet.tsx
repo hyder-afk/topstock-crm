@@ -21,7 +21,7 @@ export default function HomeDealSheet({
   stepUpSeconds: number;
 }) {
   const team = use(teamPromise);
-  const flows = useDealFlows(stepUpSeconds);
+  const flows = useDealFlows(stepUpSeconds, "recent", { undoKey: true });
   return (
     <>
       <DealSheet dealId={dealId} onClose={onClose} flows={flows} team={team} canAssign={canAssign} />

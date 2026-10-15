@@ -34,6 +34,7 @@ import {
 import { formatMoney } from "@/lib/money";
 import { applyMove, findCard, removeCard, replaceCard, restoreFromLost } from "@/lib/pipeline-cache";
 import { boardKey, dealKey, fetchBoardClient, leadDealsKey } from "@/lib/prefetch";
+import { clearLastMove, lastUndoableMove, setLastMove, type LastMove } from "@/lib/last-move";
 
 // The pipeline's data and writes (Day 5 design 7.5). The board lives in the query cache under boardKey(scope, owner):
 // seeded from the server's promise, refetched on focus and every 30 s while the tab is visible. Every stage change is a
@@ -65,23 +66,8 @@ const pending = new Map<string, number>();
 /** Bumped by a failure or a conflict: queued moves started before it drop out instead of running. */
 const generation = new Map<string, number>();
 
-/** The last change this tab made, for U, Cmd/Ctrl+Z, the toast and the card menu (design 5.3: 2 minutes). */
-export type LastMove = {
-  id: string;
-  historyId: number;
-  toStage: StageKey;
-  fromStage: StageKey;
-  version: number;
-  /** When this tab made the move (its clock), to tell it from a newer logged entry (U on the lead page). */
-  at: number;
-  until: number;
-  leadId: string;
-  lostReason: LostReason | null;
-};
-let lastMove: LastMove | null = null;
-export function lastUndoableMove(): LastMove | null {
-  return lastMove && lastMove.until > Date.now() ? lastMove : null;
-}
+// The last move this tab made lives in src/lib/last-move.ts (read by the app-wide call panel too).
+export { lastUndoableMove, type LastMove };
 
 class Superseded extends Error {}
 
@@ -217,7 +203,7 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
       } catch {
         res = { ok: false, error: "unavailable" };
       }
-      if (lastMove?.historyId === target.historyId) lastMove = null;
+      clearLastMove((m) => m.historyId === target.historyId);
       if (!res.ok) {
         toast.show(res.error === "expired" ? tPipe("undoExpired") : errorText(res));
         return false;
@@ -306,9 +292,9 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
           refreshAround(qc, r.deal);
           if (r.result === "unchanged") return;
           const undoable = r.undo_until && !r.undone;
-          lastMove = undoable
+          setLastMove(undoable
             ? { id, historyId: r.history_id, toStage: to, fromStage: from, version: r.deal.version, at: Date.now(), until: Date.parse(r.undo_until!), leadId: card.company_id, lostReason: ch.kind === "lose" ? ch.reason : null }
-            : null;
+            : null);
           const value = r.deal.value ? formatMoney(r.deal.value, locale) : "";
           const message =
             ch.kind === "win"
@@ -320,7 +306,7 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
                 : ch.kind === "reopen"
                   ? t("toast.reopened", { stage: tStage(to) })
                   : t("toast.moved", { stage: tStage(to) });
-          const move = lastMove;
+          const move = lastUndoableMove();
           showUndoToast(message, move ? () => void undo(move) : null);
         },
         onError: (e, _v, s) => {
@@ -410,7 +396,7 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
         if (board) qc.setQueryData<Board>(key, removeCard(board, card.id));
       }
       qc.setQueryData(dealKey(card.id), null);
-      if (lastMove?.id === card.id) lastMove = null;
+      clearLastMove((m) => m.id === card.id);
       refreshAround(qc, card);
       toast.show(t("toast.deleted"));
       return true;

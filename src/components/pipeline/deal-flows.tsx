@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { lastUndoable } from "@/components/activity/use-activities";
 import { useStepUp } from "@/components/auth/step-up-dialog";
 import { DeleteDealDialog } from "@/components/pipeline/delete-dialog";
 import { LoseDialog } from "@/components/pipeline/lose-dialog";
@@ -9,12 +10,17 @@ import { ReopenDialog } from "@/components/pipeline/reopen-dialog";
 import { useDealActions } from "@/components/pipeline/use-pipeline";
 import { WinDialog } from "@/components/pipeline/win-dialog";
 import { reopenStage, type DealCard, type OpenStageKey, type SortOrder } from "@/lib/deals";
+import { lastUndoableMove } from "@/lib/last-move";
 import { dealKey, fetchDealClient } from "@/lib/prefetch";
+import { isTyping } from "@/lib/shortcuts";
+import { isUndoKey, newerUndo } from "@/lib/undo-pick";
 
 // The dialogs around a deal's lifecycle (Win, Lose, Reopen, Delete) and the two "Confirm it's you" dialogs (reopening a
 // won deal, deleting), shared by the board, the deal sheet and the lead's Deals tab. A dialog opened from a drop calls
 // `onSettled(false)` when it is cancelled, so the board springs the card back (design 7.3: Cancel is a drag cancel).
-export function useDealFlows(stepUpSeconds: number, order: SortOrder = "recent") {
+// `undoKey` (the lead page and Home's deal sheet): U and Cmd/Ctrl+Z take back the last deal move when it is newer than
+// the last logged entry (design 5.3); the app-wide call panel takes the entry otherwise. The board has its own U.
+export function useDealFlows(stepUpSeconds: number, order: SortOrder = "recent", opts: { undoKey?: boolean } = {}) {
   const reopenStepUp = useStepUp(stepUpSeconds, "bodyReopenWon");
   const deleteStepUp = useStepUp(stepUpSeconds, "bodyDeleteDeal");
   const { requireFresh: requireReopen } = reopenStepUp;
@@ -60,6 +66,23 @@ export function useDealFlows(stepUpSeconds: number, order: SortOrder = "recent")
     [queryClient, openReopen],
   );
   const openDelete = useCallback((card: DealCard, done?: (ok: boolean) => void) => setRemove({ card, done }), []);
+
+  const undoKey = !!opts.undoKey;
+  const undoMove = actions.undo;
+  useEffect(() => {
+    if (!undoKey) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || isTyping(event.target)) return;
+      if (document.querySelector("[role=dialog],[data-owns-undo]")) return;
+      if (!isUndoKey(event)) return;
+      const pick = newerUndo(lastUndoable(), lastUndoableMove());
+      if (pick?.kind !== "move") return;
+      event.preventDefault();
+      void undoMove(pick.move);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [undoKey, undoMove]);
 
   const dialogs = (
     <>
