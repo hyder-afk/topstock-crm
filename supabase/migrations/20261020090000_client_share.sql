@@ -54,7 +54,7 @@ create table private.share_links (
   token_hash bytea not null unique check (octet_length(token_hash) = 32),        -- sha256(token); never granted
   token_hint text not null check (token_hint ~ '^[A-Za-z0-9_-]{4}$'),            -- last 4 characters
   label text check (char_length(label) between 1 and 80
-                    and label !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                    and label !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   language text not null check (language in ('en', 'fr')),
   show_in_transit boolean not null default true,
   allow_requests boolean not null default true,
@@ -149,7 +149,7 @@ begin
   end if;
   new.label := nullif(btrim(new.label), '');
   if char_length(new.label) > 80
-     or new.label ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.label ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'the label is too long or has characters that are not allowed' using errcode = '22023', hint = 'label';
   end if;
   if new.language is null or new.language not in ('en', 'fr') then
@@ -294,9 +294,9 @@ begin
     new.note := nullif(btrim(new.note), '');
     new.requester_name := nullif(btrim(new.requester_name), '');
     if char_length(new.note) > 1000
-       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'
+       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'
        or char_length(new.requester_name) > 80
-       or new.requester_name ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+       or new.requester_name ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
       raise exception 'not allowed' using errcode = '22023', hint = 'invalid';
     end if;
     return new;
@@ -319,7 +319,7 @@ begin
     new.team_note := null;
     new.note := nullif(btrim(new.note), '');
     if char_length(new.note) > 1000
-       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
       raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
     end if;
     if (select count(*) from (select 1 from private.stock_requests r
@@ -338,7 +338,7 @@ begin
   end if;
   new.team_note := nullif(btrim(new.team_note), '');
   if char_length(new.team_note) > 300
-     or new.team_note ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.team_note ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
   end if;
   if old.status = 'new' and new.status <> 'new' then
@@ -385,7 +385,7 @@ begin
   end if;
   new.description := nullif(btrim(new.description), '');
   if char_length(new.description) > 200
-     or new.description ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.description ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'describe the item in 1 to 200 characters' using errcode = '22023', hint = 'description';
   end if;
   if new.product_id is not null then
@@ -722,8 +722,8 @@ declare
   v_name text;
   v_request uuid;
   v_n integer;
-  unsafe constant text := '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]';
-  unsafe_note constant text := '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]';
+  unsafe constant text := '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]';
+  unsafe_note constant text := '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]';
   uuid_re constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
 begin
   if p_token is null or p_token !~ '^tss_[A-Za-z0-9_-]{43}$' then

@@ -74,7 +74,7 @@ test.describe("schemas", () => {
     expect(requestBodySchema.safeParse(body({ lines: Array.from({ length: 21 }, () => line) })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ lines: [], note: "n".repeat(1001) })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ lines: [], note: "n".repeat(1000) })).success).toBe(true);
-    expect(requestBodySchema.safeParse(body({ note: "Hi ‮evil" })).success).toBe(false);
+    expect(requestBodySchema.safeParse(body({ note: `Hi ${String.fromCodePoint(0x202e)}evil` })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ name: "Marie\u0007" })).success).toBe(false);
     expect(requestBodySchema.safeParse(body({ note: "a\nb" })).success).toBe(true);
     expect(requestBodySchema.safeParse(body({ name: "a\nb" })).success).toBe(false);

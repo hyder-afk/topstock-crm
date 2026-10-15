@@ -287,7 +287,7 @@ begin
   perform pg_temp.expect_error($q$select public.record_sale('5a000000-0000-0000-0000-0000000000b1', 'from_stock',
     jsonb_build_array(pg_temp.l('SA P1', 1) || '{"line_total": "0"}'))$q$, '22023', 'lines');
   perform pg_temp.expect_error($q$select public.record_sale('5a000000-0000-0000-0000-0000000000b1', 'direct_from_source',
-    '[{"description": "Secret ‮ item", "quantity": "1", "unit_price": "1"}]')$q$, '22023', 'lines', 'Secret');
+    '[{"description": "Secret \u202e item", "quantity": "1", "unit_price": "1"}]')$q$, '22023', 'lines', 'Secret');
   perform pg_temp.expect_error($q$select public.record_sale('5a000000-0000-0000-0000-0000000000b1', 'from_stock',
     '[{"description": "No product", "quantity": "1", "unit_price": "1"}]')$q$, '22023', 'lines');
   perform pg_temp.expect_error($q$select public.record_sale('5a000000-0000-0000-0000-0000000000b1', 'by_air',

@@ -41,14 +41,14 @@ create table private.orders (                          -- "sales"
   status text not null default 'confirmed' check (status in ('confirmed', 'cancelled')),
   ship_to_country char(2) check (ship_to_country ~ '^[A-Z]{2}$'),
   note text check (char_length(note) <= 1000
-                   and note !~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                   and note !~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   prev_lead_status text,                                -- set when this sale made the lead a Customer
   created_by uuid not null,
   created_at timestamptz not null default now(),
   cancelled_at timestamptz,
   cancelled_by uuid,
   cancel_reason text check (char_length(cancel_reason) between 3 and 300
-                            and cancel_reason !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                            and cancel_reason !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   updated_at timestamptz not null default now(),
   check ((status = 'cancelled') = (cancelled_at is not null))
 );
@@ -65,7 +65,7 @@ create table private.order_lines (
   position smallint not null check (position between 1 and 50),
   product_id uuid references public.products (id),      -- required for from_stock
   product_name text not null check (char_length(product_name) between 1 and 200
-                                    and product_name !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                                    and product_name !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   quantity integer not null check (quantity between 1 and 50000000),   -- pieces
   unit_price numeric(12,4) not null check (unit_price between 0 and 1000000),   -- EUR per piece, excluding VAT
   line_total numeric(14,2) generated always as (round(quantity * unit_price, 2)) stored,
@@ -97,16 +97,16 @@ create table private.stock_requests (
   source text not null check (source in ('team', 'share_link')),
   status text not null default 'new' check (status in ('new', 'in_progress', 'done', 'declined')),
   note text check (char_length(note) <= 1000
-                   and note !~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                   and note !~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   requester_name text check (char_length(requester_name) <= 80
-                             and requester_name !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                             and requester_name !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   language text check (language in ('en', 'fr')),
   idempotency_key uuid,
   created_by uuid,                                       -- null for client requests
   handled_by uuid,
   handled_at timestamptz,
   team_note text check (char_length(team_note) <= 300
-                        and team_note !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                        and team_note !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check ((source = 'team') = (created_by is not null))
@@ -121,7 +121,7 @@ create table private.stock_request_lines (
   org_id uuid not null references public.orgs (id),
   product_id uuid references public.products (id),
   description text check (char_length(description) between 1 and 200
-                          and description !~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'),
+                          and description !~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'),
   quantity integer not null check (quantity between 1 and 10000000),
   unit text not null check (unit in ('piece', 'carton')),
   pieces integer not null check (pieces between 1 and 50000000),   -- server-computed
@@ -296,7 +296,7 @@ begin
     end if;
     new.note := nullif(btrim(new.note), '');
     if char_length(new.note) > 1000
-       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
       raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
     end if;
     if new.ship_to_country is not null and new.ship_to_country !~ '^[A-Z]{2}$' then
@@ -339,7 +339,7 @@ begin
   end if;
   new.cancel_reason := btrim(new.cancel_reason);
   if new.cancel_reason is null or char_length(new.cancel_reason) not between 3 and 300
-     or new.cancel_reason ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.cancel_reason ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'say why in 3 to 300 characters' using errcode = '22023', hint = 'cancel_reason';
   end if;
   if not (old.created_by = caller and old.created_at > now() - interval '120 seconds' and new.cancel_reason = 'undo') then
@@ -408,7 +408,7 @@ begin
     end if;
     new.product_name := btrim(new.product_name);
     if new.product_name is null or char_length(new.product_name) not between 1 and 200
-       or new.product_name ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+       or new.product_name ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
       raise exception 'describe the item in 1 to 200 characters' using errcode = '22023', hint = 'description';
     end if;
   end if;
@@ -457,7 +457,7 @@ begin
     new.team_note := null;
     new.note := nullif(btrim(new.note), '');
     if char_length(new.note) > 1000
-       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+       or new.note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
       raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
     end if;
     if (select count(*) from (select 1 from private.stock_requests r
@@ -476,7 +476,7 @@ begin
   end if;
   new.team_note := nullif(btrim(new.team_note), '');
   if char_length(new.team_note) > 300
-     or new.team_note ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.team_note ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
   end if;
   if old.status = 'new' and new.status <> 'new' then
@@ -515,7 +515,7 @@ begin
   end if;
   new.description := nullif(btrim(new.description), '');
   if char_length(new.description) > 200
-     or new.description ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or new.description ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'describe the item in 1 to 200 characters' using errcode = '22023', hint = 'description';
   end if;
   if new.product_id is not null then
@@ -772,7 +772,7 @@ begin
   if check_title then
     new.title := btrim(new.title);
     if new.title is null or char_length(new.title) not between 1 and 300
-       or new.title ~ '[\u0001-\u001F\u007F-\u009F‪-‮⁦-⁩]' then
+       or new.title ~ '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]' then
       raise exception 'a task title needs 1 to 300 characters, without control characters'
         using errcode = '22023', hint = 'task_title';
     end if;
@@ -1375,7 +1375,7 @@ begin
                         and e ->> 'product_id' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
                     or (e ->> 'description' is not null
                         and (char_length(btrim(e ->> 'description')) not between 1 and 200
-                             or e ->> 'description' ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'))
+                             or e ->> 'description' ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'))
                     or (e ->> 'product_id' is null and e ->> 'description' is null)) then
     raise exception 'check the lines' using errcode = '22023', hint = 'lines';
   end if;
@@ -1386,7 +1386,7 @@ begin
     raise exception 'unknown kind of sale' using errcode = '22023', hint = 'fulfilment';
   end if;
   if char_length(v_note) > 1000
-     or v_note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or v_note ~ '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';
   end if;
   if v_country is not null and v_country !~ '^[A-Z]{2}$' then
@@ -1580,7 +1580,7 @@ begin
     raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';
   end if;
   if v_reason is null or char_length(v_reason) not between 3 and 300 or v_reason = 'undo'
-     or v_reason ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or v_reason ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'say why in 3 to 300 characters' using errcode = '22023', hint = 'cancel_reason';
   end if;
   select ord.* into o from private.orders ord where ord.id = p_order for update;
@@ -1844,7 +1844,7 @@ begin
                         and e ->> 'product_id' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
                     or (e ->> 'description' is not null
                         and (char_length(btrim(e ->> 'description')) not between 1 and 200
-                             or e ->> 'description' ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'))
+                             or e ->> 'description' ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'))
                     or (e ->> 'product_id' is null and e ->> 'description' is null)) then
     raise exception 'check the lines' using errcode = '22023', hint = 'lines';
   end if;

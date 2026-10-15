@@ -2,8 +2,8 @@
 import { z } from "zod";
 
 const uuid = z.uuid();
-const safe = /^[^\u0000-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]*$/;
-const safeLines = /^[^\u0000-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]*$/;
+const safe = /^[^\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]*$/;
+const safeLines = /^[^\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]*$/;
 
 export const saleLineSchema = z.strictObject({
   product_id: uuid.nullable(),

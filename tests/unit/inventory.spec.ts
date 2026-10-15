@@ -134,7 +134,7 @@ test.describe("action schemas (strict, whitelisted)", () => {
     expect(productInput.safeParse({ ...product, cost: 1 }).success).toBe(false);
     expect(productInput.safeParse({ ...product, priceMax: 2.12345 }).success).toBe(false);
     expect(productInput.safeParse({ ...product, priceMin: 3 }).success).toBe(false);
-    expect(productInput.safeParse({ ...product, name: "Bad‮name" }).success).toBe(false);
+    expect(productInput.safeParse({ ...product, name: `Bad${String.fromCodePoint(0x202e)}name` }).success).toBe(false);
     expect(productInput.safeParse({ ...product, piecesPerCarton: 0 }).success).toBe(false);
     expect(newProductInput.safeParse({ product, costPerPiece: 0.85, openingQty: 96, openingPlace: "warehouse", requestId: req }).success).toBe(true);
     expect(newProductInput.safeParse({ product, costPerPiece: 0.85, openingQty: 96, openingPlace: "attic", requestId: req }).success).toBe(false);

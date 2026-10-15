@@ -133,6 +133,6 @@ test("names are cleaned text: formulas and markup kept as text, bidi controls st
   expect(run(row(...withCell(0, '=HYPERLINK("http://example.invalid")'))).payload).toMatchObject({
     name: '=HYPERLINK("http://example.invalid")',
   });
-  expect(run(row(...withCell(0, "Étiquette ‮cadeau"))).payload).toMatchObject({ name: "Étiquette cadeau" });
+  expect(run(row(...withCell(0, `Étiquette ${String.fromCodePoint(0x202e)}cadeau`))).payload).toMatchObject({ name: "Étiquette cadeau" });
   expect(() => createStockNormaliser({ mapping: ["quantity"], style: "fr", defaultLocation: "warehouse" })).toThrow(StockRulesError);
 });

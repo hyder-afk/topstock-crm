@@ -3,8 +3,8 @@ import { z } from "zod";
 // What the two public routes accept and what they return (design 8.6). Strict objects: an unknown key is refused on the
 // way in and dropped on the way out, so a database bug can never add a field (a cost, a minimum price) to the page.
 
-const UNSAFE = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]/;
-const UNSAFE_LINE = /[\u0000-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]/;
+const UNSAFE = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/;
+const UNSAFE_LINE = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
 /** Text a client may type: at most `max` code points, no control or direction characters (new lines only if `lines`). */

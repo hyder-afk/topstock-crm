@@ -44,7 +44,7 @@ async function tagged(file: string, extraTag = tag) {
   const cell = (v: string) => (/["\r\n]/.test(v) || v.includes(d) ? `"${v.replace(/"/g, '""')}"` : v);
   const lines = [parsed.rawHeaders, ...parsed.records.map((r) => r.cells.map((c, i) => (i === 0 && c.trim() ? `${c.trim()} ${extraTag}` : c)))];
   const names = new Map(parsed.records.map((r) => [r.row_no, r.cells[0]?.trim() ? `${r.cells[0].trim()} ${extraTag}` : ""]));
-  const text = "﻿" + lines.map((l) => l.map(cell).join(d)).join("\r\n") + "\r\n";
+  const text = String.fromCodePoint(0xfeff) + lines.map((l) => l.map(cell).join(d)).join("\r\n") + "\r\n";
   return { file: { name: file.replace(".csv", `-${extraTag}.csv`), mimeType: "text/csv", buffer: Buffer.from(text, "utf8") }, names };
 }
 
@@ -152,7 +152,7 @@ test("import_stock_40_zero_click_match, stock_problems_file_formula_guarded, sto
   await expect(page.getByText("Same product and place as row 17")).toBeVisible();
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /^Download rows not imported/ }).click()]);
   const csv = readFileSync(await download.path(), "utf8");
-  const lines = csv.replace(/^﻿/, "").trim().split("\r\n");
+  const lines = csv.replace(/^\uFEFF/, "").trim().split("\r\n");
   expect(lines[0].startsWith('"Row";"Problem";"CATÉGORIE"')).toBe(true);
   expect(lines).toHaveLength(1 + want.rejected + want.repeated);
   expect(csv).toContain(`"'-5"`);

@@ -435,7 +435,7 @@ begin
     raise exception 'unknown place' using errcode = '22023', hint = 'location';
   end if;
   if v_name is null or char_length(v_name) not between 1 and 80
-     or v_name ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]' then
+     or v_name ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]' then
     raise exception 'a place name needs 1 to 80 characters, without control characters'
       using errcode = '22023', hint = 'location_name';
   end if;

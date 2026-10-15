@@ -29,7 +29,7 @@ const HEADER = [
   "REVENTE MAX",
   "STATUS",
 ];
-const BOM = "﻿";
+const BOM = "\uFEFF";
 const NBSP = " ";
 const NNBSP = " ";
 
@@ -157,7 +157,7 @@ function build40(seed) {
   w[13] = W(13);
   add(frCells({ ...w[13], name: "<img src=x onerror=alert(1)>" }), { fixes: [], name: "<img src=x onerror=alert(1)>" });
   w[14] = W(14);
-  add(frCells({ ...w[14], name: `Étiquette ${"‮"}cadeau` }), { fixes: [], name: "Étiquette cadeau" });
+  add(frCells({ ...w[14], name: `Étiquette ${"\u202E"}cadeau` }), { fixes: [], name: "Étiquette cadeau" });
   for (let i = 15; i < 20; i++) {
     w[i] = W(i);
     add(frCells(w[i]), { fixes: [] });
@@ -280,7 +280,7 @@ function buildPerf(seed, n) {
 function cp1252(text) {
   // Characters outside Windows-1252 become their nearest neighbour (NNBSP -> NBSP; bidi controls dropped).
   const map = { "€": 0x80, "’": 0x92 };
-  const clean = text.replace(/ /g, NBSP).replace(/[‪-‮﻿]/g, "");
+  const clean = text.replace(/ /g, NBSP).replace(/[\u202A-\u202E\uFEFF]/g, "");
   const out = [];
   for (const ch of clean) {
     const code = ch.codePointAt(0);

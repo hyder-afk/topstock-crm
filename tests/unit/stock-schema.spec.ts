@@ -18,7 +18,7 @@ test("strict keys and decimals as canonical text", () => {
   expect(stagedStockRowSchema.safeParse({ ...good, total_cost: "1e3" }).success).toBe(false);
   expect(stagedStockRowSchema.safeParse({ ...good, location_kind: "elsewhere" }).success).toBe(false);
   expect(stagedStockRowSchema.safeParse({ ...good, name: " Gobelet" }).success).toBe(false);
-  expect(stagedStockRowSchema.safeParse({ ...good, name: "Gob‮elet" }).success).toBe(false);
+  expect(stagedStockRowSchema.safeParse({ ...good, name: `Gob${String.fromCodePoint(0x202e)}elet` }).success).toBe(false);
   expect(stagedStockRowSchema.safeParse({ ...good, row_no: 5002 }).success).toBe(false);
   expect(stagedStockRowSchema.safeParse({ ...good, fixes: ["made_up"] }).success).toBe(false);
 });

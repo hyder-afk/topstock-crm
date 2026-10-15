@@ -3,7 +3,7 @@ import { z } from "zod";
 // Inputs of the inventory server actions (CLAUDE.md: Zod strictObject, whitelisted fields, explicit RPC arguments). The
 // database re-checks every rule with a constant message; these only refuse what can never be right before a call.
 
-const SAFE_TEXT = /^[^\u0001-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]*$/;
+const SAFE_TEXT = /^[^\u0001-\u001f\u007f-\u009f\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]*$/;
 const safe = (max: number) => z.string().max(max).regex(SAFE_TEXT);
 const optionalText = (max: number) =>
   z

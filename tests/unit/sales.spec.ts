@@ -42,7 +42,7 @@ test.describe("sale schemas", () => {
     expect(recordSaleSchema.safeParse({ ...sale, lines: [] }).success).toBe(false);
   });
   test("bidi controls and control characters are refused in free text", () => {
-    expect(recordSaleSchema.safeParse({ ...sale, note: "ok‮evil" }).success).toBe(false);
+    expect(recordSaleSchema.safeParse({ ...sale, note: `ok${String.fromCodePoint(0x202e)}evil` }).success).toBe(false);
     expect(recordSaleSchema.safeParse({ ...sale, note: "line one\nline two" }).success).toBe(true);
     expect(cancelSaleSchema.safeParse({ orderId: id, reason: "no\u0007" }).success).toBe(false);
     expect(cancelSaleSchema.safeParse({ orderId: id, reason: "ok" }).success).toBe(false);

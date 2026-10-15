@@ -38,7 +38,7 @@ create function private.stock_db_problem(name text, quantity integer, ppc intege
 language sql immutable parallel safe set search_path = '' as $$
   select case
     when name is null or char_length(name) not between 1 and 200 or name <> btrim(name)
-         or name ~ '[\u0001-\u001F\u007F-\u009F​-‏‪-‮⁦-⁩﻿]'
+         or name ~ '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'
          or private.product_name_key(name) = '' then 'db_name'
     when quantity is null or quantity not between 0 and 50000000 then 'db_quantity'
     when ppc is not null and ppc not between 1 and 1000000 then 'db_carton'
