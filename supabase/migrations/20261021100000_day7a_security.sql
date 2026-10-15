@@ -1,6 +1,6 @@
 -- Day 7a: Gate 1 security fixes that do not depend on Day 6 (docs/evidence/day7/plan.md step 7a; Haider 15 Oct 2026,
 -- "A, all yes": record each sign-in without an IP address; fix the same-organisation owner check now).
--- Sorts after Day 6's last migration (20261020090000_client_share) so it applies last once both are on main.
+-- Sorts after Day 6's last migration (20261020100000_deal_stock_blocks) so it applies last once both are on main.
 -- Tests: supabase/tests/day7a_attack.sql (and the catalog-driven anon sweep in rls_attack.sql section 1).
 
 -- ---------------------------------------------------------------------------

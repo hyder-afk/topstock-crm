@@ -1,0 +1,46 @@
+src/lib/sales/schemas.ts:5: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+src/lib/sales/schemas.ts:6: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+src/lib/share/schema.ts:6: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+src/lib/share/schema.ts:7: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+src/lib/inventory/schemas.ts:6: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261017090000_inventory_reads.sql:438: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:57: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:152: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:297: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:299: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:322: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:341: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:388: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:725: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261020090000_client_share.sql:726: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261018090000_stock_import.sql:41: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:44: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:51: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:68: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:100: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:102: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:109: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:124: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:299: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:342: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:411: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:460: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:479: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:518: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:775: U+202A U+202E U+2066 U+2069
+supabase/migrations/20261019090000_sales_requests.sql:1378: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:1389: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:1583: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/migrations/20261019090000_sales_requests.sql:1847: U+200B U+200F U+202A U+202E U+2066 U+2069 U+FEFF
+supabase/tests/sales_attack.sql:290: U+202E
+scripts/make-fake-stock.mjs:32: U+FEFF
+scripts/make-fake-stock.mjs:160: U+202E
+scripts/make-fake-stock.mjs:283: U+202A U+202E U+FEFF
+tests/auth/stock-import.spec.ts:47: U+FEFF
+tests/auth/stock-import.spec.ts:155: U+FEFF
+tests/unit/stock-normalise.spec.ts:136: U+202E
+tests/unit/sales.spec.ts:45: U+202E
+tests/unit/stock-schema.spec.ts:21: U+202E
+tests/unit/share.spec.ts:77: U+202E
+tests/unit/inventory.spec.ts:137: U+202E
+LINES 45 FILES 15

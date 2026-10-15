@@ -18,7 +18,7 @@ test("the extension follows the type, never the name", () => {
 
 test("invisible, bidi and control characters go; slashes become spaces; never empty", () => {
   expect(cleanFileName("in\u202Egnp.exe.pdf", "application/pdf")).toBe("ingnp.exe.pdf");
-  expect(cleanFileName("a​b﻿c\u0007.pdf", "application/pdf")).toBe("abc.pdf");
+  expect(cleanFileName("a\u200Bb\uFEFFc\u0007.pdf", "application/pdf")).toBe("abc.pdf");
   expect(cleanFileName("../../etc/passwd.pdf", "application/pdf")).toBe("etc passwd.pdf");
   expect(cleanFileName('say "hi"\\there.pdf', "application/pdf")).toBe("say hi there.pdf");
   expect(cleanFileName("   ", "application/pdf")).toBe("file.pdf");

@@ -1,7 +1,6 @@
 // Splits the stage payload into calls of at most 1,000 rows and 750 KB of UTF-8 JSON (design 3.6), under the
-// unchanged 1 MB server action limit.
+// unchanged 1 MB server action limit. Any row shape (lead rows, and the stock rows of Day 6c).
 import { ImportRulesError, LIMITS } from "./rules";
-import type { ImportRow } from "./schema";
 
 export type ChunkLimits = { maxRows?: number; maxBytes?: number };
 
@@ -24,7 +23,7 @@ export function utf8Length(s: string): number {
  * Groups rows in order, one group at a time; each group's JSON array (`[a,b,...]`) stays within both limits. Lazy, so
  * the page can send each group before measuring the next (measuring 30,000 rows at once is a visible pause).
  */
-export function* iterChunks<T extends ImportRow>(rows: readonly T[], limits: ChunkLimits = {}): Generator<T[]> {
+export function* iterChunks<T extends object>(rows: readonly T[], limits: ChunkLimits = {}): Generator<T[]> {
   const maxRows = limits.maxRows ?? LIMITS.chunkRows;
   const maxBytes = limits.maxBytes ?? LIMITS.chunkBytes;
   let current: T[] = [];
@@ -45,6 +44,6 @@ export function* iterChunks<T extends ImportRow>(rows: readonly T[], limits: Chu
 }
 
 /** All the groups at once (see iterChunks). */
-export function chunkRows<T extends ImportRow>(rows: readonly T[], limits: ChunkLimits = {}): T[][] {
+export function chunkRows<T extends object>(rows: readonly T[], limits: ChunkLimits = {}): T[][] {
   return [...iterChunks(rows, limits)];
 }

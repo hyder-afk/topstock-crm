@@ -1,0 +1,14 @@
+# gitleaks configuration (Day 6e): the default rules plus the client stock link's secret, so a real link pasted into a
+# file, a fixture or a log is caught before it is committed.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "topstock-share-token"
+description = "TopStock client stock link token"
+regex = '''tss_[A-Za-z0-9_-]{43}'''
+keywords = ["tss_"]
+
+[allowlist]
+description = "Obviously fake tokens in tests (a repeated letter)"
+regexes = ['''tss_(a{43}|B{43}|z{43}|A{43})''']

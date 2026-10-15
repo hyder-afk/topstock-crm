@@ -196,9 +196,15 @@ begin
        ~* '\m(body|lost_note)\M' then
     raise exception 'FAIL: home_recent_activity reads an entry''s text or a lost note';
   end if;
-  -- No view or materialised view came with the Home figures (they would bypass the row rules).
+  -- No view or materialised view came with the Home figures (they would bypass the row rules). Since the merge into
+  -- Day 6 (15 Oct 2026) one view exists, Day 6b's private.stock_rows, which the stock_alerts() body reads: it is
+  -- security_invoker (the caller's row rules apply), so it bypasses nothing. No other view, none without
+  -- security_invoker, and no materialised view at all.
   if exists (select 1 from pg_class c join pg_namespace s on s.oid = c.relnamespace
-              where s.nspname in ('public', 'private') and c.relkind in ('v', 'm')) then
+              where s.nspname in ('public', 'private')
+                and (c.relkind = 'm'
+                     or (c.relkind = 'v' and not coalesce(c.reloptions @> array['security_invoker=true'], false))
+                     or (c.relkind = 'v' and (s.nspname, c.relname) is distinct from ('private', 'stock_rows')))) then
     raise exception 'FAIL: a view or materialised view exists';
   end if;
   -- stock_alerts_stub (decision B): Day 6's exact signature, so Day 6's create or replace keeps every grant: no

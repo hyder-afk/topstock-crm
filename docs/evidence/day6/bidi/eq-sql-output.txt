@@ -1,0 +1,25 @@
+-- 29 changed lines, 3 distinct classes
+0 '[\u0001-\u0009\u000B-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'
+1 '[\u0001-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]'
+2 '[\u0001-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]'
+
+-- psql output (PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1), port 54493, scratch cluster):
+SELECT 1112063
+pair | differing | matching | matched_above_9f
+0 | 0 | 78 | 200b,200c,200d,200e,200f,202a,202b,202c,202d,202e,2066,2067,2068,2069,feff
+(1 row)
+pair_embedded | count
+0 | 0
+(1 row)
+pair | differing | matching | matched_above_9f
+1 | 0 | 79 | 200b,200c,200d,200e,200f,202a,202b,202c,202d,202e,2066,2067,2068,2069,feff
+(1 row)
+pair_embedded | count
+1 | 0
+(1 row)
+pair | differing | matching | matched_above_9f
+2 | 0 | 73 | 202a,202b,202c,202d,202e,2066,2067,2068,2069
+(1 row)
+pair_embedded | count
+2 | 0
+(1 row)

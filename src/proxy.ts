@@ -1,9 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { authCookieOptions, isHttps } from "@/lib/supabase/cookie-options";
+// Relative, not "@/...": tests/unit/proxy-share.spec.ts loads this file with a dynamic import (env set first), and
+// Playwright's loader does not map the "@/" alias inside a dynamically imported module.
+import { authCookieOptions, isHttps } from "./lib/supabase/cookie-options";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+
+// The client stock page and its two routes (design 8.6): no Supabase origin at all, nothing but this site.
+function shareContentSecurityPolicy(nonce: string, https: boolean) {
+  const isDev = process.env.NODE_ENV === "development";
+  return [
+    "default-src 'none'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    `connect-src 'self'${isDev ? " ws:" : ""}`,
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    ...(isDev || !https ? [] : ["upgrade-insecure-requests"]),
+  ].join("; ");
+}
 
 function contentSecurityPolicy(nonce: string, https: boolean) {
   const isDev = process.env.NODE_ENV === "development";
@@ -27,12 +47,14 @@ function contentSecurityPolicy(nonce: string, https: boolean) {
   ].join("; ");
 }
 
-// Open to everyone: the sign-in screens and the email-link landing page.
-const publicPaths = ["/login", "/forgot-password", "/auth/confirm"];
+// Open to everyone: the sign-in screens, the email-link landing page and robots.txt.
+const publicPaths = ["/login", "/forgot-password", "/auth/confirm", "/robots.txt"];
+// The client stock link (6e): served before any session code, with no cookie read or written.
+export const sharePaths = ["/s", "/api/share"];
 // Need a session, but not yet two-factor (aal1): the two-factor screens and choosing a password.
 const aal1Paths = ["/mfa", "/mfa/setup", "/set-password"];
 
-function matches(path: string, list: string[]) {
+export function matches(path: string, list: string[]) {
   return list.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
@@ -50,11 +72,26 @@ export async function proxy(request: NextRequest) {
   const csp = contentSecurityPolicy(nonce, https);
 
   const requestHeaders = new Headers(request.headers);
+  // Only this proxy may say a request is the client surface: incoming copies are dropped on every path.
+  requestHeaders.delete("x-topstock-surface");
+  requestHeaders.delete("x-topstock-locale");
   requestHeaders.set("x-nonce", nonce);
+  const path = request.nextUrl.pathname;
+
+  if (matches(path, sharePaths)) {
+    const shareCsp = shareContentSecurityPolicy(nonce, https);
+    requestHeaders.set("x-topstock-surface", "share");
+    const locale = /^\/s\/(en|fr)(\/|$)/.exec(path)?.[1];
+    if (locale) requestHeaders.set("x-topstock-locale", locale);
+    requestHeaders.set("Content-Security-Policy", shareCsp);
+    const shared = NextResponse.next({ request: { headers: requestHeaders } });
+    shared.headers.set("Content-Security-Policy", shareCsp);
+    return shared;
+  }
+
   requestHeaders.set("Content-Security-Policy", csp);
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
-  const path = request.nextUrl.pathname;
   let aal: string | null = null;
 
   // Refresh the Supabase session cookie on every request (authorisation still happens on the server per route).

@@ -61,6 +61,16 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
     { keys: ["Del"], label: t("pipeline.delete") },
     { keys: ["⇧", "F10"], label: t("pipeline.menu") },
   ];
+  // Day 6b: Inventory.
+  const inventoryRows: { keys: string[]; label: string }[] = [
+    { keys: ["/"], label: t("stockSearch") },
+    { keys: ["J", "K"], label: t("stockRows") },
+    { keys: ["S"], label: t("stockSale") },
+    { keys: ["R"], label: t("stockHold") },
+    { keys: ["A"], label: t("stockArrived") },
+    { keys: ["E"], label: t("stockEdit") },
+    { keys: ["Esc"], label: t("stockClose") },
+  ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* A read-only list: focus starts on the panel, not on the close button (WAI-ARIA dialog pattern). Tab reaches
@@ -98,6 +108,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
           { title: t("queue"), rows: queueRows },
           { title: t("tasks"), rows: taskRows },
           { title: t("pipeline.title"), rows: pipelineRows },
+          { title: t("inventory"), rows: inventoryRows },
         ].map((group) => (
           <div key={group.title}>
             <h3 className="mt-5 text-sm font-bold text-muted-foreground">{group.title}</h3>

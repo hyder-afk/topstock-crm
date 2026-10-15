@@ -146,6 +146,10 @@ test("keyboard_space_arrows_space_moves, enter_opens_sheet_not_drag, shift_arrow
   await page.keyboard.press("Space");
   await expect(page.locator("[data-lost-band]")).toBeVisible();
   // The arrow is pressed straight after pick-up on purpose (targets are not measured yet); the announcement follows.
+  // "Straight after" is one timer task: dnd-kit's keyboard sensor adds its keydown listener in a setTimeout after
+  // pick-up, and Chromium runs input before timers, so a key sent in the same task was lost (CI, PR #17). A person
+  // cannot type inside one task; timers of equal delay run in order, so this one resolves after that listener exists.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   const live = page.locator("[id^=DndLiveRegion]").first();
   await page.keyboard.press("ArrowRight");
   await expect(live).toContainText("Over Qualified.");
@@ -298,6 +302,27 @@ test("reopen_won_asks_code, delete_deal_asks_for_code", async ({ browser }) => {
   await context.close();
 });
 
+// Day 6 fills in Day 5's seam (deal_closing_blocked): a confirmed sale naming a deal blocks changing how it ships. The
+// sheet's shipping switch answers with the mapped words (blocked_sales -> Errors.blocked), and nothing changes. The sale is
+// a made-up row written as this admin (the sale guard needs a signed-in user); the deal is deleted afterwards with no
+// signed-in user (maintenance: the sale keeps its row and loses the link).
+test("shipping_change_blocked_by_sale_says_why", async ({ browser }) => {
+  const deal = makeDeal({ title: `Held ${run}`, fulfilment: "from_stock" });
+  sql(`select set_config('request.jwt.claims', json_build_object('sub', '${admin}', 'role', 'authenticated')::text, true);
+       insert into private.orders (company_id, deal_id, fulfilment)
+       select d.company_id, d.id, 'from_stock' from public.deals d where d.id = '${deal}'`);
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page, `?deal=${deal}`);
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: "Supplier Stock" }).click();
+  await expect(toast(page)).toHaveText("Stock records hold this deal. Sort them out first.");
+  await expect(sheet.getByRole("radio", { name: "Warehouse inventory" })).toHaveAttribute("aria-checked", "true");
+  expect(sql(`select fulfilment from public.deals where id = '${deal}'`)).toBe("from_stock");
+  expect(errors).toEqual([]);
+  await context.close();
+  sql(`delete from public.deals where id = '${deal}'`);
+});
+
 // Deleting is for admins (Haider, 11 Oct: "delete admin-only with code"): a manager is not offered Delete on the card's
 // menu, the Delete key or the sheet's menu (the database refuses it too: deals_attack.sql); an admin is, on the same deal.
 test("delete_not_offered_to_manager", async ({ browser }) => {
@@ -414,9 +439,34 @@ test("reduced_motion_no_settle, offline_disables_drag, quick_second_move_same_ca
   await expect.poll(() => stageOf(deal)).toBe("negotiations");
   expect(sql(`select count(*) from public.deal_stage_history where deal_id = '${deal}' and kind = 'move'`)).toBe("2");
   await expect(toast(page)).not.toContainText("moved this");
+  // The focus followed the card into Negotiations.
+  await expect(column(page, "negotiations").locator(`[data-deal-main="${deal}"]`)).toBeFocused();
   // Reduced motion: the card is not transformed after the move (no travel, at most a short fade).
   await page.waitForTimeout(150);
   expect(await card(page, deal).evaluate((el) => getComputedStyle(el).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+  // Right after one press the focus is on the moved card in its new column (never <body>).
+  const single = makeDeal({ title: `Quiet single ${run}` });
+  await page.reload();
+  await gotoBoard(page);
+  await mainOf(page, single).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("data-deal-main") ?? document.activeElement?.tagName)).toBe(single);
+  await expect(column(page, "qualified").locator(`[data-deal-main="${single}"]`)).toBeFocused();
+  await expect.poll(() => stageOf(single)).toBe("qualified");
+  // The second press inside the first one's task, before the cards re-render from the cache (TanStack notifies on the
+  // next task; CI's Chromium and WebKit sometimes ran the second key first): it steps from the moved stage, so both land.
+  const burst = makeDeal({ title: `Quiet burst ${run}` });
+  await page.reload();
+  await gotoBoard(page);
+  await mainOf(page, burst).focus();
+  await mainOf(page, burst).evaluate((el) => {
+    const press = () => new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true });
+    el.dispatchEvent(press());
+    el.dispatchEvent(press());
+  });
+  await expect.poll(() => stageOf(burst)).toBe("negotiations");
+  expect(sql(`select count(*) from public.deal_stage_history where deal_id = '${burst}' and kind = 'move'`)).toBe("2");
+  await expect(column(page, "negotiations").locator(`[data-deal-main="${burst}"]`)).toBeFocused();
   // Offline: the chip says moves are paused and a drag does nothing.
   await context.setOffline(true);
   await expect(page.getByText("You’re offline · moves are paused")).toBeVisible();

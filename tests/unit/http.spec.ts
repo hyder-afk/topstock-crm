@@ -42,3 +42,41 @@ test("JSON body: type, size, parse", async () => {
   expect(await readJsonBody(req("{}", { "content-type": "application/json", "content-length": "5000" }), 100)).toEqual({ ok: false, status: 413 });
   expect(await readJsonBody(req(JSON.stringify({ a: "é".repeat(60) }), { "content-type": "application/json" }), 100)).toEqual({ ok: false, status: 413 });
 });
+
+// Day 6e's streaming cap, kept when the two copies of this module became one (the anonymous client stock routes call it):
+// a body with no Content-Length, or a false one, is read only up to the cap; the rest is never pulled.
+const endless = (chunk: Uint8Array) => {
+  let pulls = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(chunk);
+    },
+  });
+  return { stream, pulls: () => pulls };
+};
+const streamed = (body: ReadableStream<Uint8Array>, headers: Record<string, string>) =>
+  new Request("http://localhost:3100/api/share/request", { method: "POST", body, headers, duplex: "half" } as RequestInit);
+
+test("JSON body: an endless body without Content-Length stops at the cap", async () => {
+  const body = endless(new TextEncoder().encode(" ".repeat(64)));
+  expect(await readJsonBody(streamed(body.stream, { "content-type": "application/json" }), 1000)).toEqual({ ok: false, status: 413 });
+  // 1,000 bytes in 64-byte chunks: the 16th chunk passes the cap; a few more may be queued ahead, never the whole body.
+  expect(body.pulls()).toBeLessThan(40);
+});
+
+test("JSON body: a Content-Length that understates the body does not lift the cap", async () => {
+  const body = endless(new TextEncoder().encode("x".repeat(64)));
+  expect(await readJsonBody(streamed(body.stream, { "content-type": "application/json", "content-length": "10" }), 100)).toEqual({ ok: false, status: 413 });
+});
+
+test("JSON body: bytes that are not UTF-8 are refused, not replaced", async () => {
+  const bytes = new Uint8Array([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xff, 0xfe, 0x22, 0x7d]); // {"a":"\xff\xfe"}
+  expect(await readJsonBody(new Request("http://localhost:3100/api/share/view", { method: "POST", body: bytes, headers: { "content-type": "application/json" } }), 100)).toEqual({ ok: false, status: 400 });
+});
+
+test("JSON body: exactly at the cap is read", async () => {
+  const text = JSON.stringify({ a: "x".repeat(92) }); // 100 bytes
+  expect(new TextEncoder().encode(text).length).toBe(100);
+  expect(await readJsonBody(req(text, { "content-type": "application/json" }), 100)).toEqual({ ok: true, value: { a: "x".repeat(92) } });
+});

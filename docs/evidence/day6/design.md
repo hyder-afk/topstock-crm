@@ -912,6 +912,15 @@ end;
   - the import helper goes product by product;
   - deal triggers and expiry go in `(product_id, location_id, created_at, id)` order.
   - So a waiting cycle cannot form.
+  - > **Amended in the Day 6a build (11 Oct 2026, verifier finding):** a hold or a sale for a deal adds the deal row at
+    > the front: deal (`FOR SHARE`), product, levels, holds. Taking the deal row is not enough on its own. It must come
+    > **before the RPC's expiry rows**, because an expiry row locks the level, and a deal lost or deleted locks the deal
+    > and then needs that level (the release trigger). Locking the deal only in the apply step formed exactly that cycle
+    > (40P01 with an expired hold at the level).
+    >
+    > So 6a's `post_stock_movement` locks the deal through `expire_due_holds(product, place, deal)` and again in the
+    > apply step. 6d's `record_sale` with a deal must do the same before its expiry call. See
+    > `docs/evidence/day6a/README.md`, deviation 6.
 - `lock_timeout = '3s'` on every stock RPC gives 55P03, shown as `busy` ("Someone else is changing this stock. Try again.").
 - **Why the level carries `version`, `crm_moved` and `last_onhand_batch_id`:**
   - A ledger row's `id` and `created_at` are set when the row is formed, **before** the apply step waits for the lock.

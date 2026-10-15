@@ -1,0 +1,12 @@
+PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:130: NOTICE:  S2 (a) holds: the identity id (1) is set before BEFORE ROW triggers run; authenticated inserted with no grant on the identity sequence (D14)
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:147: NOTICE:  S2 (b) holds: a BEFORE trigger changed kind count -> adjust; RETURN NULL skipped the row (INSERT ... RETURNING gave no row, the next trigger did not run)
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:158: NOTICE:  S2 (c) holds: as authenticated (no UPDATE grant or policy on the level), the postgres-owned definer trigger took FOR SHARE on the product and FOR UPDATE on the level and changed it (on_hand 1000 -> 998)
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:171: NOTICE:  S2 (d) holds: a definer helper's insert fires the guard with current_user = postgres and the caller's claims still set (auth.uid() = 00000000-0000-0000-0000-0000000000f2)
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:190: NOTICE:  S2 (e) holds: 3 uses rows were written by the BEFORE trigger before their ledger row existed and passed the deferred foreign key at commit; a missing ledger row is refused when the check runs
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:224: NOTICE:  S3 holds (1): clearing request.jwt.claims and request.jwt.claim.sub makes auth.uid() null on the shim and with Supabase's definition; the rep's task for the admin went in as a system row (created_by null); restoring both brought the caller back: {"task": "c50178cc-fd9e-4cdd-9ade-68766c89ccf3", "cleared_uid": null, "restored_uid": "00000000-0000-0000-0000-0000000000f2", "task_created_by": null, "cleared_supabase_uid": null, "restored_supabase_uid": "00000000-0000-0000-0000-0000000000f2"}
+psql:/home/user/topstock-crm-6a/docs/evidence/day6a/spikes/s2_s3.sql:224: NOTICE:  S3 holds (2): an error raised after the claims were cleared rolled the settings back with the block that caught it (auth.uid() = 00000000-0000-0000-0000-0000000000f2 again)
+--- S2 (f): after waiting on FOR UPDATE, READ COMMITTED re-reads the latest row
+S2 (f) apply saw on_hand 90 after the wait (expect 90); level now 85 (expect 85)
+--- S6: is pg_cron available on this server?
+not available

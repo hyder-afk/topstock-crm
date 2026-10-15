@@ -34,7 +34,7 @@ the new attack file; `scripts/db-mutations.py` has a `day7a` set.
   bypassed the same way, so it would add a database round trip per list request (route budget 200 ms) for no real
   gain. The real layers are two-factor sign-in, the Vercel Firewall rule (Day 8, after Pro) and, later, an RPC-only
   read path (no direct table SELECT for authenticated).
-- Migration timestamp 20261021100000 sorts after Day 6's last (20261020090000_client_share). Day 6 does not change
+- Migration timestamp 20261021100000 sorts after Day 6's last (20261020100000_deal_stock_blocks). Day 6 does not change
   `audit_log_action_check` (checked on `day6a-local`), so redefining it here loses nothing at the merge.
 
 ## Tests
