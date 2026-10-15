@@ -80,7 +80,7 @@ the new attack file; `scripts/db-mutations.py` has a `day7a` set.
 | Sheet screens retaken (round 2) | the 24 `sheet-*` shots (6 widths, light and dark, EN and FR) with the new sentence, no console error, no sideways scroll; `more-*` unchanged (the More page itself did not change) |
 | Screens (`screens/`, Chromium 141) | More's sign-out row and the sheet at 390, 768, 1024, 1280, 1440, 1728, light and dark, EN and FR (48 shots): no console error, no sideways scroll; on phones the sheet rises from the bottom with the two buttons stacked, thumb-reachable; the button row stacks below 640 px; the loading skeleton has both buttons |
 | `npm audit --omit=dev` | 0 vulnerabilities |
-| gitleaks (`gitleaks git --log-opts=e038d65..HEAD`) | round 1: 3 commits scanned, no leaks (a directory scan only flags the ignored `.next` build output, which holds the throwaway local stack's anon key; not committed, deleted after the run) |
+| gitleaks (`gitleaks git --log-opts=e038d65..HEAD`) | round 2 (head 583a71d): 7 commits scanned, no leaks found; round 1: 3 commits scanned, no leaks (a directory scan only flags the ignored `.next` build output, which holds the throwaway local stack's anon key; not committed, deleted after the run) |
 
 Design notes (DESIGN.md; full notes in `apple-design-audit.md` and `web-design-guidelines.md`): reuses the existing quiet button,
 dialog and phone-sheet patterns (no new tokens, no red: the confirm is the neutral button since red is reserved for
