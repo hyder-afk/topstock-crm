@@ -1167,8 +1167,8 @@ begin
     '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000b1'), '22023', 'deal_closed');
 end $$;
 -- deal_delete_releases_holds: d1 holds for a deal; admin a deletes the deal (since Day 5, deleting a deal someone
--- worked on takes an admin, or a manager, with a fresh code, through delete_deal; an admin works under either rule); the
--- hold is released (deal_deleted, in a's name) and loses the link.
+-- worked on takes an admin with a fresh code, through delete_deal; a manager is refused); the hold is released
+-- (deal_deleted, in a's name) and loses the link.
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
 do $$
 declare

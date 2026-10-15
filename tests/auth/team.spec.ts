@@ -220,9 +220,11 @@ test("demoting_yourself: with another admin, you become a manager and land on Mo
   await page.getByRole("menuitemradio", { name: /^Manager/ }).click();
   const dialog = page.getByRole("dialog", { name: "Change role?" });
   await expect(dialog).toContainText("You will lose the admin screens");
-  // Phone: the confirmation's buttons are 44 px tall at least.
+  // Phone: the confirmation's buttons are 44 px tall at least. The dialog enters with a scale spring and boundingBox
+  // measures the transformed box (43.9999 px mid-entrance once), so wait for the settled size; a short button still fails.
   for (const name of ["Confirm", "Cancel"]) {
-    expect((await dialog.getByRole("button", { name }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    const button = dialog.getByRole("button", { name });
+    await expect.poll(async () => (await button.boundingBox())?.height ?? 0, { timeout: 5_000 }).toBeGreaterThanOrEqual(44);
   }
   await dialog.getByRole("button", { name: "Confirm" }).click();
   await expect(page).toHaveURL(/\/more$/);

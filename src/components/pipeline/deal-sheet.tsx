@@ -641,7 +641,7 @@ function SheetMenu({ deal, flows, onDeleted }: { deal: DealDetail; flows: SheetF
           <Copy aria-hidden="true" strokeWidth={1.75} className="size-4 text-muted-foreground" />
           {t("menu.copyLink")}
         </DropdownMenuItem>
-        {deal.can_edit ? (
+        {deal.can_delete ? (
           <DropdownMenuItem className="text-status-red" onSelect={() => flows.openDelete(deal, (ok) => ok && onDeleted())}>
             <Trash2 aria-hidden="true" strokeWidth={1.75} className="size-4" />
             {t("menu.delete")}

@@ -16,7 +16,7 @@ function card(stage: DealCard["stage"], value: string | null, extra: Partial<Dea
     status: stage === "won" ? "won" : stage === "lost" ? "lost" : "open",
     stage_entered_at: T0, closed_at: stage === "won" ? T0 : null, expected_close: null, fulfilment: null, owner_id: "o",
     owner_first_name: "Ada", owner_last_name: "L", version: 3, last_activity_at: null, is_stalled: false, quiet_days: 11,
-    lost_reason: null, created_at: T0, can_edit: true, ...extra,
+    lost_reason: null, created_at: T0, can_edit: true, can_delete: false, ...extra,
   };
 }
 function board(): Board {

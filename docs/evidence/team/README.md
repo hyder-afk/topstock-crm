@@ -218,28 +218,33 @@ What each role may do after the merge (database first, the screens follow it):
 - Admin only: importing leads (`lead_import` policies and RPCs: `is_admin` plus a fresh code) and changing roles
   (`set_user_role`). The only `requireAdmin()` pages are More > Team and Leads > Import. 4d and Day 5 add nothing admin-only.
 - Managers and admins: every deal (`deals_select`/`deals_update`: `is_manager_or_admin` or the owner), the team scope on
-  Home and the pipeline (`deal_scope_owner`, `home_*` refuse `team` to others), deleting any deal with a fresh code
-  (`deals_delete` and `delete_deal`: manager or admin and `has_recent_aal2(600)`; the only code-free delete is one's own
-  untouched deal within 120 s), every ready file (`files_select`, `list_files`) and deleting any file (`files_delete`;
-  a ready file needs a fresh code for everyone).
+  Home and the pipeline (`deal_scope_owner`, `home_*` refuse `team` to others), every ready file (`files_select`,
+  `list_files`) and deleting any file (`files_delete`; a ready file needs a fresh code for everyone).
+- Admin only, since Day 5's ae157cf (database, merged here with 1e6b806): deleting any deal with a fresh code
+  (`deals_delete` and `delete_deal`: `is_admin` and `has_recent_aal2(600)`); the only code-free delete is the creator's
+  own untouched deal within 120 s, for every role.
 - Reps: every lead; only the deals they own; files: may add one to any lead, see and delete those they uploaded or that
   sit on leads they own.
 
-So deal delete is manager or admin, not admin only. Changes (2ab9969):
+Deal delete is admin-only (Haider on 15 Oct: "Admins only"), so the wording follows it. Changes (634da7a, EN and FR;
+the earlier 2ab9969 rewording of the merged permissions is the "Before" column):
 
-| Key | Before | After |
+| Key | Before (2ab9969) | After (634da7a) |
 |---|---|---|
-| `roleDescription.admin` EN/FR | unchanged | Everything a manager does, plus importing leads and changing roles. / Tout ce que fait un manager, plus l’import de prospects et le changement des rôles. |
-| `roleDescription.manager` EN | Changes every lead, contact and task, and can delete leads with a code. | Changes every lead, contact, task, deal and file; deletes leads and deals with a code. |
-| `roleDescription.manager` FR | Modifie tous les prospects, contacts et tâches, et peut supprimer des prospects avec un code. | Modifie tous les prospects, contacts, tâches, affaires et fichiers ; supprime prospects et affaires avec un code. |
-| `roleDescription.rep` EN | Sees every lead; changes the leads they own and their own tasks. | Sees every lead but only their own deals; changes what they own: leads, deals, tasks and files. |
-| `roleDescription.rep` FR | Voit tous les prospects ; modifie ceux dont il est responsable et ses propres tâches. | Voit tous les prospects, mais seulement ses affaires ; modifie ce qui lui appartient : prospects, affaires, tâches et fichiers. |
-| `confirm.self` EN/FR | unchanged | "Team and Import leads" / "Équipe et Importer des prospects" are still the only admin screens |
+| `roleDescription.admin` EN | Everything a manager does, plus importing leads and changing roles. | Everything a manager does, plus deleting deals, importing leads and changing roles. |
+| `roleDescription.admin` FR | Tout ce que fait un manager, plus l’import de prospects et le changement des rôles. | Tout ce que fait un manager, plus la suppression des affaires, l’import de prospects et le changement des rôles. |
+| `roleDescription.manager` EN | Changes every lead, contact, task, deal and file; deletes leads and deals with a code. | Changes every lead, contact, task, deal and file; deletes leads with a code. |
+| `roleDescription.manager` FR | Modifie tous les prospects, contacts, tâches, affaires et fichiers ; supprime prospects et affaires avec un code. | Modifie tous les prospects, contacts, tâches, affaires et fichiers ; supprime les prospects avec un code. |
+| `roleDescription.rep` EN/FR | unchanged since 2ab9969 | Sees every lead but only their own deals; changes what they own: leads, deals, tasks and files. / Voit tous les prospects, mais seulement ses affaires ; modifie ce qui lui appartient : prospects, affaires, tâches et fichiers. |
+| `confirm.self` EN/FR | unchanged | "Team and Import leads" / "Équipe et Importer des prospects" are still the only admin screens (deal delete is an action, not a screen) |
 
 FR uses U+202F before `;` and `:` (shown as a plain space in the table) and typographic apostrophes. The 50 team shots
-were re-taken on the merged build (every one shows a role description: list column at 1280 and up, Roles card, role
-menu, confirmation); checked by eye: team fr light 1440, team-menu fr dark 390, confirm-self en light 1440 (three-line
-descriptions, no clipping, no sideways scroll).
+were re-taken on the 634da7a wording (code head 74ba153, 15 Oct; every one shows a role description: list column at
+1280 and up, Roles card, role menu, confirmation); checked by eye: team fr light 1440 (list column and Roles card),
+team-menu fr dark 390 and team-menu fr dark 1440 (the role menu with the longer French admin line on three lines), team
+en dark 1728 (no clipping, no sideways scroll). `team.spec.ts` on the same build: 5 passed (a first run had
+`demoting_yourself` read the Confirm button at 43.9999 px instead of 44 while the sheet was still settling; the re-run
+passed all 5). Earlier set: 2ab9969 (confirm-self en light 1440 also checked then).
 
 ### Checks on the merge (code head 2ab9969)
 
@@ -398,14 +403,11 @@ Context7 pages consulted (14 Oct, first round):
 - Migration order rule: Team's `20261015200000_role_change_lock.sql` must sort after `main`'s latest migration at the
   time Team merges and before Day 6's first (`20261016090000`). Re-checked after the 4d and Day 5 merge: it sorts after
   `20261015150000_home_dashboard`; if main gains a later one before the Team PR, re-date again.
-- ~~After the 4d and Day 5 merge: re-check~~ (done 15 Oct, see "Role wording re-checked"; manager and rep reworded,
-  admin and `confirm.self` unchanged; shots re-taken): re-check `Team.roleDescription` (messages EN and FR, about line 117) and
-  `Team.confirm.self` (about line 127, "Team and Import leads") against the merged RLS (4d: lead files permissions;
-  Day 5: deals use `is_manager_or_admin`, deal delete is admin-only), in both languages, and re-take the affected shots.
+- Deal delete: admin-only with a fresh code since 634da7a (wording) and Day 5's ae157cf (database), per Haider on 15 Oct ("Admins only").
 - `/security-review` (15 Oct, 5f1a966...7d7c2f2): residual window, theoretical: a promotion and a demotion running at
   the same moment, all by admins with fresh codes, has a window that could in theory lose the last admin. Ruled out
-  by the reviewer as theoretical, and no privilege is gained. The review must be repeated on the final head after the
-  4d and Day 5 merge.
+  by the reviewer as theoretical, and no privilege is gained. Repeated after the 4d and Day 5 merge and on the deal-delete
+  delta (`security-review.md`, both no findings).
 - WebKit and Semgrep run only in CI.
 
 ## HAIDER DECIDES (for the REPORT)

@@ -275,12 +275,13 @@ begin
     into v_total, v_ids, v_reasons;
   return jsonb_build_object(
     'total', v_total,
-    'items', coalesce((select jsonb_agg((to_jsonb(c) - 'n') || jsonb_build_object('reason', v_reasons[c.n]) order by c.n)
+    'items', coalesce((select jsonb_agg((to_jsonb(c) - 'n' - 'can_delete') || jsonb_build_object('reason', v_reasons[c.n])
+                                        order by c.n)
                          from private.deal_cards(v_ids) with ordinality as c (id, stage, title, company_id, company_name,
                               city, country, lead_status, contact_id, contact_name, value, currency, status,
                               stage_entered_at, closed_at, expected_close, fulfilment, owner_id, owner_first_name,
                               owner_last_name, version, last_activity_at, is_stalled, quiet_days, lost_reason, created_at,
-                              can_edit, n)), '[]'::jsonb));
+                              can_edit, can_delete, n)), '[]'::jsonb));
 end;
 $$;
 
