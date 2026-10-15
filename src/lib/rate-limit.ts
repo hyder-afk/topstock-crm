@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { noStore } from "@/lib/http";
 
 // Per-person limit on the search and list APIs (Gate 1 item 28; Day 7a): leads search and the lead pickers
-// (/api/leads), the pipeline board, columns and summary, and the Tasks lists. A sliding window per server instance, keyed
-// by the signed-in person's id (from the verified JWT, never from the request), in a Map capped at 5,000 keys (least
-// recently used out first). A speed bump against a runaway client or casual scripting of these routes, NOT scrape
-// protection: a signed-in session can read public.companies straight from PostgREST (RLS and max_rows 1000 per request
-// are the only limits there), so a stolen session never needs these routes. Per server instance: on Vercel each
-// function instance has its own window and a cold start resets it. The real layers are two-factor sign-in, the Vercel
-// Firewall rule (Day 8) and, later, an RPC-only read path (docs/evidence/day7a/README.md, residuals). Nothing is stored
-// or logged.
+// (/api/leads), the pipeline board, columns and summary, the Tasks lists, the lead page's list tabs, the two import
+// issue lists and Day 6's inventory lists (the full list and the routes left out: tests/unit/rate-limit.spec.ts). A
+// sliding window per server instance, keyed by the signed-in person's id (from the verified JWT, never from the
+// request), in a Map capped at 5,000 keys (least recently used out first). A speed bump against a runaway client or
+// casual scripting of these routes, NOT scrape protection: a signed-in session can read public.companies straight from
+// PostgREST (RLS and max_rows 1000 per request are the only limits there), so a stolen session never needs these
+// routes. Per server instance: on Vercel each function instance has its own window and a cold start resets it. The real
+// layers are two-factor sign-in, the Vercel Firewall rule (Day 8) and, later, an RPC-only read path
+// (docs/evidence/day7a/README.md, residuals). Nothing is stored or logged.
 
 export type UserLimiter = {
   /** Records one request; answers 0 when it may go ahead, else the seconds until the next one may. */

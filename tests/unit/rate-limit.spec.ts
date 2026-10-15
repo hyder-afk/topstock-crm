@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { createUserLimiter, LIST_LIMIT, listRateLimited } from "@/lib/rate-limit";
@@ -44,10 +44,62 @@ test("the API answer: 429, a generic code, no-store and Retry-After", async () =
   expect(LIST_LIMIT).toEqual({ windowMs: 60_000, max: 300 });
 });
 
+// Every GET route under src/app/api is either a search or list API (limited) or named here with the reason it is not.
+// A new GET route in neither list fails the inventory test below, so a new list route cannot ship without the limit.
+const LIMITED = [
+  "leads",
+  "pipeline/board",
+  "pipeline/stage",
+  "pipeline/summary",
+  "tasks",
+  // Day 6 (merged 08b0ae7)
+  "inventory/stock",
+  "inventory/movements",
+  "inventory/sales",
+  "inventory/requests",
+  "inventory/reservations",
+  "inventory/share-links",
+  "leads/[id]/stock",
+  "stock-imports/[id]/changes",
+  "stock-imports/[id]/issues",
+  // the lead page's other list tabs and the lead import's issue list (same shape as the stock import's)
+  "leads/[id]/activities",
+  "leads/[id]/deals",
+  "leads/[id]/files",
+  "leads/[id]/tasks",
+  "imports/[id]/issues",
+];
+// Left out on purpose (docs/evidence/day7a/README.md, "Merge with Day 6"): one record by id, a fixed set of counts, a
+// file download, or the fixed client whitelist; never a page of rows or a search.
+const NOT_LISTS = [
+  "activities/[id]",
+  "deals/[id]",
+  "files/[id]",
+  "home",
+  "inventory/alerts",
+  "inventory/products/[id]",
+  "inventory/requests/[id]",
+  "inventory/sales/[id]",
+  "inventory/share-preview",
+  "inventory/summary",
+  "leads/[id]",
+  "queue/summary",
+];
+const api = path.join(__dirname, "..", "..", "src", "app", "api");
+
 test("every search and list API checks the limit right after the session", () => {
-  const api = path.join(__dirname, "..", "..", "src", "app", "api");
-  for (const route of ["leads", "pipeline/board", "pipeline/stage", "pipeline/summary", "tasks"]) {
+  for (const route of LIMITED) {
     const text = readFileSync(path.join(api, route, "route.ts"), "utf8");
     expect(text, route).toMatch(/const session = await apiSession\(\);\n[^\n]*unauthorized[^\n]*\n\s*const limited = listRateLimited\(session\.claims\.sub\);\n\s*if \(limited\) return limited;/);
   }
+});
+
+test("every GET route under src/app/api is either limited or named as not a list", () => {
+  const routes = (readdirSync(api, { recursive: true }) as string[])
+    .filter((f) => path.basename(f) === "route.ts")
+    .filter((f) => /export async function GET\b/.test(readFileSync(path.join(api, f), "utf8")))
+    .map((f) => path.dirname(f).split(path.sep).join("/"))
+    .sort();
+  expect(routes).toEqual([...LIMITED, ...NOT_LISTS].sort());
+  for (const route of NOT_LISTS) expect(LIMITED, route).not.toContain(route);
 });
