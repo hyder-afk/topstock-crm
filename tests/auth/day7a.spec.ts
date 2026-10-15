@@ -113,6 +113,8 @@ test("Sign out of all devices ends the session in the other browser too", async 
   await page.getByRole("button", { name: "Sign out of all devices" }).click();
   const sheet = page.getByRole("dialog", { name: "Sign out of all devices?" });
   await expect(sheet).toBeVisible();
+  // The sheet is honest about timing: another device's access token stays valid until it expires (README R2).
+  await expect(sheet).toContainText("Other devices lose access within an hour at most.");
   await sheet.getByRole("button", { name: "Cancel" }).click();
   await expect(sheet).toBeHidden();
   const before = sessions();
@@ -124,7 +126,8 @@ test("Sign out of all devices ends the session in the other browser too", async 
   expect(sessions()).toBe(0);
   expect((await laptop.cookies()).filter((c) => /^sb-.+-auth-token/.test(c.name))).toEqual([]);
   // The other browser still holds its cookie, but the session behind it is gone: the next page asks for a sign-in,
-  // and its APIs answer 401.
+  // and its APIs answer 401. (Local stack: HS256, so getClaims asks the auth server. On hosted Supabase with asymmetric
+  // keys the access token verifies locally and PostgREST does not check the session, so up to 1 hour: README R2.)
   const other = await phone.newPage();
   await other.goto("/");
   await expect(other).toHaveURL(/\/login$/);
@@ -143,6 +146,7 @@ test("French: the More button and the sheet speak French", async ({ browser, bas
   const sheet = page.getByRole("dialog", { name: "Se déconnecter de tous les appareils ?" });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Tout déconnecter" })).toBeVisible();
+  await expect(sheet).toContainText("Les autres appareils perdent l’accès en une heure au plus.");
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await context.close();
 });
