@@ -170,7 +170,7 @@ begin
   for f in select p.oid, p.oid::regprocedure::text as sig, p.prosecdef, p.proconfig, p.prosrc
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where (n.nspname = 'public' and p.proname in ('home_summary', 'home_attention', 'home_recent_activity',
-                                                         'home_low_stock'))
+                                                         'stock_alerts'))
                or (n.nspname = 'private' and p.proname in ('home_window', 'home_open_deals')) loop
     if f.prosecdef or not (f.proconfig @> array['search_path=""'])
        or not has_function_privilege('authenticated', f.oid, 'EXECUTE')
@@ -181,10 +181,12 @@ begin
   end loop;
   select count(*) into n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
    where (s.nspname = 'public' and p.proname in ('home_summary', 'home_attention', 'home_recent_activity',
-                                                'home_low_stock', 'home_today_tasks'))
+                                                'home_low_stock', 'home_today_tasks', 'stock_alerts'))
       or (s.nspname = 'private' and p.proname in ('home_window', 'home_open_deals'));
-  -- Six: the 5c stand-in home_today_tasks is gone since the 4c rebase (the Today card reads Day 4c's list_tasks).
+  -- Six: the 5c stand-in home_today_tasks is gone since the 4c rebase (the Today card reads Day 4c's list_tasks), and the
+  -- 5c draft home_low_stock(int) gave way to Day 6's stock_alerts() (Haider's decision B, 15 Oct 2026).
   perform pg_temp.eq('Home functions', n, 6);
+  perform pg_temp.eq('home_low_stock is gone', to_regproc('public.home_low_stock') is null, true);
   -- recent_activity_has_no_body: the feed's columns are fixed by its return type, and none is an entry's text or a note.
   perform pg_temp.eq('home_recent_activity columns',
     (select array_to_string(p.proargnames[2:], ',') from pg_proc p where p.oid = 'public.home_recent_activity(text, integer)'::regprocedure),
@@ -198,10 +200,19 @@ begin
               where s.nspname in ('public', 'private') and c.relkind in ('v', 'm')) then
     raise exception 'FAIL: a view or materialised view exists';
   end if;
-  -- home_low_stock_stub_null: the stub (Day 6 replaces it) answers null.
+  -- stock_alerts_stub (decision B): Day 6's exact signature, so Day 6's create or replace keeps every grant: no
+  -- argument, returns jsonb, plpgsql, stable, SECURITY INVOKER (checked above with search_path and the grants), one
+  -- overload only. It answers null for a two-factor caller (inventory not set up yet: the card's calm placeholder).
+  perform pg_temp.eq('stock_alerts overloads', (select count(*)::integer from pg_proc p join pg_namespace s on s.oid = p.pronamespace
+                                                 where s.nspname = 'public' and p.proname = 'stock_alerts'), 1);
+  select count(*) into n from pg_proc p
+   where p.oid = 'public.stock_alerts()'::regprocedure and p.prorettype = 'jsonb'::regtype and not p.proretset
+     and p.provolatile = 's' and not p.prosecdef and p.proconfig = array['search_path=""']
+     and p.prolang = (select l.oid from pg_language l where l.lanname = 'plpgsql');
+  perform pg_temp.eq('stock_alerts stub properties', n, 1);
   perform pg_temp.act('00000000-0000-0000-0000-0000000005c0');
-  if public.home_low_stock() is not null or public.home_low_stock(3) is not null then
-    raise exception 'FAIL: home_low_stock_stub_null';
+  if public.stock_alerts() is not null then
+    raise exception 'FAIL: stock_alerts_stub_null';
   end if;
   perform pg_temp.su();
 end $$;
@@ -251,10 +262,17 @@ begin
                               'select * from public.home_recent_activity(''mine'')'] loop
     perform pg_temp.expect_error(stmt, '42501');
   end loop;
+  -- stock_alerts_stub_aal1_refused: the same refusal as Day 6's function (42501, hint 'forbidden').
+  perform pg_temp.expect_error('select public.stock_alerts()', '42501', 'forbidden');
+  perform pg_temp.su();
+  -- Signed in as nobody (an authenticated role without a user id): refused the same way.
+  perform set_config('role', 'authenticated', false);
+  perform set_config('request.jwt.claims', '{"role": "authenticated", "aal": "aal2"}', false);
+  perform pg_temp.expect_error('select public.stock_alerts()', '42501', 'forbidden');
   perform pg_temp.su();
   perform set_config('role', 'anon', false);
   foreach stmt in array array['select public.home_summary(''mine'')', 'select public.home_attention(''mine'')',
-                              'select * from public.home_recent_activity(''mine'')', 'select public.home_low_stock()'] loop
+                              'select * from public.home_recent_activity(''mine'')', 'select public.stock_alerts()'] loop
     perform pg_temp.expect_error(stmt, '42501');  -- permission denied: anon has no EXECUTE
   end loop;
   perform pg_temp.su();

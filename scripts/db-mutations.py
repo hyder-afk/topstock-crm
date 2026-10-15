@@ -1487,9 +1487,17 @@ MUTATIONS_5C = [
     ("home_summary tasks: Team counts everyone's tasks (count_tasks('team') for Team)",
      [(SUMMARY, "    from public.count_tasks('mine') as k (v);",
        "    from public.count_tasks(case when v_team then 'team' else 'mine' end) as k (v);")]),
-    ("home_low_stock stub callable by anon",
-     [("    grant execute on function public.home_low_stock(integer) to authenticated;",
-       "    grant execute on function public.home_low_stock(integer) to authenticated, anon;")]),
+    # Rows 17 to 19: the low stock stub, Day 6's stock_alerts() signature since Haider's decision B (15 Oct 2026; row 17
+    # aimed at the 5c draft home_low_stock(int) before).
+    ("stock_alerts stub callable by anon",
+     [("    grant execute on function public.stock_alerts() to authenticated;",
+       "    grant execute on function public.stock_alerts() to authenticated, anon;")]),
+    ("stock_alerts stub without the two-factor check (an aal1 session gets an answer)",
+     [("      if (select auth.uid()) is null or not private.has_aal2() then\n        raise exception 'two-factor sign-in",
+       "      if (select auth.uid()) is null then\n        raise exception 'two-factor sign-in")]),
+    ("stock_alerts stub runs as its owner (SECURITY DEFINER)",
+     [("    language plpgsql stable security invoker set search_path = '' as $f$",
+       "    language plpgsql stable security definer set search_path = '' as $f$")]),
 ]
 
 

@@ -6,7 +6,8 @@
 --    Work queue and Needs attention cards count, in the caller's profile zone (a 23 or 25 hour day stays one day);
 --  - home_attention: open deals that are stalled, past their close date or closing within 7 days, worst first;
 --  - home_recent_activity: the latest entries and deal changes, never an entry's text or a lost note;
---  - home_low_stock: a stub answering null until Day 6 (section 10), created only when Day 6 has not made it already.
+--  - stock_alerts: a stub with Day 6's exact signature answering null until Day 6's inventory lands (decision B,
+--    15 Oct 2026: the Home card reads the stock module's own contract), created only when Day 6 has not made it already.
 -- House rules (design section 3): set search_path = '' everywhere; every function is SECURITY INVOKER with static SQL
 -- (Mine and Team are separate statements chosen by IF, each with a fixed index condition; no format(), no EXECUTE), so
 -- row level security decides every row a figure counts. The scope is checked first: Team is for managers and admins
@@ -362,21 +363,29 @@ end;
 $$;
 
 -- ===========================================================================
--- Part 4. Low stock before Day 6 (D30; contract in design section 10)
+-- Part 4. Low stock before Day 6 (D30; Haider's decision B, 15 Oct 2026)
 -- ===========================================================================
--- Answers null ("not set up yet": the Home card shows its calm placeholder). Created only when absent, so it works
--- whichever of 5c and Day 6 merges first; Day 6 replaces it (create or replace, INVOKER, under stock RLS) with exactly
--- {low, out, deals_waiting, items: [{product_id, name, available, reorder_point, in_transit, next_eta, state}] (at most
--- 5)}; the purchase cost (PP) never appears in it.
+-- The Home card reads Day 6's own contract, public.stock_alerts() (it belongs to the stock module; 6d migration
+-- 20261019090000_sales_requests.sql): {low, sold_out, arriving_late, requests_new, holds_ending_soon, deals_waiting,
+-- sample: [{id, name, available, reorder_point, arriving}] (at most 5, low products only)}. Until inventory exists this
+-- stub answers null ("not set up yet": the card shows its calm placeholder). Same signature and rules as Day 6's
+-- function: plpgsql, stable, SECURITY INVOKER, search_path '', two-factor sign-in required (42501, hint 'forbidden'),
+-- callable by authenticated only. Created only when absent, so it works whichever merges first; Day 6 replaces it
+-- with create or replace (Day 5 merges first). Static SQL; the purchase cost never appears in either version.
 do $$
 begin
-  if to_regprocedure('public.home_low_stock(integer)') is null then
-    create function public.home_low_stock(p_limit integer default 5) returns jsonb
-    language sql stable set search_path = '' as $f$
-      select null::jsonb
+  if to_regprocedure('public.stock_alerts()') is null then
+    create function public.stock_alerts() returns jsonb
+    language plpgsql stable security invoker set search_path = '' as $f$
+    begin
+      if (select auth.uid()) is null or not private.has_aal2() then
+        raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+      end if;
+      return null;  -- inventory not set up yet
+    end;
     $f$;
-    revoke all on function public.home_low_stock(integer) from public, anon;
-    grant execute on function public.home_low_stock(integer) to authenticated;
+    revoke all on function public.stock_alerts() from public, anon;
+    grant execute on function public.stock_alerts() to authenticated;
   end if;
 end;
 $$;
