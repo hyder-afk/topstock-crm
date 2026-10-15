@@ -1,0 +1,141 @@
+# TEMPLATE for the private repository topstock-ops. Never add it to topstock-crm's own .github/workflows.
+# Haider pastes this file into topstock-ops as .github/workflows/sweep-lead-files.yml (docs/go-live.md, part I2;
+# runbook docs/ops-templates/sweep-lead-files.md).
+#
+# What it does: once a day, finds files in the lead-files bucket that have NO matching files row and are more than
+# 24 hours old (bytes left behind by a cancelled upload, spike S5), and, once switched on, removes them through the
+# Storage API. It runs topstock-crm's reviewed script scripts/ops/sweep-lead-files.mjs at ONE commit chosen by Haider
+# (the repository variable SWEEPER_SHA), never "whatever is on main today": a new commit on main never runs with the
+# production key until Haider changes that variable.
+#
+# Dry run first (Haider, 15 Oct 2026: "dry-run week first"):
+#   - scheduled runs only LIST until the repository variable SWEEP_APPLY is exactly "yes";
+#   - a manual run deletes only when its confirm box says SWEEP; anything else is a dry run.
+# The script stops without deleting when one run finds more than 50 objects or 200 MiB (a manual run can raise the
+# caps for that run only), when the bucket holds objects but the database reports no files rows, or when a listed
+# name is not in the org/lead/file.ext shape. It lists twice and deletes only names found both times.
+# The log and the run summary show counts and bytes per organisation id only, never file names. One audit_log row per
+# run (counts only). A red run makes GitHub email Haider.
+#
+# Secrets (topstock-ops > Settings > Secrets and variables > Actions > Secrets):
+#   PROD_PROJECT_REF          the 20-letter reference of topstock-prod (exists since part C)
+#   PROD_SWEEPER_KEY          the dedicated Supabase SECRET key named "sweeper", made in account B for this job only
+#                             (part I2). Never the publishable key; never stored in Vercel, topstock-crm or a Claude
+#                             session. Revoke it on its own in account B if it ever leaks.
+#   TOPSTOCK_CRM_READ_TOKEN   fine-grained token, topstock-crm Contents read-only (exists since part C)
+# Variables (same page > Variables):
+#   SWEEPER_SHA               full 40-character commit SHA on topstock-crm main whose script runs (Claude names it)
+#   SWEEP_APPLY               "no" for the dry-run week; "yes" switches deleting on for scheduled runs
+# Nothing here prints the key: secrets are masked, and the script never echoes it.
+name: sweep-lead-files
+on:
+  schedule:
+    - cron: "37 3 * * *" # every day at 03:37 UTC (after backup-prod at 01:23)
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type SWEEP to delete in this run; leave empty for a dry run"
+        required: false
+        type: string
+        default: ""
+      max_objects:
+        description: "Cap for this run: stop if more objects than this are found (default 50)"
+        required: false
+        type: string
+        default: "50"
+      max_mib:
+        description: "Cap for this run: stop if more MiB than this are found (default 200)"
+        required: false
+        type: string
+        default: "200"
+permissions: {}
+concurrency:
+  group: prod-storage-sweep
+  cancel-in-progress: false
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Decide the mode and check the settings
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          CONFIRM: ${{ inputs.confirm }}
+          MAX_OBJECTS: ${{ inputs.max_objects }}
+          MAX_MIB: ${{ inputs.max_mib }}
+          SWEEP_APPLY: ${{ vars.SWEEP_APPLY }}
+          SWEEPER_SHA: ${{ vars.SWEEPER_SHA }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$SWEEPER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::The repository variable SWEEPER_SHA must be a full 40-character commit SHA on topstock-crm main. Nothing was done."
+            exit 1
+          fi
+          mode=dry
+          if [ "$EVENT" = "schedule" ] && [ "$SWEEP_APPLY" = "yes" ]; then mode=apply; fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$CONFIRM" = "SWEEP" ]; then mode=apply; fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$CONFIRM" ] && [ "$CONFIRM" != "SWEEP" ]; then
+            echo "::warning::The confirm box did not say SWEEP (capital letters): this run is a dry run."
+          fi
+          max_objects="${MAX_OBJECTS:-50}"
+          max_mib="${MAX_MIB:-200}"
+          if ! [[ "$max_objects" =~ ^[0-9]{1,4}$ ]] || ! [[ "$max_mib" =~ ^[0-9]{1,4}$ ]]; then
+            echo "::error::max_objects and max_mib must be whole numbers. Nothing was done."
+            exit 1
+          fi
+          {
+            echo "mode=$mode"
+            echo "max_objects=$max_objects"
+            echo "max_mib=$max_mib"
+          } >> "$GITHUB_OUTPUT"
+          echo "Mode: $mode (event $EVENT)."
+
+      # Read-only token, used for this checkout only (persist-credentials: false leaves no token in .git).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: hyder-afk/topstock-crm
+          ref: main
+          token: ${{ secrets.TOPSTOCK_CRM_READ_TOKEN }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: crm
+
+      - name: Use the chosen commit (it must be on main)
+        working-directory: crm
+        env:
+          SWEEPER_SHA: ${{ vars.SWEEPER_SHA }}
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "${SWEEPER_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::SWEEPER_SHA $SWEEPER_SHA is not a commit in topstock-crm. Nothing was done."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$SWEEPER_SHA" HEAD; then
+            echo "::error::SWEEPER_SHA $SWEEPER_SHA is not on main. Only merged, reviewed code runs with the production key. Nothing was done."
+            exit 1
+          fi
+          git checkout --quiet --detach "$SWEEPER_SHA"
+          test -f scripts/ops/sweep-lead-files.mjs || { echo "::error::This commit has no sweeper script. Nothing was done."; exit 1; }
+          echo "Script from topstock-crm commit $(git log -1 --format=%H) ($(git log -1 --format=%cs))."
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # No npm install: the script uses Node's built-in fetch only.
+      - name: Sweep (dry run unless switched on)
+        working-directory: crm
+        env:
+          PROD_PROJECT_REF: ${{ secrets.PROD_PROJECT_REF }}
+          SWEEPER_KEY: ${{ secrets.PROD_SWEEPER_KEY }}
+          SWEEP_MODE: ${{ steps.mode.outputs.mode }}
+          SWEEP_MAX_OBJECTS: ${{ steps.mode.outputs.max_objects }}
+          SWEEP_MAX_MIB: ${{ steps.mode.outputs.max_mib }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SWEEPER_KEY" ]; then
+            echo "::error::The secret PROD_SWEEPER_KEY is missing (runbook step 1). Nothing was done."
+            exit 1
+          fi
+          SUPABASE_URL="https://${PROD_PROJECT_REF}.supabase.co" node scripts/ops/sweep-lead-files.mjs

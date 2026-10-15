@@ -229,6 +229,16 @@ exposed) and stops if either is wrong. Tell Claude "Part D done" (plus any setti
 
 Why: this creates the CRM's tables, security rules and functions in production, from the reviewed code on main.
 
+**First, switch on pg_cron in production** (Haider, 15 Oct 2026, plan question 3). The stock migration schedules the
+nightly stock job (holds that end, the integrity check) only where pg_cron is already on, so this comes before the
+migration run:
+1. Account B (private window), topstock-prod > **Database** (left menu) > **Extensions**.
+2. Search `pg_cron`, switch it **on**, keep the schema it suggests, **Enable extension**.
+
+**What you should see:** pg_cron listed as enabled. (Dev has had it since 15 Oct: 1.6.4.)
+
+Then:
+
 1. topstock-ops > **Actions** > **migrate-prod** (left list) > **Run workflow** (right side).
 2. Branch: `main`. **commit_sha**: paste the SHA from part A. **confirm**: type `MIGRATE`. Click **Run workflow**.
 3. Click the run that appears and wait (about 3 to 5 minutes).
@@ -359,6 +369,21 @@ real data go in.
 
 ---
 
+## Part I2. Orphan file sweeper (dry runs for a week, then on)
+
+Why: bytes left behind by a cancelled upload (no file entry in the CRM) are removed once a day, so they never fill the
+team's 800 MB. It runs in topstock-ops with its own Supabase secret key (Haider, 15 Oct 2026: "orphan sweeper runs from
+topstock-ops with its own key; dry-run week first"). It does not block part J.
+
+Follow **docs/ops-templates/sweep-lead-files.md**, "Day 8 set-up", steps 1 to 5 now: create the secret key named
+`sweeper` in account B, store it as `PROD_SWEEPER_KEY` in topstock-ops, add the variables `SWEEPER_SHA` (Claude gives
+the commit) and `SWEEP_APPLY` = `no`, paste `docs/ops-templates/sweep-lead-files.yml`, run it once by hand. Step 6 is
+the dry-run week (it runs by itself); step 7 switches deleting on afterwards, when Claude and you agree.
+
+**Done when:** the manual dry run is green. Tell Claude "Part I2 done, found N" (the number only).
+
+---
+
 ## Part J. Real data: the 30,000 leads and the stock sheets
 
 Why: the files go from your computer straight into the app. They never go to Claude, GitHub or any cloud session.
@@ -440,12 +465,16 @@ If it says "You are the last admin", you tried to change your own role: leave yo
 ### Secrets in topstock-ops
 | Secret | Used by | Part |
 |---|---|---|
-| `TOPSTOCK_CRM_READ_TOKEN` | migrate-prod (checkout of topstock-crm, read-only) | C |
-| `PROD_PROJECT_REF` | migrate-prod, backup-prod, keep-alive | C |
+| `TOPSTOCK_CRM_READ_TOKEN` | migrate-prod, sweep-lead-files (checkout of topstock-crm, read-only) | C |
+| `PROD_PROJECT_REF` | migrate-prod, backup-prod, keep-alive, sweep-lead-files | C |
 | `PROD_DB_PASSWORD` | migrate-prod, backup-prod | C |
 | `PROD_DB_POOLER_HOST` | migrate-prod, backup-prod (the session pooler host cannot be worked out from the region, so it is copied) | C |
 | `PROD_PUBLISHABLE_KEY` | migrate-prod (sign-ups and exposed-schema checks), keep-alive | C |
 | `AGE_PUBLIC_KEY` | backup-prod | G |
+| `PROD_SWEEPER_KEY` | sweep-lead-files only: the dedicated Supabase secret key named `sweeper` (account B), revocable on its own | I2 |
+
+Variables (Settings > Secrets and variables > Actions > Variables): `SWEEPER_SHA` (the topstock-crm commit whose
+sweeper script runs) and `SWEEP_APPLY` (`no` for the dry-run week, then `yes`), both part I2.
 
 ### Templates (in topstock-crm, pasted into topstock-ops)
 - `docs/ops-templates/migrate-prod.yml`: by hand; types MIGRATE; checks out a commit on main read-only; proves
@@ -455,6 +484,9 @@ If it says "You are the last admin", you tried to change your own role: leave yo
   supabase_migrations, streamed into age; private artifact for 90 days with a row-count file.
 - `docs/ops-templates/keep-alive.yml`: daily; Auth health plus one REST request that reaches the database.
 - `docs/ops-templates/restore-into-dev.md`: the restore test, on your Mac.
+- `docs/ops-templates/sweep-lead-files.yml`: daily; lists files in storage with no file entry older than 24 hours,
+  removes them only once `SWEEP_APPLY` is `yes` (or a manual run typed SWEEP); caps, sanity check, pinned commit.
+  Runbook: `docs/ops-templates/sweep-lead-files.md`.
 
 ### Pages checked (Context7, 12 Oct 2026)
 - Supabase CLI reference (`/supabase/cli`): `supabase db push` flags (`--db-url`, which must be percent-encoded;
