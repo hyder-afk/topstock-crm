@@ -169,17 +169,64 @@ async function recordCount(context: BrowserContext) {
 }
 const frames = (page: Page) => page.evaluate(() => (window as unknown as { __frames: string[] }).__frames);
 
+// Home's CLS (layout shifts without recent input), summed from before the first paint.
+async function recordCls(context: BrowserContext) {
+  await context.addInitScript(() => {
+    const w = window as unknown as { __cls: number };
+    w.__cls = 0;
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries() as PerformanceEntry[] & { value: number; hadRecentInput: boolean }[]) {
+        if (!(e as unknown as { hadRecentInput: boolean }).hadRecentInput) w.__cls += (e as unknown as { value: number }).value;
+      }
+    }).observe({ type: "layout-shift", buffered: true });
+  });
+}
+const cls = (page: Page) => page.evaluate(() => (window as unknown as { __cls: number }).__cls);
+
+// The count-up runs only when hydration lands within COUNT_UP_HYDRATION_MS (800) of navigation start
+// (decideFirstVisit). How fast this machine hydrates must not decide which branch a test sees, so both tests hold the
+// page's clock with Playwright's (page.clock fakes performance, Date, timers and requestAnimationFrame, from before the
+// page's first script). A document loaded after install() replays the clock's log: performance.now() starts at the
+// ticks the log adds up to (wall time between the clock calls, plus fastForward), stands still after pauseAt() and
+// follows wall time again after resume(); runFor() fires the timers and animation frames due in that span itself.
 test("count_up_first_visit_hard_load and count_up_not_on_second_visit", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await recordCount(context);
+  await recordCls(context);
+  // Early branch: time stands still from just after install(), so the page loads and hydrates however slowly the CPU
+  // runs while performance.now() reads a few milliseconds.
+  const start = Date.now();
+  await page.clock.install({ time: start });
+  await page.clock.pauseAt(start + 1000);
   await page.goto("/");
+  // The Home content has streamed in behind loading.tsx (the response is complete at "load"). React's inline runtime
+  // reveals it on an animation frame and hydrates it a frame or two later, so the page's time moves one 16 ms frame
+  // per poll until hydration has written the count's start frame. Each step is a page.evaluate, which waits for the
+  // page's main thread: a slow CPU makes the wait longer in wall time, never in the page's time.
+  await expect(page.locator("[data-kpi-number]")).toHaveCount(4);
+  await expect
+    .poll(async () => (await frames(page)).includes("€0") || (await page.clock.runFor(16), false), {
+      message: "hydration wrote the start frame (counted)",
+      intervals: [100],
+      timeout: 30_000,
+    })
+    .toBe(true);
   await expect(kpi(page, /Open pipeline/)).toContainText("€55,000");
-  await page.waitForTimeout(1200);
+  // Hydration counted with performance.now() below 800 (decideFirstVisit read it no later than this).
+  const hydratedAt = await page.evaluate(() => performance.now());
+  test.info().annotations.push({ type: "count-up hydration", description: `performance.now() ${hydratedAt} ms` });
+  expect(hydratedAt).toBeLessThan(800);
+  // 1 s of the page's time (the count takes 0.7 s), frame by frame, then wall time again for the rest of the test.
+  await page.clock.runFor(1000);
+  await page.clock.resume();
   const first = await frames(page);
-  // Hydration landed within 800 ms here, so the numbers counted up: intermediate values, ending on the final one.
+  // The numbers counted up: intermediate values, ending on the final one.
   expect(first.length, "frames written on the first hard load").toBeGreaterThan(3);
   expect(first).toContain("€0");
   expect(first.at(-1)).not.toBe("€0");
+  expect(first.filter((f) => f !== "€0" && f !== "€55,000").length, "intermediate frames").toBeGreaterThan(0);
+  await expect(kpi(page, /Open pipeline/).locator("[data-kpi-number] [aria-hidden]:not(.invisible)")).toHaveText("€55,000");
+  expect(await cls(page), "Home CLS during the count-up").toBeLessThanOrEqual(0.02);
   // Second visit in this tab (Pipeline, then the dock back to Home): no count.
   await appReady(page);
   await settled(page);
@@ -196,6 +243,33 @@ test("count_up_first_visit_hard_load and count_up_not_on_second_visit", async ({
   await context.close();
 });
 
+test("count_up_late_hydration_shows_final_number", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await recordCount(context);
+  await recordCls(context);
+  // Late branch: performance.now() starts past 1000 and only grows, so hydration lands after 800 ms whenever it runs.
+  const start = Date.now();
+  await page.clock.install({ time: start });
+  await page.clock.fastForward(1000);
+  await page.goto("/");
+  await expect(kpi(page, /Open pipeline/)).toContainText("€55,000");
+  // Hydrated: React holds the number's node and the dock has measured (its effects ran after the count-up's).
+  await expect
+    .poll(() => kpi(page, /Open pipeline/).locator("[data-kpi-number] [aria-hidden]:not(.invisible)").evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactFiber"))))
+    .toBe(true);
+  await appReady(page);
+  expect(await page.evaluate(() => performance.now())).toBeGreaterThanOrEqual(800);
+  await page.waitForTimeout(1000);
+  // No count: no start frame, nothing written over the server's text, the final number on screen, no layout shift.
+  const late = await frames(page);
+  expect(late.filter((f) => f === "€0"), "no start frame after a late hydration").toEqual([]);
+  expect(late, "nothing written over the server's numbers").toEqual([]);
+  await expect(kpi(page, /Open pipeline/).locator("[data-kpi-number] [aria-hidden]:not(.invisible)")).toHaveText("€55,000");
+  expect(await cls(page), "Home CLS after a late hydration").toBeLessThanOrEqual(0.02);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("reduced_motion_static_numbers and kpis_no_layout_shift", async ({ browser }) => {
   const reduced = await open(browser, adminState, { reducedMotion: "reduce" });
   await recordCount(reduced.context);
@@ -207,20 +281,11 @@ test("reduced_motion_static_numbers and kpis_no_layout_shift", async ({ browser 
   await reduced.context.close();
 
   const { context, page, errors } = await open(browser, adminState);
-  await context.addInitScript(() => {
-    const w = window as unknown as { __cls: number };
-    w.__cls = 0;
-    new PerformanceObserver((list) => {
-      for (const e of list.getEntries() as PerformanceEntry[] & { value: number; hadRecentInput: boolean }[]) {
-        if (!(e as unknown as { hadRecentInput: boolean }).hadRecentInput) w.__cls += (e as unknown as { value: number }).value;
-      }
-    }).observe({ type: "layout-shift", buffered: true });
-  });
+  await recordCls(context);
   await page.goto("/");
   await expect(kpi(page, /Open pipeline/)).toContainText("€55,000");
   await page.waitForTimeout(1500);
-  const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls);
-  expect(cls, "Home CLS during the count-up").toBeLessThanOrEqual(0.02);
+  expect(await cls(page), "Home CLS during the count-up").toBeLessThanOrEqual(0.02);
   expect(errors).toEqual([]);
   await context.close();
 });
