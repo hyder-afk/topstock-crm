@@ -72,6 +72,8 @@ export type LastMove = {
   toStage: StageKey;
   fromStage: StageKey;
   version: number;
+  /** When this tab made the move (its clock), to tell it from a newer logged entry (U on the lead page). */
+  at: number;
   until: number;
   leadId: string;
   lostReason: LostReason | null;
@@ -305,7 +307,7 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
           if (r.result === "unchanged") return;
           const undoable = r.undo_until && !r.undone;
           lastMove = undoable
-            ? { id, historyId: r.history_id, toStage: to, fromStage: from, version: r.deal.version, until: Date.parse(r.undo_until!), leadId: card.company_id, lostReason: ch.kind === "lose" ? ch.reason : null }
+            ? { id, historyId: r.history_id, toStage: to, fromStage: from, version: r.deal.version, at: Date.now(), until: Date.parse(r.undo_until!), leadId: card.company_id, lostReason: ch.kind === "lose" ? ch.reason : null }
             : null;
           const value = r.deal.value ? formatMoney(r.deal.value, locale) : "";
           const message =

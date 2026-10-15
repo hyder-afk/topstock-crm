@@ -7,11 +7,14 @@ import { PhoneOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
+import { OpenDealSwitch } from "@/components/activity/open-deal-switch";
 import { FollowUpPicker, OutcomePad, followUpArgs, followUpReady, noFollowUp, type FollowUp } from "@/components/activity/outcome-pad";
 import { lastUndoable, useLogActivity, useUndoActivity } from "@/components/activity/use-activities";
+import { lastUndoableMove, useDealActions } from "@/components/pipeline/use-pipeline";
+import { newerUndo } from "@/lib/undo-pick";
 import { followUpRule, outcomeForKey, type CallOutcome } from "@/lib/activities";
 import type { StageKey } from "@/lib/deals";
-import { formatMoney, parseMoney } from "@/lib/money";
+import { parseMoney } from "@/lib/money";
 import { project, springs } from "@/lib/motion";
 import { isTyping } from "@/lib/shortcuts";
 import { browserZone, nextWorkingDate } from "@/lib/timezones";
@@ -116,8 +119,11 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
   // Only the open call may change the slot: a panel still playing its exit animation must not bring itself back.
   const change = useCallback((c: CallState) => setSlot((s) => (s.call?.startedAt === c.startedAt ? { ...s, call: c } : s)), []);
 
-  // U or Cmd/Ctrl+Z: undo the last entry this tab logged, within 2 minutes, when nobody is typing, no dialog is open
-  // and the page does not own U (data-owns-undo: the work queue).
+  // U or Cmd/Ctrl+Z: undo the latest change this tab made within 2 minutes, a logged entry or a deal move (design 5.3:
+  // the newer of the two), when nobody is typing, no dialog is open and the page does not own U (data-owns-undo: the
+  // work queue; the pipeline board takes U for its moves before this listener).
+  const dealActions = useDealActions();
+  const undoMove = dealActions.undo;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isTyping(event.target)) return;
@@ -127,14 +133,15 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
         (event.key.toLowerCase() === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) ||
         (event.key.toLowerCase() === "u" && !event.metaKey && !event.ctrlKey && !event.altKey);
       if (!isUndo) return;
-      const last = lastUndoable();
-      if (!last) return;
+      const pick = newerUndo(lastUndoable(), lastUndoableMove());
+      if (!pick) return;
       event.preventDefault();
-      void undo(last.activityId, last.leadId);
+      if (pick.kind === "move") void undoMove(pick.move);
+      else void undo(pick.entry.activityId, pick.entry.leadId);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [undo]);
+  }, [undo, undoMove]);
 
   // Closing (Save, Don't log, second close): focus goes back to the Call button before the panel unmounts, because the
   // exit animation keeps the focused element alive until it leaves and the focus would then drop to <body>.
@@ -207,7 +214,6 @@ function CallPanel({
   const { target, phase } = call;
   // Day 5b (design 7.9, D17): Interested and Book meeting offer "Open a deal" (on when the lead has no open deal),
   // with an optional title and value; hidden for people who may not change the lead.
-  const tStage = useTranslations("Stages");
   const locale = useLocale();
   const [openDeal, setOpenDeal] = useState(false);
   const [dealTitle, setDealTitle] = useState("");
@@ -459,60 +465,17 @@ function CallPanel({
               />
             ) : null}
             {canDeal ? (
-              <div className="flex flex-col gap-2 rounded-md bg-muted/60 p-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={openDeal}
-                  aria-keyshortcuts="D"
-                  onClick={() => setOpenDeal((on) => !on)}
-                  className="flex min-h-11 items-center justify-between gap-3 text-left text-sm font-bold"
-                >
-                  <span>{tOut("openDeal")}</span>
-                  <span className="flex items-center gap-2">
-                    <Kbd aria-hidden="true">D</Kbd>
-                    <span aria-hidden="true" className={cn("relative h-6 w-10 rounded-full transition-colors duration-150", openDeal ? "bg-primary" : "bg-border")}>
-                      <span className={cn("absolute top-0.5 size-5 rounded-full bg-card shadow-sm transition-[translate] duration-150 motion-reduce:transition-none", openDeal ? "translate-x-[18px]" : "translate-x-0.5")} />
-                    </span>
-                  </span>
-                </button>
-                {!openDeal && (target.openDeals ?? 0) > 0 && target.latestDeal ? (
-                  <p className="text-xs text-muted-foreground">
-                    {target.latestDeal.value
-                      ? tOut("dealOpen", { stage: tStage(target.latestDeal.stage), value: formatMoney(target.latestDeal.value, locale) })
-                      : tOut("dealOpenNoValue", { stage: tStage(target.latestDeal.stage) })}
-                  </p>
-                ) : null}
-                {openDeal ? (
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,7rem)] gap-2">
-                    <label className="flex min-w-0 flex-col gap-1 text-xs">
-                      <span className="text-muted-foreground">{tOut("dealTitle")}</span>
-                      <input
-                        name="deal_title"
-                        autoComplete="off"
-                        dir="auto"
-                        maxLength={120}
-                        value={dealTitle}
-                        onChange={(e) => setDealTitle(e.target.value)}
-                        className="min-h-11 rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                      />
-                    </label>
-                    <label className="flex min-w-0 flex-col gap-1 text-xs">
-                      <span className="text-muted-foreground">{tOut("dealValue")}</span>
-                      <input
-                        name="deal_value"
-                        inputMode="decimal"
-                        autoComplete="off"
-                        value={dealValue}
-                        onChange={(e) => setDealValue(e.target.value)}
-                        aria-invalid={dealValueBad || undefined}
-                        className="min-h-11 rounded-md border border-border bg-background px-2 font-mono text-sm text-foreground aria-invalid:border-status-red"
-                      />
-                    </label>
-                    {dealValueBad ? <p className="col-span-2 text-xs text-status-red">{tOut("dealValueInvalid")}</p> : null}
-                  </div>
-                ) : null}
-              </div>
+              <OpenDealSwitch
+                on={openDeal}
+                onToggle={() => setOpenDeal((on) => !on)}
+                latest={target.latestDeal ?? null}
+                openCount={target.openDeals ?? 0}
+                title={dealTitle}
+                onTitle={setDealTitle}
+                value={dealValue}
+                onValue={setDealValue}
+                valueBad={dealValueBad}
+              />
             ) : null}
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-bold">{t("note")}</span>
