@@ -179,3 +179,53 @@ Only budget assertions failed. Logs are `quiet/home-perf-{A,B}-{1,2,3}.log` in t
   - the skeleton without a hover: about 255 to 260 against 118 ms
   - Home's extra JavaScript: 10.3 against 9.1 KB, code, still under budget
 - These go back to Haider as worse than the accepted figures. They are not caused by the merge.
+
+### Second pass: the baseline commit on this machine (15 Oct 2026)
+
+Method as in `day5b/perf.md` ("Second pass"). C and A ran in turn (C, A, C, A, C, A), each Home run straight after
+that head's pipeline run:
+- C ran on a throwaway stack built from e3baf1b's migrations. It cannot run fairly on the merged stack, which has
+  Day 4c's schema and the rebased functions, and whose test helpers need 4d's `files` table.
+- A ran on a fresh throwaway stack built from 6008f4b's migrations.
+- Same browser (Chromium 141) and same command line as before; nothing else heavy was running.
+
+**Which commit.** Home's accepted figures came from the run at 22:58 UTC on 14 Oct. Its build at 22:47 already held
+the Work queue change that was committed at 23:01 as 4d1e571. The spec followed at 23:01 in **e3baf1b**, with no app
+change. So C-Home = **e3baf1b**, on the line before the Day 4c rebase; its rebased copy is 4845286.
+
+| Run | Head | `uptime` before (1 / 5 / 15 min) |
+|---|---|---|
+| 1 | C e3baf1b | 2.19 / 1.63 / 1.31 |
+| 1 | A 6008f4b | 2.43 / 1.79 / 1.39 |
+| 2 | C | 2.00 / 1.88 / 1.60 |
+| 2 | A | 2.49 / 2.08 / 1.69 |
+| 3 | C | 2.91 / 2.14 / 1.84 |
+| 3 | A | 1.80 / 1.91 / 1.78 |
+
+| Measure | Accepted baseline (14 Oct) | **C: e3baf1b today** | A: 6008f4b today (fresh stack) | Verdict |
+|---|---|---|---|---|
+| Cold deep link `/`: LCP | 1,532 / 1,664 / 1,732 ms | **2,112 / 2,488 / 2,720** | 548 / 1,076 / 1,388 | C is worse than its own baseline and over the 2,000 budget in all 9 samples (environment); later code is much faster |
+| Cold deep link `/`: CLS | 0 / 0 / 0 | 0 / 0 / 0.004 | 0 / 0 / 0.001 | environment (tiny, under 0.02) |
+| Layout-shift entries during the count-up | 0 / 0 / 0 | 1 in 9 samples | 1 in 9 samples | environment (the one entry seen before on Chromium 141 occurs on the baseline commit too) |
+| Longest frame in the first 1.2 s (÷ 4) | 18.7 / 25.9 / 26.2 ms | 25.3 / 32.1 / 41.4 | 29.1 / 34.4 / 46.1 | **environment** |
+| Pipeline → Home after the hover | 431.7 / 432.3 / 441.0 ms | 429.8 / 597.8 / 708.5 | 412.4 / 581.4 / 837.3 | **environment** |
+| Skeleton without a hover | 83.9 / 118.0 / 174.2 ms | 107.3 / 149.8 / 380.6 | 111.6 / 179.6 / 394.5 | **environment** (C is worse than its baseline; A's median is 30 ms above C's with the ranges overlapping, see below) |
+| Home's extra JavaScript | 9.1 KB | **9.1** | 10.3 | **code** after e3baf1b (see below) |
+
+**Plain reading.**
+- **Every Home timing that was worse on both heads is the environment.** Today the commit Haider accepted is as slow as
+  the later heads: the early longest frame, Pipeline → Home after the hover, and the skeleton. Its LCP is in fact worse
+  than its own baseline, and later code beats it.
+- The skeleton without a hover: the fresh stacks gave medians of 150 (C) and 180 ms (A). This morning the shared stack
+  gave 255 to 260 ms on both heads. The shared stack's data may add to this measure. This pass cannot separate a small
+  code effect from that, and the measure is already an accepted miss.
+- **The only code effect is Home's extra JavaScript, +1.2 KB gzip** (9.1 to 10.3 KB, budget 20). The static chunk
+  comparison gives the same +1.2 KB. The new strings are the Day 6 low stock shape (`arrivingLate`, `holdsEndingSoon`,
+  `requestsNew`), `LowStockSkeleton`, the Work queue card's `followUps`, `meeting` and `aria-keyshortcuts`, Today's
+  `theirTime`, and the focus hook. Most likely from (not tuned):
+  - 849ab89 and d29be68, Decision B: `src/components/home/low-stock-card.tsx`, `src/lib/home.ts`
+  - cad5528, the Home side of the Day 4c rebase: `src/components/home/queue-card.tsx`, `today-card.tsx`
+  - e4e1f50: `src/lib/use-keep-focus.ts`
+- **Nothing here comes from the merge.**
+
+Logs are `quiet/summary2.txt` and `quiet/home-perf-{C,Afresh}-{1,2,3}.log` in the session scratchpad.

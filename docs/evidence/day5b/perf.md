@@ -225,3 +225,89 @@ Each run failed only on the budgets listed as missed above. No other error appea
   which was not done here. One sign that the machine behaves differently from the baseline's: each drag now records 317
   to 367 frames against 210 to 246 in the baseline, on both heads.
 - The measures that are worse than the accepted figures go back to Haider. They are not caused by the merge.
+
+### Second pass: the baseline commit on this machine (15 Oct 2026)
+
+Why: to find out whether the "worse on both heads" rows above come from the machine or from code between the
+baseline and 931af08. The baseline commit was built and measured on this machine today, in turn with 6008f4b
+(C, A, C, A, C, A).
+
+**Which commit.** The accepted pipeline figures came from **ee5312c** (log row "Day 5b checks (code ee5312c, tests
+409403b)"; "Final run on ee5312c" above). The spec existed only in the working tree then and was committed with no app
+change in 409403b. So C was built from **409403b**: the app code of ee5312c, plus that spec, byte-identical to today's.
+ee5312c is on the line before the Day 4c rebase (the reflog shows "rebase (finish) onto 5f1a966" at 23:26 on 14 Oct),
+so it is not an ancestor of 931af08. Its rebased copy is 3f3efd5. (Home's baseline came from e3baf1b; see
+`day5c/perf.md`.)
+
+**Database: the merged stack cannot run C fairly.** ee5312c predates Day 4c and 4d. The merged schema has 4c's queue
+tables and the rebased `log_activity`, `get_lead` and `audit_row`, and today's test helpers clear `public.files`, which
+the old schema does not have. So C ran on a throwaway stack built from **e3baf1b's migrations**: 409403b's own, plus
+Day 5c's migration, which only adds functions and no table, index or policy.
+
+To keep the comparison fair, **A was also run on a fresh throwaway stack**, built from 6008f4b's migrations. Both
+stacks used:
+- the shared stack's GoTrue build
+- `scripts/local-auth`'s gateway, with only its GoTrue port made settable
+- their own ports (54391/54381/9991 and 54392/54382/9992)
+
+The shared stack was not touched. In a first attempt the copied gateways still forwarded auth calls to the shared
+GoTrue on port 9999. That GoTrue refused them (bad_jwt) before anything was created, so nothing was written to the
+shared stack. That attempt was thrown away, and its two failed runs are not counted.
+
+**Builds and runs.** Each of C (409403b), C-Home (e3baf1b) and A (6008f4b) was built from a `git archive` copy with a
+hard-linked `node_modules` (`package-lock.json` is the same on all three). Each build used its own stack's environment,
+because `NEXT_PUBLIC_*` values are baked in at build time. Every run had a fresh `next start -p 3100`, with tests run
+from that commit's own tree, as the baseline did. Browser and command were as in the first pass (Chromium 141,
+`PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PERF=1 npx playwright test -c playwright.auth.config.ts --project=chromium
+tests/auth/day5-perf.spec.ts`). Before each run the script checked that no other heavy job or extra Postgres was
+running; none was found. The gaps between runs were about 10 s, so the 1-minute load before a run carries more of this
+script's previous run than in the first pass. C and A were affected alike.
+
+| Run | Head | `uptime` before (1 / 5 / 15 min) |
+|---|---|---|
+| 1 | C 409403b (ee5312c) | 0.55 / 0.89 / 1.05 |
+| 1 | A 6008f4b | 1.26 / 1.14 / 1.12 |
+| 2 | C | 3.36 / 2.24 / 1.57 |
+| 2 | A | 1.39 / 1.91 / 1.56 |
+| 3 | C | 3.08 / 2.33 / 1.80 |
+| 3 | A | 1.50 / 2.00 / 1.76 |
+
+Figures are min / median / max over the 9 samples per head (3 values for move p95 and extra JS).
+
+| Measure | Accepted baseline (ee5312c, 14 Oct) | **C: ee5312c today** | A: 6008f4b today (fresh stack) | Verdict |
+|---|---|---|---|---|
+| Cold deep link: LCP | 1,088 / 1,316 / 1,560 ms | 1,016 / 1,348 / 1,664 | 872 / 1,380 / 1,700 | within baseline |
+| Cold deep link: CLS | 0 / 0 / 0 | 0 / 0.003 / 0.007 | 0 / 0.003 / 0.003 | **environment** (the baseline commit shows it too) |
+| Extra JavaScript | 53.6 KB | **53.6** | 56.3 | **code** after ee5312c (see below) |
+| Press feedback | 24.2 / 36.4 / 42.8 ms | 25.1 / 34.2 / 42.0 | 26.0 / 39.8 / 62.8 | unclear: C matches the baseline; A's median is about 5 ms higher with the ranges overlapping; under budget |
+| Pipeline → Home after the hover | 17.8 / 25.3 / 39.7 ms | 15.8 / 26.6 / 33.5 | 21.5 / 25.5 / 38.5 | within baseline |
+| Move painted p95 | 584.5 ms | 570.3 / 610.0 / 669.0 | 558.1 / 563.3 / 690.2 | **environment** |
+| Move painted median | ~410 ms | 434.3 / 468.8 / 481.1 | 409.1 / 428.9 / 528.5 | **environment** |
+| Drag frame p95 | 22.7 / 23.2 / 23.5 ms | 23.3 / 25.4 / 27.1 | 23.3 / 24.4 / 26.8 | **environment** |
+| Drag: longest task | 68 / 74 / 96 ms | 114 / 136 / 216 | 122 / 141 / 194 | **environment** |
+| Settle after pointer up | 668.8 / 690.8 / 709.5 ms | 718.7 / 775.8 / 870.1 | 625.9 / 767.1 / 842.2 | **environment** |
+| Home → Pipeline after the hover | 1,645 / 2,109 / 2,168 ms | 1,893 / 2,215 / 2,941 | 1,897 / 2,190 / 2,651 | same on both heads (environment) |
+| Skeleton without a hover | 124.4 / 129.1 / 1,989.1 ms | 111.6 / 169.2 / 1,974 | 75.0 / 120.6 / 196.4 | **environment** (C has two ~1.9 s outliers, as the baseline had one) |
+| Frames recorded per drag | 210 / 232 / 246 | 316 / 338 / 369 | 327 / 345 / 409 | environment |
+
+On its fresh stack, A falls within its own range from the first pass on every measure, so the stack type did not move
+the pipeline figures.
+
+**Plain reading.**
+- **Every timing that was worse on both heads is the environment.** Today, on this machine, the commit Haider accepted
+  is as slow as the later heads: move p95, drag frame p95, longest drag task, settle, the skeleton, and the small CLS.
+  It reproduces the gaps between yesterday's figures and today's. The same holds for press feedback: C matches its
+  baseline and A's small rise is within the spread.
+- **The only code effect is the pipeline's extra JavaScript, +2.7 KB gzip** (53.6 to 56.3 KB, budget 60). A static
+  comparison of the route-only client chunks gives about +2.2 KB. The new code is a focus-keeping hook (`focusin` /
+  `focusout`) and `data-column-heading`. Most likely from (not tuned):
+  - e4e1f50, verifier round 1, findings 2 to 4: `src/lib/use-keep-focus.ts`, `src/lib/focus-return.ts`,
+    `src/components/pipeline/board.tsx`, `lose-dialog.tsx`, `deal-sheet.tsx`
+  - e70d3ae and 916f610, finding 7: `src/lib/last-move.ts`, `src/lib/undo-pick.ts`,
+    `src/components/pipeline/deal-flows.tsx`
+  - 083a348 (the queue card's Open a deal), in `deal-flows.tsx` and `use-pipeline.ts`
+- **Nothing here comes from the merge.**
+
+Logs are in the session scratchpad: `quiet/summary2.txt`, `quiet/day5-perf-{C,Afresh}-{1,2,3}.log`, and the scripts
+`quiet/run2.sh` and `quiet/stack.sh`. (The first pass's per-run A logs were overwritten by this pass's file names;
+their results are kept in `quiet/summary.txt`.)
