@@ -22,6 +22,95 @@ random run met an "unchanged" answer (a colleague had just moved the deal to tha
 accepts (8bd6e4b). Row 37 was first NOT CAUGHT on 8bd6e4b: the test compared `owner_id <> admin`, which is null, not
 true, for an empty owner; the test file now uses null-safe comparisons for every column a mutation can empty.
 
+## Team advisor finding (15 Oct): admin-only delete, rows 74 to 76 added, on 5f240f3
+
+Code head 5f240f3 (ae157cf the fix, 5f240f3 the tests and rows). Copies of the worktree with `db-test.sh` on port 54497,
+three run side by side to finish in time (rows 1 to 24, 25 to 39, 40 to 63 and 74 to 76; the first and third runs were
+stopped by PID once their ranges were done). **Rows 64 to 73 were not re-run** (stopped at the deadline): they edit the
+undo, owner and flood code, which this fix does not touch; `--anchors` finds every anchor of every set once.
+
+Result: rows 1 to 63 and 74 to 76 (66 rows): **59 caught, 6 documented two-layer rows not caught (20, 24, 27, 28, 39,
+63), 1 not as listed (58: caught although listed as a two-layer row)**. The three new rows are caught by the new tests:
+
+| 74 | Delete policy: a manager with a fresh code may delete (is_admin back to is_manager_or_admin) | caught | FAIL: deal_delete_manager_fresh_code_denied (direct) |
+| 75 | delete_deal: a manager passes the role check (is_admin back to is_manager_or_admin; the policy then gives P0002) | caught | FAIL: "select public.delete_deal('4b1f5aaa-e09c-45a6-96b6-a1f0699eecb0')" gave P0002 (hint "", deal not found), expected 42501 (hint "<NULL> |
+| 76 | Cards: Delete offered to managers (can_delete with is_manager_or_admin) | caught | FAIL: a manager is offered Delete |
+
+**Row 58 is not as listed**: documented as a two-layer row (NOT CAUGHT) on 2de7f9c, it is now caught, with the error
+"too many deals opened in an hour" (no FAIL line). Not investigated (deadline). It is not caused by the delete change
+(no new test opens more than one deal per person); the likely cause is that suites added after 2de7f9c (5b, 5c) insert
+deals as the superuser with `created_by` set, which the mutated guard (counting live deals by creator) counts and the real
+guard (counting `private.deal_opens`, written only for a signed-in opener) does not. To confirm on the next pass and,
+if so, re-list row 58 as caught.
+
+Row 14's anchor follows `is_admin` (title "no fresh code for admins"); it is caught by `deal_delete_stale_code_denied (direct)`.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 1 | Grant update (status) on deals | caught | FAIL: deal_update_columns_exact: {contact_id,expected_close,fulfilment,lost_note,lost_reason,owner_id,stage_id,status,title,value} |
+| 2 | Grant update (stage_entered_at) on deals | caught | FAIL: deal_update_columns_exact: {contact_id,expected_close,fulfilment,lost_note,lost_reason,owner_id,stage_entered_at,stage_id,title,value} |
+| 3 | Guard: no value_required pre-check (the won-shape CHECK answers with the row) | caught | FAIL: "select pg_temp.mv('a3c968b5-4e06-4edf-a83f-a2f9e840ab37', 'won', null, 'from_stock')" gave 23514 (hint "", new row for relation "deal |
+| 4 | Guard: no fulfilment_required pre-check (the won-shape CHECK answers with the row) | caught | FAIL: "select pg_temp.mv('bbe74f9b-f9b6-4f49-ab19-4621037e79d0', 'won', 10)" gave 23514 (hint "", new row for relation "deals" violates chec |
+| 5 | Guard: no lost-reason pre-check (the hint test fails although the CHECK still raises) | caught | FAIL: "update public.deals set stage_id = private.stage_id('lost') where id = 'c69a60f9-5028-4cad-ae4b-78d61bc54632'" gave 23514 (hint "", n |
+| 6 | Guard: won and lost reachable from a closed deal (no reopen_first) | caught | FAIL: "update public.deals set stage_id = private.stage_id('lost'), lost_reason = 'timing' where id = '839b0280-9add-48d8-8004-66d6403652d0' |
+| 7 | Guard: reopening a won deal needs no fresh code | caught | FAIL: "update public.deals set stage_id = private.stage_id('lead') where id = '44eb982c-a524-4034-8804-8f2ccc2abaa1'" succeeded, expected 42 |
+| 8 | Undo candidate: ignores who made the change | caught | FAIL: reverse_by_other_user_is_ordinary_move / history_actor_forced {"deal": {"id": "0c0015e7-6071-45f9-b031-fb33135f4a6f", "city": null, "s |
+| 9 | Undo candidate: ignores the 120-second window | caught | FAIL: transition_matrix qualified -> lead: {"deal": {"id": "b7e2b732-7be4-4b83-a55c-e46c69de5ec6", "city": null, "stage": "lead", "title": " |
+| 10 | Undo candidate: ignores version_after (a colleague's change in between) | caught | FAIL: reverse_after_colleague_edit_is_ordinary |
+| 11 | move_deal: no version compare | caught | FAIL: a stale move should be a conflict result {"deal": {"id": "c5ad60b0-3bee-4a9e-8306-ad4d80abdef5", "city": null, "stage": "negotiations" |
+| 12 | History: insert granted to clients | caught | FAIL: deal_stage_history grants |
+| 13 | History: actor taken from the deal's owner | caught | FAIL: reverse_by_other_user_is_ordinary_move / history_actor_forced {"deal": {"id": "5663d9c1-fd24-4b16-95da-daaa1bde2ae2", "city": null, "s |
+| 14 | Delete policy: no fresh code for admins | caught | FAIL: deal_delete_stale_code_denied (direct) |
+| 15 | Delete policy: the creator's branch without version = 0 (a moved deal deleted without a code) | caught | FAIL: a moved deal was deleted directly without a code |
+| 16 | Deals: lead FK back to set null | caught | FAIL: lead FK restrict, company_id not null, tasks.deal_id set null |
+| 17 | Tasks: deal FK back to cascade | caught | FAIL: lead FK restrict, company_id not null, tasks.deal_id set null |
+| 18 | Task guard: deal_id not in the link-emptying exception | caught | this part of a task cannot change |
+| 19 | Stages: the admin update policy and grant restored | caught | FAIL: stage_write_denied_even_admin (grants or policies) |
+| 20 | Value CHECK: no NaN term (the 100,000,000 bound refuses NaN too: NaN sorts above every number) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 21 | Value CHECK: no NaN term and no bound (both layers of the backstop) | caught | FAIL: a deal CHECK let this through: insert into public.deals (org_id, company_id, stage_id, value) values ('9602d43b-a4b6-4115-89a3-9bb5a3c |
+| 22 | move_deal: locks the deal FOR UPDATE (blocks behind an entry's key lock; spike S8) | caught | canceling statement due to lock timeout |
+| 23 | Lead coupling: a win overrides Do not contact | caught | FAIL: coupling_table won on a do_not_contact lead (editor t): got customer, expected do_not_contact |
+| 24 | Lead coupling: without the editor lock (row level security on the lead update still stops it) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 25 | Lead coupling: without the editor lock, and move_deal runs as its owner (both layers) | caught | FAIL: RPC rules broken by {"move_deal(uuid,text,integer,numeric,text,text,text,bigint,uuid)"} |
+| 26 | Undo: the lead put back whatever it holds now | caught | FAIL: undo_restores_lead_only_if_unchanged |
+| 27 | Guard: no open flood guard (since verifier round 2 the statement-level recount answers the same rate_limited) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 28 | Guard: no stage-change flood guard (since verifier round 2 the statement-level recount answers the same rate_limited) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 29 | Deals: request id index not unique | caught | FAIL: "insert into public.deals (company_id, request_id) values ('24fa2c0c-5e56-4564-8312-369756aada8e', '1b479358-c522-41ed-9254-2ccf23562b |
+| 30 | Column keyset: <= instead of < (a deal repeated across pages) | caught | FAIL: list_stage_keyset_stable (recent team): 61 rows |
+| 31 | pipeline_board: a rep's team is not mapped to their own deals (42501 on first paint) | caught | only managers and admins see the team's deals |
+| 32 | Guard: an invisible stage answers P0002 instead of 42501 | caught | this stage is not one of your pipeline's |
+| 33 | Guard: a lost note change is not a change (no version, no check) | caught | FAIL: "update public.deals set lost_note = 'quiet edit' where id = '614cb6ca-1d9d-48aa-b669-63b9035ed710'" succeeded, expected 22023 |
+| 34 | Undo: the value is not restored from history (the client's or the won value stays) | caught | FAIL: undo_restores_clock_close_value_fulfilment {"deal": {"id": "4107f34a-eb0b-42fa-bbae-f50cc45f587b", "city": null, "stage": "negotiation |
+| 35 | Guard: no Do not contact check on insert | caught | FAIL: "select public.open_deal('1467ceef-1ea8-4240-8a13-9999ef7ea463')" succeeded, expected 22023 |
+| 36 | Guard: created_by left to the client (empty) | caught | FAIL: deal_opens_at_lead / deal_created_by_forced: {"id":"b01c7b7e-cd7c-449a-9271-72983ef37efb","org_id":"e8df1d7e-b9ad-4e1c-959a-d61afdf72b |
+| 37 | Guard: an admin's deal left without an owner (G11) | caught | FAIL: owner_defaults_to_creator |
+| 38 | Guard: a closed deal's value, shipping and dates editable | caught | FAIL: "update public.deals set value = 1 where id = 'f0ffc22c-e5fc-4a08-8459-b090c0e8102b'" succeeded, expected 22023 |
+| 39 | Guard: the client's stage clock kept on insert (no insert grant on it, and its default is now()) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+| 40 | Guard: the client's stage clock kept on insert, and granted (both layers) | caught | FAIL: deal_insert_columns_exact: {company_id,contact_id,expected_close,fulfilment,owner_id,request_id,source_activity_id,stage_entered_at,ti |
+| 41 | Deals select: no organisation check | caught | FAIL: admin should see both reps' files, nothing from the other org |
+| 42 | History select: no deal visibility (a colleague's deal history readable) | caught | FAIL: rep_get_other_deal_null |
+| 43 | Move records: a row for another person's change | caught | FAIL: "insert into private.deal_moves (history_id, org_id, user_id, deal_id, company_id) select 500, org_id, '00000000-0000-0000-0000-000000 |
+| 44 | delete_deal: no fresh-code pre-check (no step_up hint) | caught | FAIL: "select public.delete_deal('835f6edd-a382-4255-bba6-4e9808ae9690')" gave 42501 (hint "", only an admin can delete a deal), expected 42 |
+| 45 | update_deal: no field whitelist | caught | FAIL: "select public.update_deal('fc4b2196-552b-47d8-bd50-b85cb38e0857', 2, '{title,status}', 'x')" succeeded, expected 22023 |
+| 46 | list_stage_deals: half a cursor accepted | caught | FAIL: "select * from public.list_stage_deals('lead', p_after_at => now())" succeeded, expected 22023 |
+| 47 | Cards: stalled ignores the lead's last activity | caught | FAIL: stall case "lead/720/1/false/0" in UTC: stalled t, quiet 0 |
+| 48 | Lead coupling: a loss rests the lead although another deal is open | caught | FAIL: coupling_table lost_other_open on a warm lead (editor t): got cool_off, expected warm |
+| 49 | Audit: the version diffed | caught | FAIL: audit_version_not_diffed / audit_lost_note_masked |
+| 50 | Audit: the lost note copied | caught | FAIL: audit_deal_insert_update_delete_rows / audit_deal_value_change_logged / audit_lost_note_masked: [{"diff": {"new": {"id": "16b58d44-9bb |
+| 51 | open_deal: no lead lock (a non-editor's open reaches the policy; the answer loses its hint) | caught | FAIL: "select public.open_deal('32702652-4e44-47ff-a135-ae739178820d')" gave 42501 (hint "", new row violates row-level security policy for  |
+| 52 | Guard: the value bound not checked on a same-stage change (the CHECK answers with the row) | caught | FAIL: "update public.deals set value = 'NaN' where id = '09e23e74-6a58-47cf-b408-9a5a37ed28cc'" gave 23514 (hint "", new row for relation "d |
+| 53 | Undo: a win undone without the Day 6 block check | caught | FAIL: "select pg_temp.mv('e6c10efe-226c-4a32-88cc-a154ee36fa84', 'lead', undo_of => 627)" succeeded, expected 42501 |
+| 54 | Guard: a win that changes the shipping skips the Day 6 block check | caught | FAIL: "select pg_temp.mv('4d7f0777-61ee-46cc-8961-09f5006db08a', 'won', 700, 'direct_from_source')" succeeded, expected 42501 |
+| 55 | Guard: reopening a won deal without the Day 6 block check | caught | FAIL: "select pg_temp.mv('2bc03c16-166e-4aff-81a9-ba7d877a2125', 'negotiations')" succeeded, expected 42501 |
+| 56 | Guard: a shipping change on the same stage without the Day 6 block check | caught | FAIL: "select public.update_deal('49de9e1e-5abd-43c0-803d-2dbcce261a8f', 1, '{fulfilment}', p_fulfilment => 'direct_from_source')" succeeded |
+| 57 | delete_deal: no Day 6 block check | caught | FAIL: "select public.delete_deal('016fcd18-2a0b-4783-9e57-94f774bd2630')" succeeded, expected 42501 |
+| 58 | Guard: the open flood guard counts live deals only (since verifier round 2 the statement-level recount counts the open records) | caught, but listed as NOT CAUGHT | too many deals opened in an hour |
+| 59 | History trigger: no open record written | caught | FAIL: an open should remove its author's open records older than an hour |
+| 60 | Open records: insert granted to clients | caught | FAIL: private.deal_opens protections |
+| 61 | move_deal: no move record for an Undo with a request id (a repeated Undo is not a replay) | caught | FAIL: undo_replay_returns_stored {"deal": {"id": "880171dc-9ba9-4944-bad7-a25a0b4fc770", "city": null, "stage": "lead", "title": "Owned", "v |
+| 62 | Guard: a deal's owner can be emptied on update (G11) | caught | FAIL: "update public.deals set owner_id = null where id = 'b83bf1ae-78ad-4e66-a854-fbc81a188950'" succeeded, expected 22023 |
+| 63 | update_deal: no owner pre-check (the guard answers the same 22023 owner_required) | **NOT CAUGHT** (documented: two layers) | advisors: no ERROR-level findings |
+
 ## Verifier round 2 (12 Oct): rows 66 to 73 added, the flood rows re-run, on 2de7f9c
 
 The verifier's second NOT READY report (N1, N2) showed that one statement with many rows passed both flood limits: the

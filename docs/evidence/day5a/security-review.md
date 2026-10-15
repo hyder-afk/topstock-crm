@@ -27,7 +27,7 @@ that test. Every row was re-checked on the final head (acc2cf3, after verifier r
 | 11 | Two people move one deal | row lock (`FOR NO KEY UPDATE`) plus `version`; a conflict is a result | `two_movers_one_conflict`, `win_vs_lose_one_closes`, `move_vs_update_value_one_conflict`, `undo_vs_colleague_move_conflict`, `history_chain_consistent` (3 x 100) [concurrency 1 to 4, 9]; single-session conflict results [6] | 11 |
 | 13 | Double submit or replay | `deals_creator_request_idx`; `deal_moves (user_id, request_id)`, also written for an Undo sent with a request id (verifier round 1); replay checks before and after the lock | `open_deal_idempotent`, `request_id_other_author_no_collision`, duplicate direct insert 23505 [2]; `move_replay_returns_stored` [6]; `undo_replay_returns_stored` [14]; `fresh_session_move_with_request_id` (a move with a request id as the first call of a new connection) [concurrency 10]; `open_deal_replay_parallel_once`, `move_replay_parallel_once` [concurrency 5, 6] | 29, 43, 61 |
 | 14 | Undo abuse | one candidate function (own, latest, 120 s, `version_after`); values only from server rows; `p_undo_of` refuses a stale undo before writing | `undo_restores_clock_close_value_fulfilment`, `undo_of_expired_refused_no_write` [5]; `reverse_by_other_user_is_ordinary_move`, `reverse_after_121s_is_ordinary_move`, `reverse_after_colleague_edit_is_ordinary`, `undo_of_undo_is_ordinary`, `undo_of_reopen_from_lost_keeps_reason` [5] | 8, 9, 10, 34 |
-| 15 | Deleting without a code, or erasing sales | `deals_delete`: manager/admin with a fresh code, or the creator's untouched deal under 120 s once the call's undo record is consumed; `delete_deal` pre-checks (`step_up`) | `deal_delete_stale_code_denied`, `deal_delete_rep_fresh_code_denied`, `deal_delete_admin_fresh_code_ok` (a manager), `deal_delete_creator_within_120s_untouched_ok`, `deal_delete_after_move_needs_code`, `deal_direct_delete_refused_while_activity_undo_record` (and `delete_deal` then answers 42501 `step_up` like the policy, not P0002: verifier round 1) [7]; `closing_blocked_on_delete` [13] | 14, 15, 44, 57, 65 |
+| 15 | Deleting without a code, or erasing sales | `deals_delete`: **an admin** with a fresh code (since 15 Oct; it said manager/admin, against Haider's 11 Oct decision), or the creator's untouched deal under 120 s once the call's undo record is consumed; `delete_deal` pre-checks (`step_up`, then admin: 42501 without a hint); `can_delete` on every card offers Delete only to an admin or inside the creator's window | `deal_delete_stale_code_denied`, `deal_delete_rep_fresh_code_denied`, `deal_delete_manager_fresh_code_denied` (RPC, direct delete, not offered), `deal_delete_admin_fresh_code_ok` (the admin; it ran as a manager before 15 Oct), `deal_delete_creator_window_any_role`, `deal_delete_creator_within_120s_untouched_ok`, `deal_delete_after_move_needs_code`, `deal_direct_delete_refused_while_activity_undo_record` (and `delete_deal` then answers 42501 `step_up` like the policy, not P0002: verifier round 1) [7]; `closing_blocked_on_delete` [13] | 14, 15, 44, 57, 65, 74, 75, 76 |
 | 16 | Orphan deals; lost tasks; import undo removing a lead with a deal | `company_id not null`, FK restrict; `tasks.deal_id` set null with `task_guard`'s exception; Day 3b's untouched rule | `lead_with_deal_delete_23503`, `deal_delete_keeps_activities_and_tasks` [7]; the FK checks [0]; `import_attack.sql` (import undo keeps the lead with a deal) | 16, 17, 18 |
 | 18 | Board figures leaking rows | INVOKER only, no views or DEFINER; scope resolved first (`deal_scope_owner`) | `pipeline_board_equals_hand_count` (admin), `rep_board_team_falls_back_to_mine`, `rep_stage_list_team_42501`, `rep_summary_team_42501`, manager scope [9]; RPC rules (INVOKER, no EXECUTE/format) [0] | 31 |
 | 19 | Lead side effects on a lead the caller cannot change; DNC or Disqualified overwritten | lead `FOR UPDATE` gives no row to non-editors (S7); closed coupling table; compare-and-restore on undo | `coupling_table` (9 events x 7 statuses x editor/non-editor, incl. `win_never_overrides_dnc`, `coupling_never_touches_disqualified`, `non_editor_move_no_lead_change`) [8]; `undo_restores_lead_only_if_unchanged` [8b] | 23, 24 (documented two-layer), 25, 26, 48 |
@@ -92,3 +92,28 @@ proves the lock that makes it safe: concurrency case 8 and mutation 22), 17 (act
 
 Not run in this build session (database-only workflow step; the lead builder runs `/security-review` on the PR head in
 the advisor loop, build order item 9). The table above is the threat re-check the design asks for.
+
+## Admin-only delete restored (15 Oct, Team advisor finding), reviewed by hand
+
+Delta: the two commits after b9c05db that change code and tests (`deals_delete`, `delete_deal`, `private.deal_cards`,
+`get_deal`, `list_stage_deals`/`list_lead_deals` return types, `home_attention`'s alias list, the card menu, the Delete
+key, the sheet menu, `deals_attack.sql`, `pipeline.spec.ts`, `db-mutations.py`). `/security-review` as a slash command
+was not run on this delta (it reviews the whole branch against `main`); this is a by-hand review of the delta against the
+skill's categories:
+
+- **Authorization**: tighter, never looser. The policy and the RPC both check `private.is_admin()` (SECURITY DEFINER,
+  `search_path = ''`, reads the caller's own profile row), each wrapped in `(select …)` so it runs once per statement.
+  A manager's refusal is the same 42501 without a hint that a rep already got, so no new error text reaches the app.
+  The creator branch is byte-for-byte the same.
+- **`can_delete` is a hint**, never the check: hiding Delete changes nothing the database allows. It reads
+  `private.activity_undo` under that table's own-rows policy (the caller's own undo record only) and returns a boolean;
+  nothing new is exposed. `home_attention` drops it from its items, so Home's answer has the same keys.
+- **Inputs, injection, secrets**: no new input, no dynamic SQL, no string building, no `dangerouslySetInnerHTML`, no
+  secret or real data. The e2e test switches a fake `@example.test` user's role on the throwaway local stack and restores
+  it in `finally`.
+- **Residual (UX only)**: `can_delete` is computed when the card is read. A creator who leaves the board open past the
+  2 minutes still sees Delete until the next refresh; using it asks for a code and then, for a non-admin, answers the
+  generic "not allowed". No data changes.
+
+Result: no finding.
+
