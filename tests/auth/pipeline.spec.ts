@@ -435,9 +435,34 @@ test("reduced_motion_no_settle, offline_disables_drag, quick_second_move_same_ca
   await expect.poll(() => stageOf(deal)).toBe("negotiations");
   expect(sql(`select count(*) from public.deal_stage_history where deal_id = '${deal}' and kind = 'move'`)).toBe("2");
   await expect(toast(page)).not.toContainText("moved this");
+  // The focus followed the card into Negotiations.
+  await expect(column(page, "negotiations").locator(`[data-deal-main="${deal}"]`)).toBeFocused();
   // Reduced motion: the card is not transformed after the move (no travel, at most a short fade).
   await page.waitForTimeout(150);
   expect(await card(page, deal).evaluate((el) => getComputedStyle(el).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+  // Right after one press the focus is on the moved card in its new column (never <body>).
+  const single = makeDeal({ title: `Quiet single ${run}` });
+  await page.reload();
+  await gotoBoard(page);
+  await mainOf(page, single).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("data-deal-main") ?? document.activeElement?.tagName)).toBe(single);
+  await expect(column(page, "qualified").locator(`[data-deal-main="${single}"]`)).toBeFocused();
+  await expect.poll(() => stageOf(single)).toBe("qualified");
+  // The second press inside the first one's task, before the cards re-render from the cache (TanStack notifies on the
+  // next task; CI's Chromium and WebKit sometimes ran the second key first): it steps from the moved stage, so both land.
+  const burst = makeDeal({ title: `Quiet burst ${run}` });
+  await page.reload();
+  await gotoBoard(page);
+  await mainOf(page, burst).focus();
+  await mainOf(page, burst).evaluate((el) => {
+    const press = () => new KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", shiftKey: true, bubbles: true, cancelable: true });
+    el.dispatchEvent(press());
+    el.dispatchEvent(press());
+  });
+  await expect.poll(() => stageOf(burst)).toBe("negotiations");
+  expect(sql(`select count(*) from public.deal_stage_history where deal_id = '${burst}' and kind = 'move'`)).toBe("2");
+  await expect(column(page, "negotiations").locator(`[data-deal-main="${burst}"]`)).toBeFocused();
   // Offline: the chip says moves are paused and a drag does nothing.
   await context.setOffline(true);
   await expect(page.getByText("You’re offline · moves are paused")).toBeVisible();

@@ -222,11 +222,25 @@ test("dialogs: Lose (reason picker), Reopen (a won deal), Delete", async ({ brow
     await page.getByRole("dialog").getByRole("button", { name: /^(Reopen…|Rouvrir…)$/ }).click();
     await expect(page.getByRole("dialog", { name: /^(Reopen this deal|Rouvrir cette affaire)/ })).toBeVisible();
   });
-  // Delete: the Delete key on a card (the confirmation; the code comes after it).
-  await shoot(browser, "/pipeline", "delete-dialog", some, [390, 1440], async (page) => {
-    await dialogOn(page, "Linen shirts", "Delete");
-    await expect(page.getByRole("dialog").getByRole("button")).not.toHaveCount(0);
-  });
+  // Delete: the Delete key on a card (the confirmation; the code comes after it). Delete is offered to an admin, or to
+  // the creator inside the deal's first 2 minutes (can_delete); these deals are older than that by now (the earlier
+  // shots take minutes on CI), so the person is an admin for these shots, on Mine so the board still holds only these
+  // made-up deals, and a rep again after.
+  setRole(email, "admin");
+  try {
+    await shoot(browser, "/pipeline", "delete-dialog", some, [390, 1440], async (page) => {
+      await boardReady(page);
+      const mine = page.getByRole("radio", { name: /^(Mine|Les miennes)$/ });
+      const loaded = page.waitForResponse((r) => r.url().includes("/api/pipeline/board?scope=mine") && r.ok());
+      await mine.click();
+      await loaded;
+      await expect(mine).toHaveAttribute("aria-checked", "true");
+      await dialogOn(page, "Linen shirts", "Delete");
+      await expect(page.getByRole("dialog").getByRole("button")).not.toHaveCount(0);
+    });
+  } finally {
+    setRole(email, "rep");
+  }
 });
 
 test("board errors (first read, a refresh), a column error, an empty board", async ({ browser }) => {

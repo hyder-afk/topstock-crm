@@ -12,7 +12,12 @@ import { cn } from "@/lib/utils";
 // on screen while the cards stream.
 
 type HomeContextValue = {
+  /** The scope chosen on the switch (pressed at once). */
   scope: HomeScope;
+  /** The scope the cards render: the server's until the cards have mounted, then the chosen one. */
+  viewScope: HomeScope;
+  /** Called by the cards once they have mounted (hydrated). */
+  cardsMounted: () => void;
   setScope: (s: HomeScope) => void;
   canSwitch: boolean;
   /** The server's first paint, for the scope it rendered (D32): read with use() only when the cache is empty. */
@@ -39,6 +44,14 @@ export function HomeScopeProvider({
   children: React.ReactNode;
 }) {
   const [scope, setScopeState] = useState<HomeScope>(initialScope);
+  // The cards stream in under the page's Suspense boundary. A tap on the switch before their HTML has arrived and
+  // hydrated would make React hydrate them inside the switch's render, with the new scope: the client's first render
+  // (no data for that scope yet: skeletons) would not match the server's HTML (cards for the server's scope), React
+  // would throw that HTML away (hydration error #418). So the cards render the server's scope until they have mounted,
+  // then the chosen one; the switch itself shows the choice at once.
+  const [cardsReady, setCardsReady] = useState(false);
+  const cardsMounted = useCallback(() => setCardsReady(true), []);
+  const viewScope = cardsReady ? scope : initialScope;
   // The device remembers what this person sees, so the dock's prefetch warms the right scope next time.
   useEffect(() => {
     if (rememberedScope() !== initialScope) rememberScope(initialScope);
@@ -46,15 +59,17 @@ export function HomeScopeProvider({
   const setScope = useCallback(
     (s: HomeScope) => {
       if (!canSwitch) return;
-      // A transition: a tap that lands while the cards are still hydrating lets them hydrate first, instead of throwing
-      // away the server's HTML (React's recoverable hydration error).
+      // A transition: the cards' new figures may suspend without hiding what is on screen.
       startTransition(() => setScopeState(s));
       rememberScope(s);
     },
     [canSwitch],
   );
   const initial = useMemo(() => ({ scope: initialScope, promise }), [initialScope, promise]);
-  const value = useMemo(() => ({ scope, setScope, canSwitch, initial }), [scope, setScope, canSwitch, initial]);
+  const value = useMemo(
+    () => ({ scope, viewScope, cardsMounted, setScope, canSwitch, initial }),
+    [scope, viewScope, cardsMounted, setScope, canSwitch, initial],
+  );
   return <HomeContext.Provider value={value}>{children}</HomeContext.Provider>;
 }
 

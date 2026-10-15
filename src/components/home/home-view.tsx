@@ -37,7 +37,9 @@ export function HomeView({
   canAssign: boolean;
   stepUpSeconds: number;
 }) {
-  const { scope, canSwitch, initial } = useHomeScope();
+  // viewScope: the server's scope until these cards have mounted (hydration matches the server's HTML), then the switch's.
+  const { viewScope: scope, canSwitch, initial, cardsMounted } = useHomeScope();
+  useEffect(() => cardsMounted(), [cardsMounted]);
   const qc = useQueryClient();
   const t = useTranslations("Home");
   const format = useFormatter();

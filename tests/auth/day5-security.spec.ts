@@ -143,15 +143,20 @@ test("rep_get_other_deal_404: another person's deal reads as missing, the same a
 test("history_table_write_refused, stage_write_refused_via_rest, deal_patch_status_column_denied, private_deal_moves_not_exposed", async () => {
   const history = sql(`select count(*) from public.deal_stage_history where deal_id = '${deal}'`);
   const stageNames = sql(`select string_agg(key || ':' || stall_days::text, ',' order by position) from public.pipeline_stages where org_id = '${org}'`);
-  // The history is the database's own record: no insert through the API (PostgREST 401/403; the stand-in has no
-  // table inserts at all), and no row appears.
+  // The history is the database's own record: no insert through the API (PostgREST 403 from the missing insert grant;
+  // the stand-in has no table inserts at all), and no row appears. The body is a row the table would accept (real
+  // columns, values its checks allow), so the refusal is the privilege itself: a column the table does not have is
+  // refused earlier by PostgREST's schema cache (400 PGRST204) and proves nothing about the grant.
   const insert = await call("/rest/v1/deal_stage_history", {
     method: "POST",
     token: adminToken,
-    body: { deal_id: deal, kind: "move", to_stage_id: deal },
+    body: { org_id: org, deal_id: deal, actor_id: admin, kind: "move", from_stage: "qualified", to_stage: "negotiations", version_after: 1 },
   });
-  expect(insert.status).toBeGreaterThanOrEqual(400);
-  if (realPostgrest) expect([401, 403]).toContain(insert.status);
+  expect(insert.status, JSON.stringify(insert.body)).toBeGreaterThanOrEqual(400);
+  if (realPostgrest) {
+    expect(insert.status, JSON.stringify(insert.body)).toBe(403);
+    expect((insert.body as { code?: string } | null)?.code, JSON.stringify(insert.body)).toBe("42501");
+  }
   const historyPatch = await call(`/rest/v1/deal_stage_history?deal_id=eq.${deal}`, { method: "PATCH", token: adminToken, body: { kind: "won" } });
   expect(historyPatch.status).toBe(403);
   expect(sql(`select count(*) from public.deal_stage_history where deal_id = '${deal}'`)).toBe(history);
