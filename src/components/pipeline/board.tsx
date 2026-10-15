@@ -56,6 +56,10 @@ import { isTyping } from "@/lib/shortcuts";
 import { useKeepFocus } from "@/lib/use-keep-focus";
 import { cn } from "@/lib/utils";
 
+// Offline: no sensors at all. `undefined` would make DndContext fall back to its default Pointer and Keyboard sensors,
+// so a drag made offline still started and its move was sent once the network came back (WebKit e2e, PR #17).
+const NO_SENSORS: ReturnType<typeof useSensors> = [];
+
 // The pipeline board (Day 5 design 7.1 to 7.8). The server page hands over a promise of the first paint; the board
 // renders from the query cache at once when the dock already warmed it (D32), otherwise it waits for that promise under
 // the page's Suspense skeleton (spike S14). Four columns (Lead, Qualified, Negotiations, Closed/won over the last 30 days)
@@ -681,7 +685,7 @@ function Pipeline({
 
         <DndContext
           id="pipeline-board"
-          sensors={online ? sensors : undefined}
+          sensors={online ? sensors : NO_SENSORS}
           collisionDetection={pointerFirst}
           measuring={MEASURING}
           autoScroll={AUTO_SCROLL}
