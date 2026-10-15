@@ -6,9 +6,10 @@ import { makeOrg, moveTo, seedHome, userId } from "./home-fixture";
 // the API, the count-up on a first hard load only (never with reduced motion, never shifting the layout), ticking a
 // task done with Undo, Needs attention opening the deal sheet over Home and Home refreshing after a move, the queue
 // count after paint, Team and Mine for admins only (remembered), the profile zone for "today", the win rate hidden under
-// 5 closed deals, a new org's empty states, one card failing alone, Low stock before and after Day 6, no entry text in
-// the feed, and the phone layout. Each person lives in an org made for this run (the reused local stack holds other
-// specs' rows in the default org), so every figure is exact. Test titles carry the run id.
+// 5 closed deals, a new org's empty states, one card failing alone, Low stock before and after Day 6 (Day 6's
+// stock_alerts, decision B), no entry text in the feed, and the phone layout. Each person lives in an org made for this
+// run (the reused local stack holds other specs' rows in the default org), so every figure is exact. Test titles carry
+// the run id.
 test.describe.configure({ mode: "serial" });
 
 const password = "Home-Dash-Pass-42!";
@@ -422,37 +423,108 @@ async function viaScopeSwitch(page: Page, mutate: (data: Record<string, unknown>
   await page.getByRole("group", { name: "Figures for" }).getByRole("button", { name: "Mine" }).click();
 }
 
-test("card_error_isolated and low_stock_filled_from_contract", async ({ browser }) => {
+// Day 6's stock_alerts() stand-in for the filled card (Haider's decision B): installed as the database superuser on the
+// local stack only, with Day 6's signature and checks, answering a fixed payload in Day 6's exact shape; the 5c stub is
+// put back afterwards from its own definition (pg_get_functiondef), grants kept by create or replace. The page then
+// reads it through the real server path (fetchHome, the strict Zod parse). Auth specs run one worker at a time.
+function fakeStockAlerts(payload: Record<string, unknown>) {
+  const json = JSON.stringify(payload).replaceAll("'", "''");
+  sql(`create or replace function public.stock_alerts() returns jsonb
+       language plpgsql stable security invoker set search_path = '' as $f$
+       begin
+         if (select auth.uid()) is null or not private.has_aal2() then
+           raise exception 'two-factor sign-in required' using errcode = '42501', hint = 'forbidden';
+         end if;
+         return '${json}'::jsonb;
+       end;
+       $f$`);
+}
+const day6Alerts = {
+  low: 3, sold_out: 1, arriving_late: 2, requests_new: 4, holds_ending_soon: 1, deals_waiting: 2,
+  sample: [
+    { id: "6f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Denim jacket", available: 120, reorder_point: 200, arriving: 300 },
+    { id: "7f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Cargo trousers", available: 12, reorder_point: 50, arriving: 0 },
+  ],
+};
+
+test("card_error_isolated", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await gotoHome(page);
   await viaScopeSwitch(page, (d) => {
     d.attention = { ok: false };
-    d.lowStock = {
-      ok: true,
-      data: {
-        low: 3, out: 1, deals_waiting: 2,
-        items: [
-          { product_id: "6f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Denim jacket", available: 120, reorder_point: 200, in_transit: 300, next_eta: "2026-10-24", state: "low" },
-          { product_id: "7f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Cargo trousers", available: 0, reorder_point: 50, in_transit: 0, next_eta: null, state: "out" },
-        ],
-      },
-    };
   });
   await expect(card(page, /^Needs attention/)).toContainText("Couldn’t load");
   await expect(card(page, /^Needs attention/).getByRole("button", { name: "Retry" })).toBeVisible();
   // Every other card keeps working.
   await expect(kpi(page, /Open pipeline/)).toContainText("€50,000");
   await expect(card(page, /^Recent activity/)).toContainText(`Comptoir Brécy ${run}`);
-  const low = card(page, /^Low stock/);
-  await expect(low).toContainText("3 low · 1 out · 2 deals waiting");
-  await expect(low).toContainText("120 available · reorder at 200");
-  await expect(low).toContainText("+300 In Transit · ETA Oct 24");
-  await expect(low).toContainText("Out of stock");
-  await expect(low.getByRole("link", { name: "Open inventory" })).toHaveAttribute("href", "/inventory?filter=low");
+  await expect(card(page, /^Low stock/)).toContainText("Stock alerts will show here once inventory is set up.");
   expect(errors).toEqual([]);
   await page.getByRole("group", { name: "Figures for" }).getByRole("button", { name: "Team" }).click();
   await settled(page);
   await context.close();
+});
+
+test("low_stock_filled_from_day6_stock_alerts, all clear, and a wrong shape failing alone", async ({ browser }) => {
+  const stub = sql("select pg_get_functiondef('public.stock_alerts()'::regprocedure)");
+  expect(stub).toContain("return null");
+  try {
+    fakeStockAlerts(day6Alerts);
+    const { context, page, errors } = await open(browser, adminState);
+    await gotoHome(page);
+    const low = card(page, /^Low stock/);
+    await expect(low).toContainText("3 low · 1 sold out · 2 deals waiting");
+    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("120 available · reorder at 200");
+    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("+300 In Transit");
+    await expect(low.getByRole("listitem").filter({ hasText: "Denim jacket" })).toContainText("Low");
+    // Nothing in transit: no transit line.
+    await expect(low.getByRole("listitem").filter({ hasText: "Cargo trousers" })).not.toContainText("In Transit");
+    await expect(low.getByRole("link", { name: "Open inventory" })).toHaveAttribute("href", "/inventory?filter=low");
+    const follow = low.getByRole("list", { name: "Also in inventory" });
+    await expect(follow.getByRole("link", { name: "2 arrivals past their expected date" })).toHaveAttribute("href", "/inventory?tab=arriving");
+    await expect(follow.getByRole("link", { name: "4 new stock requests" })).toHaveAttribute("href", "/inventory?tab=requests");
+    await expect(follow.getByRole("link", { name: "1 hold ends within 2 days" })).toHaveAttribute("href", "/inventory?tab=reserved");
+    expect(errors).toEqual([]);
+    await context.close();
+
+    // French: French typography (narrow no-break space before the colon) and plurals.
+    const fr = await open(browser, adminState, { locale: "fr" });
+    await gotoHome(fr.page);
+    const bas = card(fr.page, /^Stock bas/);
+    await expect(bas).toContainText("3 en stock bas · 1 épuisé · 2 affaires en attente");
+    await expect(bas).toContainText("Disponible\u202f: 120 · seuil\u202f: 200");
+    await expect(bas).toContainText("4 nouvelles demandes de stock");
+    expect(fr.errors).toEqual([]);
+    await fr.context.close();
+
+    // All clear: the calm line, no product list, no follow-up lines; a follow-up count alone still shows its line.
+    fakeStockAlerts({ low: 0, sold_out: 0, arriving_late: 0, requests_new: 1, holds_ending_soon: 0, deals_waiting: 0, sample: [] });
+    const clear = await open(browser, adminState);
+    await gotoHome(clear.page);
+    const ok = card(clear.page, /^Low stock/);
+    await expect(ok).toContainText("All products are above their reorder level.");
+    await expect(ok.getByRole("link", { name: "1 new stock request" })).toBeVisible();
+    await expect(ok.getByRole("link", { name: /arrival|hold/ })).toHaveCount(0);
+    expect(clear.errors).toEqual([]);
+    await clear.context.close();
+
+    // A wrong shape (an unknown key: a purchase cost) fails the strict parse: that card's error, the rest standing.
+    fakeStockAlerts({ ...day6Alerts, cost_per_piece: 4.1 });
+    const bad = await open(browser, adminState);
+    await gotoHome(bad.page);
+    await expect(card(bad.page, /^Low stock/)).toContainText("Couldn’t load");
+    await expect(card(bad.page, /^Low stock/)).not.toContainText("Denim jacket");
+    await expect(card(bad.page, /^Recent activity/)).toContainText(`Comptoir Brécy ${run}`);
+    await expect(card(bad.page, /^Needs attention/)).not.toContainText("Couldn’t load");
+    const api = await (await bad.page.request.get("/api/home?scope=team")).json();
+    expect(api.lowStock).toEqual({ ok: false });
+    expect(JSON.stringify(api)).not.toContain("cost_per_piece");
+    expect(bad.errors).toEqual([]);
+    await bad.context.close();
+  } finally {
+    sql(stub);
+  }
+  expect(sql("select pg_get_functiondef('public.stock_alerts()'::regprocedure)")).toBe(stub);
 });
 
 test("phone_390_no_horizontal_scroll", async ({ browser }) => {

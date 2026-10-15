@@ -5,8 +5,8 @@ import { makeOrg, moveTo, seedHome, userId } from "./home-fixture";
 
 // Day 5c evidence screenshots (design 8.5 "Screens", CLAUDE.md widths): Home with data (before Day 6, so Low stock shows
 // its placeholder) at 390, 768, 1024, 1280, 1440 and 1728, light and dark, English and French; a representative set in
-// EN light and FR dark at 390 and 1440: a new org's empty states, one card failing alone, Low stock filled from the
-// Day 6 contract, the deal sheet over Home, the loading skeleton, and the Work queue card with Day 4c's counts. The
+// EN light and FR dark at 390 and 1440: a new org's empty states, one card failing alone, Low stock filled from Day 6's
+// stock_alerts() shape, the deal sheet over Home, the loading skeleton, and the Work queue card with Day 4c's counts. The
 // person is an admin in an org made for this run, so the figures are the fixture's. URL asserted before each shot; no
 // console error and no sideways scroll first. Saved to test-results/home-screens, or DAY5C_SCREENS_DIR (locally
 // docs/evidence/day5c/screens).
@@ -95,7 +95,7 @@ test("Home with data, every width, light and dark, EN and FR (before Day 6)", as
   await shoot(browser, "home", full, ALL);
 });
 
-test("representative set: empty org, card error, low stock contract, deal sheet, skeleton, queue before 4c", async ({ browser }) => {
+test("representative set: empty org, card error, deal sheet, skeleton, queue before 4c", async ({ browser }) => {
   await shoot(browser, "home-new-org", some, [390, 1440], { as: emptyState });
   const swap = (mutate: (d: Record<string, unknown>) => void) => async (page: Page) => {
     await page.route((url) => url.pathname === "/api/home" && url.searchParams.get("scope") === "mine", async (route) => {
@@ -109,21 +109,6 @@ test("representative set: empty org, card error, low stock contract, deal sheet,
     await page.waitForTimeout(300);
   };
   await shoot(browser, "home-card-error", some, [390, 1440], { act: swap((d) => (d.attention = { ok: false })) });
-  await shoot(browser, "home-low-stock-day6", some, [390, 1440], {
-    act: swap((d) => {
-      d.lowStock = {
-        ok: true,
-        data: {
-          low: 3, out: 1, deals_waiting: 2,
-          items: [
-            { product_id: "6f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Denim jacket, washed blue", available: 120, reorder_point: 200, in_transit: 300, next_eta: "2026-10-24", state: "low" },
-            { product_id: "7f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Cargo trousers, khaki", available: 0, reorder_point: 50, in_transit: 0, next_eta: null, state: "out" },
-            { product_id: "8f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Wool scarf", available: 35, reorder_point: 60, in_transit: 80, next_eta: "2026-11-02", state: "low" },
-          ],
-        },
-      };
-    }),
-  });
   await shoot(browser, "home-deal-sheet", some, [390, 1440], {
     fullPage: false,
     act: async (page) => {
@@ -148,4 +133,34 @@ test("representative set: empty org, card error, low stock contract, deal sheet,
     },
   });
   await shoot(browser, "home-queue-before-4c", [{ locale: "en", scheme: "light" }], [1440], { queue: false });
+});
+
+// Low stock filled from Day 6's stock_alerts() shape (Haider's decision B, 15 Oct 2026): the counts, up to 5 low
+// products and the follow-up lines. Run alone with --grep "Low stock" to re-take only these shots.
+test("Low stock filled from Day 6's stock_alerts", async ({ browser }) => {
+  await shoot(browser, "home-low-stock-day6", some, [390, 1440], {
+    act: async (page) => {
+      await page.route((url) => url.pathname === "/api/home" && url.searchParams.get("scope") === "mine", async (route) => {
+        const res = await route.fetch();
+        const data = (await res.json()) as Record<string, unknown>;
+        data.lowStock = {
+          ok: true,
+          data: {
+            low: 3, sold_out: 1, arriving_late: 2, requests_new: 4, holds_ending_soon: 1, deals_waiting: 2,
+            sample: [
+              { id: "6f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Denim jacket, washed blue", available: 120, reorder_point: 200, arriving: 300 },
+              { id: "7f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Cargo trousers, khaki", available: 12, reorder_point: 50, arriving: 0 },
+              { id: "8f1c1c1e-7a3b-4c1d-9e2f-0a1b2c3d4e5f", name: "Wool scarf", available: 35, reorder_point: 60, arriving: 80 },
+            ],
+          },
+        };
+        await route.fulfill({ response: res, body: JSON.stringify(data) });
+      });
+      const scope = page.getByRole("group", { name: /Figures for|Chiffres de/ }).getByRole("button", { name: /Mine|Moi/ });
+      await scope.click();
+      await expect(scope).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("region", { name: /Low stock|Stock bas/ }).getByRole("listitem").first()).toBeVisible();
+      await page.waitForTimeout(300);
+    },
+  });
 });
