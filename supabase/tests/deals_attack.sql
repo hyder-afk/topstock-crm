@@ -252,7 +252,7 @@ begin
     raise exception 'FAIL: the flood triggers must be AFTER ... FOR EACH STATEMENT with the new rows';
   end if;
   foreach code in array array['private.stage_id(text)', 'private.stage_key(uuid)',
-      'private.deal_undo_candidate(uuid,text,text,integer)', 'private.deal_closing_blocked(uuid)',
+      'private.deal_undo_candidate(uuid,text,text,integer)',
       'private.deal_cards(uuid[])', 'private.deal_card(uuid)', 'private.deal_value_ok(numeric)',
       'private.deal_scope_owner(text,uuid,boolean)', 'private.opened_deal(uuid,boolean)',
       'private.moved_deal(bigint,boolean)', 'private.deal_conflict(uuid)', 'private.pipeline_summary_for(uuid)',
@@ -264,14 +264,28 @@ begin
       raise exception 'FAIL: helper % must be INVOKER, search_path empty, callable by signed-in people only', code;
     end if;
   end loop;
+  -- The Day 6 seam, filled in by 20261020100000_deal_stock_blocks.sql (Haider, 11 Oct 2026): it must see every sale and
+  -- hold in the deal's organisation whatever the caller's role, so it is SECURITY DEFINER owned by postgres; the grants
+  -- stay Day 5's (signed-in people only, because the guard and delete_deal run as the caller; private has no endpoint).
+  if not has_function_privilege('authenticated', 'private.deal_closing_blocked(uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'private.deal_closing_blocked(uuid)', 'EXECUTE')
+     or has_function_privilege('public', 'private.deal_closing_blocked(uuid)', 'EXECUTE')
+     or not (select prosecdef from pg_proc where oid = 'private.deal_closing_blocked(uuid)'::regprocedure)
+     or (select pg_get_userbyid(proowner) from pg_proc where oid = 'private.deal_closing_blocked(uuid)'::regprocedure) <> 'postgres'
+     or not ((select proconfig from pg_proc where oid = 'private.deal_closing_blocked(uuid)'::regprocedure) @> array['search_path=""']) then
+    raise exception 'FAIL: deal_closing_blocked must be DEFINER owned by postgres, search_path empty, signed-in people only';
+  end if;
   -- Day 6 contract (section 10): no BEFORE trigger on deals other than these three; the history triggers fire on
   -- insert and on a stage change (WHEN, never UPDATE OF status). Since the merge into Day 6 (15 Oct 2026) Day 6a's two
   -- hold-release triggers are on the table too: release_deal_holds_lost AFTER UPDATE (row, WHEN the status becomes
   -- 'lost', which this file's Closed/lost path sets) and release_deal_holds_deleted BEFORE DELETE; neither writes the
-  -- deal row, so the BEFORE INSERT/UPDATE set stays exactly the three below.
+  -- deal row, so the BEFORE INSERT/UPDATE set stays exactly the three below. Day 6's deal_stock_blocks migration adds
+  -- block_deal_delete_on_stock (BEFORE DELETE: a signed-in session never deletes a deal stock records hold) and
+  -- fit_deal_fulfilment_to_stock (AFTER UPDATE, WHEN the shipping is first chosen); neither writes the deal row either.
   if (select array_agg(tgname::text order by tgname) from pg_trigger
        where tgrelid = 'public.deals'::regclass and not tgisinternal)
-     is distinct from array['audit_row', 'enforce_org_and_owner', 'flood_deal_move', 'flood_deal_open', 'guard_deal',
+     is distinct from array['audit_row', 'block_deal_delete_on_stock', 'enforce_org_and_owner', 'fit_deal_fulfilment_to_stock',
+                            'flood_deal_move', 'flood_deal_open', 'guard_deal',
                             'history_deal', 'history_deal_stage', 'release_deal_holds_deleted', 'release_deal_holds_lost',
                             'set_updated_at'] then
     raise exception 'FAIL: the triggers on deals changed';

@@ -5,7 +5,7 @@ section 8.3, Day 6 design section 11.3).
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
 import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|all]
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|day6|all]
 [numbers...]  (about 60 s per mutation, 90 s once the Day 6 stock tests run; default: all sets, numbers apply within one
 set). Writes one Markdown table per set to stdout, then a count line per set; exits 1 when a row does not behave as
 listed. --anchors [--set ...] only checks that every edit applies (its text is found exactly once where it is aimed) and
@@ -51,12 +51,14 @@ MIG_6A = ROOT / "supabase/migrations/20261016090000_stock_engine.sql"
 MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
 MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
 MIG_6E = ROOT / "supabase/migrations/20261020090000_client_share.sql"
+MIG_6F = ROOT / "supabase/migrations/20261020100000_deal_stock_blocks.sql"
 # Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
 # "untouched" rule (Day 4d's); Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
 # Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 5a's); Day 6e the
-# request guards (6d), the settings guard (6a), the settings read (6b) and the untouched rule again.
+# request guards (6d), the settings guard (6a), the settings read (6b) and the untouched rule again. Day 6's
+# deal_stock_blocks migration redefines Day 6d's sale guard (order_guard: one branch added first, the rest verbatim).
 # An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
-REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E]
+REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E, MIG_6F]
 
 
 class Region:
@@ -2075,6 +2077,65 @@ MUTATIONS_6E = [
 ]
 
 
+# Day 6: stock records hold a deal (20261020100000_deal_stock_blocks.sql: Day 5's seam deal_closing_blocked filled in,
+# the first shipping choice checked, the delete block, the sale kind guard, the sale guard's deal-delete branch). Tests:
+# sales_attack.sql 11d, stock_attack.sql (deal delete and holds), deals_attack.sql catalog, sales_concurrency.sh case 8.
+DEAL_STOCK_RECORDS = Region(MIG_6F, "create function private.deal_stock_records(")
+DEAL_CLOSING_BLOCKED = Region(MIG_6F, "create or replace function private.deal_closing_blocked(")
+ORDER_GUARD_6F = Region(MIG_6F, "create or replace function private.order_guard(")
+MUTATIONS_6F = [
+    ("Seam: a confirmed sale does not hold the deal",
+     [(DEAL_STOCK_RECORDS, "and o.status = 'confirmed') then 'sales'", "and false) then 'sales'")]),
+    ("Seam: a cancelled sale still holds the deal",
+     [(DEAL_STOCK_RECORDS, " and o.status = 'confirmed') then 'sales'", ") then 'sales'")]),
+    ("Seam: an active hold does not hold the deal",
+     [(DEAL_STOCK_RECORDS, "and r.status = 'active') then 'reservation'", "and false) then 'reservation'")]),
+    ("Seam: a released hold still holds the deal",
+     [(DEAL_STOCK_RECORDS, " and r.status = 'active') then 'reservation'", ") then 'reservation'")]),
+    ("Seam: answers null always (Day 5's stub back)",
+     [(DEAL_CLOSING_BLOCKED, "  select case when d.status = 'open' and d.fulfilment is null then null\n              else private.deal_stock_records(d.id) end",
+       "  select null::text")]),
+    ("Seam: no exception for an undecided deal (its first shipping choice is blocked even when it fits)",
+     [(DEAL_CLOSING_BLOCKED, "when d.status = 'open' and d.fulfilment is null then null", "when false then null")]),
+    ("Seam: the exception covers every open deal (a decided open deal's shipping change is not checked)",
+     [(DEAL_CLOSING_BLOCKED, "when d.status = 'open' and d.fulfilment is null then null", "when d.status = 'open' then null")]),
+    ("Seam: runs as the caller (SECURITY INVOKER: records the caller cannot see are missed)",
+     [(DEAL_CLOSING_BLOCKED, "language sql stable security definer set search_path = '' as $$", "language sql stable security invoker set search_path = '' as $$")]),
+    ("Seam: answers a caller of another organisation",
+     [(DEAL_CLOSING_BLOCKED, "\n     and ((select auth.uid()) is null or d.org_id = (select private.current_org_id()))", "")]),
+    ("Seam: callable by anon",
+     [("grant execute on function private.deal_closing_blocked(uuid) to authenticated;",
+       "grant execute on function private.deal_closing_blocked(uuid) to authenticated, anon;")]),
+    ("The record helper callable by signed-in people",
+     [("  private.deal_delete_stock_block(), private.order_deal_fit() from public, anon, authenticated;\n",
+       "  private.deal_delete_stock_block(), private.order_deal_fit() from public, anon, authenticated;\n"
+       "grant execute on function private.deal_stock_records(uuid) to authenticated;\n")]),
+    ("First shipping choice not checked (trigger dropped)",
+     [("create trigger fit_deal_fulfilment_to_stock after update on public.deals\n  for each row when (old.fulfilment is null and new.fulfilment is not null)\n  execute function private.deal_fulfilment_fits_stock();\n", "")]),
+    ("First shipping choice: a confirmed sale of the other kind ignored",
+     [("                and o.fulfilment <> new.fulfilment) then", "                and false) then")]),
+    ("First shipping choice: Supplier Stock with an active hold allowed",
+     [("  if new.fulfilment = 'direct_from_source' and exists (", "  if false and exists (")]),
+    ("Delete: no BEFORE DELETE block (trigger dropped; a direct DELETE goes through)",
+     [("create trigger block_deal_delete_on_stock before delete on public.deals\n  for each row execute function private.deal_delete_stock_block();\n", "")]),
+    ("Delete: the block lets signed-in sessions through",
+     [("  if (select auth.uid()) is null then\n    return old;  -- maintenance", "  if true then\n    return old;  -- maintenance")]),
+    ("Delete: maintenance deletes blocked too (the release trigger never runs for them)",
+     [("  if (select auth.uid()) is null then\n    return old;  -- maintenance", "  if false then\n    return old;  -- maintenance")]),
+    ("Sale kind guard dropped (trigger)",
+     [("create trigger order_guard_deal_fit before insert on private.orders\n  for each row execute function private.order_deal_fit();\n", "")]),
+    ("Sale kind guard: kinds not compared",
+     [("  if v_fulfilment is not null and v_fulfilment <> new.fulfilment then", "  if false then")]),
+    ("Sale kind guard: the deal not locked (a concurrent shipping change and sale both pass)",
+     [("   where d.id = new.deal_id and d.org_id = new.org_id\n     for share;", "   where d.id = new.deal_id and d.org_id = new.org_id;")]),
+    ("Sale guard: a deal delete's set null refused again (the deal-delete branch dropped)",
+     [(ORDER_GUARD_6F, "  if tg_op = 'UPDATE' and pg_trigger_depth() > 1 and old.deal_id is not null and new.deal_id is null\n",
+       "  if false and pg_trigger_depth() > 1 and old.deal_id is not null and new.deal_id is null\n")]),
+    ("Sale guard: the deal-delete branch at any depth (a straight update of deal_id passes)",
+     [(ORDER_GUARD_6F, "  if tg_op = 'UPDATE' and pg_trigger_depth() > 1 and old.deal_id", "  if tg_op = 'UPDATE' and old.deal_id")]),
+]
+
+
 # The merge of Day 5 into Day 6 (15 Oct 2026). Two functions earlier sets mutate are redefined by Day 6 with text that
 # differs from the earlier copy, so the automatic mirror (same text in the later body) cannot reach them, and --anchors
 # reported those rows DEAD: Day 6d's task_guard (Day 5a's body plus source_product_id and source_request_id) and Day 6d's
@@ -2127,7 +2188,7 @@ SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b
         "day5b": (MIG_5B, MUTATIONS_5B), "day5c": (MIG_5C, MUTATIONS_5C),
         "team": (MIG_TEAM, MUTATIONS_TEAM),
         "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
-        "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E)}
+        "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E), "day6": (MIG_6F, MUTATIONS_6F)}
 
 
 FUNCTION_HEAD = re.compile(r"create (?:or replace )?function ([a-z_]+\.[a-z_0-9]+)\(")

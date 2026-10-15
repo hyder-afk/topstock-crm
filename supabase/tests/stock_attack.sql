@@ -1167,8 +1167,11 @@ begin
     '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000b1'), '22023', 'deal_closed');
 end $$;
 -- deal_delete_releases_holds: d1 holds for a deal; admin a deletes the deal (since Day 5, deleting a deal someone
--- worked on takes an admin with a fresh code, through delete_deal; a manager is refused); the hold is released
--- (deal_deleted, in a's name) and loses the link.
+-- worked on takes an admin with a fresh code, through delete_deal; a manager is refused). Since Day 6's deal_stock_blocks
+-- migration (Day 5's seam filled in, Haider 11 Oct 2026) an active hold blocks a signed-in delete, through delete_deal
+-- (42501 blocked_reservation) or a direct DELETE (the BEFORE DELETE trigger): the hold stays active and linked. Once d1
+-- releases it, the delete goes through and the released hold loses the link. The release trigger stays for a delete with
+-- no signed-in user (maintenance, next block).
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
 do $$
 declare
@@ -1176,16 +1179,32 @@ declare
 begin
   v_hold := (pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'reserve', 30, company => '33000000-0000-0000-0000-0000000000d1',
                         deal => '43000000-0000-0000-0000-0000000000d1') ->> 'reservation_id')::uuid;
+  perform set_config('t.dd_hold', v_hold::text, false);
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  -- deal_delete_blocked_by_active_hold
+  perform pg_temp.expect_error($q$select public.delete_deal('43000000-0000-0000-0000-0000000000d1')$q$, '42501', 'blocked_reservation');
+  perform pg_temp.expect_error($q$delete from public.deals where id = '43000000-0000-0000-0000-0000000000d1'$q$, '42501', 'blocked_reservation');
+  if not exists (select 1 from public.deals where id = '43000000-0000-0000-0000-0000000000d1')
+     or not exists (select 1 from private.stock_reservations where id = v_hold and status = 'active'
+                      and deal_id = '43000000-0000-0000-0000-0000000000d1')
+     or pg_temp.rv('7a000000-0000-0000-0000-000000000003', 'warehouse') <> 30 then
+    raise exception 'FAIL: deal_delete_blocked_by_active_hold';
+  end if;
+end $$;
+do $$
+declare
+  v_hold uuid := current_setting('t.dd_hold')::uuid;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30);
+  perform pg_temp.mv('7a000000-0000-0000-0000-000000000003', 'release', reservation => v_hold);
   perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
   perform public.delete_deal('43000000-0000-0000-0000-0000000000d1');
   if exists (select 1 from public.deals where id = '43000000-0000-0000-0000-0000000000d1')
      or not exists (select 1 from private.stock_reservations where id = v_hold and status = 'released'
-                   and close_reason = 'deal_deleted' and deal_id is null)
+                   and close_reason = 'manual' and deal_id is null)
      or pg_temp.rv('7a000000-0000-0000-0000-000000000003', 'warehouse') <> 0
-     or not exists (select 1 from private.stock_movements where reservation_id = v_hold and kind = 'release'
-                      and reason = 'deal_deleted' and deal_id = '43000000-0000-0000-0000-0000000000d1'
-                      and user_id = '00000000-0000-0000-0000-00000000000a') then
-    raise exception 'FAIL: deal_delete_releases_holds';
+     or exists (select 1 from private.stock_movements where reservation_id = v_hold and reason = 'deal_deleted') then
+    raise exception 'FAIL: deal_delete_releases_holds (released first, then deleted)';
   end if;
 end $$;
 reset role;

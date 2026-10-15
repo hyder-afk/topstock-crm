@@ -11,6 +11,10 @@
 #  6. transfer_vs_sell_no_deadlock: 25 rounds of Arrived racing sales on one product: no 40P01.
 #  7. expiry_vs_sale: a hold that ended yesterday; the sweep and a sale to its lead race: exactly one path uses or ends
 #     it, integrity holds.
+#  8. sale_vs_deal_shipping_change (Day 6 deal_stock_blocks), in both orders: (a) the deal's owner switches it to
+#     Supplier Stock in an open transaction while a warehouse sale names it: the sale waits on the deal and is refused
+#     (22023 fulfilment); (b) the sale is open while the owner switches the shipping: the switch waits and is refused
+#     (42501 blocked_sales). Never a warehouse sale on a Supplier Stock deal.
 # Usage: sales_concurrency.sh "<libpq connection string>". Used by scripts/db-test.sh and the CI "db" job. Its fixtures
 # (20 managers, leads and products named "SC …") are its own.
 set -euo pipefail
@@ -171,4 +175,37 @@ case "$st" in expired|fulfilled) ;; *) fail "expiry_vs_sale: the hold is $st";; 
 grep -q '40P01' "$WORKDIR/s.out" "$WORKDIR/exp.out" && fail "expiry_vs_sale: a deadlock"
 [ "$(level 'SC P8')" = "0/0" ] || fail "expiry_vs_sale: $(level 'SC P8') (the sale either used the hold or sold the freed pieces)"
 integrity expiry_vs_sale
+# 8. sale_vs_deal_shipping_change ----------------------------------------------------------------------------------------
+receive 'SC P9' 50
+D8=$(as_owner "insert into public.deals (org_id, company_id, stage_id, owner_id, status, fulfilment, title)
+  select c.org_id, c.id, (select s.id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'lead'),
+         '$ADMIN', 'open', 'from_stock', 'SC Deal 8' from public.companies c where c.name = 'SC Lead 1' returning id;" | head -n 1)
+sale_on_deal="select public.record_sale('$L1', 'from_stock', jsonb_build_array(jsonb_build_object('product_id', '$(pid 'SC P9')', 'quantity', '1', 'unit_price', '3')), p_deal => '$D8') \g /dev/null"
+mismatch() { as_owner "select count(*) from private.orders o join public.deals d on d.id = o.deal_id
+                       where d.id = '$D8' and o.status = 'confirmed' and o.fulfilment <> d.fulfilment;"; }
+# a) the switch first
+( as_user "$ADMIN" "begin;
+   update public.deals set fulfilment = 'direct_from_source' where id = '$D8';
+   select pg_sleep(1.5) \g /dev/null
+   commit;" >"$WORKDIR/d8a.out" 2>&1 ) &
+sleep 0.5
+if as_user "$(U 2)" "$sale_on_deal" 2>"$WORKDIR/s8a.out" >/dev/null; then fail "sale_vs_deal_shipping_change (a): a warehouse sale named a Supplier Stock deal"; fi
+wait
+grep -q 'HINT:  fulfilment' "$WORKDIR/s8a.out" || fail "sale_vs_deal_shipping_change (a): the sale got $(grep -m1 ERROR "$WORKDIR/s8a.out")"
+[ "$(mismatch)" = "0" ] || fail "sale_vs_deal_shipping_change (a): a sale does not match its deal"
+# b) the sale first (the deal back to Warehouse with nothing on it)
+as_user "$ADMIN" "update public.deals set fulfilment = 'from_stock' where id = '$D8';" >/dev/null
+( as_user "$(U 2)" "begin;
+   $sale_on_deal
+   select pg_sleep(1.5) \g /dev/null
+   commit;" >"$WORKDIR/s8b.out" 2>&1 ) &
+sleep 0.5
+if as_user "$ADMIN" "update public.deals set fulfilment = 'direct_from_source' where id = '$D8';" 2>"$WORKDIR/d8b.out" >/dev/null; then
+  fail "sale_vs_deal_shipping_change (b): the shipping changed under a warehouse sale"
+fi
+wait
+grep -q 'ERROR' "$WORKDIR/s8b.out" && fail "sale_vs_deal_shipping_change (b): the sale failed: $(grep -m1 ERROR "$WORKDIR/s8b.out")"
+grep -q 'HINT:  blocked_sales' "$WORKDIR/d8b.out" || fail "sale_vs_deal_shipping_change (b): the switch got $(grep -m1 -A2 ERROR "$WORKDIR/d8b.out")"
+[ "$(mismatch)" = "0" ] || fail "sale_vs_deal_shipping_change (b): a sale does not match its deal"
+integrity sale_vs_deal_shipping_change
 echo "sales_concurrency: all checks passed"

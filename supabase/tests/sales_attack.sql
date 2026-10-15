@@ -709,6 +709,255 @@ begin
 end $$;
 do $$ begin perform pg_temp.integrity_clean('the undecided deal'); end $$;
 
+-- 11d. Stock records hold a deal (20261020100000_deal_stock_blocks.sql: Day 5's seam private.deal_closing_blocked
+--      filled in, Haider 11 Oct 2026). A confirmed sale ('sales') or an active hold ('reservation') naming a deal blocks
+--      reopening it once won, undoing its win, changing its shipping and deleting it (42501 blocked_<reason>); a
+--      cancelled sale or a released hold no longer does. The first shipping choice of an undecided deal is checked
+--      against the records (fits: allowed; the other kind: blocked). A sale's kind must fit its deal's shipping.
+reset role;
+do $$
+begin
+  -- Catalog: the seam and the new helpers, triggers and their kinds (tgtype bits: 1 row, 2 before, 4 insert,
+  -- 8 delete, 16 update).
+  if not (select prosecdef from pg_proc where oid = 'private.deal_closing_blocked(uuid)'::regprocedure)
+     or (select pg_get_userbyid(proowner) from pg_proc where oid = 'private.deal_closing_blocked(uuid)'::regprocedure) <> 'postgres'
+     or has_function_privilege('anon', 'private.deal_closing_blocked(uuid)', 'execute') then
+    raise exception 'FAIL: deal_closing_blocked must be a postgres-owned definer, not callable by anon';
+  end if;
+  if has_function_privilege('authenticated', 'private.deal_stock_records(uuid)', 'execute')
+     or has_function_privilege('anon', 'private.deal_stock_records(uuid)', 'execute') then
+    raise exception 'FAIL: deal_stock_records must be callable by nobody';
+  end if;
+  if exists (select 1 from unnest(array['private.deal_fulfilment_fits_stock()', 'private.deal_delete_stock_block()',
+                                        'private.order_deal_fit()']) f
+              where not (select p.prosecdef from pg_proc p where p.oid = f::regprocedure)
+                 or has_function_privilege('authenticated', f, 'execute') or has_function_privilege('anon', f, 'execute')) then
+    raise exception 'FAIL: the deal stock trigger functions must be definers nobody can call';
+  end if;
+  if (select tgtype from pg_trigger where tgrelid = 'public.deals'::regclass and tgname = 'block_deal_delete_on_stock') <> 1 | 2 | 8
+     or (select tgtype from pg_trigger where tgrelid = 'public.deals'::regclass and tgname = 'fit_deal_fulfilment_to_stock') <> 1 | 16
+     or (select tgtype from pg_trigger where tgrelid = 'private.orders'::regclass and tgname = 'order_guard_deal_fit') <> 1 | 2 | 4 then
+    raise exception 'FAIL: the deal stock triggers changed kind';
+  end if;
+end $$;
+do $$ begin perform set_config('request.jwt.claims', '', false); end $$;
+insert into public.companies (id, org_id, name, owner_id, lead_status, country)
+select '5a000000-0000-0000-0000-0000000000c1', o.id, 'SA Lead Blocks', '00000000-0000-0000-0000-0000000000b1', 'warm', 'FR'
+  from public.orgs o where o.name = 'TopStock Wholesale';
+insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment, title)
+select v.id::uuid, c.org_id, c.id, (select s.id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'lead'),
+       '00000000-0000-0000-0000-0000000000b1', 'open', v.f, v.t
+  from public.companies c,
+       (values ('5d000000-0000-0000-0000-0000000000e1', null, 'SA Block sale win'),
+               ('5d000000-0000-0000-0000-0000000000e2', 'from_stock', 'SA Block sale ship'),
+               ('5d000000-0000-0000-0000-0000000000e3', 'from_stock', 'SA Block hold'),
+               ('5d000000-0000-0000-0000-0000000000e4', null, 'SA Block hold undecided'),
+               ('5d000000-0000-0000-0000-0000000000e5', null, 'SA Block direct sale undecided'),
+               ('5d000000-0000-0000-0000-0000000000e6', 'direct_from_source', 'SA Block direct'),
+               ('5d000000-0000-0000-0000-0000000000e7', 'from_stock', 'SA Block warehouse')) v (id, f, t)
+ where c.id = '5a000000-0000-0000-0000-0000000000c1';
+-- A lead owned by rep e1 with a deal owned by rep d1: a manager's sale on it is hidden from d1 by row level security.
+insert into public.companies (id, org_id, name, owner_id, lead_status, country)
+select '5a000000-0000-0000-0000-0000000000c2', o.id, 'SA Lead Blind', '00000000-0000-0000-0000-0000000000e1', 'warm', 'FR'
+  from public.orgs o where o.name = 'TopStock Wholesale';
+insert into public.deals (id, org_id, company_id, stage_id, owner_id, status, fulfilment, title)
+select '5d000000-0000-0000-0000-0000000000e8', c.org_id, c.id,
+       (select s.id from public.pipeline_stages s where s.org_id = c.org_id and s.key = 'lead'),
+       '00000000-0000-0000-0000-0000000000d1', 'open', 'from_stock', 'SA Block blind'
+  from public.companies c where c.id = '5a000000-0000-0000-0000-0000000000c2';
+set role authenticated;
+-- deal_blocked_by_sale_on_reopen, _on_undo_win, _on_fulfilment_change, _on_delete; deal_unblocked_after_sale_cancelled
+do $$
+declare
+  lead constant uuid := '5a000000-0000-0000-0000-0000000000c1';
+  e1 constant uuid := '5d000000-0000-0000-0000-0000000000e1';
+  e2 constant uuid := '5d000000-0000-0000-0000-0000000000e2';
+  s1 jsonb;
+  s2 jsonb;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  if private.deal_closing_blocked(e1) is not null then
+    raise exception 'FAIL: a deal with no stock record is blocked';
+  end if;
+  s1 := public.record_sale(lead, 'from_stock', jsonb_build_array(pg_temp.l('SA P4', 1)), p_deal => e1);
+  -- An undecided deal with a warehouse sale is not blocked; its Win choosing Warehouse fits the sale.
+  if private.deal_closing_blocked(e1) is not null then
+    raise exception 'FAIL: an undecided deal is blocked before its first shipping choice';
+  end if;
+  update public.deals set stage_id = private.stage_id('won'), value = 100, fulfilment = 'from_stock' where id = e1;
+  if (select status from public.deals where id = e1) <> 'won' then
+    raise exception 'FAIL: a Win that fits the sale was refused';
+  end if;
+  if private.deal_closing_blocked(e1) is distinct from 'sales' then
+    raise exception 'FAIL: the seam answers % for a won deal with a sale', private.deal_closing_blocked(e1);
+  end if;
+  -- Undo of the win (own reverse move inside 120 s), then a reopen elsewhere with a fresh code.
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'lead', e1), '42501', 'blocked_sales');
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'qualified', e1), '42501', 'blocked_sales');
+  -- Shipping change on an open deal with a sale: a patch, update_deal, and emptying it.
+  s2 := public.record_sale(lead, 'from_stock', jsonb_build_array(pg_temp.l('SA P4', 1)), p_deal => e2);
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'direct_from_source', e2), '42501', 'blocked_sales');
+  perform pg_temp.expect_error(format('select public.update_deal(%L, 0, %L, p_fulfilment => %L)', e2, '{fulfilment}', 'direct_from_source'), '42501', 'blocked_sales');
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = null where id = %L', e2), '42501', 'blocked_sales');
+  -- Another organisation's caller learns nothing.
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000c1', 'aal2', 30);
+  if private.deal_closing_blocked(e1) is not null then
+    raise exception 'FAIL: the seam answers another organisation';
+  end if;
+  -- Delete, by an admin with a fresh code: delete_deal and a direct DELETE.
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', e1), '42501', 'blocked_sales');
+  perform pg_temp.expect_error(format('delete from public.deals where id = %L', e1), '42501', 'blocked_sales');
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', e2), '42501', 'blocked_sales');
+  if (select count(*) from public.deals where id in (e1, e2)) <> 2 or (select status from public.deals where id = e1) <> 'won'
+     or (select fulfilment from public.deals where id = e2) <> 'from_stock' then
+    raise exception 'FAIL: a blocked change was written';
+  end if;
+  -- The sales are undone (cancelled): nothing holds the deals any more.
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  perform public.undo_sale((s1 ->> 'order_id')::uuid);
+  perform public.undo_sale((s2 ->> 'order_id')::uuid);
+  if private.deal_closing_blocked(e1) is not null or private.deal_closing_blocked(e2) is not null then
+    raise exception 'FAIL: a cancelled sale still blocks';
+  end if;
+  update public.deals set stage_id = private.stage_id('qualified') where id = e1;
+  update public.deals set fulfilment = 'direct_from_source' where id = e2;
+  if (select status from public.deals where id = e1) <> 'open'
+     or (select fulfilment from public.deals where id = e2) <> 'direct_from_source' then
+    raise exception 'FAIL: deal_unblocked_after_sale_cancelled';
+  end if;
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform public.delete_deal(e1);
+  delete from public.deals where id = e2;
+  if exists (select 1 from public.deals where id in (e1, e2)) then
+    raise exception 'FAIL: a deal whose sale was cancelled could not be deleted';
+  end if;
+end $$;
+-- deal_blocked_by_sale_the_caller_cannot_see: the seam sees every sale in the organisation whatever the caller's role.
+do $$
+declare
+  s jsonb;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2', 30);
+  s := public.record_sale('5a000000-0000-0000-0000-0000000000c2', 'from_stock', jsonb_build_array(pg_temp.l('SA P4', 1)),
+                          p_deal => '5d000000-0000-0000-0000-0000000000e8');
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30);
+  if exists (select 1 from private.orders where deal_id = '5d000000-0000-0000-0000-0000000000e8') then
+    raise exception 'FAIL: the fixture should hide the manager''s sale from rep d1';
+  end if;
+  perform pg_temp.expect_error($q$update public.deals set fulfilment = 'direct_from_source' where id = '5d000000-0000-0000-0000-0000000000e8'$q$,
+                               '42501', 'blocked_sales');
+end $$;
+-- deal_delete_by_maintenance_unlinks_sale: with no signed-in user the delete goes through and the confirmed sale loses
+-- the link and nothing else (the sale guard lets the foreign key's set null through, at trigger depth 2 only: the same
+-- change made straight is still refused).
+reset role;
+do $$
+declare
+  o record;
+begin
+  perform set_config('request.jwt.claims', '', false);
+  select * into o from private.orders where deal_id = '5d000000-0000-0000-0000-0000000000e8';
+  perform pg_temp.expect_error(format('update private.orders set deal_id = null where id = %L', o.id), '42501', 'forbidden');
+  delete from public.deals where id = '5d000000-0000-0000-0000-0000000000e8';
+  if (select to_jsonb(x) - 'deal_id' - 'updated_at' from private.orders x where x.id = o.id) <> to_jsonb(o) - 'deal_id' - 'updated_at'
+     or (select deal_id from private.orders where id = o.id) is not null then
+    raise exception 'FAIL: deal_delete_by_maintenance_unlinks_sale';
+  end if;
+end $$;
+set role authenticated;
+do $$ begin perform pg_temp.integrity_clean('the sale blocks'); end $$;
+-- deal_blocked_by_hold_on_fulfilment_change, _on_delete, _on_reopen; first_choice_supplier_blocked_by_hold;
+-- deal_unblocked_after_hold_released
+do $$
+declare
+  e3 constant uuid := '5d000000-0000-0000-0000-0000000000e3';
+  e4 constant uuid := '5d000000-0000-0000-0000-0000000000e4';
+  h3 uuid;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  h3 := (public.post_stock_movement(pg_temp.pid('SA P4'), 'reserve', 2, p_company => '5a000000-0000-0000-0000-0000000000c1',
+                                    p_deal => e3) ->> 'reservation_id')::uuid;
+  perform public.post_stock_movement(pg_temp.pid('SA P4'), 'reserve', 2, p_company => '5a000000-0000-0000-0000-0000000000c1',
+                                     p_deal => e4);
+  if private.deal_closing_blocked(e3) is distinct from 'reservation' then
+    raise exception 'FAIL: the seam answers % for a deal with a hold', private.deal_closing_blocked(e3);
+  end if;
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'direct_from_source', e3), '42501', 'blocked_reservation');
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = null where id = %L', e3), '42501', 'blocked_reservation');
+  -- The first choice of an undecided deal with a hold: Supplier Stock is blocked (a patch and a Win), Warehouse fits.
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'direct_from_source', e4), '42501', 'blocked_reservation');
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L), value = 10, fulfilment = %L where id = %L', 'won', 'direct_from_source', e4), '42501', 'blocked_reservation');
+  update public.deals set stage_id = private.stage_id('won'), value = 10, fulfilment = 'from_stock' where id = e4;
+  -- A Win that keeps Warehouse is not blocked; its undo and a reopen are.
+  update public.deals set stage_id = private.stage_id('won'), value = 50 where id = e3;
+  if (select string_agg(status, ',' order by id) from public.deals where id in (e3, e4)) <> 'won,won' then
+    raise exception 'FAIL: a Win that fits the hold was refused';
+  end if;
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'lead', e3), '42501', 'blocked_reservation');
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'negotiations', e3), '42501', 'blocked_reservation');
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform pg_temp.expect_error(format('select public.delete_deal(%L)', e3), '42501', 'blocked_reservation');
+  perform pg_temp.expect_error(format('delete from public.deals where id = %L', e3), '42501', 'blocked_reservation');
+  if not exists (select 1 from private.stock_reservations where id = h3 and status = 'active' and deal_id = e3)
+     or (select status from public.deals where id = e3) <> 'won' then
+    raise exception 'FAIL: a blocked change touched the deal or its hold';
+  end if;
+  -- Released: the reopen, a shipping change and the delete go through.
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  perform public.post_stock_movement(pg_temp.pid('SA P4'), 'release', p_reservation => h3);
+  if private.deal_closing_blocked(e3) is not null then
+    raise exception 'FAIL: a released hold still blocks';
+  end if;
+  update public.deals set stage_id = private.stage_id('negotiations') where id = e3;
+  update public.deals set fulfilment = 'direct_from_source' where id = e3;
+  perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
+  perform public.delete_deal(e3);
+  if exists (select 1 from public.deals where id = e3) then
+    raise exception 'FAIL: deal_unblocked_after_hold_released';
+  end if;
+end $$;
+do $$ begin perform pg_temp.integrity_clean('the hold blocks'); end $$;
+-- first_choice_blocked_by_other_kind_sale; sale_kind_must_fit_deal (record_sale and a direct insert)
+do $$
+declare
+  lead constant uuid := '5a000000-0000-0000-0000-0000000000c1';
+  e5 constant uuid := '5d000000-0000-0000-0000-0000000000e5';
+  e6 constant uuid := '5d000000-0000-0000-0000-0000000000e6';
+  e7 constant uuid := '5d000000-0000-0000-0000-0000000000e7';
+  direct constant jsonb := jsonb_build_array(jsonb_build_object('description', 'SA jeans from the supplier',
+                                                                'quantity', '5', 'unit_price', '3'));
+  n bigint;
+begin
+  perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
+  perform public.record_sale(lead, 'direct_from_source', direct, p_deal => e5);
+  perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'from_stock', e5), '42501', 'blocked_sales');
+  perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L), value = 15, fulfilment = %L where id = %L', 'won', 'from_stock', e5), '42501', 'blocked_sales');
+  update public.deals set stage_id = private.stage_id('won'), value = 15, fulfilment = 'direct_from_source' where id = e5;
+  if (select status from public.deals where id = e5) <> 'won' then
+    raise exception 'FAIL: a Win that fits the Supplier Stock sale was refused';
+  end if;
+  n := (select count(*) from private.orders);
+  perform pg_temp.expect_error(format('select public.record_sale(%L, %L, %L::jsonb, p_deal => %L)', lead, 'from_stock',
+    jsonb_build_array(pg_temp.l('SA P4', 1)), e6), '22023', 'fulfilment');
+  perform pg_temp.expect_error(format('select public.record_sale(%L, %L, %L::jsonb, p_deal => %L)', lead, 'direct_from_source',
+    direct, e7), '22023', 'fulfilment');
+  perform pg_temp.expect_error(format('insert into private.orders (company_id, deal_id, fulfilment) values (%L, %L, %L)',
+    lead, e6, 'from_stock'), '22023', 'fulfilment');
+  if (select count(*) from private.orders) <> n then
+    raise exception 'FAIL: a sale that does not fit its deal was written';
+  end if;
+  -- Fits: no kind (the deal's), the same kind, and a sale with no deal.
+  perform public.record_sale(lead, null, direct, p_deal => e6);
+  perform public.record_sale(lead, 'from_stock', jsonb_build_array(pg_temp.l('SA P4', 1)), p_deal => e7);
+  perform public.record_sale(lead, 'from_stock', jsonb_build_array(pg_temp.l('SA P4', 1)));
+  if (select count(*) from private.orders) <> n + 3
+     or (select fulfilment from private.orders where deal_id = e6) <> 'direct_from_source' then
+    raise exception 'FAIL: sales that fit their deal were refused';
+  end if;
+end $$;
+do $$ begin perform pg_temp.integrity_clean('the sale kind guard'); end $$;
+
 -- 12. lead_delete_blocked_by_stock_history, lead_import_untouched_counts_stock (catalog), ledger_sums_match_levels -----
 do $$
 begin
