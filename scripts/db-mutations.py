@@ -1729,6 +1729,8 @@ MUTATIONS_7A = [
     ("Sign-in rows: no flood guard (30 an hour)",
      [("create trigger auth_event_guard before insert on public.audit_log\n"
        "  for each row when (new.table_name = 'auth') execute function private.auth_event_guard();\n", "")]),
+    ("Sign-in rows: the flood guard counts a forged row about another person (its 22023 tells their sign-in count)",
+     [("  if new.actor_id is distinct from auth.uid() then\n    return new;\n  end if;\n", "")]),
     ("Sign-in rows: the writer runs as its owner (SECURITY DEFINER)",
      [("language sql volatile security invoker set search_path = ''", "language sql volatile security definer set search_path = ''")]),
 ]

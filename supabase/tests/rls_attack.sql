@@ -88,15 +88,20 @@ $$;
 -- 1. anon has no access to anything in public or private (Day 7a: read from the catalog, so every table, view,
 -- sequence and function a later migration adds is covered without editing this list) ---------------------------------
 -- Privileges first (every relation and function, as the catalog says), then a live attempt of each statement as anon.
--- The allowlist holds objects that anon may use on purpose; it is empty in Release 1 (Day 6's public share pages run
--- as their own role, not anon; if one ever needs anon, it is added here with a comment and a review).
+-- The allowlists hold objects that anon may use on purpose, each with a comment and a review. Relations: none.
+-- Functions, by full signature (regprocedure text with an empty search_path, so always schema-qualified): Day 6's
+-- public share page calls exactly these two as anon by design (they are owned by share_reader and run as it):
+-- supabase/migrations/20261020090000_client_share.sql, the "grant execute ... to anon" line (line 1050 on day6a-local).
+-- Before Day 6 is merged they do not exist and the list matches nothing.
 do $$
 declare
-  allowed constant text[] := array[]::text[];
+  allowed_rel constant text[] := array[]::text[];
+  allowed_fn constant text[] := array['public.share_view(text,text)', 'public.share_request(text,jsonb)'];
   r record;
   n_rel int := 0;
   n_fn int := 0;
 begin
+  perform set_config('search_path', '', true);  -- regprocedure then prints every name with its schema
   if has_schema_privilege('anon', 'private', 'usage') or has_schema_privilege('anon', 'private', 'create')
      or has_schema_privilege('anon', 'public', 'create') then
     raise exception 'FAIL: anon has usage or create on schema private, or create on public';
@@ -104,7 +109,7 @@ begin
   for r in select c.oid, n.nspname, c.relname, c.relkind from pg_class c join pg_namespace n on n.oid = c.relnamespace
             where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'f', 'S') loop
     n_rel := n_rel + 1;
-    continue when (r.nspname || '.' || r.relname) = any (allowed);
+    continue when (r.nspname || '.' || r.relname) = any (allowed_rel);
     if r.relkind = 'S' then
       if has_sequence_privilege('anon', r.oid, 'usage') or has_sequence_privilege('anon', r.oid, 'select')
          or has_sequence_privilege('anon', r.oid, 'update') then
@@ -122,7 +127,7 @@ begin
   for r in select p.oid, n.nspname, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
             where n.nspname in ('public', 'private') loop
     n_fn := n_fn + 1;
-    continue when (r.nspname || '.' || r.proname) = any (allowed);
+    continue when r.oid::regprocedure::text = any (allowed_fn);
     if has_function_privilege('anon', r.oid, 'execute') then
       raise exception 'FAIL: anon can execute %.%(%)', r.nspname, r.proname, pg_get_function_identity_arguments(r.oid);
     end if;

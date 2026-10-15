@@ -333,4 +333,25 @@ begin
 exception when sqlstate 'TS001' then perform pg_temp.su();
 end $$;
 
+-- B5. The flood count never answers for another person: with the victim at 30 rows this hour, a forged row about them
+-- is refused by RLS (42501), not by the flood guard (22023 rate_limited), so the refusal says nothing about their
+-- sign-ins. The victim's own 31st row is still held.
+do $$
+declare
+  main_org constant uuid := (select id from public.orgs where name = 'TopStock Wholesale');
+begin
+  perform pg_temp.act('00000000-0000-0000-0000-0000d7a00001');
+  for i in 1..30 loop
+    perform public.record_auth_event('sign_in');
+  end loop;
+  perform pg_temp.act('00000000-0000-0000-0000-0000d7a00002');
+  perform pg_temp.expect_error(format(
+    $q$insert into public.audit_log (org_id, actor_id, action, table_name)
+       values (%L, '00000000-0000-0000-0000-0000d7a00001', 'sign_in', 'auth')$q$, main_org), '42501');
+  perform pg_temp.act('00000000-0000-0000-0000-0000d7a00001');
+  perform pg_temp.expect_error($q$select public.record_auth_event('sign_in')$q$, '22023', 'rate_limited');
+  raise exception 'undo' using errcode = 'TS001';
+exception when sqlstate 'TS001' then perform pg_temp.su();
+end $$;
+
 \echo 'day7a_attack: all checks passed'

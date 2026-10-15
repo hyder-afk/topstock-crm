@@ -46,6 +46,11 @@ create policy audit_log_own_auth_event on public.audit_log for insert to authent
 create function private.auth_event_guard() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
+  -- A row about someone else is left to RLS, which refuses it (42501): the count below must never answer for another
+  -- person, or a refusal's code would tell a caller whether that person signed in 30 times this hour (security review).
+  if new.actor_id is distinct from auth.uid() then
+    return new;
+  end if;
   if (select count(*) from public.audit_log l
        where l.actor_id = new.actor_id and l.table_name = 'auth' and l.created_at > now() - interval '1 hour') >= 30 then
     raise exception 'too many sign-in records' using errcode = '22023', hint = 'rate_limited';
