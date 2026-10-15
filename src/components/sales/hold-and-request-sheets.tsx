@@ -12,7 +12,10 @@ import { focusField } from "@/components/sales/bits";
 import { LeadPicker, ProductPicker } from "@/components/sales/pickers";
 import { refreshSales, useLeadStock } from "@/components/sales/use-sales";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import type { StockFailure } from "@/lib/inventory/errors";
 import type { StockRow } from "@/lib/inventory/types";
@@ -134,7 +137,7 @@ export function HoldSheet({
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent aria-describedby={`${formId}-desc`} className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto sm:w-[min(560px,calc(100%-32px))]")}>
-        <form
+        <form noValidate
           id={formId}
           className="flex flex-col gap-5 p-5 sm:p-6"
           onSubmit={(e) => {
@@ -230,30 +233,30 @@ export function HoldSheet({
               ))}
             </div>
             {days === "pick" ? (
-              <input
-                type="date"
+              <DatePicker
                 name="hold_until"
                 aria-label={t("until")}
                 min={plusDays(0)}
                 max={plusDays(90)}
                 value={picked}
-                onChange={(e) => setPicked(e.target.value)}
-                className="min-h-11 rounded-md border border-border bg-background px-3 font-mono"
+                onValueChange={setPicked}
+                required
+                className="self-start"
               />
             ) : null}
           </fieldset>
           {fromStockDeals.length > 0 ? (
-            <label className="flex flex-col gap-2 text-sm font-bold">
-              {t("deal")}
-              <select name="deal" value={dealId ?? ""} onChange={(e) => setDealId(e.target.value || null)} className="min-h-11 rounded-md border border-border bg-background px-3 text-base font-normal">
+            <div className="flex flex-col gap-2 text-sm font-bold">
+              <Label htmlFor={`${formId}-deal`}>{t("deal")}</Label>
+              <Select id={`${formId}-deal`} name="deal" value={dealId ?? ""} onValueChange={(v) => setDealId(v || null)} className="text-base font-normal">
                 <option value="">{t("noDeal")}</option>
                 {fromStockDeals.map((d) => (
                   <option key={d.id} value={d.id}>
                     {dealOptionLabel(d, dealWords)}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </div>
           ) : null}
           <label className="flex flex-col gap-2 text-sm font-bold">
             {t("note")}
@@ -339,7 +342,7 @@ export function LogRequestSheet({ open, onOpenChange, lead }: { open: boolean; o
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent aria-describedby={`${formId}-desc`} className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto sm:w-[min(600px,calc(100%-32px))]")}>
-        <form
+        <form noValidate
           id={formId}
           className="flex flex-col gap-5 p-5 sm:p-6"
           onSubmit={(e) => {
