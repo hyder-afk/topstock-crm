@@ -92,7 +92,8 @@ Code at ee5312c, tests at 409403b (the docs commit after them changes no code).
   passed.
 - **Screens**: `day5-screens.spec.ts` 3 passed, 68 files in `screens/`.
 - **Browser speed**: `day5-perf.spec.ts` run; budgets met for LCP, CLS, extra JS, press feedback, Pipeline → Home;
-  missed for move paint, drag frames, settle, Home → Pipeline and the skeleton (`perf.md`).
+  missed for move paint, drag frames, settle, Home → Pipeline and the skeleton (`perf.md`). **Accepted as the baseline
+  by Haider on 15 Oct (decision A); polish in Day 7.**
 - **gitleaks** (`origin/main..HEAD`): no leaks found. **npm audit --omit=dev**: 0 vulnerabilities.
 - **Spikes**: S10, S12, S13 passed; S11 passed on Chromium touch emulation (WebKit in CI only).
 - **/security-review**: no findings (`security-review.md`). **Apple design** and **web interface guidelines** audits:
@@ -112,14 +113,16 @@ the code before the fix, built and run here; green = it passes after):
 | 4 | Reopen from the Deals tab and the card menu always went to Negotiations (and changed the lead's status); focus dropped | `reopenFromHistory` reads `get_deal`'s history (the chooser opens if it cannot); the Deals tab focuses the reopened row (e4e1f50) | `lead-deals.spec` `reopen_from_deals_tab_uses_closing_stage` (stage Qualified, lead Warm, row focused) red then green; pipeline test checks the menu's dialog starts at Qualified |
 | 6 | "Open it now" missing, key unused | Not built, with the reason (deviation 8); key removed | `messages.spec` key parity |
 | 7 | U / ⌘Z on the lead page never undid a deal move | `newerUndo` picks the newer of the last entry and the last move (unit-tested); the call panel takes the entry only when it is newer, and `useDealFlows({ undoKey })` on the lead page and in Home's deal sheet takes the move (the last move is a small store, `src/lib/last-move.ts`, so the layout does not load the pipeline's code; e70d3ae, 916f610) | `lead-deals.spec` `u_on_lead_page_undoes_the_newer_deal_move` red (U took the entry) then green; `undo-pick.spec` |
-| 5 | Speed misses (builder-reported) | Not changed in this round: Haider's decision (below) | — |
+| 5 | Speed misses (builder-reported) | Not changed: **Haider's decision A (15 Oct): accepted as the baseline, polish in Day 7** (below) | — |
 | 8 | Scratchpad take-over script | `5c/take-stack.sh` and its original `5b/take-stack.sh` deleted (never in the repo) | — |
 
 Finding 2 (Home) is in the Day 5c README. **For Haider (finding 5):** the six Day 5b browser misses at 4x CPU (move
 painted ~585 ms p95 vs 100, drag frames ~23 ms vs 16.7, settle ~690 ms vs 450, Home → Pipeline after the hover ~2 s vs
 200, the skeleton 124–129 ms vs 100, long tasks up to 96 ms vs 50) were not re-measured in this round (the code paths of
-a move did not change; the board gained one layout effect). Recommendation unchanged: one more speed step on the move and
-the route before the 5b PR; or accept them as the baseline, as with Day 4b and 4c.
+a move did not change; the board gained one layout effect). Recommendation was one more speed step on the move and the
+route before the 5b PR, or accept them as the baseline, as with Day 4b and 4c. **Decision A (Haider, 15 Oct 2026):
+"accept as baseline, polish in Day 7".** The misses are the Day 5 baseline; the next steps listed in `perf.md` move to
+Day 7 polish.
 
 **Checks for this round** (worktree at 6b15b08 for code and tests; docs commit after):
 - **lint** exit 0: 0 errors, the 2 known warnings; **typecheck** exit 0 (also the pre-commit hook on every commit);
@@ -207,9 +210,9 @@ the queue card if 4d changes them).
 - P1 `pipeline_board` mine (rep) stays over its 15 ms budget (17.6–18.4 ms; Day 5a's open item, unchanged).
 - **Browser speed misses at 4x CPU** (`perf.md`): move painted p95 ~585 ms (100), drag frames p95 ~23 ms (16.7) with
   long tasks up to 96 ms (50), settle ~690 ms (450), Home → Pipeline after the hover ~2 s (200), skeleton 124–129 ms
-  (100). Already cut by about a half to two thirds in 24a6201 and ee5312c; the next steps are listed in `perf.md`. For
-  Haider: fix further before merge, or accept as the baseline as with Day 4b (recommendation: one more speed step on
-  the move and the route before the 5b PR, since the board is used all day).
+  (100). Already cut by about a half to two thirds in 24a6201 and ee5312c; the next steps are listed in `perf.md`.
+  **Accepted as the baseline by Haider on 15 Oct (decision A: "accept as baseline, polish in Day 7")**; the risk left
+  is that the board feels slower than budget at 4x CPU until the Day 7 polish (real Macs are much faster than 4x).
 - The REBASE copies above must be redone by hand when 4c merges.
 
 ## Docs used (Context7 and others)

@@ -54,5 +54,7 @@ who may read every task). Win rate leaves out "Opened by mistake" and shows only
 - An admin or manager sees the org's figures in Team, by design (D28). A stolen aal2 session reads the same figures the
   person could read on the board and the lead pages; nothing new is exposed.
 - Recent activity shows colleagues' first names and lead names (never entry text), the same as the timeline shows.
-- The Day 6 contract (`home_low_stock`) is enforced on the app side by Zod; Day 6's own function must keep PP out of its
+- The Day 6 contract (since decision B, 15 Oct: Day 6's own `stock_alerts()`, read through a strict Zod schema, so an
+  unknown key such as a cost fails the card instead of reaching the browser; the 5c stub has Day 6's two-factor check,
+  invoker and grants) is enforced on the app side by Zod; Day 6's own function must keep PP out of its
   payload (design section 10).

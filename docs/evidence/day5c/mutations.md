@@ -56,3 +56,16 @@ day's meetings (overdue and today come from Day 4c's `count_tasks('mine')`), and
 | 15 | home_recent_activity: undo pairs shown (Team) | caught | FAIL: team feed kinds is {undo:lead:Hugo,move:qualified:Hugo,won:won:Hugo,activity:interested:Hugo,lost:lost:Hugo,activity:no_answer:Hiro,mo |
 | 16 | home_summary tasks: Team counts everyone's tasks (count_tasks('team') for Team) | caught | FAIL: team tasks (always mine) is {"today": 4, "overdue": 2, "meetings": 0}, expected {"today": 1, "overdue": 0, "meetings": 0} |
 | 17 | home_low_stock stub callable by anon | caught | FAIL: Home function rules broken by home_low_stock(integer) |
+
+
+## Decision B (15 Oct): the stub is Day 6's `stock_alerts()`
+
+Row 17 now aims at the `stock_alerts()` stub's grant (it aimed at `home_low_stock(integer)` above), and two rows are
+new. Rows 17 to 19 re-run in a throwaway worktree of c6c8afb (its `db-test.sh` copy on port 54492, removed); rows 1 to
+16 edit functions this change did not touch. **3 of 3 caught**; `--anchors` finds every row of every set once.
+
+| # | Protection removed | Result | First failure |
+|---|---|---|---|
+| 17 | stock_alerts stub callable by anon | caught | FAIL: Home function rules broken by stock_alerts() |
+| 18 | stock_alerts stub without the two-factor check (an aal1 session gets an answer) | caught | FAIL: "select public.stock_alerts()" succeeded, expected 42501 |
+| 19 | stock_alerts stub runs as its owner (SECURITY DEFINER) | caught | FAIL: Home function rules broken by stock_alerts() |

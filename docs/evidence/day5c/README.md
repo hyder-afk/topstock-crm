@@ -4,7 +4,8 @@ Built on `day5a-local` (in `/home/user/topstock-crm-5a`) after Day 5b, per `docs
 "5c" (with 3.3, 4.3, 4.5, 5.8, 6, 7.10 to 7.12, 8, 10 and Haider's 11 Oct answers in `docs/log.md`, which accept every
 Day 5 recommendation, including open question 9: Team by default for admins, Mine remembered per device). Not merged,
 not pushed. **15 Oct: rebased onto `origin/main` 5f1a966 (Day 4c merged)** and verifier round 1 fixed (section
-"Verifier round 1"). Days 4d and 6 are built elsewhere and not on this branch: see "Rebase points".
+"Verifier round 1"). **15 Oct, Haider's decisions** (section "Decisions of 15 Oct"): A, the speed misses are the
+accepted baseline (Day 7 polish); B, the Low stock card reads Day 6's `stock_alerts()`. Days 4d and 6 are built elsewhere and not on this branch: see "Rebase points".
 
 ## What changed
 
@@ -23,11 +24,13 @@ not pushed. **15 Oct: rebased onto `origin/main` 5f1a966 (Day 4c merged)** and v
   return type has no entry text and no lost note.
 - ~~`public.home_today_tasks(limit 6)`~~: removed at the 4c rebase; the Today card reads Day 4c's `list_tasks` and
   `count_tasks`, and K5's overdue and today counts are `count_tasks('mine')` (the day's meetings still counted here).
-- `public.home_low_stock(limit 5)`: a stub answering null, created only when absent (Day 6 replaces it, section 10).
+- `public.stock_alerts()`: since Haider's decision B (15 Oct) a stub with Day 6's exact signature and checks, answering
+  null, created only when absent (Day 6's 6d migration replaces it with `create or replace`). It was
+  `public.home_low_stock(limit 5)` with the design section 10 contract before.
 - All SECURITY INVOKER, `search_path = ''`, static SQL with Mine and Team as separate statements, scope checked first,
   constant messages, revoked from public and anon.
 
-**App**: `src/lib/home.ts` (Zod parts, the Day 6 `lowStockCard` contract, scope rule, helpers), `src/lib/home-server.ts`
+**App**: `src/lib/home.ts` (Zod parts, the strict `lowStockCard` schema of Day 6's `stock_alerts()` shape, scope rule, helpers), `src/lib/home-server.ts`
 (the parts in parallel with `allSettled`, each failing alone; since the 4c rebase Today is built from `list_tasks`
 overdue and today plus `count_tasks`), `GET /api/home`, Day 4c's `GET /api/queue/summary` (5c's stand-in dropped at the
 rebase), `src/components/home/*` (KPI row, count-up, Today, Work queue, Needs attention, Pipeline, Recent activity, Low stock,
@@ -62,7 +65,7 @@ fetching on mount).
   `lead-deals`, `pipeline`, `pipeline-multi`, `day5-security` and `leads`: 93 passed. `home-screens` 2 passed (45 shots).
 - **Browser speed** (`home-perf.spec`, 4x CPU): LCP 1.5 to 1.7 s, CLS 0, Home extra JS 9.1 KB gzip met; Pipeline → Home
   after the hover about 430 ms, the skeleton without a hover 84 to 174 ms and the first-seconds longest frame missed
-  (`perf.md`, with causes).
+  (`perf.md`, with causes). **Accepted as the baseline by Haider on 15 Oct (decision A); polish in Day 7.**
 - **gitleaks** (`origin/main..HEAD`, 64 commits): no leaks. **npm audit --omit=dev**: 0 vulnerabilities.
 - **Security review** by hand (`security-review.md`): no open findings.
 - **Audits**: `apple-design-audit.md`, `web-design-guidelines.md` (fixes made, none unresolved).
@@ -75,7 +78,7 @@ Verifier verdict on b6b360b: NOT READY. The Day 5c findings (the shared ones, 3,
 |---|---|---|---|
 | 1 | 4c on main: `/api/queue/summary` conflict, `home_today_tasks` and K5 duplicated 4c | Rebased; 4c's route kept, the `{ready:false}` branch and message dropped, "G Q" on Start calling; K5 from `count_tasks('mine')`; Today from `list_tasks` + `count_tasks` (`buildToday`, `overdueDays`), meetings with "their time"; `home_today_tasks` removed (361e6a4, cad5528) | `home_attack.sql` block 9 rewritten (an admin's Team counts none of a rep's tasks); `home-today.spec.ts` (4 unit tests); `day5-parity`; mutations day5c 17 of 17 (rows 7 and 16 re-aimed); e2e `queue_card_loads_after_paint` reads the real 4c answer |
 | 2 | Closing the deal sheet over Home dropped focus to `<body>` when the move took the deal out of Needs attention; `home.spec` failed 2 of 2 | The sheet always prevents Radix's default and falls back to the deal's row, the row now at the opener's place (or the one before), then the card heading; Needs attention keeps the focus when a refetch drops the focused row (e4e1f50) | `attention_opens_deal_sheet and refetch_after_move` now checks both orders (refetch held until after the close; refetch while the sheet is open) with `toBeFocused`: red on the old code, green after; the full `home.spec` 13 of 13 |
-| 5 | Pipeline → Home ~430 ms and two more Home misses | Not changed: Haider's decision (Day 5b README, "For Haider") | — |
+| 5 | Pipeline → Home ~430 ms and two more Home misses | Not changed: **Haider's decision A (15 Oct): accepted as the baseline, polish in Day 7** | — |
 
 **Checks for this round** (worktree at 6b15b08 for code and tests; docs commit after):
 - **lint** exit 0: 0 errors, the 2 known warnings; **typecheck** exit 0 (also the pre-commit hook on every commit);
@@ -102,6 +105,52 @@ Verifier verdict on b6b360b: NOT READY. The Day 5c findings (the shared ones, 3,
 - **gitleaks** (`origin/main..HEAD`): no leaks. **npm audit --omit=dev**: 0 vulnerabilities.
 - Not run here: WebKit, Semgrep (CI), the browser speed specs (finding 5), the Taste Skill pass, the advisor loop.
 
+## Decisions of 15 Oct (Haider)
+
+- **A. Speed misses accepted as the baseline; polish in Day 7.** Haider: "accept as baseline, polish in Day 7". Covers
+  Day 5c's Pipeline → Home after the hover (~430 ms vs 200), the skeleton without a hover (84 to 174 ms vs 100) and the
+  first-seconds longest frame, plus the near-budget P8 recent activity, and Day 5b's six misses (Day 5b README).
+  Verifier finding 5 is answered; nothing changed in the code for it.
+- **B. The Home low stock card reads Day 6's `stock_alerts()`.** Haider: "use Day 6's version (stock_alerts), since it
+  belongs to the stock module, and change the Home card to read it". What changed:
+  - Migration: the `home_low_stock(integer)` stub is replaced in place by `public.stock_alerts() returns jsonb` with Day
+    6's exact signature: plpgsql, stable, SECURITY INVOKER, `set search_path = ''`, refused unless `auth.uid()` and
+    `private.has_aal2()` (42501, hint `forbidden`, the same message), returning null; created only if
+    `to_regprocedure('public.stock_alerts()') is null`; revoked from public and anon, granted to authenticated. Static
+    SQL (c6c8afb).
+  - App (849ab89): `fetchHome` calls `rpc("stock_alerts")`; `lowStockCard` is a strict Zod object of Day 6's shape
+    `{low, sold_out, arriving_late, requests_new, holds_ending_soon, deals_waiting, sample[≤ 5]: {id, name, available,
+    reorder_point, arriving}}` (counts and quantities whole numbers ≥ 0; an unknown key such as a cost fails the part, so
+    the card shows its own error); null keeps the calm placeholder. The card: "3 low · 1 sold out · 2 deals waiting"
+    (deals waiting only when above zero); up to 5 low products with "120 available · reorder at 200" (DM Mono) and
+    "+300 In Transit" (muted, only when above zero) and a dot-plus-word "Low" badge; then, under a hairline, up to three
+    follow-up links shown only when above zero: late arrivals (`/inventory?tab=arriving`), new stock requests
+    (`?tab=requests`), holds ending within 2 days (`?tab=reserved`); "Open inventory" opens `/inventory?filter=low`
+    (Day 6's filter and tab names); "All products are above their reorder level." when nothing is low or sold out.
+    Messages EN/FR (ICU plurals; French narrow no-break space before colons, typographic apostrophe).
+  - Tests: `home_attack.sql` checks the stub's properties (no argument, jsonb, plpgsql, stable, invoker, search_path,
+    one overload, authenticated only, `home_low_stock` gone), null for a two-factor caller, 42501 `forbidden` for aal1
+    and for a token without a user, permission denied for anon; mutation rows 17 to 19 (anon grant, no two-factor
+    check, SECURITY DEFINER); unit `home-schema` (Day 6 payload, null, zero, strict keys, bounds) and `messages` (EN/FR
+    counts at 1 and more); e2e `home.spec` fills the card through the real server path from a Day 6-shaped
+    `stock_alerts` installed on the local stack as superuser (EN, FR, all clear, an unknown key failing that card
+    alone), then puts the stub back from its own definition (efbddd0).
+  - Screens re-taken: `screens/home-low-stock-day6-{en-light,fr-dark}-{1440,390}.png` (no sideways scroll, no console
+    error). The placeholder shots are unchanged (the null state did not change).
+
+**Checks for this change** (code at efbddd0):
+- **lint** 0 errors (the 2 known warnings); **typecheck** clean; **unit** 433 passed.
+- **db** (`db-test.sh` copy on port 54491, ROOT this worktree): exit 0, every suite, `home_attack.sql` all Day 5c checks
+  passed; advisors 0 ERROR (WARN `set_user_role` as before; INFO `unindexed_foreign_keys` 5, `unused_index` 3: the
+  unused-index count reads index-scan statistics of the run and moved by one; no index was added or dropped).
+- **mutations** (`--set day5c 17 18 19`, throwaway worktree of c6c8afb on port 54492, removed): rows 17 to 19 **3 of 3 caught** (17 anon grant and 19 SECURITY DEFINER by the function rules loop, 18 no
+  two-factor check by the aal1 refusal); `--anchors` for every set: every row found once (day5c now 19 rows).
+- **e2e, local Chromium, shared stack on 3100 started from this worktree** (it was not running): `home.spec` 14 passed
+  (the count-up test failed once on the first run right after the server started, hydration later than 800 ms on a
+  cold server, and passed on the two re-runs); `shell`, `lead-page`, `day5-security` 53 passed;
+  `home-screens --grep "Low stock"` 1 passed (4 shots).
+- **gitleaks**: `origin/main..HEAD` 77 commits and the 3 new ones alone: no leaks.
+
 ## Deviations from the design
 
 1. **Tasks** (since the 4c rebase): K5's overdue and today are Day 4c's `count_tasks('mine')`; K6 (the day's meetings)
@@ -126,6 +175,12 @@ Verifier verdict on b6b360b: NOT READY. The Day 5c findings (the shared ones, 3,
 8. **Dates in English** follow `en` (US order: "Oct 13"), as the rest of the app does; the design's examples ("3 Oct")
    are British.
 9. **KPI sub-lines** wrap to two lines below 1280 instead of being cut (audit fix); the cards' minimum height is kept.
+10. **Low stock reads Day 6's `stock_alerts()`** (Haider's decision B), not design section 10's `home_low_stock`
+    contract. Day 6's sample lists low products only and carries no expected date per product, so each row's badge is
+    always "Low" and there is no "Out of stock" row or ETA; sold-out products are a count in the summary line. Three
+    follow-up lines the design did not have (late arrivals, new stock requests, holds ending within 2 days) show only
+    when their count is above zero, as quiet muted links to the matching Inventory tab (amber dot for the two
+    time-related ones; no colour in text).
 
 ## Rebase points (Day 4c done 15 Oct; Day 4d and Day 6 open)
 
@@ -137,10 +192,11 @@ page. 4c's `check_profile_timezone` refuses an unknown zone on save, so `home_at
 with triggers off. The 5a `sql-bidi` spec scans every file: two raw bidi characters in 4c's tests (`tests/unit/tasks.spec.ts`,
 `supabase/tests/queue_attack.sql`) are now written as escapes.
 
-- Day 6: the contract in design section 10 says `home_low_stock(p_limit)` with `{low, out, deals_waiting, items}`; Day 6's
-  design and its 6d build name `stock_alerts()` with a different shape (`sold_out`, `requests_new`, `sample`, ...). The
-  two must be agreed before either database PR merges (open risk 1). The stub is created only when absent, so whichever
-  merges first works.
+- Day 6: ~~the contract in design section 10 (`home_low_stock`) and Day 6's `stock_alerts()` differ~~ **resolved by
+  Haider's decision B (15 Oct)**: Home reads Day 6's `stock_alerts()`. Day 5 merges first and creates the null stub;
+  **Day 6 must define its function with `create or replace`** (done on the Day 6 branch in its 6d migration, with a note;
+  its db tests pass with the 5c stub created first). If Day 6 ever merges first, the stub is skipped (created only if
+  absent).
 - Rename the migration at merge if main moved (D35).
 
 ## Not done (and why)
@@ -155,10 +211,11 @@ with triggers off. The 5a `sql-bidi` spec scans every file: two raw bidi charact
 
 ## Open risks
 
-1. **Day 6 contract mismatch** (`home_low_stock` vs `stock_alerts`), above.
+1. ~~**Day 6 contract mismatch** (`home_low_stock` vs `stock_alerts`).~~ **Resolved** by Haider's decision B (15 Oct):
+   Home reads Day 6's `stock_alerts()`; Day 6 uses `create or replace` ("Decisions of 15 Oct" below).
 2. **Route speed**: Pipeline → Home after the hover is about 430 ms against 200 ms (Next 16.4 prefetches dynamic routes
-   only to `loading.tsx`); the same limit as Day 5b's Home → Pipeline. Haider to choose: accept as the baseline or a
-   speed step.
+   only to `loading.tsx`); the same limit as Day 5b's Home → Pipeline. **Accepted as the baseline by Haider on 15 Oct
+   (decision A), with the skeleton (84 to 174 ms vs 100) and the first-seconds longest frame; polish in Day 7.**
 3. **P8 recent activity** sits close to its 5 ms budget (3.8 to 5.5 ms); about 2 ms is Day 5a's history select policy.
 4. ~~The 4c rebase touches `home_summary`, `fetchHome` and the queue route by hand.~~ Done 15 Oct and tested; the 4d
    rebase will touch the same `-- REBASE` blocks in the Day 5 migrations again.

@@ -17,7 +17,7 @@ Playwright run.
 | P8 `home_recent_activity` Team | 5 | 4.14 | 3.78 | **5.49** |
 | `home_recent_activity` Mine | (none) | 4.03 | 3.71 | 5.56 |
 | `home_today_tasks` (rep; 4c stand-in) | 4c P5 15 | 5.16 | 5.08 | 6.21 |
-| `home_low_stock` stub | (none) | 0.00 | 0.00 | 0.00 |
+| `home_low_stock` stub (since decision B the `stock_alerts()` stub; `perf_day5.sql` calls it) | (none) | 0.00 | 0.00 | 0.00 |
 
 Every budget met in runs 1 and 2; P8 recent activity missed by 0.5 ms in run 3 (the run that shared the CPU with
 Playwright). The runs happened just after midnight in Paris, so "calls today" held about 130 of the 450 seeded calls;
@@ -70,10 +70,15 @@ Local `next start` build, shared VM, one run of the spec (three samples per meas
 - *Skeleton without a hover (84 to 174 ms).* The skeleton is `loading.tsx`, prefetched with the link; the time is the
   router's work at 4x. Close to the budget; same cause as Day 5b's 124 to 129 ms.
 
+**Decision A (Haider, 15 Oct 2026): "accept as baseline, polish in Day 7".** The three browser misses above and the
+near-budget items (P8 recent activity 3.8 to 5.5 ms of 5, the skeleton) are the Day 5c baseline; the client-side route
+shell and a count-up frame measure are Day 7 polish.
+
 
 ## Verifier round 1 (15 Oct): one run after the rebase onto Day 4c
 
 `db-perf.sh` copy on port 54481, code at 083a348 (K5 from `count_tasks`, Today from `list_tasks`), one run: P7
 home_summary Team 11.88 ms (30), Mine 6.57 ms (25), Team in the import week 23.96 ms (45); P8 home_attention 6.80 ms (10),
 home_recent_activity Team 4.05 ms (5), Mine 3.80 ms; Today (list_tasks overdue + today, rep) 3.60 ms (4c's P5: 15 ms).
-Every budget met. Browser numbers not re-measured (Haider's decision, Day 5b README "For Haider").
+Every budget met. Browser numbers not re-measured (accepted as the baseline by Haider on 15 Oct, decision A; polish in
+Day 7).
