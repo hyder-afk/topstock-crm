@@ -3,8 +3,8 @@
 # and query plans of the list and count functions as a signed-in rep (supabase/tests/perf_leads.sql), then 300k
 # activities and 15k tasks with the Day 4 timeline, lead page, outcome, queue and task timings
 # (supabase/tests/perf_day4.sql), then the lead import at 30k and 50k rows as an admin, with those activities and tasks
-# in place (supabase/tests/perf_import.sql), then three queue sessions at once (supabase/tests/perf_queue_concurrency.sh).
-# Local only.
+# in place (supabase/tests/perf_import.sql), then three queue sessions at once (supabase/tests/perf_queue_concurrency.sh),
+# then the Day 4d upload functions with 5,000 stored files (supabase/tests/perf_files.sql, P11). Local only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
@@ -24,3 +24,4 @@ $PSQL -f "$ROOT/supabase/tests/perf_leads.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_day4.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_import.sql" 2>&1
 bash "$ROOT/supabase/tests/perf_queue_concurrency.sh" "host=$WORK port=54327 user=postgres dbname=postgres" 2>&1
+$PSQL -f "$ROOT/supabase/tests/perf_files.sql" 2>&1

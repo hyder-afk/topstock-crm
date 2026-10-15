@@ -135,11 +135,12 @@ begin
      or private.lead_db_problem('x', null, null, null, null, 'hot') <> 'db_status' then
     raise exception 'FAIL: lead_db_problem';
   end if;
-  -- Only contacts, activities, deals and tasks (Day 4a) point at a lead: the "untouched" rule checks exactly these.
-  -- Day 4c's queue claims point at leads too, and are left out on purpose: a claim is not work; it goes with the lead.
+  -- Only contacts, activities, deals, tasks (Day 4a) and files (Day 4d) point at a lead: the "untouched" rule checks
+  -- exactly these. Day 4c's queue claims point at leads too, and are left out on purpose: a claim is not work; it goes
+  -- with the lead (on delete cascade). Re-checked after Day 4c merged into Day 4d: 4c did not redefine the rule.
   if (select array_agg(conrelid::regclass::text order by conrelid::regclass::text) from pg_constraint
        where contype = 'f' and confrelid = 'public.companies'::regclass)
-     is distinct from array['activities', 'contacts', 'deals', 'private.queue_claims', 'tasks'] then
+     is distinct from array['activities', 'contacts', 'deals', 'files', 'private.queue_claims', 'tasks'] then
     raise exception 'FAIL: a new table references leads; update private.lead_import_untouched';
   end if;
 end $$;

@@ -681,6 +681,7 @@
       "timeline": "Historique",
       "deals": "Affaires",
       "stock": "Stock",
+      "files": "Fichiers",
       "details": "Détails"
     },
     "railLabel": "Saisie, tâches et contacts",
@@ -952,7 +953,79 @@
       "task_due": "Une tâche a une date ou une heure, pas les deux ; un rendez-vous a besoin d’une heure.",
       "lead_has_files": "Supprimez d’abord les fichiers de ce prospect.",
       "bad_bucket": "Rechargez la page et réessayez.",
-      "timezone": "Ce fuseau horaire est inconnu. Choisissez-en un dans la liste."
+      "timezone": "Ce fuseau horaire est inconnu. Choisissez-en un dans la liste.",
+      "file_type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
+      "file_size": "10 Mo maximum par fichier.",
+      "file_name": "Ce nom de fichier ne peut pas être enregistré. Renommez le fichier et réessayez.",
+      "file_lead": "Rechargez la page et réessayez."
+    }
+  },
+  "Files": {
+    "title": "Fichiers",
+    "drop": "Déposez des fichiers ici ou choisissez-les",
+    "choose": "Choisir des fichiers",
+    "add": "Ajouter un fichier",
+    "limits": "PDF, PNG, JPG, Word ou Excel, 10 Mo maximum chacun",
+    "uploadsLabel": "Envois",
+    "uploading": "Envoi…",
+    "checking": "Vérification du fichier…",
+    "cancel": "Annuler",
+    "dismiss": "Retirer {name}",
+    "progressLabel": "Envoi de {name}",
+    "open": "Ouvrir",
+    "download": "Télécharger",
+    "delete": "Supprimer",
+    "menu": "Actions pour {name}",
+    "opensNewTab": "(s’ouvre dans un nouvel onglet)",
+    "you": "Vous",
+    "someone": "Quelqu’un",
+    "usage": "{used} utilisés sur {total}",
+    "empty": "Aucun fichier pour l’instant. Ajoutez des devis, des tarifs ou des photos.",
+    "error": "Impossible de charger les fichiers.",
+    "retry": "Réessayer",
+    "retryUpload": "Réessayer {name}",
+    "loadOlder": "Afficher les fichiers plus anciens",
+    "errorOlder": "Impossible de charger les fichiers plus anciens.",
+    "stuckDeleting": "Suppression inachevée",
+    "retryDelete": "Réessayer",
+    "retryDeleteNamed": "Réessayer de supprimer {name}",
+    "deleted": "{name} supprimé",
+    "deleteConfirm": {
+      "title": "Supprimer ce fichier ?",
+      "body": "« {name} » sera supprimé pour tout le monde. Impossible de revenir en arrière.",
+      "cancel": "Annuler",
+      "confirm": "Supprimer"
+    },
+    "errors": {
+      "tooBig": "Trop lourd : 10 Mo maximum par fichier. Réduisez-le ou découpez-le.",
+      "empty": "Ce fichier est vide.",
+      "type": "Uniquement des fichiers PDF, PNG, JPG, Word ou Excel.",
+      "unreadable": "Impossible de lire ce fichier. Choisissez-le à nouveau.",
+      "mismatch": {
+        "pdf": "Ce fichier n’est pas vraiment un PDF. Enregistrez-le ou exportez-le à nouveau en PDF, puis ajoutez-le.",
+        "image": "Ce fichier n’est pas vraiment une photo (PNG ou JPG). Enregistrez-le en JPG ou PNG, puis ajoutez-le.",
+        "word": "Ce n’est pas un vrai fichier Word, ou il contient des macros. Enregistrez-le en .docx sans macros, puis ajoutez-le.",
+        "excel": "Ce n’est pas un vrai fichier Excel, ou il contient des macros. Enregistrez-le en .xlsx sans macros, puis ajoutez-le."
+      },
+      "quota": "L’espace de fichiers de l’équipe est plein (800 Mo). Supprimez d’abord d’anciens fichiers.",
+      "rateLimited": "Beaucoup d’envois en une heure. Réessayez plus tard.",
+      "tooManyPending": "Attendez la fin des envois en cours.",
+      "connection": "Connexion perdue. Réessayez.",
+      "tooMany": "5 fichiers à la fois au maximum. Ajoutez celui-ci à nouveau.",
+      "unavailable": "Impossible d’ajouter ce fichier. Réessayez.",
+      "deleteFailed": "Suppression inachevée. Réessayez."
+    },
+    "announce": {
+      "uploading": "Envoi de {name}",
+      "added": "{name} ajouté",
+      "failed": "{name} n’a pas été ajouté. {reason}",
+      "tooMany": "{count, plural, one {# fichier n’a pas été ajouté : 5 à la fois au maximum.} other {# fichiers n’ont pas été ajoutés : 5 à la fois au maximum.}}",
+      "cancelled": "Envoi de {name} annulé"
+    },
+    "unavailable": {
+      "title": "Ce fichier ne peut pas être ouvert",
+      "body": "Il n’est plus disponible, ou vous n’y avez pas accès.",
+      "back": "Retour aux prospects"
     }
   },
   "Queue": {

@@ -35,6 +35,10 @@ export const INVALID_HINTS = [
   "lead_has_files",
   "bad_bucket",
   "timezone",
+  "file_type",
+  "file_size",
+  "file_name",
+  "file_lead",
 ] as const;
 export type InvalidHint = (typeof INVALID_HINTS)[number];
 
