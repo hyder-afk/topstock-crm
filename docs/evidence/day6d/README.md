@@ -95,6 +95,15 @@ commit.
   and the `movement_requests` kind check (from 6a, unmerged).
 - Day 5 must set `deals.status = 'lost'` when a deal enters Closed/lost (design 12.1); `list_lead_deals_for_stock` is
   dropped if Day 5 ships an equivalent.
+- **`stock_alerts()` and Day 5c (Haider's decision B, 15 Oct 2026):** Day 5's Home low stock card reads this
+  function ("use Day 6's version (stock_alerts), since it belongs to the stock module, and change the Home card to
+  read it"). Day 5 merges first, and its migration `20261015150000_home_dashboard.sql` creates a null-returning stub
+  with the same signature (plpgsql, stable, invoker, `search_path = ''`, the same two-factor check, authenticated
+  only) when the function is absent. So 6d now uses `create or replace function public.stock_alerts()` (with a note in
+  the migration header's "Redefines" list); the grant loop in section 8 is unchanged. Checked: `db-test.sh` copy on port
+  54493 passes as it is and with the 5c stub created just before this migration (`sales_attack.sql`
+  `stock_alerts_counts` reads the real body; the RPC rule loop still finds 13 authenticated-only invokers). The day6d
+  mutation anchors are unchanged (24 edits on this file, every one found as often as before).
 
 ## Docs used (Context7)
 

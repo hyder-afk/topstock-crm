@@ -22,7 +22,9 @@
 --     unmerged): the sale and stock_request kinds;
 --   private.task_guard (20261011120000_activity_hardening.sql; Day 4c may redefine it): the system task links never
 --     change and may be set to null by a cascade;
---   private.lead_import_untouched (20261016090000_stock_engine.sql, 6a): a lead with a sale or a request is touched.
+--   private.lead_import_untouched (20261016090000_stock_engine.sql, 6a): a lead with a sale or a request is touched;
+--   public.stock_alerts() (20261015150000_home_dashboard.sql, Day 5c, merges first): its null-returning stub gets the
+--   real body (create or replace, same signature; decision B, 15 Oct 2026).
 -- The client stock link (6e) adds the share branch of stock_request_guard and its request task.
 
 -- ===========================================================================
@@ -1947,7 +1949,11 @@ end;
 $$;
 
 -- The Home card (Day 5): counts read live, and up to 5 low products.
-create function public.stock_alerts() returns jsonb
+-- create or replace (Haider's decision B, 15 Oct 2026: the Home card reads this contract): Day 5c's migration
+-- (20261015150000_home_dashboard.sql, which merges first) may already have created a null-returning stub with this
+-- exact signature, language, volatility, SECURITY INVOKER, search_path and two-factor check; this replaces its body and
+-- keeps its grants (the loop in section 8 sets them again either way). Without Day 5c it simply creates the function.
+create or replace function public.stock_alerts() returns jsonb
 language plpgsql stable security invoker set search_path = '' as $$
 declare
   v_today constant date := (now() at time zone 'Europe/Paris')::date;
