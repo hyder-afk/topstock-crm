@@ -2,6 +2,7 @@ import { KpiRowSkeleton } from "@/components/home/kpi-card";
 import { RowSkeletons } from "@/components/home/home-card";
 import { LowStockSkeleton } from "@/components/home/low-stock-card";
 import { PipelineSnapshotSkeleton } from "@/components/home/pipeline-snapshot";
+import { RECENT_SHOWN } from "@/lib/home";
 import { cn } from "@/lib/utils";
 
 // Home's skeleton, block for block (Day 5 design 7.10): the same grid, card sizes and row heights as the page, at every
@@ -47,8 +48,9 @@ export function HomeBodySkeleton() {
         <CardSkeleton span="col-span-12 lg:col-span-5" action>
           <PipelineSnapshotSkeleton />
         </CardSkeleton>
-        <CardSkeleton span="col-span-12 lg:col-span-7">
-          <RowSkeletons count={4} className="-mx-2 px-2" />
+        {/* Recent activity: as many rows as the card holds (Day 7b; it drew 4 of 8, so the page grew on arrival). */}
+        <CardSkeleton span="col-span-12 lg:col-span-7" label="recent">
+          <RowSkeletons count={RECENT_SHOWN} className="-mx-2 px-2" />
         </CardSkeleton>
         <CardSkeleton span="col-span-12 lg:col-span-5" action label="low-stock">
           <LowStockSkeleton />

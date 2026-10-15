@@ -266,7 +266,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
         {query.isPending ? (
           <div className="h-14 rounded-md bg-muted motion-safe:animate-pulse" aria-hidden="true" />
         ) : query.isError ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
             {t("loadError")}
             <Button variant="link" onClick={() => void query.refetch()}>
               {t("retry")}
