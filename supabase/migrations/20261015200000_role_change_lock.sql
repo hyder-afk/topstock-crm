@@ -5,7 +5,8 @@
 -- always in id order (so two calls queue instead of deadlocking), and only then locks the target and counts. A call that
 -- waited checks the caller again: an admin demoted meanwhile is refused, whatever the change. Same signature, same
 -- refusals (constant messages and SQLSTATEs the Team screen already maps), same audit row. The admin rows are a handful.
--- Timestamped after every migration on the other open branches; it only replaces this one function.
+-- Timestamped after Day 5's latest migration (20261015150000) and before Day 6's first (20261016090000), because
+-- deploy-dev-db runs `supabase db push` without --include-all; it only replaces this one function.
 create or replace function public.set_user_role(target_user uuid, new_role public.app_role) returns void
 language plpgsql security definer set search_path = '' as $$
 declare

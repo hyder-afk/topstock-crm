@@ -26,7 +26,7 @@ MIG_3B = ROOT / "supabase/migrations/20261010150000_lead_import.sql"
 MIG_4A = ROOT / "supabase/migrations/20261011120000_activity_hardening.sql"
 MIG_4B = ROOT / "supabase/migrations/20261012090000_lead_page.sql"
 MIG_4C = ROOT / "supabase/migrations/20261013090000_tasks_queue.sql"
-MIG_TEAM = ROOT / "supabase/migrations/20261021090000_role_change_lock.sql"
+MIG_TEAM = ROOT / "supabase/migrations/20261015200000_role_change_lock.sql"
 SURVIVES = "survives"  # a documented layer behind another one (see above)
 
 MUTATIONS_3B = [
