@@ -3,7 +3,7 @@
 # hardening attack test and its two-session test, the lead page attack and concurrency tests, the work queue attack and
 # concurrency tests, the files attack and concurrency tests (with the real storage schema: storage-api runs from Day 4d),
 # the deals attack test and its two- and three-session test (Day 5a), the deal links test (Day 5b), the Home figures
-# test (Day 5c), the role-change concurrency test (Team screen), the Supabase advisors (splinter) and lint the SQL
+# test (Day 5c), the role-change concurrency test (Team screen), the Day 7a attack test, the Supabase advisors (splinter) and lint the SQL
 # functions. On pull requests, first check that every migration the PR adds sorts after main's newest (Day 5 D35:
 # deploy-dev-db pushes without --include-all).
 name: db
@@ -96,6 +96,8 @@ jobs:
         run: bash scripts/ci-report.sh "Day 5c Home figures attack tests (scope, zones, exact figures, no entry text)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/home_attack.sql
       - name: Role changes under concurrency (two sessions, Team screen)
         run: bash scripts/ci-report.sh "Role changes under concurrency (two sessions, Team screen)" bash supabase/tests/team_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Day 7a attack tests (same-organisation owner, sign-in audit rows)
+        run: bash scripts/ci-report.sh "Day 7a attack tests (same-organisation owner, sign-in audit rows)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/day7a_attack.sql
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions
