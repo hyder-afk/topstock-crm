@@ -695,6 +695,9 @@ test("timeline_virtualised_past_120 (150 entries): a feed with positions, the en
   await expect(page.getByRole("menuitem", { name: "Edit text" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menuitem", { name: "Edit text" })).toHaveCount(0);
+  // The menu hands the focus back to its button on a timer after it closes (and that focus scrolls the button into
+  // view): wait for it, so it cannot pull the page back down after the jump to the top below.
+  await expect(oldest.getByRole("button", { name: "Entry options" })).toBeFocused();
   // Back at the top, the newest entry is drawn again.
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect(feed.getByRole("article").filter({ hasText: "Entry 001" })).toHaveAttribute("aria-posinset", "1");

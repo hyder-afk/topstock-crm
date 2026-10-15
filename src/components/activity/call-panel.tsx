@@ -110,11 +110,13 @@ export function CallPanelProvider({ children }: { children: React.ReactNode }) {
   // Only the open call may change the slot: a panel still playing its exit animation must not bring itself back.
   const change = useCallback((c: CallState) => setSlot((s) => (s.call?.startedAt === c.startedAt ? { ...s, call: c } : s)), []);
 
-  // U or Cmd/Ctrl+Z: undo the last entry this tab logged, within 2 minutes, when nobody is typing and no dialog is open.
+  // U or Cmd/Ctrl+Z: undo the last entry this tab logged, within 2 minutes, when nobody is typing, no dialog is open
+  // and the page does not own U (data-owns-undo: the work queue).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isTyping(event.target)) return;
-      if (document.querySelector("[role=dialog]")) return;
+      // A page that owns U (the work queue undoes its own outcomes) handles it; this listener was added first.
+      if (document.querySelector("[role=dialog],[data-owns-undo]")) return;
       const isUndo =
         (event.key.toLowerCase() === "z" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) ||
         (event.key.toLowerCase() === "u" && !event.metaKey && !event.ctrlKey && !event.altKey);

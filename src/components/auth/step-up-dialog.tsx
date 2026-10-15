@@ -16,7 +16,10 @@ type StepUpError = Extract<StepUpResult, { ok: false }>["error"];
 // adjustments, exports and deletes later), a fresh authenticator code is asked for when the last one is older than
 // the window allows. The server says how many seconds the current code stays fresh; the browser only counts time
 // elapsed since then (its own clock may be wrong).
-export function useStepUp(initialSecondsLeft: number, bodyKey: "body" | "bodyDelete" | "bodyRole" = "body") {
+export function useStepUp(
+  initialSecondsLeft: number,
+  bodyKey: "body" | "bodyDelete" | "bodyDeleteTask" | "bodyRole" = "body",
+) {
   const [open, setOpen] = useState(false);
   const freshUntil = useRef(0);
   const waiting = useRef<((ok: boolean) => void) | null>(null);
@@ -92,7 +95,7 @@ function StepUpDialog({
   onRestoreFocus,
 }: {
   open: boolean;
-  bodyKey: "body" | "bodyDelete" | "bodyRole";
+  bodyKey: "body" | "bodyDelete" | "bodyDeleteTask" | "bodyRole";
   onDone: (secondsLeft: number) => void;
   onCancel: () => void;
   onRestoreFocus: () => void;

@@ -1,7 +1,7 @@
 # Database checks on every PR: apply all migrations to the real Supabase Postgres (local, throwaway, no keys),
 # run the two-user RLS attack test, the lead import attack test and its two-session test, the activity and task
-# hardening attack test and its two-session test, the lead page attack and concurrency tests, the role-change
-# concurrency test, the Supabase advisors (splinter) and lint the SQL functions.
+# hardening attack test and its two-session test, the lead page attack and concurrency tests, the work queue attack and
+# concurrency tests, the role-change concurrency test, the Supabase advisors (splinter) and lint the SQL functions.
 name: db
 on:
   pull_request:
@@ -40,6 +40,10 @@ jobs:
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/outcome_attack.sql
       - name: Outcomes under concurrency (two sessions)
         run: bash supabase/tests/outcome_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Work queue and tasks attack test (Day 4c claims, order, calling hours, task buckets)
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/queue_attack.sql
+      - name: Work queue under concurrency (three sessions)
+        run: bash supabase/tests/queue_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Role changes under concurrency (two sessions, Team screen)
         run: bash supabase/tests/team_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Supabase security and performance advisors (fail on ERROR)

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ShortcutsDialog } from "@/components/shell/shortcuts-dialog";
 import { sections } from "@/lib/nav";
-import { goKeys, isTyping } from "@/lib/shortcuts";
+import { goKeys, isTyping, queueGoKey } from "@/lib/shortcuts";
 
 type Shell = { openPalette: () => void; openShortcuts: () => void };
 const ShellContext = createContext<Shell>({ openPalette: () => {}, openShortcuts: () => {} });
@@ -49,6 +49,10 @@ export function KeyboardLayer({ children, isAdmin = false }: { children: React.R
         if (section) {
           event.preventDefault();
           router.push(section.href);
+        } else if (key === queueGoKey) {
+          // G then Q: the work queue (Day 4c; the dock bead stays on Leads).
+          event.preventDefault();
+          router.push("/leads/queue");
         }
         return;
       }

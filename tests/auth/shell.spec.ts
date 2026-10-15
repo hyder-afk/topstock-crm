@@ -130,7 +130,10 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
     await dock(page).getByRole("link", { name: "Analytics", exact: true }).click();
     await expect(page).toHaveURL(/\/analytics$/);
     await expect(page.locator("main h1")).toHaveText("Analytics");
-    // Motion writes the jump on the next frame; give it two, then stop recording.
+    // The jump lands on a frame after the new page shows (Motion writes on its next frame, and a busy runner can take
+    // longer than two): keep recording until the bead is over Analytics, then stop. A spring would leave positions in
+    // between in the recording.
+    await beadSettledOver(page, "Analytics");
     await twoFrames(page);
     const xs = await page.evaluate(() => {
       const store = window as unknown as { beadXs: number[] | null };

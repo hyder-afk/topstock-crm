@@ -203,7 +203,8 @@
     "help": "Aide et compte",
     "shortcuts": "Raccourcis clavier",
     "signOut": "Se déconnecter",
-    "importLeads": "Importer des prospects"
+    "importLeads": "Importer des prospects",
+    "startQueue": "Lancer la file d’appels"
   },
   "Shortcuts": {
     "title": "Raccourcis clavier",
@@ -219,7 +220,22 @@
     "openLead": "Ouvrir en page le prospect affiché dans l’aperçu",
     "outcomeKeys": "Choisir le résultat d’un appel (panneau d’appel)",
     "undoLast": "Annuler le dernier appel ou la dernière entrée (2 minutes)",
-    "saveEntry": "Enregistrer dans l’historique"
+    "saveEntry": "Enregistrer dans l’historique",
+    "goQueue": "Lancer la file d’appels",
+    "queue": "File d’appels",
+    "queueOutcomes": "Noter le résultat",
+    "queueSkip": "Passer ce prospect",
+    "queueNote": "Écrire une note",
+    "queueCall": "Appeler le numéro principal",
+    "queueUndo": "Annuler le dernier résultat",
+    "tasks": "Tâches",
+    "tasksNew": "Nouvelle tâche",
+    "tasksMove": "Tâche suivante ou précédente",
+    "tasksDone": "Terminée ou non",
+    "tasksEdit": "Modifier la tâche",
+    "tasksDismiss": "Écarter la tâche",
+    "tasksDelete": "Supprimer la tâche",
+    "tasksOpen": "Ouvrir le prospect de la tâche"
   },
   "Profile": {
     "title": "Votre nom",
@@ -232,7 +248,14 @@
       "invalid": "Les noms font 80 caractères au maximum.",
       "unavailable": "Enregistrement impossible pour le moment. Réessayez.",
       "load": "Impossible de charger votre nom pour le moment. Rechargez la page pour réessayer."
-    }
+    },
+    "timezoneTitle": "Votre fuseau horaire",
+    "timezone": "Fuseau horaire",
+    "timezoneHelp": "« Aujourd’hui » dans vos tâches et les relances de la file d’appels suivent ce fuseau.",
+    "timezoneDevice": "Utiliser le fuseau de cet appareil ({zone})",
+    "timezoneSave": "Enregistrer le fuseau",
+    "timezoneSaved": "Fuseau horaire enregistré.",
+    "timezoneError": "Ce fuseau n’a pas pu être enregistré. Choisissez-en un dans la liste."
   },
   "Leads": {
     "title": "Prospects",
@@ -402,7 +425,8 @@
       "pick": "Choisir une date",
       "cancel": "Annuler",
       "confirm": "Mettre en pause"
-    }
+    },
+    "workQueue": "File d’appels"
   },
   "StepUp": {
     "title": "Confirmez votre identité",
@@ -418,6 +442,7 @@
       "unavailable": "Impossible de vérifier le code pour l’instant. Réessayez dans un instant."
     },
     "bodyDelete": "Supprimer une entrée est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
+    "bodyDeleteTask": "Supprimer une tâche est définitif. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes.",
     "bodyRole": "Un rôle décide de ce qu’une personne peut voir et modifier. Saisissez le code à 6 chiffres de votre application d’authentification. Vous restez confirmé pendant 10 minutes."
   },
   "Import": {
@@ -785,7 +810,8 @@
       "nextSaved": "Prochain appel enregistré.",
       "nextCleared": "Prochain appel effacé."
     },
-    "noNextStepDnc": "Pas de prochaine étape."
+    "noNextStepDnc": "Pas de prochaine étape.",
+    "workedBy": "{name} travaille ce prospect dans la file d’appels (jusqu’à {time})"
   },
   "QuickActions": {
     "call": "Appeler",
@@ -979,7 +1005,205 @@
       "state": "Cette tâche est déjà terminée ou écartée.",
       "task_kind": "Type de tâche inconnu.",
       "task_due": "Une tâche a une date ou une heure, pas les deux ; un rendez-vous a besoin d’une heure.",
-      "lead_has_files": "Supprimez d’abord les fichiers de ce prospect."
+      "lead_has_files": "Supprimez d’abord les fichiers de ce prospect.",
+      "bad_bucket": "Rechargez la page et réessayez.",
+      "timezone": "Ce fuseau horaire est inconnu. Choisissez-en un dans la liste."
     }
+  },
+  "Queue": {
+    "title": "File d’appels",
+    "intro": "Un prospect à la fois, le plus urgent d’abord : les relances dues, puis Négociation, Chaud, les nouveaux essais et les premiers appels. Seulement aux heures d’appel du prospect (du lundi au vendredi, de 09:00 à 18:00 chez lui).",
+    "back": "Prospects",
+    "scopeLabel": "Quels prospects",
+    "scope": {
+      "mine": "Les miens",
+      "mineUnassigned": "Les miens + sans responsable",
+      "team": "Équipe"
+    },
+    "countsLabel": "En ce moment",
+    "callableNow": "{count, plural, one {<n>#</n> à appeler maintenant} other {<n>#</n> à appeler maintenant}}",
+    "followUpsDue": "{count, plural, one {<n>#</n> relance due} other {<n>#</n> relances dues}}",
+    "laterToday": "{count, plural, one {<n>#</n> autre plus tard aujourd’hui} other {<n>#</n> autres plus tard aujourd’hui}}",
+    "noNumber": "{count, plural, one {<n>#</n> prospect sans numéro} other {<n>#</n> prospects sans numéro}}",
+    "claimedByOthers": "{count, plural, one {<n>#</n> en cours d’appel par un collègue} other {<n>#</n> en cours d’appel par des collègues}}",
+    "summaryError": "Impossible de charger les chiffres.",
+    "skipLunch": "Éviter le déjeuner (12:00–14:00) pour les prospects européens",
+    "showOutside": "Afficher les prospects hors des heures d’appel",
+    "start": "Commencer",
+    "starting": "Démarrage…",
+    "stop": "Terminer pour l’instant",
+    "regionLabel": "Prospect à appeler : {name}",
+    "reason": {
+      "follow_up": "Relance due",
+      "followUpAt": "Relance due à {time}",
+      "negotiation": "Négociation",
+      "warm": "Prospect chaud",
+      "retry": "Nouvel essai",
+      "retryNth": "Nouvel essai · {count, selectordinal, one {#er} other {#e}} appel",
+      "returning": "Retour de pause",
+      "first_call": "Premier appel"
+    },
+    "theirTime": "{time} chez lui",
+    "openUntil": "ouvert jusqu’à {time}",
+    "outsideCard": "Hors des heures d’appel · {time} chez lui",
+    "spanTime": "{from}–{to} chez lui",
+    "noCountry": "Heure locale inconnue",
+    "call": "Appeler",
+    "callNumber": "Appeler le {number}",
+    "wrongMark": "Marqué faux",
+    "noPhoneMain": "Pas de numéro principal",
+    "contacts": "Contacts",
+    "lastNotes": "Dernières notes",
+    "noNotes": "Pas encore de note.",
+    "myTasks": "Mes tâches ouvertes",
+    "owner": "Responsable : {name}",
+    "unassigned": "Sans responsable",
+    "readOnly": "Seul {owner} ou un administrateur peut modifier ce prospect. Votre appel est quand même noté.",
+    "script": {
+      "title": "Script d’appel",
+      "inEnglish": "Afficher en anglais",
+      "inFrench": "Afficher en français",
+      "en": "Hello, this is {me} from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "fr": "Bonjour, ici {me} de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?",
+      "enNoName": "Hello, I’m calling from TopStock Wholesale. We import branded clothing and shoes in bulk lots. Are you the person who buys stock for {lead}? We have new lots this week; may I send you our price list by email or WhatsApp?",
+      "frNoName": "Bonjour, je vous appelle de la part de TopStock Wholesale. Nous importons des lots de vêtements et chaussures de marque. Êtes-vous la personne qui achète le stock pour {lead} ? Nous avons de nouveaux lots cette semaine : puis-je vous envoyer notre liste de prix par e-mail ou WhatsApp ?"
+    },
+    "next": "Ensuite : {name}",
+    "nextPlace": "Ensuite : {name} ({place})",
+    "nextLoading": "Recherche du prospect suivant…",
+    "padTitle": "Comment ça s’est passé ?",
+    "note": "Note",
+    "notePlaceholder": "Une note rapide sur l’appel…",
+    "noteSheet": "Note sur l’appel",
+    "noteDone": "OK",
+    "skip": "Passer",
+    "keysHint": "1–7 et 0 notent le résultat · S passer · N note · C appeler · U annuler",
+    "stats": "Cette session : {calls, plural, one {# appel} other {# appels}} · {talks, plural, one {# échange} other {# échanges}}",
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "confirmKeys": "↩ confirme · Échap annule",
+    "needTime": "Un rendez-vous demande une date et une heure.",
+    "dncChanged": "{name} a été marqué Ne plus contacter entre-temps. Seuls 7 et Passer fonctionnent sur cette fiche.",
+    "lostClaim": "Un collègue s’en occupe déjà. Voici le suivant.",
+    "lostClaimNamed": "{name} s’en occupe déjà. Voici le suivant.",
+    "released": {
+      "title": "Vos prospects sont retournés à l’équipe",
+      "body": "Aucune touche ni aucun clic ici depuis 10 minutes (ou la file a été ouverte dans un autre onglet) : les prospects à l’écran ont été libérés pour vos collègues.",
+      "logCall": "Noter votre appel à {lead}"
+    },
+    "notSaved": "{count, plural, one {# résultat non enregistré} other {# résultats non enregistrés}}",
+    "retry": "Réessayer",
+    "retrying": "Enregistrement…",
+    "live": "{outcome} noté pour {lead}. Ensuite : {next}.",
+    "liveEnd": "{outcome} noté pour {lead}.",
+    "liveSkip": "{lead} passé. Ensuite : {next}.",
+    "empty": {
+      "allDoneTitle": "Tous les prospects dus ont été appelés.",
+      "noNumber": "{count, plural, one {# prospect n’a pas de numéro.} other {# prospects n’ont pas de numéro.}}",
+      "laterToday": "{count, plural, one {# autre revient plus tard aujourd’hui.} other {# autres reviennent plus tard aujourd’hui.}}",
+      "outsideHoursTitle": "Personne à appeler pour l’instant.",
+      "opensNext": "{place} ouvre à {time} heure locale ({relative}).",
+      "opensNextDay": "{place} ouvre {day} à {time} heure locale ({relative}).",
+      "noneMineTitle": "Aucun prospect ne vous est attribué.",
+      "noneMineBody": "Demandez des prospects à un administrateur, ou travaillez ceux sans responsable.",
+      "workUnassigned": "Travailler les prospects sans responsable",
+      "backToStart": "Retour au début"
+    },
+    "error": "Impossible de charger le prospect suivant.",
+    "loading": "Chargement du prospect suivant…"
+  },
+  "Tasks": {
+    "title": "Tâches",
+    "tabsLabel": "Listes de tâches",
+    "tabs": {
+      "today": "Aujourd’hui",
+      "overdue": "En retard",
+      "upcoming": "À venir",
+      "done": "Terminées"
+    },
+    "scopeLabel": "Quelles tâches",
+    "scope": {
+      "mine": "Les miennes",
+      "team": "Équipe"
+    },
+    "quickAdd": {
+      "label": "Nouvelle tâche",
+      "placeholder": "Ajouter une tâche…",
+      "add": "Ajouter",
+      "adding": "Ajout…",
+      "dateLabel": "Quand",
+      "date": "Date",
+      "time": "Heure (facultatif)",
+      "timeRequired": "Heure",
+      "kindLabel": "Type",
+      "needTitle": "Écrivez d’abord la tâche.",
+      "needTime": "Un rendez-vous demande une date et une heure.",
+      "added": "Tâche ajoutée : {title}."
+    },
+    "chips": {
+      "today": "Aujourd’hui",
+      "tomorrow": "Demain",
+      "nextWeek": "La semaine prochaine",
+      "pick": "Choisir une date",
+      "none": "Sans date"
+    },
+    "kinds": {
+      "todo": "À faire",
+      "call": "Appel",
+      "meeting": "Rendez-vous"
+    },
+    "linkLead": "Lier un prospect",
+    "leadSearch": "Chercher un prospect",
+    "leadSearchPlaceholder": "Nom du prospect…",
+    "noLeadMatch": "Aucun prospect ne correspond.",
+    "leadSearchError": "Impossible de chercher les prospects.",
+    "unlinkLead": "Retirer le lien vers {name}",
+    "overdue": "En retard",
+    "noDate": "Sans date",
+    "today": "Aujourd’hui",
+    "tomorrow": "Demain",
+    "yesterday": "Hier",
+    "theirTime": "{time} chez lui",
+    "doneAt": "Terminée {when}",
+    "assignee": "Pour {name}",
+    "markDone": "Marquer « {title} » comme terminée",
+    "markOpen": "Marquer « {title} » comme non terminée",
+    "done": "Terminée : {title}.",
+    "reopened": "Non terminée : {title}.",
+    "dismiss": "Écarter",
+    "dismissed": "Écartée : {title}.",
+    "undo": "Annuler",
+    "undone": "Annulé.",
+    "edit": "Modifier",
+    "editLabel": "Modifier la tâche",
+    "editTitle": "Titre",
+    "editAssignee": "Pour",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "cancel": "Annuler",
+    "saved": "Tâche enregistrée.",
+    "delete": "Supprimer",
+    "deleteConfirm": {
+      "title": "Supprimer cette tâche ?",
+      "body": "« {title} » sera supprimée définitivement. Pour l’écarter plutôt, appuyez sur Annuler et choisissez Écarter.",
+      "confirm": "Supprimer la tâche"
+    },
+    "deleted": "Tâche supprimée.",
+    "menu": "Autres actions pour « {title} »",
+    "openLead": "Ouvrir {lead}",
+    "empty": {
+      "today": "Rien à faire aujourd’hui.",
+      "overdue": "Rien en retard.",
+      "upcoming": "Rien de prévu.",
+      "done": "Rien de terminé pour l’instant."
+    },
+    "error": "Impossible de charger ces tâches.",
+    "retry": "Réessayer",
+    "showMore": "Afficher plus",
+    "loadingMore": "Chargement…",
+    "dncLead": "Ne souhaite plus être contacté",
+    "keysHint": "T nouvelle tâche · J/K se déplacer · X terminer · E modifier · D écarter · ⌫ supprimer · ↩ ouvrir le prospect",
+    "dueCount": "{count, plural, one {# tâche pour aujourd’hui ou en retard} other {# tâches pour aujourd’hui ou en retard}}",
+    "listLabel": "Tâches : {tab}"
   }
 }
