@@ -119,10 +119,10 @@ psql -X -v ON_ERROR_STOP=1 -c "$EMPTY_SQL"
 
 ## 7. Load the production backup's CRM data
 
-This loads **data only** into tables our migrations made, so the role `share_reader` (Day 6, owner of the two client
-stock functions) already exists on dev. A restore that recreates the schema instead (a new project, or
-`pg_restore` without `--data-only`) must create that role first, or it stops with `role "share_reader" does not
-exist`: see `restore-production.md`, Part C.
+This loads **data only** into tables our migrations made, so the roles `share_reader` (Day 6, owner of the two client
+stock functions) and `security_digest_reader` (the security digest's reader) already exist on dev. A restore that
+recreates the schema instead (a new project, or `pg_restore` without `--data-only`) must create those roles first, or
+it stops with `role "share_reader" does not exist`: see `restore-production.md`, Part C.
 
 ```bash
 pg_restore --data-only --schema=public --schema=private --file=prod-data.sql prod.dump

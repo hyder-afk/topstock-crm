@@ -66,23 +66,29 @@ Our backup (`backup-prod.yml`) holds the schemas `public`, `private`, `auth` (ac
   tables" command, its dev project reference and its CRM-only scope (no `auth` schema) make it unsafe against
   production. C2 overwrites production's data; take step 1.3's fresh backup first.
 
-**Role `share_reader` first (Day 6, spike S1).** A restore that recreates the schema (not `--data-only`) writes
-`ALTER FUNCTION ... OWNER TO share_reader` for `share_view` and `share_request`. If that role does not exist in the
-target database, `pg_restore` stops with `role "share_reader" does not exist`. Before such a restore, run once as
-`postgres` on the target:
+**Roles `share_reader` and `security_digest_reader` first (Day 6, spike S1; security digest, 16 Oct 2026).** A
+restore that recreates the schema (not `--data-only`) writes `ALTER FUNCTION ... OWNER TO share_reader` for
+`share_view` and `share_request`, and `GRANT EXECUTE ... TO security_digest_reader` for `private.security_digest`. If
+a role does not exist in the target database, `pg_restore` stops with `role "share_reader" does not exist` (or
+`security_digest_reader`). Before such a restore, run once as `postgres` on the target:
 
 ```sql
 do $$ begin
   if not exists (select from pg_roles where rolname = 'share_reader') then
     create role share_reader nologin noinherit;
   end if;
+  if not exists (select from pg_roles where rolname = 'security_digest_reader') then
+    create role security_digest_reader nologin noinherit;
+  end if;
 end $$;
 grant share_reader to postgres with set true;
+grant security_digest_reader to postgres with set true;
 ```
 
-(The same three lines as the client stock migration, `20261020090000_client_share.sql`. A data-only load into a
-database made by our migrations already has the role.) `share_reader` has no password (nologin), so Supabase's
-"custom role passwords are not in daily backups" note does not apply to it.
+(The same lines as the client stock migration, `20261020090000_client_share.sql`, and the security digest migration,
+`20261023090000_security_digest.sql`. A data-only load into a database made by our migrations already has both
+roles.) Neither role has a password (nologin), so Supabase's "custom role passwords are not in daily backups" note does
+not apply to them. The security digest only reads, so it needs no switching off during a restore.
 
 ## 2. After any restore
 
