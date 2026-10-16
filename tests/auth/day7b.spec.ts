@@ -17,6 +17,7 @@ const email = (who: string) => `day7b-${who}-${run}@example.test`;
 const uuid = /^[0-9a-f-]{36}$/;
 let adminState: Awaited<ReturnType<BrowserContext["storageState"]>>;
 let repState: Awaited<ReturnType<BrowserContext["storageState"]>>;
+let adminSecret = "";
 let lead = "";
 
 type Messages = Record<string, unknown>;
@@ -33,7 +34,7 @@ const m = (locale: "en" | "fr", key: string, value?: string) => {
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   mkdirSync(dir, { recursive: true });
-  const adminSecret = await createUser(email("ines"), password, true);
+  adminSecret = await createUser(email("ines"), password, true);
   const repSecret = await createUser(email("sofia"), password, true);
   const org = sql(`insert into public.orgs (name) values ('Day 7b ${run}') returning id`);
   for (const [who, first, last, role] of [
@@ -214,7 +215,9 @@ test("keyboard only: DatePicker typed and its calendar, TimePicker (Tasks > quic
 
 test("keyboard only: DateTimePicker (lead Details > Next call)", async ({ browser }) => {
   const { context, page, errors } = await openPage(browser, { path: `/leads/${lead}?tab=details` });
-  const day = page.getByLabel(m("en", "LeadPage.details.nextCall"), { exact: true });
+  // The label names the date combobox; the time box is named from the same label plus "Time" (aria-labelledby).
+  const day = page.getByRole("combobox", { name: m("en", "LeadPage.details.nextCall"), exact: true });
+  await expect(page.getByRole("combobox", { name: `${m("en", "LeadPage.details.nextCall")} ${m("en", "Pickers.time")}`, exact: true })).toBeVisible();
   await day.focus();
   await page.keyboard.press("Enter");
   const grid = page.getByRole("grid");
@@ -570,11 +573,11 @@ async function hold(page: Page, match: (url: URL) => boolean, ms = 1500) {
     await route.continue().catch(() => {});
   });
 }
-async function refuse(page: Page, match: (url: URL) => boolean) {
-  await page.route(match, (route) => route.fulfill({ status: 502, contentType: "application/json", body: '{"error":"unavailable"}' }));
+async function refuse(page: Page, match: (url: URL) => boolean, status = 502) {
+  await page.route(match, (route) => route.fulfill({ status, contentType: "application/json", body: '{"error":"unavailable"}' }));
 }
 const pulse = (scope: Locator) => scope.locator(".motion-safe\\:animate-pulse").first();
-const serverErrors = (errors: string[]) => errors.filter((e) => !/502|Bad Gateway/.test(e));
+const serverErrors = (errors: string[]) => errors.filter((e) => !/50[02]|Bad Gateway|Internal Server Error/.test(e));
 
 test("list states: Leads (skeleton rows, error with Try again, no match, the list)", async ({ browser }) => {
   const { context, page, errors } = await openPage(browser, { path: "/leads" });
@@ -721,4 +724,162 @@ test("list states: Inventory tabs (arriving, reserved, movements, sales, request
   await settled(page);
   expect(serverErrors(errors)).toEqual([]);
   await context.close();
+});
+
+// Day 7b advisor round: the three error states a browser can reach after the page has loaded. Each read is refused
+// once it is asked for again (a refetch or a refresh after another action), then let through with the retry.
+
+test("list states: lead tasks (Next step) error after a failed refetch, then Try again", async ({ browser }) => {
+  // A lead of its own with no next call and no task: Next step offers the date chips.
+  const quiet = sql(`insert into public.companies (org_id, name, owner_id, lead_status, city, country)
+                     select org_id, 'Atelier Prochain ${run}', id, 'warm', 'Lyon', 'FR'
+                     from public.profiles where id = (select id from auth.users where email = '${email("ines")}') returning id`);
+  expect(quiet).toMatch(uuid);
+  const { context, page, errors } = await openPage(browser, { path: `/leads/${quiet}` });
+  const card = page.getByRole("region", { name: m("en", "LeadPage.nextStep") });
+  await expect(card.getByText(m("en", "LeadPage.noNextStep"))).toBeVisible();
+  // The tasks route answers 500 from now on. A chip adds a call task, and the card reads the lead's tasks again
+  // (refreshLead invalidates ["lead-tasks", id]): that read is refused (and its one retry), so the card says so.
+  const tasksApi = (url: URL) => url.pathname === `/api/leads/${quiet}/tasks`;
+  await refuse(page, tasksApi, 500);
+  await card.getByRole("button", { name: m("en", "Composer.chips.tomorrow"), exact: true }).click();
+  const alert = card.getByRole("alert").filter({ hasText: m("en", "LeadPage.tasks.error") });
+  await expect(alert).toBeVisible({ timeout: 15_000 });
+  // Let through: Try again shows the task the chip added.
+  await page.unrouteAll({ behavior: "wait" });
+  await alert.getByRole("button", { name: m("en", "LeadPage.tasks.retry") }).click();
+  await expect(alert).toBeHidden();
+  const title = m("en", "Outcomes.taskTitle.followUp", `Atelier Prochain ${run}`);
+  await expect(card.getByRole("checkbox", { name: m("en", "LeadPage.tasks.markDone", title) })).toBeVisible();
+  await settled(page);
+  expect(serverErrors(errors)).toEqual([]);
+  await context.close();
+});
+
+// A server action is a POST to the page's own URL with a Next-Action header (as tasks.spec and files.spec cut them).
+async function cutActions(page: Page, pathname: string) {
+  await page.route(
+    (url) => url.pathname === pathname,
+    async (route) => {
+      const request = route.request();
+      if (request.method() === "POST" && request.headers()["next-action"]) return route.abort();
+      return route.fallback();
+    },
+  );
+}
+
+test("list states: past lead imports and past stock imports, error after a failed refresh, then Try again", async ({ browser }) => {
+  // A fresh code: Discard asks for one when the last is older than its window, and this run has taken minutes.
+  const state = await fullSession(browser, email("ines"), password, adminSecret);
+  for (const { kind, path: where, keys } of [
+    { kind: "leads", path: "/leads/import", keys: "Import.history" },
+    { kind: "stock", path: "/inventory/import", keys: "StockImport.history" },
+  ] as const) {
+    // An unfinished upload in Past imports (its Discard is the action that refreshes the list afterwards).
+    const filename = `day7b-${kind}-${run}.csv`;
+    const batch = sql(`insert into public.import_batches (org_id, kind, filename, uploaded_by, row_count, last_row_no, status)
+                       select org_id, '${kind}', '${filename}', id, 1, 2, 'staged'
+                       from public.profiles where id = (select id from auth.users where email = '${email("ines")}') returning id`);
+    expect(batch, kind).toMatch(uuid);
+    try {
+      const { context, page, errors } = await openPage(browser, { path: where, state });
+      const history = page.locator(`[aria-labelledby="${kind === "leads" ? "import-history-heading" : "stock-history-heading"}"]`);
+      await expect(history.getByRole("heading", { name: m("en", `${keys}.title`) }), kind).toBeVisible();
+      const row = history.locator("li").filter({ hasText: filename });
+      await expect(row, kind).toBeVisible();
+      // Every server action on this page fails from now on (the connection drops): Discard fails, and so does the
+      // refresh of Past imports after it (listImports / listStockImports), which shows the error with its retry.
+      await cutActions(page, where);
+      await row.getByRole("button", { name: m("en", `${keys}.discard`) }).click();
+      const confirm = page.getByRole("dialog", { name: m("en", "Import.discardConfirm.title") });
+      await confirm.getByRole("button", { name: m("en", "Import.discardConfirm.confirm") }).click();
+      const alert = history.getByRole("alert").filter({ hasText: m("en", `${keys}.error`) });
+      await expect(alert, kind).toBeVisible({ timeout: 20_000 });
+      // Back online: Try again reads the list, the error goes and the upload is still there (nothing was discarded).
+      await page.unrouteAll({ behavior: "wait" });
+      await alert.getByRole("button", { name: m("en", `${keys}.retry`) }).click();
+      await expect(alert, kind).toBeHidden();
+      await expect(row, kind).toBeVisible();
+      await settled(page);
+      // The cut actions log "Failed to fetch" in the console: expected here, nothing else is.
+      expect(errors.filter((e) => !/Failed to fetch|ERR_FAILED|net::/.test(e)), kind).toEqual([]);
+      await context.close();
+    } finally {
+      sql(`delete from public.import_batches where id = '${batch}'`);
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// One screenshot per list state this step changed (local evidence run only, DAY7B_SCREENS=1; nothing in CI): Recent
+// activity's 8-row skeleton, More's skeleton for an admin and for a rep, and the share links' error (now an alert).
+// The visible screen, EN, light and dark, at 390 and 1440: screens/state-<name>-en-<scheme>-<width>.png.
+
+// `reach` answers what to scroll to the middle, or null for a skeleton (at the top already, and gone a few seconds later).
+type StateShot = { name: string; state?: () => typeof adminState; start: () => string; reach: (page: Page) => Promise<Locator | null> };
+const stateShots: StateShot[] = [
+  {
+    name: "recent-skeleton",
+    start: () => "/leads",
+    reach: async (page) => {
+      await holdRoute(page, "/");
+      await page.getByRole("navigation", { name: m("en", "Nav.label") }).getByRole("link").first().click();
+      const recent = page.locator('[data-skeleton="recent"]');
+      await expect(recent.locator(".h-14")).toHaveCount(8);
+      // Below the fold at 1440: brought to the middle while it is there (it goes when the page arrives).
+      await recent.evaluate((el) => el.scrollIntoView({ block: "center" }), undefined, { timeout: 2_000 });
+      return null;
+    },
+  },
+  ...(["admin", "rep"] as const).map((who) => ({
+    name: `more-skeleton-${who}`,
+    state: () => (who === "admin" ? adminState : repState),
+    start: () => "/leads",
+    reach: async (page: Page) => {
+      await holdRoute(page, "/more");
+      await page.waitForTimeout(1000);
+      await page.locator('a[href="/more"]').first().click();
+      const skeleton = page.locator('main [aria-busy="true"]');
+      await expect(skeleton).toBeVisible();
+      // The rep's copy is in the page but hidden by CSS (data-role), so visibility is checked, not the count.
+      const admin = page.locator('[data-skeleton="more-admin"]');
+      if (who === "admin") await expect(admin).toBeVisible();
+      else await expect(admin).toBeHidden();
+      return null;
+    },
+  })),
+  {
+    name: "share-links-error",
+    start: () => `/leads/${lead}`,
+    reach: async (page) => {
+      await refuse(page, (url) => url.pathname === "/api/inventory/share-links");
+      await page.goto(`/leads/${lead}?tab=stock`);
+      await appReady(page);
+      const alert = page.getByRole("alert").filter({ hasText: m("en", "ShareLinks.loadError") });
+      await expect(alert).toBeVisible({ timeout: 15_000 });
+      return alert;
+    },
+  },
+];
+
+test.describe("state screens", () => {
+  test.skip(!process.env.DAY7B_SCREENS, "local evidence run: set DAY7B_SCREENS=1");
+  for (const shot of stateShots) {
+    test(`state screen: ${shot.name}, light/dark, 390 and 1440`, async ({ browser }) => {
+      for (const scheme of ["light", "dark"] as const) {
+        for (const width of [390, 1440]) {
+          const { context, page, errors } = await openPage(browser, { path: shot.start(), scheme, width, state: shot.state?.() });
+          const target = await shot.reach(page);
+          if (target) await target.evaluate((el) => el.scrollIntoView({ block: "center" }), undefined, { timeout: 10_000 });
+          await page.mouse.move(0, 0);
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), `${shot.name} ${width}`).toBeLessThanOrEqual(0);
+          await page.screenshot({ path: `${dir}/state-${shot.name}-en-${scheme}-${width}.png` });
+          await page.unrouteAll({ behavior: "ignoreErrors" });
+          await settled(page);
+          expect(serverErrors(errors), `${shot.name} ${scheme} ${width}`).toEqual([]);
+          await context.close();
+        }
+      }
+    });
+  }
 });

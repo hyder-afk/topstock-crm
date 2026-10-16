@@ -785,8 +785,9 @@ test("details_next_call_follows_an_outcome: Change shows the new date and Save s
   const { context, page, errors } = await open(browser, adminState);
   // The Details tab is drawn first, then kept (hidden) while the call is logged from Summary.
   await gotoLead(page, lead, "details");
-  // Day 7b: the app's DateTimePicker; the label names its date button, the value travels in its hidden input.
-  const input = page.getByLabel("Next call", { exact: true });
+  // Day 7b: the app's DateTimePicker; the label names its date combobox (and, with "Time", its time box), the value
+  // travels in its hidden input.
+  const input = page.getByRole("combobox", { name: "Next call", exact: true });
   const nextValue = page.locator('input[type="hidden"][name="next_action_at"]');
   await expect(nextValue).toHaveValue(before);
   await page.getByRole("tab", { name: "Summary" }).click();
