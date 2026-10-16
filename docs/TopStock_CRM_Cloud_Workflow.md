@@ -95,8 +95,14 @@ A Supabase personal access token can reach **every project in every organisation
 
 ## 6. Vercel
 
-- Import `hyder-afk/topstock-crm` in Vercel. Hobby while building, **Pro before go-live** (Hobby is non-commercial). Function region `cdg1` (Paris) or `fra1` (Frankfurt), matching Supabase. *(Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.)*
-- **Deployment Protection: Standard Protection + Vercel Authentication.** Original plan was All Deployments during the build, but Vercel Hobby offers only Standard. **Haider approved Standard on 9 Oct 2026:** previews stay behind Vercel login; the production URL is public and shows only the app's login page, in front of fake dev data. Revisit at the Pro upgrade. Before any app screen ships to production, open sign-ups on the dev project are disabled. *(Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.)*
+- Import `hyder-afk/topstock-crm` in Vercel. Hobby while building, **Pro before go-live** (Hobby is non-commercial).
+  Function region `cdg1` (Paris) or `fra1` (Frankfurt), matching Supabase. *(Superseded 16 Oct 2026 by Haider: no Vercel
+  Pro for now; see docs/log.md and go-live decision 4.)*
+- **Deployment Protection: Standard Protection + Vercel Authentication.** Original plan was All Deployments during the
+  build, but Vercel Hobby offers only Standard. **Haider approved Standard on 9 Oct 2026:** previews stay behind Vercel
+  login; the production URL is public and shows only the app's login page, in front of fake dev data. Revisit at the Pro
+  upgrade. Before any app screen ships to production, open sign-ups on the dev project are disabled. *(16 Oct 2026: no
+  Pro upgrade for now, so Standard Protection stays; go-live part B1.)*
 - Every PR gets a preview URL. That is how Haider sees screens on his phone and Mac.
 
 ## 7. Real data without a Mac (replaces the local import script)

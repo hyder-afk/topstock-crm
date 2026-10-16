@@ -38,8 +38,10 @@ working.
 Meanwhile Claude does the `jwt_expiry` PR (if you say yes to decision 9), the security digest template (I3.3) and the
 hosting options (decision 4).
 
-**From 31 Oct**, after you check github.com > your avatar > **Settings** > **Billing and plans** that the Actions
-minutes are back:
+**From 31 Oct**, after you check github.com > your avatar > **Settings** > **Billing** (the page may be called
+"Billing and plans" or "Billing and licensing") that the Actions minutes are back:
+- first ask Claude **"Go-live part A again: confirm the SHA"**, and use that new SHA in E and I2 (main will have
+  moved on since today);
 - part E, then part F straight after. **Never F before E**: F1 would point the live address at an empty database;
 - G2 step 2 and G3, then H, then I, then I2 (its dry-run week starts then).
 
@@ -86,16 +88,16 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2).
    accounts start as reps. You change their role yourself in the app: **More > Team** (admins only; it asks for a
    code from your authenticator app when the last one is older than 10 minutes). Claude confirms in part A that this
    screen is merged and live. Never change roles with SQL in the production dashboard.
-4. **Hosting: Vercel Hobby for now, no Vercel Pro** (decided by you on 16 Oct 2026: "i dont want to get vercel pro
-   extra cost no"). Said plainly: Vercel's fair-use guidelines limit the Hobby plan to non-commercial, personal use
+4. **Hosting: Vercel Hobby for now, no Vercel Pro** (decided by you on 16 Oct 2026: "i dont want to get vercel pro extra
+   cost no"). Said plainly: Vercel's fair-use guidelines limit the Hobby plan to non-commercial, personal use
    (https://vercel.com/docs/limits/fair-use-guidelines, "Commercial usage"). They count as commercial any deployment
    used for the financial gain of anyone involved in it. A company's own sales CRM falls under that rule, so **the
-   hosting question stays open**. Vercel can enforce that rule, for example by asking for an upgrade or by pausing
-   the project (Master Plan section 3 already says Hobby "risks suspension"). The harm today is low: nothing real is
-   on it, and a pause would only take the login page offline; no data would be lost, because the data lives in
-   Supabase, not in Vercel. Parts A to I3 hold no real data and only your own account, so they go ahead.
-   **Claude comes back with hosting options, free ones first, with what each costs and changes, before part J (real
-   data) and part K (invites)**, and you decide then. Meanwhile: **Deployment Protection stays on Standard Protection** and one free Firewall rule is added
+   hosting question stays open**. Vercel can enforce that rule, for example by asking for an upgrade or by pausing the
+   project (Master Plan section 3 already says Hobby "risks suspension"). The harm today is low: nothing real is on it,
+   and a pause would only take the login page offline; no data would be lost, because the data lives in Supabase, not in
+   Vercel. Parts A to I3 hold no real data and only your own account, so they go ahead. **Claude comes back with hosting
+   options, free ones first, with what each costs and changes, before part J (real data) and part K (invites)**, and you
+   decide then. Meanwhile: **Deployment Protection stays on Standard Protection** and one free Firewall rule is added
    (part B).
 5. **Leaked password protection** (Supabase rejects passwords known from breaches) exists only on Supabase's paid
    plan. **Stay on Free for now** (decided 15 Oct 2026; the setting stays off; passwords are 12+ characters with mixed
@@ -109,15 +111,15 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2).
    in account B.
 8. **Keep-alive once a day** (not every 3 days): Supabase says a few database requests each day keeps a Free
    project awake. It is free.
-9. **How long a sign-in token lasts in production (`jwt_expiry`)**, left open on 15 Oct 2026 for go-live (log: "jwt_expiry
-   60 to 15 min is decided at go-live"). Today it is 3600 seconds (1 hour) on dev and in `supabase/config.toml`. After
-   "Sign out of all devices", another device stays signed in until its token runs out (Day 7a residual R2). **Recommended:
-   900 seconds (15 minutes)**: it shrinks that window from 1 hour to 15 minutes; Supabase's guide says the 1-hour default
-   suits most apps and values under 5 minutes should not be used, and with three people the extra token refreshes are
-   far below the limit (150 per 5 minutes). If you say yes, Claude changes `jwt_expiry` to 900 in `supabase/config.toml`
-   in a small PR of its own (so dev and the tests use the same value as production) and you type 900 in part D6. If you
-   say no, part D6 stays at 3600 and R2 stays as recorded (up to 1 hour). Either way it can be changed later on the same
-   screen.
+9. **How long a sign-in token lasts in production (`jwt_expiry`)**, left open on 15 Oct 2026 for go-live (log:
+   "jwt_expiry 60 to 15 min is decided at go-live"). Today it is 3600 seconds (1 hour) on dev and in
+   `supabase/config.toml`. After "Sign out of all devices", another device stays signed in until its token runs out (Day
+   7a residual R2). **Recommended: 900 seconds (15 minutes)**: it shrinks that window from 1 hour to 15 minutes;
+   Supabase's guide says the 1-hour default suits most apps and values under 5 minutes should not be used, and with
+   three people the extra token refreshes are far below the limit (150 per 5 minutes). If you say yes, Claude changes
+   `jwt_expiry` to 900 in `supabase/config.toml` in a small PR of its own (so dev and the tests use the same value as
+   production) and you type 900 in part D6. If you say no, part D6 stays at 3600 and R2 stays as recorded (up to 1
+   hour). Either way it can be changed later on the same screen.
 
 ---
 
@@ -133,7 +135,8 @@ Why: production must get only reviewed code that passed the security gate.
      `/security-review` with no HIGH or MEDIUM finding, Supabase Security Advisor on dev with no ERROR;
    - the `advisor` subagent's verdict on this go-live kit: **APPROVED** (quoted);
    - CI green on `main`, and the **go-live commit SHA** (40 characters) you will deploy in part E: main **c8ac42a or
-     later** (the newest commit on main when you start), with every migration on main up to
+     later**, and Claude confirms it is **the newest commit on main** at that moment (F2 redeploys production from
+     main, so the database in E must match it), with every migration on main up to
      `20261022130000_share_take_paris_day`, and `deploy-dev-db` green on it (dev has the same migrations). The same
      SHA serves as `SWEEPER_SHA` in part I2;
    - that topstock-crm's Actions logs, which anyone can read since the repository went public (16 Oct 2026), touch
@@ -142,7 +145,9 @@ Why: production must get only reviewed code that passed the security gate.
      live in that commit (for part K, later).
 
 **What you should see:** one REPORT with "APPROVED" in the advisor line and one commit SHA.
-**Done when:** Claude says "Part A: passed" and you have written the SHA down (it is not secret).
+**Done when:** Claude says "Part A: passed" and you have written the SHA down (it is not secret). The SHA is
+**re-confirmed at the start of the 31 Oct session** ("Go-live part A again: confirm the SHA"); E and I2 use that
+newer one.
 
 ---
 
@@ -400,7 +405,8 @@ before the migration run:
 Then:
 
 1. topstock-ops > **Actions** > **migrate-prod** (left list) > **Run workflow** (right side).
-2. Branch: `main`. **commit_sha**: paste the SHA from part A. **confirm**: type `MIGRATE`. Click **Run workflow**.
+2. Branch: `main`. **commit_sha**: paste the SHA Claude confirmed at the start of this session. **confirm**: type
+   `MIGRATE`. Click **Run workflow**.
 3. Click the run that appears and wait (about 3 to 5 minutes).
 
 **What you should see:** a green tick. The run summary lists the commit, the migration files (21 at c8ac42a, from
@@ -614,10 +620,11 @@ runs from topstock-ops with its own key; dry-run week first"). The database side
 `20261022090000_orphan_sweeper` (in part E's run). From 31 Oct, after part I (GitHub Actions minutes, see the top):
 its dry-run week starts then.
 
-Follow **docs/ops-templates/sweep-lead-files.md**, "Day 8 set-up", steps 1 to 5 now: create the secret key named
-`sweeper` in account B, store it as `PROD_SWEEPER_KEY` in topstock-ops, add the variables `SWEEPER_SHA` (the SHA from
-part A) and `SWEEP_APPLY` = `no`, paste `docs/ops-templates/sweep-lead-files.yml`, run it once by hand. Step 6 is the
-dry-run week (it runs by itself); step 7 switches deleting on afterwards, when Claude and you agree.
+Follow **docs/ops-templates/sweep-lead-files.md**, "Day 8 set-up", steps 1 to 5 then: create the secret key named
+`sweeper` in account B, store it as `PROD_SWEEPER_KEY` in topstock-ops, add the variables `SWEEPER_SHA` (the SHA Claude
+confirmed at the start of this session) and `SWEEP_APPLY` = `no`, paste `docs/ops-templates/sweep-lead-files.yml`, run
+it once by hand. Step 6 is the dry-run week (it runs by itself); step 7 switches deleting on afterwards, when Claude and
+you agree.
 
 **Done when:** the manual dry run is green. Tell Claude "Part I2 done, found N" (the number only; on a new project it
 is 0).
