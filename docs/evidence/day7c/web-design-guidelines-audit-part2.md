@@ -88,3 +88,17 @@ the strip's ends (where no fade shows)
 - Locale: dates and numbers through Intl (`useFormatter`, `formatMoney`); no hardcoded format in the changed files ✓
 - No `transition: all`, no `outline-none` without replacement, no `user-scalable=no`, no new `autoFocus` ✓
 - Hardcoded strings: none outside the ten named exceptions (now a test, `hardcoded-strings.spec.ts`) ✓
+
+## Advisor round 1 additions (16 Oct 2026)
+
+src/app/globals.css (`html:has([data-call-panel])`) - FIXED (Focus States: "overlays must not cover the focused
+element"): the phone call panel hid controls reached with Tab; scroll-padding-bottom and main's padding follow its
+height (ResizeObserver in call-panel.tsx); CI test `phone_call_panel_tab`
+src/app/globals.css (`@utility edge-fade`) - FIXED (same rule): `scroll-padding-inline: 24px`, so a focused or snapped
+chip stops clear of the fade; revealTab reads the real snap stops
+messages/fr.json, messages/en.json - FIXED (Forms: placeholders show an example pattern, whole): inventory and leads
+search placeholders were cut at 390 / 768; now measured in CI
+src/components/inventory/bits.tsx:170 - FIXED (Content Handling): figure labels truncated; they wrap
+src/components/share-links/sharing-settings.tsx - FIXED: client links' lead link 20 px with its tap area clipped by
+`truncate`; 44 px on phones
+src/components/inventory/stock-toolbar.tsx - FIXED: search below 1024 px takes its own row

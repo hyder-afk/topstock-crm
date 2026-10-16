@@ -26,3 +26,12 @@ route shots and 18 sheet shots) and the CI checks in `tests/auth/phone.spec.ts`.
   controls and headings, the screenshots cover the rest.
 
 Verdict: **pass after the fixes above.**
+
+## Advisor round 1 additions (16 Oct 2026)
+
+| Principle | What changed | Verdict |
+|---|---|---|
+| Spatial consistency: a floating layer never hides what you are working on | The phone call panel (non-modal, it outlives page changes) now publishes its height; the page scrolls a Tab-focused control above it and can scroll its last controls there | **Fixed**, CI `phone_call_panel_tab` (fails with the padding removed) |
+| Continuity at strip edges | A focused or snapped chip or tab stops 24 px in, clear of the fade (`scroll-padding-inline` in `edge-fade`) | **Fixed** |
+| Legibility with longer French | Search placeholders shortened (cut at 390 and 768), product figure labels wrap; checked now at 390, 768 and 1280 in French on every route, sign-in pages and the client page included | **Fixed** |
+| Finger-sized targets | Client links' lead link (inventory settings) 20 px → 44 px on phones; every route of the app now in the check | **Fixed** |
