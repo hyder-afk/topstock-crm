@@ -168,7 +168,9 @@ site_url = "https://topstock-crm.vercel.app"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["http://localhost:3100/**", "https://topstock-crm-*-topstock-crm.vercel.app/**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
+# 900 (15 minutes): Haider's decision 9 of 16 Oct 2026 (docs/go-live.md), set the same in production by him that day.
+# It caps how long another device keeps access after "Sign out of all devices" (docs/evidence/day7a/README.md, R2).
+jwt_expiry = 900
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.

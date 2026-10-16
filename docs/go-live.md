@@ -17,7 +17,7 @@ rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-a
 | 4 | **Later:** the real data import, "when everything is ready" | J (deferred) |
 | 5 | **Later:** inviting Henri and Kais, "when everything is ready" | K (deferred) |
 
-**So, in two sessions:** **now** decisions 1 and 9, parts A, B, C, D (and optionally G1 with G2 step 1), I3.1 and
+**So, in two sessions:** **now** decision 1 (decision 9 is decided: 900 seconds, already set by you on 16 Oct), parts A, B, C, D (and optionally G1 with G2 step 1), I3.1 and
 I3.2; **from 31 Oct** parts E, F, the rest of G, then H, I, I2 and I3.3 (next section explains why). **Not now:**
 parts J and K. Before either of them: Claude comes back with hosting options, free ones first, with what each costs
 and changes (decision 4); the daily security digest is running (part I3.3); and, for part K, the email sender question
@@ -31,13 +31,13 @@ sweep-lead-files) can run before then. topstock-crm is public, so its own CI use
 working.
 
 **Now (no topstock-ops workflow runs):**
-- decisions 1 and 9, then parts A and B;
+- decision 1 (decision 9 is decided), then parts A and B;
 - C1 to C6. Pasting migrate-prod in C6 is fine, because it only runs when you start it by hand: **do not start it**;
 - all of part D;
 - optionally G1 and G2 step 1 (the key pair and the `AGE_PUBLIC_KEY` secret);
 - I3.1 and I3.2.
 
-Meanwhile Claude does the `jwt_expiry` PR (if you say yes to decision 9) and the hosting options (decision 4). The
+Meanwhile Claude does the `jwt_expiry` PR (decision 9: 900 seconds) and the hosting options (decision 4). The
 security digest template (I3.3) is written (16 Oct 2026) and comes to you as its own PR; once merged, its migration is
 part of the SHA Claude confirms on 31 Oct.
 
@@ -115,15 +115,16 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2, I3.3).
    in account B.
 8. **Keep-alive once a day** (not every 3 days): Supabase says a few database requests each day keeps a Free
    project awake. It is free.
-9. **How long a sign-in token lasts in production (`jwt_expiry`)**, left open on 15 Oct 2026 for go-live (log:
-   "jwt_expiry 60 to 15 min is decided at go-live"). Today it is 3600 seconds (1 hour) on dev and in
-   `supabase/config.toml`. After "Sign out of all devices", another device stays signed in until its token runs out (Day
-   7a residual R2). **Recommended: 900 seconds (15 minutes)**: it shrinks that window from 1 hour to 15 minutes;
-   Supabase's guide says the 1-hour default suits most apps and values under 5 minutes should not be used, and with
-   three people the extra token refreshes are far below the limit (150 per 5 minutes). If you say yes, Claude changes
-   `jwt_expiry` to 900 in `supabase/config.toml` in a small PR of its own (so dev and the tests use the same value as
-   production) and you type 900 in part D6. If you say no, part D6 stays at 3600 and R2 stays as recorded (up to 1
-   hour). Either way it can be changed later on the same screen.
+9. **How long a sign-in token lasts in production (`jwt_expiry`)**: **decided by you on 16 Oct 2026: "15 minutes",
+   900 seconds.** You already set Access token (JWT) expiry to 900 in the production dashboard that day, so part D6
+   is only a check. Claude's small PR sets `jwt_expiry = 900` in `supabase/config.toml` (dev gets it on the next
+   deploy-dev-db run; CI's local stack and the tests use it too) and the "Sign out of all devices" sheet now says
+   "within 15 minutes". Why: after "Sign out of all devices", another device stays signed in until its token runs
+   out (Day 7a residual R2); 900 shrinks that window from 1 hour to 15 minutes. Supabase's guide says the 1-hour
+   default suits most apps and values under 5 minutes should not be used; with three people the extra token
+   refreshes are far below the limit (150 per 5 minutes). It was left open on 15 Oct 2026 for go-live (log:
+   "jwt_expiry 60 to 15 min is decided at go-live"); until then it was 3600 seconds (1 hour). It can be changed later
+   on the same screen, together with `supabase/config.toml`.
 
 ---
 
@@ -353,9 +354,12 @@ you choose decision 2 (a), Claude gives separate steps for the SMTP sender, the 
 ### D6. Authentication > Sessions (tokens)
 Supabase's guide puts the access token expiry on the Auth **Sessions** page, and refresh token reuse under that
 page's advanced settings. If a name differs, look for "JWT expiry" or "access token expiry".
+**Access token (JWT) expiry: you already set it to 900 on 16 Oct 2026 (decision 9).** On 31 Oct you only check that
+it still says **900**; change nothing. If it shows another number, set 900 again and tell Claude.
+
 | Setting | Value | config.toml |
 |---|---|---|
-| Access token (JWT) expiry | **3600** seconds, or **900** if you said yes to decision 9 | `jwt_expiry = 3600` (900 after Claude's PR) |
+| Access token (JWT) expiry | **900** seconds (decision 9; set by you on 16 Oct 2026, only checked on 31 Oct) | `jwt_expiry = 900` |
 | Detect and revoke compromised refresh tokens (refresh token rotation) | **ON** | `enable_refresh_token_rotation = true` |
 | Refresh token reuse interval | **10** seconds | `refresh_token_reuse_interval = 10` |
 
@@ -780,8 +784,7 @@ If it says "You are the last admin", you tried to change your own role: leave yo
 - After the first session, Claude logs which parts are done; after the 31 Oct session (parts E to I3.3), Claude logs
   "go-live parts A to I3 done" in docs/log.md and lists what stays open: hosting (decision 4, Claude's hosting
   options, free ones first, before parts J and K), the security digest (I3.3) if it is not green yet, parts J and K (deferred), the
-  email sender (decision 2), backup storage (decision 6), later restore tests (decision 7), `jwt_expiry` if still
-  open (decision 9), the sweeper's switch-on after its dry-run week (I2 step 7), the Firewall rule's switch from Log
+  email sender (decision 2), backup storage (decision 6), later restore tests (decision 7), the sweeper's switch-on after its dry-run week (I2 step 7), the Firewall rule's switch from Log
   to 429 (B3), and switching the client stock link on in production (off until you decide, after Gate 1).
 
 ---

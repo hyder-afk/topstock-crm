@@ -36,7 +36,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | 9 | Guard in proxy and each page; framework updated | proxy wall plus per-page checks (route inventory); `npm audit --omit=dev` 0 vulnerabilities on Next 16.4.0 and supabase-js 2.117.3 | done |
 | 15 | No client-only rules | `gate1.spec.ts` step 2 and 4 call the API directly with a rep's token | done |
 | 24 | Safe password reset | `journey.spec.ts` (unknown address, same answer); `signed-out.spec.ts` (expired or used link shows the plain message) | done; custom SMTP after go-live (log line 68) |
-| 25 | Sessions | `day7a.spec.ts` Sign out of all devices (two browsers); 1 h tokens, refresh rotation | done; residual R2 (other devices up to 1 h), `jwt_expiry` decided Day 8 (log line 366) |
+| 25 | Sessions | `day7a.spec.ts` Sign out of all devices (two browsers); 15 min tokens (`jwt_expiry` 900), refresh rotation | done; residual R2 (other devices up to 15 min since 16 Oct 2026; 1 h before), `jwt_expiry` 900 s: Haider's decision 9 of 16 Oct 2026, set in production by him that day (log) |
 | 26 | No custom JWTs | no JWT signing in `src`; the local stack makes a random secret per run | done |
 | 27 | No permissive CORS | no CORS headers anywhere; `assertSameOrigin` on POST routes; `day4-security.spec.ts` `cross_origin_release_403`; `gate1.spec.ts` step 5 | done |
 | 33 | IDOR | `gate1.spec.ts` step 2 (lead, contact, deal, task, entry ids of Rep B); `files.spec.ts` `rep_cannot_open_others_file`; product, hold and share-link ids in `stock_attack.sql`, `sales_attack.sql`, `share_attack.sql` | done |

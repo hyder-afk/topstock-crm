@@ -80,8 +80,8 @@ No product code changed: the review found nothing to fix in `src/` or the migrat
 | 4 | No recovery codes for a lost authenticator | unchanged | an admin removes the factor in the dashboard, the person sets up again | none planned for Release 1 |
 | 5 | Supabase's default e-mail reaches only the Supabase team | unchanged: reset is off on dev until custom SMTP (log line 68) | Haider's "next week" item | custom SMTP, then restore the templates and remove `scripts/strip-email-templates.py` |
 
-Day 7a residuals R1 (in-app rate limit, accepted log line 366), R2 (other devices up to 1 hour after Sign out of all
-devices; `jwt_expiry` decided on Day 8) and R3 (up to 30 own sign-in rows an hour) stand as recorded.
+Day 7a residuals R1 (in-app rate limit, accepted log line 366), R2 (other devices up to 15 minutes after Sign out of all
+devices since 16 Oct 2026: Haider chose `jwt_expiry` 900 s, decision 9; up to 1 hour before) and R3 (up to 30 own sign-in rows an hour) stand as recorded.
 
 ## Leaked-password protection WARN: accepted
 
@@ -106,7 +106,7 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
    settings it pushed.
 5. **Day 8 (ops part, Haider)**: preview opened signed out of Vercel; member lists (item 35); production auth settings,
    Storage S3 keys, Vercel settings; backup, restore test, keep-alive (items 43, 44); Vercel Pro and the Firewall rule
-   (spike S5); the `x-forwarded-host` check on the preview; `jwt_expiry` (R2); Dependabot alerts on.
+   (spike S5); the `x-forwarded-host` check on the preview; `jwt_expiry` (R2; decided 16 Oct 2026: 900 s, set in production by Haider the same day); Dependabot alerts on.
 6. **`/security-review`**: done by the main session on 942ab62, 0 HIGH or MEDIUM; condition (d) met ([`security-review-command.md`](security-review-command.md)). **Advisor**: round 1 CHANGES NEEDED on
    f4e5cff, fixed (section "Advisor round 1"); the next round is the main session's (it runs the subagent before the
    REPORT).
