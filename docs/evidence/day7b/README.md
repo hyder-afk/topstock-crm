@@ -22,24 +22,26 @@ off date error), an unused import, and the stock search moved onto `SearchInput`
 2. **CI source check** `scripts/check-native-controls.mjs` (`npm run check:native`, in the `quality` job after
    typecheck, and in `npm run verify`), unit-tested by `tests/unit/native-controls.spec.ts` (each rule shown failing on
    a planted break and quiet on its look-alikes, then a scan of `src/` that must be empty). It reads the code with the
-   TypeScript parser, so a component prop called `title` (Card, ListState) or a local function called `confirm` is not
-   a finding. Rules, outside `src/components/ui`:
+   TypeScript parser, so a listed component's `title` prop (Card, ListState) or a `confirm` declared in an enclosing scope
+   is not a finding. Rules, outside `src/components/ui`:
 
    | Rule | Fails on |
    |---|---|
    | `native-select` | a raw `<select>` |
    | `native-input` | `type` = date, time, datetime-local, month, week, color or search, on any element, in any spelling (`"x"`, `{"x"}`, a ternary, a template) |
    | `native-datalist` | `<datalist>` |
-   | `title-tooltip` | `title=` on an HTML element, `motion.*`, or a component that hands it to one (Link, Button, Input, Textarea, Label, Kbd, Image); not `<svg><title>`, not an `<iframe>`'s name |
+   | `title-tooltip` | `title=` on an HTML element, `motion.*`, or **any capitalised component not in `TITLE_PROP`** (fails closed; the 15 components whose own `title` prop is drawn as text: AttentionCard, AuthCard, Card, Column, DealRows, EmptyState, HomeCard, ListState, OpenDealSwitch, PipelineSnapshot, ReasonList, RecentActivity, Section, StatePanel, ValueSection); not `<svg><title>`, not an `<iframe>`'s name |
+   | `input-type-computed` | a `type` on `input`/`Input` that is not a literal or a ternary of literals (`type={kind}`, `type={props.type}`, `` type={`${x}`} ``): the check cannot read it, so it cannot prove it is not a picker |
    | `native-disclosure` | a raw `<details>` or `<summary>` (use `Disclosure`) |
-   | `native-dialog` | `confirm`/`alert`/`prompt`, bare (unless the file declares that name) or through `window`/`globalThis`/`self` |
+   | `native-dialog` | `confirm`/`alert`/`prompt` that **resolve to the browser's** (scope-aware: a bare name fails unless an enclosing scope declares it, so a local `confirm` in one function no longer covers a global call in another), called or passed as a value, or through `window`/`globalThis`/`self`/`top`/`parent`/`frames` by dot, `["…"]` or destructuring |
    | `form-validate` | a `<form>` without `noValidate` (or with `noValidate={false}`) |
    | `native-validity` | `reportValidity()` / `setCustomValidity()` |
    | `native-leave-prompt` | the browser's "Leave site?" prompt: `preventDefault()` or `returnValue =` in a `beforeunload` handler (inline, named and passed to `addEventListener("beforeunload", …)`, or typed `BeforeUnloadEvent`), or any `onbeforeunload =`; a `beforeunload` listener that never asks (the queue's goodbye beacon) is fine |
    | `stale-allowance` | an `ALLOWED` entry whose use is gone or moved |
 
-   `ALLOWED` (in the script) holds the one native use Haider kept: the lead import's "Leave site?" prompt in
-   `src/components/import/import-workspace.tsx`, count 1, with a comment saying why. A second prompt in that file, the
+   `ALLOWED` (in the script) holds the one native use kept: the lead import's "Leave site?" prompt in
+   `src/components/import/import-workspace.tsx`, count 1, with a comment saying why (the builder's decision, taken
+   under Haider's standing instruction; Haider to confirm). A second prompt in that file, the
    same prompt in any other file, or the prompt gone from that file each fail the check (unit-tested with a scratch
    tree in `native-controls.spec.ts`).
 
@@ -64,7 +66,9 @@ off date error), an unused import, and the stock search moved onto `SearchInput`
 
 ## Call sites, before and after
 
-Before: the checker run over a2c05a8 (`git show a2c05a8:<file>` through `scanSource`), **87 findings in 43 files**.
+Before: the checker run over a2c05a8 (`git show a2c05a8:<file>` through `scanSource`), **87 findings in 43 files**,
+not counting the kept "Leave site?" prompt; with today's rules it reports **88 in 44 files** (that prompt is the 88th,
+in `import-workspace.tsx`; the stricter rules of the advisor round add nothing on a2c05a8: re-run 16 Oct, 88 in 44).
 After: **0** (`npm run check:native`, and the last test of `native-controls.spec.ts`).
 
 | File | Before (rule × count) | After |
@@ -157,26 +161,31 @@ Every list in the plan's table, with its loading, empty and error state and the 
 the first page comes with the page (the route's loading.tsx skeleton covers loading; a failed server read renders the
 error state on arrival).
 
-| List | Loading (no spinner) | Empty | Error (with retry) | Tests |
-|---|---|---|---|---|
-| Leads | `leads/loading.tsx`, TableSkeleton, keyset loading row | "No leads yet" (admin: import / add; rep: add) and "No leads match" (Clear filters) | "Couldn't load leads" + Try again | day7b "list states: Leads" (skeleton, error, retry, no match, rep's empty org); leads.spec "120 leads … page by page" |
-| Lead timeline | TimelineSkeleton (route and older pages) | "Nothing logged yet" / "Nothing of this kind yet" | "Couldn't load the timeline" + Try again; older page error | day7b "list states: lead …"; lead-page.spec `timeline_older_page_error_waits_for_retry`, `timeline_pages_keyset` |
-| Lead tasks (Next step) | 44 px bar | "No next step" + date chips | alert + Retry | lead-page.spec `task_check_keeps_focus` (list); error state reached only when the page's server read fails: **no browser test** (open item 3) |
-| Files | skeleton rows | "No files yet" | load error + Try again; older files error | files.spec `files_tab_empty_state`, older-files error, `delete_needs_fresh_code` Retry; files-screens |
-| Lead deals | 3 rows `aria-busy` | "No deals yet" | "Couldn't load deals" + Retry | day7b "list states: lead …" (skeleton, error, empty); lead-page.spec `deals_stock_empty_states` |
-| Pipeline columns | `pipeline/loading.tsx`; Show more loading | empty board / column / filtered | board error, column error | day5-screens "board errors … an empty board"; pipeline.spec `board_read_fails_shows_retry_and_recovers`, `column_read_fails_shows_retry_and_recovers` |
-| Home cards | HomeBodySkeleton per card (Recent activity now 8 rows; Low stock matches) | new org empty states | card error isolated | home.spec `new_org_empty_states`, `card_error_isolated`; home-screens skeleton + Low stock skeleton; day7b "skeleton: Recent activity" |
-| Tasks | TaskRowsSkeleton | per tab ("Nothing due today", "Nothing planned", …) | "Couldn't load these tasks" + Try again | day7b "list states: Tasks"; tasks.spec `quick_add_chips_buckets` (empty Today) |
-| Queue | QueueCardSkeleton; counts skeleton | all done, outside hours, none mine | queue error + Retry; counts error + Retry | queue.spec `focus_never_drops_to_body`, `outside_hours_state…`, `not_saved_in_every_phase`; day7b "list states: Inventory …, the queue's counts" |
-| Inventory stock table | `inventory/loading.tsx`, virtual rows | "No products match" / empty | "Couldn't load the stock" + Try again | inventory.spec `inventory_empty_and_error_states` |
-| Arriving, Reserved, Movements | RowsSkeleton | "Nothing in transit", "No holds", "No movements yet" / "No movements match" | ListState error + Try again | day7b "list states: Inventory tabs …" (skeleton, error, empty each); inventory.spec `movements_log_keyset` |
-| Sales, Requests (Inventory) | RowsSkeleton | "No sales yet", "No open requests" | ListState error + Try again | day7b "list states: Inventory tabs …" |
-| Sales sections on a lead | StockTabSkeleton | "No sales …", "No stock held …", "No requests …" | ListState error + Try again | sales.spec `empty_sections_and_palette_record_sale` |
-| Share links | bar skeleton | "No active link for this client" | "Couldn't load the links" + Try again (now an alert) | day7b "list states: lead …" |
-| Past imports (leads) | server (`leads/import/loading.tsx`) | "No imports yet" | "Couldn't load past imports" + Try again | import.spec (empty); error after a failed refresh: **no browser test** (open item 3) |
-| Past stock imports | 3 rows | "No stock sheet imported yet" | error + Try again | day7b "list states: Inventory …" (empty); error: **no browser test** (open item 3) |
-| Team | `more/team/loading.tsx` | "No one here yet" (cannot happen: the viewer is always listed) | server read error + Retry | team-screens "team route skeleton"; error: **no browser test** (open item 3) |
-| More (skeleton) | `more/loading.tsx`, Administration for admins only | n/a | n/a | day7b "skeleton: More draws Administration for admins only" |
+| List | Loading (no spinner) | Empty | Error (with retry) | Tests | Screenshot (state shown) |
+|---|---|---|---|---|---|
+| Leads | `leads/loading.tsx`, TableSkeleton, keyset loading row | "No leads yet" (admin: import / add; rep: add) and "No leads match" (Clear filters) | "Couldn't load leads" + Try again | day7b "list states: Leads" (skeleton, error, retry, no match, rep's empty org); leads.spec "120 leads … page by page" | list: `day3a/screens/leads-en-light-1440.png`; loading, empty, error: none |
+| Lead timeline | TimelineSkeleton (route and older pages) | "Nothing logged yet" / "Nothing of this kind yet" | "Couldn't load the timeline" + Try again; older page error | day7b "list states: lead …"; lead-page.spec `timeline_older_page_error_waits_for_retry`, `timeline_pages_keyset` | list: `day4b/screens/lead-timeline-en-light-1440.png`; loading: `day4b/screens/lead-skeleton-en-light-1280.png` (route skeleton); empty, error: none |
+| Lead tasks (Next step) | 44 px bar | "No next step" + date chips | alert + Try again | lead-page.spec `task_check_keeps_focus` (list); **day7b "list states: lead tasks (Next step) error after a failed refetch, then Try again"** (the tasks route answers 500, a date chip adds a task, the card's refetch fails, Try again shows the task) | none (the error is proven by the test) |
+| Files | skeleton rows | "No files yet" | load error + Try again; older files error | files.spec `files_tab_empty_state`, older-files error, `delete_needs_fresh_code` Retry; files-screens | empty: `day4d/screens/files-empty-en-light-1440.png`; an upload that failed above the empty list: `day4d/screens/files-failed-en-light-1440.png`; load error: none |
+| Lead deals | 3 rows `aria-busy` | "No deals yet" | "Couldn't load deals" + Retry | day7b "list states: lead …" (skeleton, error, empty); lead-page.spec `deals_stock_empty_states` | none |
+| Pipeline columns | `pipeline/loading.tsx`; Show more loading | empty board / column / filtered | board error, column error | day5-screens "board errors … an empty board"; pipeline.spec `board_read_fails_shows_retry_and_recovers`, `column_read_fails_shows_retry_and_recovers` | loading: `day5b/screens/pipeline-loading-en-light-1440.png`; empty: `day5b/screens/empty-board-en-light-1440.png`; error: `day5b/screens/board-error-en-light-1440.png`, `column-error-en-light-1440.png` |
+| Home cards | HomeBodySkeleton per card (Recent activity now 8 rows; Low stock matches) | new org empty states | card error isolated | home.spec `new_org_empty_states`, `card_error_isolated`; home-screens skeleton + Low stock skeleton; day7b "skeleton: Recent activity" | loading: **`day7b/screens/state-recent-skeleton-en-{light,dark}-{390,1440}.png`** (new, the 8 rows), `day5c/screens/home-loading-en-light-1440.png`, `home-low-stock-loading-en-light-1440.png`; empty: `day5c/screens/home-new-org-en-light-1440.png`; error: `day5c/screens/home-card-error-en-light-1440.png` |
+| Tasks | TaskRowsSkeleton | per tab ("Nothing due today", "Nothing planned", …) | "Couldn't load these tasks" + Try again | day7b "list states: Tasks"; tasks.spec `quick_add_chips_buckets` (empty Today) | loading: `day4c/screens/tasks-skeleton-en-light-1440.png`; empty: `day4c/screens/tasks-done-empty-fr-dark-390.png`; error: none |
+| Queue | QueueCardSkeleton; counts skeleton | all done, outside hours, none mine | queue error + Retry; counts error + Retry | queue.spec `focus_never_drops_to_body`, `outside_hours_state…`, `not_saved_in_every_phase`; day7b "list states: Inventory …, the queue's counts" | loading: `day4c/screens/leads-queue-skeleton-en-light-1440.png`; empty: `day4c/screens/queue-none-mine-en-light-1440.png`; error: none |
+| Inventory stock table | `inventory/loading.tsx`, virtual rows | "No products match" / empty | "Couldn't load the stock" + Try again | inventory.spec `inventory_empty_and_error_states` | list: `day6b/screens/inventory-en-light-1440.png`; empty, error: none |
+| Arriving, Reserved, Movements | RowsSkeleton | "Nothing in transit", "No holds", "No movements yet" / "No movements match" | ListState error + Try again | day7b "list states: Inventory tabs …" (skeleton, error, empty each); inventory.spec `movements_log_keyset` | loading: `day6b/screens/arriving-en-light-1440.png` (Arriving's skeleton rows); list: `day6b/screens/movements-en-light-1440.png`; empty, error: none |
+| Sales, Requests (Inventory) | RowsSkeleton | "No sales yet", "No open requests" | ListState error + Try again | day7b "list states: Inventory tabs …" | list: `day6d/screens/sales-en-light-1440.png`, `requests-en-light-1440.png`; empty, error: none |
+| Sales sections on a lead | StockTabSkeleton | "No sales …", "No stock held …", "No requests …" | ListState error + Try again | sales.spec `empty_sections_and_palette_record_sale` | list: `day6d/screens/lead-stock-en-light-1440.png`; empty ("No requests…", "No stock held…"): in `day7b/screens/state-share-links-error-en-light-1440.png`; error: none |
+| Share links | bar skeleton | "No active link for this client" | "Couldn't load the links" + Try again (now an alert) | day7b "list states: lead …" | empty: `day6d/screens/lead-stock-en-light-1440.png`; error: **`day7b/screens/state-share-links-error-en-{light,dark}-{390,1440}.png`** (new); loading: none |
+| Past imports (leads) | server (`leads/import/loading.tsx`) | "No imports yet" | "Couldn't load past imports" + Try again | import.spec (empty); **day7b "list states: past lead imports and past stock imports …"** (an unfinished upload; every server action on the page cut, as tasks.spec cuts them; Discard fails and so does the `listImports` refresh after it; Try again brings the list back) | list: `day3b/screens/import-choose-en-light-1440.png`; empty, error: none |
+| Past stock imports | 3 rows | "No stock sheet imported yet" | error + Try again | day7b "list states: Inventory …" (empty); **day7b "list states: past lead imports and past stock imports …"** (the same with `listStockImports`) | list: `day6c/screens/choose-en-light-1440.png`; loading, empty, error: none |
+| Team | `more/team/loading.tsx` | "No one here yet" (cannot happen: the viewer is always listed) | server read error + Retry | team-screens "team route skeleton"; error: **no browser test** (accepted residual: a server-component read, which a browser test cannot fail without a server switch) | loading: `team/screens/team-skeleton-en-light-1440.png`; error: none |
+| More (skeleton) | `more/loading.tsx`, Administration for admins only | n/a | n/a | day7b "skeleton: More draws Administration for admins only" | **`day7b/screens/state-more-skeleton-admin-en-{light,dark}-{390,1440}.png`** and **`state-more-skeleton-rep-…`** (new; only the admin's has Administration); earlier `day4c/screens/more-skeleton-en-light-1440.png` |
+
+Paths are under `docs/evidence/`. "none" means no screenshot of that state was taken on any day; the test named in the
+row still reaches it. The four new sets (16 shots: EN, light and dark, 390 and 1440) come from `day7b.spec.ts` "state
+screens", skipped unless `DAY7B_SCREENS=1` (no CI cost); local run 16 Oct, 4 passed, each shot checked for console
+errors and sideways scroll, and looked at by eye.
 
 ## Screenshots: each picker closed and open, and the changed screens whole
 
@@ -244,8 +253,10 @@ Nothing inside a picker is clicked; each step asserts focus and the submitted va
 | `lead-deals.spec.ts` | `selectOption` ×2 | `choose` ×2 |
 | `tasks.spec.ts` | `fill` on the native date field; `selectOption` on the zone; a made-up `<option>` injected into the page to prove the server refuses an unknown zone | `pickDate`; `choose`; the save request is rewritten to the unknown zone on its way to the server, which still refuses it (the app's list can no longer be given an option in the page); `getByLabel("Time")` → `getByRole("combobox", { name: "Time", exact: true })` (the clock button's label also contains "time") |
 | `home.spec.ts` | `toHaveAttribute("title", /\d/)` on Recent activity's time | the sr-only full time inside `<time>` has a digit, and no `title` |
-| new `day7b.spec.ts` | | keyboard runs, list states, skeletons, screenshots; picker shot widths from `DAY7B_WIDTHS` (CI default 390 and 1440), whole changed screens behind `DAY7B_SCREENS=1` (local evidence only) |
-| new `tests/unit/native-controls.spec.ts` | | the source check, plus `native-leave-prompt` cases and the `ALLOWED` count (one kept use; a second or none fails) |
+| `lead-page.spec.ts` (advisor round 1) | `getByLabel("Next call", { exact: true })` | `getByRole("combobox", { name: "Next call", exact: true })`: the time box is now labelled by the same label plus "Time", so `getByLabel` found both |
+| new `day7b.spec.ts` | | keyboard runs, list states, skeletons, screenshots; picker shot widths from `DAY7B_WIDTHS` (CI default 390 and 1440), whole changed screens and the list-state shots behind `DAY7B_SCREENS=1` (local evidence only); advisor round 1: error-plus-retry for lead tasks and both Past imports lists, the Next call date found by role combobox, its time box's name checked |
+| new `tests/unit/native-controls.spec.ts` | | the source check, plus `native-leave-prompt` cases and the `ALLOWED` count (one kept use; a second or none fails); advisor round 1: planted breaks for `title=` on an unlisted component, a computed input `type`, and scope-aware `confirm`/`alert`/`prompt` (16 tests) |
+| `tests/unit/pickers-render.spec.ts` (advisor round 1) | | the date triggers are comboboxes with a dialog popup and `aria-required`; DateTimePicker passes `required` to both halves and names its time box from the label plus "Time" |
 
 ## Audits (CLAUDE.md, every UI change)
 
@@ -300,6 +311,24 @@ stock-import and the batch below) ran on the new build.
 | `import-perf.spec.ts`, `*-perf`, `day4-chunks` | skipped without `PERF=1`, as in CI |
 | WebKit | not run (not installed here; CI runs it in two shards) |
 
+### Checks, advisor round 1 (16 Oct 2026)
+
+Head 7f97e87 and after (code unchanged since), same isolated stack (54570/9992/54571/3600; restarted once after the
+container restart, with a fresh production build), Chromium 141.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors (the same 3 existing `useVirtualizer` warnings); also run by the pre-commit hook on every commit |
+| `npm run typecheck` | pass (pre-commit hook and by hand) |
+| `npm run check:native` | **0 findings** with the stricter rules |
+| `npm run test:unit` | **649 passed** (644 before + 3 in `native-controls.spec.ts`, now 16, + 2 in `pickers-render.spec.ts`) |
+| `day7b.spec.ts` | **21 passed**, 11 skipped (the evidence-only groups), twice (before and after the restart); the 3 new error-state tests included. Evidence: `DAY7B_SCREENS=1 -g "state screen"`: 4 passed, 16 shots |
+| Specs with a DatePicker or DateTimePicker | `lead-page` 26, `inventory` 11, `sales` 11, `pipeline` 18, `lead-deals` 9, `queue` 20 (without `call_keeps_claims`, which fails on this machine before and after this step, see above), `tasks` 12, `screens` 15: **122 passed, 0 failed** (the first batch was cut by the container restart after 105; `tasks` and `screens` were run again in full on the restarted stack) |
+| gitleaks 8.28.0, a2c05a8..HEAD | no leaks (46 commits) |
+| npm audit (runtime, high) | 0 vulnerabilities |
+| Semgrep | not run here (registry blocked by the proxy); CI job `semgrep` |
+| WebKit, `journey.spec.ts` | not run (not installed / needs Mailpit); CI runs them |
+
 ## Deviations and choices
 
 - TimePicker's English clock changed from 12-hour to 24-hour (the app's Day 4b decision); `pickers.md` updated.
@@ -313,13 +342,72 @@ stock-import and the batch below) ran on the new build.
   question 12).
 - `check:native` allows exactly one native popup (`ALLOWED`); any other needs a new decision and an entry there.
 
+## Advisor round 1 (16 Oct 2026): CHANGES NEEDED, fixed
+
+1. **Three reachable error states now have browser tests** (`day7b.spec.ts`): lead tasks (the `/api/leads/<id>/tasks`
+   route answers 500; a date chip adds a task and `refreshLead` invalidates the tasks; the alert shows; Try again shows
+   the task), past lead imports and past stock imports (an unfinished upload inserted for the test; every server action
+   on the page aborted with the same `next-action` POST interception tasks.spec uses; Discard fails and so does the
+   `listImports` / `listStockImports` refresh after it; the alert shows; Try again brings the list back). Only Team stays
+   an accepted residual (open item 3).
+2. **Security evidence**: section "Security" below.
+3. **A screenshot per list state**: the Screenshot column in "List states", and 16 new shots behind `DAY7B_SCREENS`
+   for the states 7b changed (Recent activity's 8 rows, More's skeleton for an admin and for a rep, the share links'
+   error). Taking them showed the More skeleton check must use visibility for the rep: the admin block is in the rep's
+   page too, hidden by CSS, so `toHaveCount(0)` waited for the page (the existing test already used `toBeHidden`).
+4. **ARIA**: the non-typed DatePicker and the DateRangePicker triggers are `role="combobox"` (as Select and Combobox),
+   so their `aria-required` is allowed; Radix keeps `aria-haspopup="dialog"` and `aria-expanded` (APG date picker
+   pattern). DateTimePicker already passed `required` to both halves (now unit-tested). Tests that looked for these
+   triggers by role "button": `day7b.spec.ts`'s date-time-picker shot (now `combobox`); no other spec did.
+5. **`check:native` fails closed** (rules table above): `title=` on any capitalised component outside `TITLE_PROP`
+   (the 15 components named by the advisor; a scan of `src/` found exactly these 15 given `title=`, each with its own
+   `title` prop drawn as text); a non-literal `type` on `input`/`Input` (`input-type-computed`); `confirm`/`alert`/
+   `prompt` resolved by scope (enclosing functions, blocks, parameters, catch, hoisted `var`, imports), plus
+   `window["alert"]`, destructuring from the global object and passing the global as a value. One planted-break unit
+   test each. Run over `src/`: **0 findings**, so no code needed fixing; over a2c05a8: still 88 in 44 files.
+   Not covered (recorded): a `type` arriving through a spread (`<input {...props} />`); `src/components/ui` stays exempt.
+6. **Attribution**: the `docs/log.md` row is now Who = builder, "taken under Haider's standing instruction; Haider to
+   confirm"; the comments in `check-native-controls.mjs` (`ALLOWED`) and `import-workspace.tsx` say the same. The
+   enforcement is unchanged (`ALLOWED`, count 1).
+7. **Minor**: `web-guidelines-audit.md` now cites `search-input.tsx:55` (and `import-workspace.tsx:192`, moved by the
+   comment); the 87/43 note above says it excludes the kept prompt (88/44 with today's rules); DateTimePicker takes
+   `labelId` and names its time box with `aria-labelledby` = the field's label + a hidden "Time", so lead Details reads
+   "Next call Time" (the accessible name joins the two with a space; a comma would need a second message string, not
+   worth it).
+
+## Security
+
+Range a2c05a8..HEAD (Day 7b, and Day 7a brought in by the two merges).
+
+**/security-review** (done by hand following its method, 16 Oct; the 7b-only part is `git diff 2e90b7a HEAD`, 68
+files, plus this round):
+
+| Area | Finding |
+|---|---|
+| Injection | No new server action, API route or RPC (the rate-limit route scan holds 19 + 12). No user text reaches a PostgREST filter: the Combobox filters its options in the browser; SearchInput feeds the same `q` the existing routes already pass to RPCs. `check-native-controls.mjs` only parses repository files, never runs them. Test-only `sql()` strings use run ids and constants on the local stack (helpers refuse non-local URLs). |
+| Authz | The app layout's `data-role` only shapes More's skeleton; the role is not a secret to the signed-in person, and every page, action and RLS policy checks it again. No authorisation moved to the client. |
+| Input validation | Forms set `noValidate` and the auth fields dropped `required`/`pattern`/`minLength`: every auth action (`src/app/(auth)/actions.ts`) and the More actions still `safeParse` with Zod; hidden inputs carry the old value shapes into the same schemas (tasks.spec proves the server refuses an unknown zone sent past the picker). |
+| XSS | No `dangerouslySetInnerHTML`, `innerHTML`, `eval` or `new Function` added; tooltips, disclosures, option labels and the new hidden "Time" span are React text. Lead links use server ids (`/leads/<uuid>`). |
+| Secrets | None added; no env var read in client code; gitleaks clean (below). |
+| Data exposure | No new data reaches the browser; errors shown are message keys, never raw errors. Day 7a's parts in the range (per-person list limit, auth cookie flags, sign-in audit rows via a security-invoker RPC with a definer guard and `search_path = ''`) were reviewed in Day 7a's own step and re-read here: no issue. |
+
+Result: **no finding**.
+
+- **gitleaks 8.28.0** (the Day 7c builder's binary, read-only use), `gitleaks git --log-opts="a2c05a8..HEAD"` with the
+  repo's `.gitleaks.toml`: **no leaks found** (re-run after this round's commits, see "Checks, advisor round 1").
+- **Semgrep 1.180.0** is installed, but the rule registry (semgrep.dev) is blocked by this container's proxy (403), so
+  the CI `semgrep` job runs it (`p/default`, `p/typescript`, `p/nextjs`, `--error`).
+- **npm audit** (`--omit=dev --audit-level=high`): **0 vulnerabilities** (the advisor's run: 0 high; re-run 16 Oct).
+
 ## Open items
 
-1. **Not pushed, no PR, no advisor run** (as asked). CI has not run this code.
+1. **Not pushed, no PR** (as asked). CI has not run this code. The advisor's first review (CHANGES NEEDED) is answered
+   in "Advisor round 1" below; it has not been re-run on this round yet.
 2. **WebKit** was not run locally (Chromium only, as asked); the picker keyboard runs are Chromium only.
-3. **Error states with no browser test**: lead tasks (Next step), past lead imports after a failed refresh, past stock
-   imports, Team. Each exists in code (alert + retry) but is reached only when the page's own server read fails, which
-   a browser test cannot cause without a server switch.
+3. **Error state with no browser test: Team only** (accepted residual). Its list is read by the server component
+   (`more/team/page.tsx`), so only a failed server read shows the error, which a browser test cannot cause without a
+   server switch. Lead tasks, past lead imports and past stock imports are read again in the browser after the page
+   loads, and now each has an error-plus-retry test in `day7b.spec.ts` (advisor round 1).
 4. The time zone Combobox (419 options, cmdk, not virtualised) paints its list 46 ms after a press on this machine but
    about 240 ms with the CPU slowed 4× (a slow phone); the press itself answers at once. Left for the Day 7c phone
    pass (render the list lazily or virtualise it); recorded in `web-guidelines-audit.md`.
@@ -333,8 +421,8 @@ stock-import and the batch below) ran on the new build.
 
 ## Decided
 
-- **The browser's "Leave site?" prompt during a lead import STAYS** (Haider's standing instruction to take the
-  builder's recommendation; `docs/log.md` 15 Oct). A web page cannot replace it with its own dialog when the tab is
+- **The browser's "Leave site?" prompt during a lead import STAYS**: the builder's decision, taken under Haider's
+  standing instruction to take the builder's recommendation; **Haider to confirm** (`docs/log.md` 15 Oct). A web page cannot replace it with its own dialog when the tab is
   closing; without it a closed tab pauses the import silently (it can be resumed from Past imports). It is the only
   native popup left; `check:native` allows exactly that one use (`ALLOWED`, with the reason in a comment) and fails on
   any other.
