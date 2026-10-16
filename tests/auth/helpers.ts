@@ -181,7 +181,7 @@ export async function settled(page: Page) {
 // cancels its own link prefetches (requests to this app with ?_rsc=) when a server action refreshes the page or a new
 // navigation starts; Chromium logs nothing for that. Only that exact case is ignored: same-origin RSC requests cannot
 // fail a real access-control check, and every other console error still counts.
-const cancelledPrefetch = /^(?:Fetch API cannot load )?(?:http:)?\/\/?localhost:3100\/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$/;
+const cancelledPrefetch = /^(?:Fetch API cannot load )?(?:http:)?\/\/?localhost:\d+\/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$/;
 export function isCancelledPrefetch(text: string) {
   return cancelledPrefetch.test(text);
 }

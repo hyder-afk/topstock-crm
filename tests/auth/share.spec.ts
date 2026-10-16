@@ -29,6 +29,14 @@ let leadId = "";
 let link = "";
 let token = "";
 
+// The app's address from the Playwright config (playwright.auth.config.ts: PLAYWRIGHT_BASE_URL, else port 3100), never a
+// port written here: a second checkout tests on another port, and the share routes check the Origin header against it.
+function appOrigin() {
+  const base = test.info().project.use.baseURL;
+  if (!base) throw new Error("baseURL is not set (playwright.auth.config.ts)");
+  return new URL(base).origin;
+}
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const uid = (email: string) => sql(`select id from auth.users where email = '${email}'`);
 function asUser(email: string, body: string) {
   const claims = `json_build_object('sub', '${uid(email)}', 'role', 'authenticated', 'aal', 'aal2', 'amr',
@@ -46,7 +54,7 @@ async function openApp(browser: Browser, state: typeof adminState, o: { width?: 
     colorScheme: o.scheme ?? "light",
     timezoneId: "Europe/Paris",
   });
-  if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: "http://localhost:3100" }]);
+  if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: appOrigin() }]);
   const page = await context.newPage();
   trackRequests(page);
   const errors: string[] = [];
@@ -146,7 +154,7 @@ test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
   const { context, page, errors } = await openApp(browser, adminState);
   // Clipboard permissions exist in Chromium only; WebKit checks the address field instead.
   const chromium = test.info().project.name === "chromium";
-  if (chromium) await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://localhost:3100" });
+  if (chromium) await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: appOrigin() });
   await ageStepUp(context, 700);
   await settled(page);
   await page.goto(`/leads/${leadId}?tab=stock`);
@@ -160,7 +168,7 @@ test("share_link_create_needs_code_and_shows_once", async ({ browser }) => {
   await nextWindow();
   await stepUp.getByLabel("6-digit code").fill(totp(adminSecret));
   const field = card.getByLabel("Client link", { exact: true });
-  await expect(field).toHaveValue(/^http:\/\/localhost:3100\/s\/fr#tss_[A-Za-z0-9_-]{43}$/);
+  await expect(field).toHaveValue(new RegExp(`^${escapeRegExp(appOrigin())}/s/fr#tss_[A-Za-z0-9_-]{43}$`));
   link = await field.inputValue();
   token = link.split("#")[1];
   if (chromium) expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
@@ -240,7 +248,7 @@ test("share_public_lists_warehouse_stock_with_max_price_and_never_cost", async (
   // share_public_token_not_in_requests_urls, share_public_no_supabase_requests
   for (const u of urls) {
     expect(u).not.toContain(token);
-    expect(new URL(u).host).toBe("localhost:3100");
+    expect(new URL(u).origin).toBe(appOrigin());
   }
   expect(await noSideways(page)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
@@ -279,7 +287,7 @@ test("share_public_request_creates_task_for_owner", async ({ browser }) => {
 test("share_public_route_guards", async ({ browser }) => {
   const { context, page } = await openPublic(browser, link);
   const post = (path: string, data: unknown, headers: Record<string, string> = {}) =>
-    page.request.post(path, { data: typeof data === "string" ? data : JSON.stringify(data), headers: { "content-type": "application/json", origin: "http://localhost:3100", ...headers } });
+    page.request.post(path, { data: typeof data === "string" ? data : JSON.stringify(data), headers: { "content-type": "application/json", origin: appOrigin(), ...headers } });
   const body = (o: Record<string, unknown> = {}) => ({
     token, lines: [], note: "Bonjour, encore une demande", name: "", idempotencyKey: crypto.randomUUID(), website: "", t: 5000, ...o,
   });
@@ -319,7 +327,7 @@ test("share_public_headers_and_robots", async ({ browser }) => {
     const html = await r.text();
     for (const internal of ["Pipeline", "Prospects", "price_min", "Supplier Stock", "Record sale", "supabase"]) expect(html).not.toContain(internal);
   }
-  const api = await page.request.post("/api/share/view", { data: JSON.stringify({ token }), headers: { "content-type": "application/json", origin: "http://localhost:3100" } });
+  const api = await page.request.post("/api/share/view", { data: JSON.stringify({ token }), headers: { "content-type": "application/json", origin: appOrigin() } });
   expect(api.headers()["referrer-policy"]).toBe("no-referrer");
   expect(api.headers()["set-cookie"]).toBeUndefined();
   const robots = await page.request.get("/robots.txt");
@@ -363,7 +371,7 @@ test("share_public_keyboard_only_and_language_toggle", async ({ browser }) => {
 test("share_public_unknown_revoked_same_page_and_rep_cannot_create", async ({ browser }) => {
   const same = "Ce lien n’est pas actif. Demandez-en un nouveau à votre contact TopStock.";
   for (const url of ["/s/fr", `/s/fr#tss_${"z".repeat(43)}`, "/s/fr#nonsense"]) {
-    const { context, page } = await openPublic(browser, `http://localhost:3100${url}`);
+    const { context, page } = await openPublic(browser, `${appOrigin()}${url}`);
     await expect(page.getByText(same)).toBeVisible();
     await context.close();
   }
@@ -398,10 +406,10 @@ test("share_public_rate_limit_message", async ({ browser }) => {
   const fresh = asUser(adminEmail, `select public.create_share_link('${leadId}', 'en') ->> 'token'`)
     .split("\n")
     .find((l) => /^tss_/.test(l)) as string;
-  const { context, page } = await openPublic(browser, `http://localhost:3100/s/en#${fresh}`, { ip: "198.51.100.200" });
+  const { context, page } = await openPublic(browser, `${appOrigin()}/s/en#${fresh}`, { ip: "198.51.100.200" });
   await expect(page.getByText(visible)).toBeVisible();
   for (let i = 0; i < 30; i++) {
-    await page.request.post("/api/share/view", { data: JSON.stringify({ token: fresh }), headers: { "content-type": "application/json", origin: "http://localhost:3100" } });
+    await page.request.post("/api/share/view", { data: JSON.stringify({ token: fresh }), headers: { "content-type": "application/json", origin: appOrigin() } });
   }
   await page.reload();
   await expect(page.getByText("Too many refreshes. Wait a minute.")).toBeVisible();
@@ -428,7 +436,7 @@ test("screens", async ({ browser }) => {
       const ip = `198.51.100.${++client}`;
       for (const width of [360, 390, 768, 1024, 1280, 1440, 1728]) {
         const name = (s: string) => `${dir}/${s}-${locale}-${scheme}-${width}.png`;
-        const { context, page, errors } = await openPublic(browser, `http://localhost:3100/s/${locale}#${shot}`, { width, scheme, ip });
+        const { context, page, errors } = await openPublic(browser, `${appOrigin()}/s/${locale}#${shot}`, { width, scheme, ip });
         await expect(page.getByText(visible)).toBeVisible();
         expect(await noSideways(page), `client ${locale} ${scheme} ${width}`).toBeLessThanOrEqual(0);
         await page.screenshot({ path: name("client"), fullPage: true });
