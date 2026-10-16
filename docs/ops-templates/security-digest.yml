@@ -50,6 +50,7 @@ jobs:
         signin.codes_not_finished=3
         signin.password_ok_no_code=3
         signin.most_by_one_person=20
+        signin.sessions_most_by_one_user=20
         signin.reset_emails=0
         accounts.new=0
         accounts.without_two_factor=0
@@ -171,12 +172,13 @@ jobs:
           declare -A label=(
             [signin.completed]="Sign-ins finished with the 6-digit code"
             [signin.people]="People who signed in"
-            [signin.most_by_one_person]="Most sign-ins by one person"
+            [signin.most_by_one_person]="Most sign-ins through the app by one person"
             [signin.step_up_codes]="\"Confirm it's you\" codes entered"
             [signin.passwords_accepted]="Passwords accepted (sign-ins started)"
             [signin.password_ok_no_code]="Password accepted, code never finished"
-            [signin.codes_not_finished]="Codes asked for, never entered right"
+            [signin.codes_not_finished]="6-digit codes asked for, never entered right (sign-in or Confirm it's you)"
             [signin.reset_emails]="Password-reset emails sent"
+            [signin.sessions_most_by_one_user]="Most sign-ins by one account (any way in, app or not)"
             [accounts.users]="Accounts in total"
             [accounts.new]="New accounts"
             [accounts.without_two_factor]="Accounts without a working authenticator app"
@@ -201,7 +203,7 @@ jobs:
           )
           order=(
             signin.completed signin.people signin.most_by_one_person signin.step_up_codes signin.passwords_accepted
-            signin.password_ok_no_code signin.codes_not_finished signin.reset_emails
+            signin.password_ok_no_code signin.codes_not_finished signin.reset_emails signin.sessions_most_by_one_user
             accounts.users accounts.new accounts.without_two_factor accounts.authenticators_added accounts.admins
             accounts.role_changes accounts.people_removed
             data.leads_deleted data.files_deleted data.rows_deleted data.file_opens data.file_opens_most_by_one_person
@@ -218,6 +220,12 @@ jobs:
             fi
             limit[$k]=$v
           done <<< "$LIMITS"
+          # A misspelt name would silently switch its check off: every limit must name a metric the digest sends.
+          for k in "${!limit[@]}"; do
+            known=no
+            for o in "${order[@]}"; do [ "$o" = "$k" ] && known=yes && break; done
+            [ "$known" = yes ] || echo "LIMITS names $k, which the digest does not send (a typo switches that check off)." >> "$problems"
+          done
 
           if [ -s "$digest" ]; then
             while IFS='|' read -r k v; do

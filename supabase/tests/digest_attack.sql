@@ -6,7 +6,7 @@
 --      anon, authenticated or service_role, live 42501). The role cannot log in, holds no other privilege (no table in
 --      public, private, auth or storage, no other function in private, no policy, owns nothing, member of nothing), and
 --      postgres may SET ROLE to it. The body names no column that holds personal data.
---   B. The workflow's exact statements (READ ONLY transaction, SET LOCAL ROLE) return the 31 metrics, in order, whole
+--   B. The workflow's exact statements (READ ONLY transaction, SET LOCAL ROLE) return the 32 metrics, in order, whole
 --      numbers, none null; the reader cannot read a table directly. After RESET ROLE (possible: the session user is
 --      postgres) the READ ONLY transaction still refuses a write.
 --   C. Bounds: the window starts 1 hour to 8 days ago, never null.
@@ -221,6 +221,7 @@ begin
     'digest.version', 'digest.window_minutes',
     'signin.completed', 'signin.people', 'signin.most_by_one_person', 'signin.step_up_codes',
     'signin.passwords_accepted', 'signin.password_ok_no_code', 'signin.codes_not_finished', 'signin.reset_emails',
+    'signin.sessions_most_by_one_user',
     'accounts.users', 'accounts.new', 'accounts.without_two_factor', 'accounts.authenticators_added', 'accounts.admins',
     'accounts.role_changes', 'accounts.people_removed',
     'data.leads_deleted', 'data.files_deleted', 'data.rows_deleted', 'data.file_opens',
@@ -298,11 +299,13 @@ declare
   wide jsonb;
   max_sign_ins bigint;
   max_opens bigint;
+  max_sessions bigint;
   i integer;
 begin
   before := pg_temp.digest(now() - interval '25 hours');
   max_sign_ins := (before ->> 'signin.most_by_one_person')::bigint;
   max_opens := (before ->> 'data.file_opens_most_by_one_person')::bigint;
+  max_sessions := (before ->> 'signin.sessions_most_by_one_user')::bigint;
 
   -- Accounts (the profile trigger gives each a profile in the first organisation, as a rep).
   insert into auth.users (id, email, raw_user_meta_data) values
@@ -325,6 +328,13 @@ begin
     ('d5000000-0000-4000-8000-000000000003', u1, now() - interval '20 minutes', null),
     ('d5000000-0000-4000-8000-000000000004', u1, now() - interval '5 minutes', 'aal1'),
     ('d5000000-0000-4000-8000-000000000005', u1, now() - interval '26 hours', 'aal1');
+  -- u2 signs in more often than anyone (finished sign-ins, as a script calling Supabase Auth directly would: no audit
+  -- row): five more than the busiest account so far, so more than u1's four too.
+  for i in 1 .. max_sessions + 5 loop
+    insert into auth.sessions (id, user_id, created_at, aal) values (gen_random_uuid(), u2, now() - interval '1 hour', 'aal2');
+  end loop;
+  -- and one of u2's from before the window, which must not count.
+  insert into auth.sessions (id, user_id, created_at, aal) values (gen_random_uuid(), u2, now() - interval '26 hours', 'aal2');
   -- Codes asked for: one entered right, one never finished, one still in progress, one from before the window.
   insert into auth.mfa_challenges (id, factor_id, created_at, verified_at, ip_address) values
     ('d6000000-0000-4000-8000-000000000001', f1, now() - interval '20 minutes', now() - interval '19 minutes', '192.0.2.10'),
@@ -387,7 +397,9 @@ begin
   perform pg_temp.moved('signin.people', after, before, 2);
   perform pg_temp.eq('signin.most_by_one_person', (after ->> 'signin.most_by_one_person')::bigint, max_sign_ins + 5);
   perform pg_temp.moved('signin.step_up_codes', after, before, 2);
-  perform pg_temp.moved('signin.passwords_accepted', after, before, 4);
+  perform pg_temp.moved('signin.passwords_accepted', after, before, 4 + max_sessions + 5);
+  perform pg_temp.eq('signin.sessions_most_by_one_user',
+    (after ->> 'signin.sessions_most_by_one_user')::bigint, max_sessions + 5);
   perform pg_temp.moved('signin.password_ok_no_code', after, before, 2);
   perform pg_temp.moved('signin.codes_not_finished', after, before, 1);
   perform pg_temp.moved('signin.reset_emails', after, before, 1);

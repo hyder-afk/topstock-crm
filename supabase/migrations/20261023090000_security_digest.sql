@@ -30,8 +30,10 @@
 --    deletion cascades to), deletes (an import undo's lead deletes carry undo = true and are counted apart), file opens,
 --    import commits and undos (import_batches status), stock adjustments, the client sharing switch, new share links,
 --    sweeper runs, and any action this digest does not know yet.
---  - auth.sessions, auth.mfa_challenges, auth.mfa_factors, auth.users (Supabase Auth's own tables): a password accepted
---    but no code finished, codes asked for and never entered right, password-reset emails, new accounts, accounts
+--  - auth.sessions, auth.mfa_challenges, auth.mfa_factors, auth.users (Supabase Auth's own tables): sign-ins started
+--    (also the most by one account, which a script that skips the app cannot avoid), a password accepted but no code
+--    finished, two-factor challenges never verified (any 6-digit code asked for and not entered right: at sign-in or at
+--    a "Confirm it's you" step-up, src/app/(app)/step-up-actions.ts), password-reset emails, new accounts, accounts
 --    without a verified authenticator, new authenticators.
 --  - NOT failed passwords: Supabase Auth writes no audit entry for a wrong password or a wrong code (supabase/auth
 --    token.go and mfa.go return before NewAuditLogEntry), and auth.audit_log_entries is not written at all on dev
@@ -109,6 +111,10 @@ begin
 
   -- Supabase Auth's own tables (enums compared as text).
   select (select count(*) from auth.sessions x where x.created_at >= p_since) as sessions_started,
+         -- Sessions are written by Supabase Auth itself, so a script that signs in without the app counts here too
+         -- (the audit log's sign_in row is written only by the app's server action).
+         (select coalesce(max(x.n), 0) from (select count(*) as n from auth.sessions y
+                                              where y.created_at >= p_since group by y.user_id) x) as sessions_most,
          (select count(*) from auth.sessions x
            where x.created_at >= p_since and x.created_at < now() - settle
              and coalesce(x.aal::text, 'aal1') = 'aal1') as password_no_code,
@@ -138,6 +144,7 @@ begin
         (15, 'signin.password_ok_no_code', s.password_no_code),
         (16, 'signin.codes_not_finished', s.code_unfinished),
         (17, 'signin.reset_emails', s.reset_emails),
+        (18, 'signin.sessions_most_by_one_user', s.sessions_most),
         (20, 'accounts.users', s.users),
         (21, 'accounts.new', s.users_new),
         (22, 'accounts.without_two_factor', s.without_two_factor),

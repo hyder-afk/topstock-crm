@@ -39,15 +39,20 @@ For the email to reach you, two things must be true (go-live I3.3 step 1 checks 
 **If the digest itself stops running** (for example someone disables it), nothing turns red. Once a week, glance at
 topstock-ops > **Actions** > **security-digest**: the newest run should be from today or yesterday.
 
+**keep-alive must stay daily** while the digest checks it: the digest turns red when a workflow has not finished a run
+in the last 26 hours, so keep-alive's schedule must not be changed to every 3 days (or the digest would be red two days
+out of three).
+
 ## What it checks, and the limits
 
 The limits sit at the top of the workflow file (`LIMITS`). "Limit 0" means any single one turns the run red.
 
 | Line in the summary | Where it comes from | Limit | Why |
 |---|---|---|---|
-| Codes asked for, never entered right | Supabase Auth's two-factor challenges, older than 15 minutes, never verified | 3 | Someone got the password right but not the 6-digit code: a wrong code, or the screen closed at the code step |
-| Password accepted, code never finished | Supabase Auth sessions still at the "password only" level after 15 minutes | 3 | Same signal from the other side |
-| Most sign-ins by one person | CRM audit log (one row per finished sign-in, since Day 7a) | 20 | Far more than anyone needs in a day; a script with a stolen password and code would show here |
+| 6-digit codes asked for, never entered right | Supabase Auth's two-factor challenges, older than 15 minutes, never verified | 3 | Any mistyped 6-digit code counts: at sign-in **or** at a "Confirm it's you" step (before a delete, an import, a role change). So a few are normal on a busy day; read it together with the next line |
+| Password accepted, code never finished | Supabase Auth sessions still at the "password only" level after 15 minutes | 3 | The **stronger** sign: someone got a password right and never got past the code step (a wrong code, or the screen closed there) |
+| Most sign-ins through the app by one person | CRM audit log (the app writes one row per finished sign-in, since Day 7a) | 20 | Far more than anyone needs in a day. Only sign-ins through the CRM's own pages write this row |
+| Most sign-ins by one account (any way in, app or not) | Supabase Auth sessions (written by Supabase itself, one per sign-in) | 20 | Also counts a script that signs in to Supabase directly, without the app: a stolen password and code used that way shows here, not in the line above |
 | Password-reset emails sent | Supabase Auth accounts | 0 | On a team of three, a reset nobody asked for means someone is trying |
 | New accounts | Supabase Auth accounts | 0 | Sign-ups are closed; only you create accounts (part K) |
 | Accounts without a working authenticator app | Supabase Auth accounts and their two-factor apps | 0 | Everyone must have two-factor; a new person shows here until they set it up |
@@ -124,8 +129,9 @@ Open the run (the link in GitHub's email), read the red lines in the summary, an
 
 | Red line | What it means | What to do |
 |---|---|---|
-| Codes asked for, never entered right / Password accepted, code never finished | Someone typed a right password and then did not finish the 6-digit code | Ask Henri and Kais whether they had trouble signing in. If nobody did: that password is known to someone else. Have that person change it (Forgot password), and look at account B > Logs > Auth the same day. Tell Claude the counts |
-| Most sign-ins by one person | One person finished an unusual number of sign-ins | Ask the team. If nobody knows: tell Claude the count (Claude gives you the read-only query above). If it was not that person: change their password, press **Sign out of all devices**, tell Claude |
+| 6-digit codes asked for, never entered right | Someone mistyped a 6-digit code, at sign-in or at "Confirm it's you" | Ask the team: "did anyone mistype a code today?" If yes, nothing to do. If nobody did, treat it like the next line. On its own this line is the weaker sign |
+| Password accepted, code never finished | Someone typed a right password and then did not finish the 6-digit code: the stronger sign | Ask Henri and Kais whether they had trouble signing in (or closed the page at the code step). If nobody did: that password is known to someone else. Have that person change it (Forgot password), and look at account B > Logs > Auth the same day. Tell Claude the counts |
+| Most sign-ins through the app by one person / Most sign-ins by one account | One account signed in an unusual number of times (the second line also counts sign-ins that skip the app) | Ask the team. If nobody knows: tell Claude the count (Claude gives you the read-only query above). If it was not that person, or only the second line is high (someone signing in without the app): change their password, press **Sign out of all devices**, tell Claude |
 | Password-reset emails sent | A reset email went out | If you or a teammate asked for it, nothing. If not: someone typed that address on the Forgot password page. The link only reaches the real inbox, so it is safe, but mention it to the person |
 | New accounts | An account was created | If it was you (part K), nothing. If not: account B > **Authentication** > **Users**, delete it, and tell Claude right away (sign-ups should be closed, part D1) |
 | Accounts without a working authenticator app | Someone has no two-factor | Right after part K this is expected until they finish set-up. Otherwise tell Claude |
@@ -138,6 +144,7 @@ Open the run (the link in GitHub's email), read the red lines in the summary, an
 | Audit entries of a kind this digest does not know | The CRM records a new kind of action the digest does not count yet | Tell Claude: "digest: unknown audit kind". Claude updates the digest; nothing is wrong with the data |
 | ... did not succeed / has not finished a run in the last 26 hours / is not enabled | backup-prod, keep-alive or sweep-lead-files is red, late or switched off | Open that workflow's latest run and follow its own runbook (a red backup matters most; run it again by hand) |
 | Could not read the security counts | The job could not reach production or the digest function | Check that topstock-prod is not Paused (account B). If it is running: tell Claude the warning's first words (never the whole log) |
+| LIMITS names ..., which the digest does not send | A name in the `LIMITS` lines is misspelt, so its check would be switched off | Fix the spelling in `.github/workflows/security-digest.yml` (copy the name from the runbook's "For Claude" list), or ask Claude |
 | A database secret is missing | One of the three secrets was deleted or renamed | Add it again as in go-live part C5 |
 | The database's digest is version ..., or "sent no value for ..." | The workflow file and the database are from different versions | Ask Claude for the matching template and paste it again |
 
@@ -179,18 +186,20 @@ Nothing to switch off: the digest only reads. A restore that recreates the schem
   `security_digest_reader.<project-ref>`; the session then cannot become anything else. It costs one more secret to
   rotate and a password typed into account B's SQL editor, and it would protect against a stolen copy of that one
   secret only, since the repository holds the postgres password anyway. Recommended: not now.
-- **Metrics (digest.version 1, 31 rows, in this order):** `digest.version`, `digest.window_minutes`;
+- **Metrics (digest.version 1, 32 rows, in this order):** `digest.version`, `digest.window_minutes`;
   `signin.completed`, `signin.people`, `signin.most_by_one_person`, `signin.step_up_codes`, `signin.passwords_accepted`,
-  `signin.password_ok_no_code`, `signin.codes_not_finished`, `signin.reset_emails`; `accounts.users`, `accounts.new`,
+  `signin.password_ok_no_code`, `signin.codes_not_finished`, `signin.reset_emails`, `signin.sessions_most_by_one_user`; `accounts.users`, `accounts.new`,
   `accounts.without_two_factor`, `accounts.authenticators_added`, `accounts.admins`, `accounts.role_changes`,
   `accounts.people_removed`; `data.leads_deleted`, `data.files_deleted`, `data.rows_deleted`, `data.file_opens`,
   `data.file_opens_most_by_one_person`, `data.imports_done`, `data.imports_undone`, `data.import_undo_leads_removed`,
   `data.stock_adjustments`, `data.sharing_switch_changes`, `data.share_links_created`; `audit.rows`,
   `audit.unknown_actions`, `ops.file_sweeps`. Adding or renaming one means `digest.version` 2 and a new template.
 - **Sources:** `public.audit_log` (actions insert, update, delete, role_change, file_access, sign_in, mfa_verify,
-  file_sweep; anything else is `audit.unknown_actions`); `auth.sessions` (`aal`), `auth.mfa_challenges`
-  (`verified_at`), `auth.mfa_factors` (`status`), `auth.users` (`created_at`, `recovery_sent_at`, `deleted_at`),
-  `public.profiles` (`role`). Settle time 15 minutes for sessions and challenges.
+  file_sweep; anything else is `audit.unknown_actions`; `sign_in` rows come only from the app's server action);
+  `auth.sessions` (`aal`; `user_id` for the most sessions by one account, which Supabase Auth writes for any sign-in),
+  `auth.mfa_challenges` (`verified_at`: any challenge, sign-in or step-up), `auth.mfa_factors` (`status`), `auth.users`
+  (`created_at`, `recovery_sent_at`, `deleted_at`), `public.profiles` (`role`). Settle time 15 minutes for sessions and
+  challenges.
 - **Failed sign-ins, verified 16 Oct 2026:** Supabase Auth (`/supabase/auth`, Context7: `internal/api/token.go`
   ResourceOwnerPasswordGrant returns `invalid_credentials` before `NewAuditLogEntry`; `internal/api/mfa.go`
   verifyTOTPFactor returns `mfa_verification_failed` before it) writes no audit entry for a wrong password or code.
