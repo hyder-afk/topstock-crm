@@ -165,6 +165,8 @@ security pass found nothing at HIGH or MEDIUM, history and dependencies are clea
 protection it guards; the per-day checks it relies on were shown so in their own days' mutation runs (the Day 5a rows
 re-run here). What remains is not code, but it is part of the gate.
 
+**Haider, 16 Oct 2026: "yes" — Gate 1 (code part) CONDITIONALLY PASSED.** It flips to passed only when (a) to (c) below are shown green; (d) is met. The ops part stays on Day 8, before any real data.
+
 HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four conditions hold:**
 
 - **(a) Day 7c's final head is merged** into this branch (done: f6f1f3f at acc33dc), and `scripts/gate1-run.sh` on the
