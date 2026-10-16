@@ -36,7 +36,7 @@ import {
 import type { SavedView } from "@/lib/leads-server";
 import { cn } from "@/lib/utils";
 
-const control = cn(buttonVariants({ variant: "quiet" }), "min-h-11 gap-2 px-3 text-sm font-normal sm:min-h-10");
+const control = cn(buttonVariants({ variant: "quiet" }), "min-h-11 min-w-11 justify-center gap-2 px-3 text-sm font-normal sm:min-h-10");
 
 // Calls onSettle once the value has stopped changing for ms. Only the value restarts the timer (useEffectEvent
 // always sees the latest onSettle without being a dependency).

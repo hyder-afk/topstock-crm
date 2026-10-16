@@ -192,7 +192,9 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
             <Link
               href={`/leads/${deal.lead.id}`}
               onPointerEnter={() => router.prefetch(`/leads/${deal.lead.id}`)}
-              className="underline-offset-4 hover:underline"
+              // The name is 25 px tall in the title; on phones its tap area reaches 45 px (10 px above and below, at least
+              // 44 px wide) without moving the title (Day 7c phone pass).
+              className="relative underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-2.5 max-sm:before:min-w-11 max-sm:before:content-['']"
             >
               {deal.lead.name}
             </Link>

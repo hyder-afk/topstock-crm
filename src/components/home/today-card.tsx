@@ -52,8 +52,13 @@ function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undef
       </button>
       <div className="flex min-w-0 flex-1 flex-col">
         {task.company_id ? (
-          <Link href={`/leads/${task.company_id}`} className="truncate text-sm font-medium hover:underline">
-            {task.title}
+          // 20 px tall in the row; on phones the tap area reaches 44 px (12 px above and below, at least 44 px wide), so
+          // the row keeps its height and matches its skeleton (Day 7c phone pass).
+          <Link
+            href={`/leads/${task.company_id}`}
+            className="relative flex max-w-full min-w-0 self-start text-sm font-medium hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-3 max-sm:before:min-w-11 max-sm:before:content-['']"
+          >
+            <span className="truncate">{task.title}</span>
           </Link>
         ) : (
           <span className="truncate text-sm font-medium">{task.title}</span>
