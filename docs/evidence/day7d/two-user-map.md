@@ -75,7 +75,7 @@ pass line): [`gate1-run-output.md`](gate1-run-output.md).
 | Part | Result |
 |---|---|
 | 1. SQL: `db-test.sh` | exit 0: every attack file and concurrency script passed, including Day 7c's `sweeper_attack` and `gate1_attack` (with Day 7c's three INVOKER, service-role-only sweeper functions the reviewed DEFINER list holds); advisors 0 ERROR (WARN `share_view`, `share_request`, `set_user_role`, all accepted) |
-| 2. Playwright, Chromium, one worker, 12 files | **99 passed**, 5 skipped (storage-api, CI), 1 failed + 2 not run: `files.spec.ts` "hidden tab … a file dropped outside the zone never leaves the page" read the drop guard before it was attached. Day 7c changed no files code; the test passed in the first run and alone on this build 3 of 3 times, and the whole `files.spec.ts` then passed (13 passed, 5 storage skips). Recorded as a timing flake under load |
+| 2. Playwright, Chromium, one worker, 12 files | **99 passed**, 5 skipped (storage-api, CI), 1 failed + 2 not run: `files.spec.ts` "hidden tab … a file dropped outside the zone never leaves the page" read the drop guard before the Files tab's client-only chunk had attached it: **a test race, fixed after the run** (the test now waits for the tab's content and polls the guard's effect; proven with a scratch build that attaches the guard 2 s late: old test 3 of 3 failed, fixed test 3 of 3 passed; real code `--repeat-each=10`: 10 passed; `gate1-run-output.md`). The whole `files.spec.ts` passed on this build (13 passed, 5 storage skips) |
 | 2. `journey.spec.ts` mail-free tests | **2 passed** (the full journey needs a mail inbox: CI) |
 | 3. Signed-out spec | **22 passed** |
 | 3. Unit: route inventory and file sniffing | **18 passed** (the route inventory now has 10 tests) |

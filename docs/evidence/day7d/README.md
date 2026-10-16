@@ -152,7 +152,7 @@ Checks on the final merged tree (acc33dc):
 | `npm run test:unit` | **741 passed** |
 | `npm run check:native` | 0 findings |
 | lint, typecheck | 0 errors (pre-commit hook) |
-| `scripts/gate1-run.sh` on a fresh stack | SQL exit 0 (`sweeper_attack`, `gate1_attack`); Playwright 99 passed, 5 storage skips, 1 timing flake in `files.spec.ts` that passed 3 of 3 alone and in the whole file (13 passed); journey mail-free 2 passed; signed-out 22; unit 18 (`two-user-map.md`, "The run"; `gate1-run-output.md`) |
+| `scripts/gate1-run.sh` on a fresh stack | SQL exit 0 (`sweeper_attack`, `gate1_attack`); Playwright 99 passed, 5 storage skips, 1 `files.spec.ts` failure that was a test race (the drop guard checked before the client-only Files tab attached it), fixed after the run and proven (old test fails 3 of 3 against a guard attached 2 s late, fixed test passes 3 of 3 there and 10 of 10 with `--repeat-each=10` on the real code); journey mail-free 2 passed; signed-out 22; unit 18 (`two-user-map.md`, "The run"; `gate1-run-output.md`) |
 | `python3 scripts/db-mutations.py --anchors` | 672 rows in 16 sets apply, none dead |
 | gitleaks | all refs, 708 commits: no leaks; this branch's 43 commits (`287430b..HEAD`): no leaks |
 | `npm audit --omit=dev` | 0 vulnerabilities (no dependency changed in Day 7c) |
@@ -169,7 +169,7 @@ HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four condi
 
 - **(a) Day 7c's final head is merged** into this branch (done: f6f1f3f at acc33dc), and `scripts/gate1-run.sh` on the
   merged tree, or the CI `auth-journey` and `db` jobs on it, are green. Locally: green apart from one `files.spec.ts`
-  timing flake that passed on its own 3 of 3 times; CI's run on the PR closes this condition.
+  test race, since fixed in the test and proven (10 of 10); CI's run on the PR closes this condition.
 - **(b) Dev re-read after the Day 6 and Day 7 deploys**: `dev-checks.sql` (read-only) and both dev advisors show
   0 ERROR and only the accepted WARNs (`set_user_role`, leaked password protection, and Day 6e's `share_view` and
   `share_request`).

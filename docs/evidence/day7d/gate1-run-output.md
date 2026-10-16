@@ -193,16 +193,23 @@ gate1-run: exit 1
 Section 2 also ran `journey.spec.ts`'s two mail-free tests through the script's new branch (no mail inbox locally):
 "2 passed" above, after the 13-file block.
 
-The one failure: `files.spec.ts` "hidden tab: … a file dropped outside the zone never leaves the page": the first drop
-check read `defaultPrevented` false (the page's drop guard was not attached yet when the test dispatched its event).
-Day 7c changed no files code (`git diff 287430b acc33dc -- src/components/files` is empty); the test passed in run 1
-and passed on its own on this build 3 times out of 3, and the whole `files.spec.ts` then passed (13 passed, 5 storage
-skips), including the 2 tests the serial file had not run:
+The one failure: `files.spec.ts` "hidden tab: … a file dropped outside the zone never leaves the page" read the drop
+guard as not attached (`defaultPrevented` false at the first check, line 565). **A test race, fixed after this run**:
 
-```
-hidden tab (alone): 1 passed (55.4s) | 1 passed (58.6s) | 1 passed (59.5s)
-files.spec.ts (whole file): 13 passed (1.9m), 5 skipped (storage-api, CI)
-```
+- **Root cause.** The Files tab is a client-only chunk (`next/dynamic` with `ssr: false` in
+  `src/components/lead/lead-page.tsx`): its tab panel shows a skeleton first, and the guard is a window `dragover`/`drop`
+  listener added by `FilesTab`'s mount effect (`src/components/files/files-tab.tsx`), after its content is drawn. The
+  test's `gotoFiles` waits for `appReady()` (the shell has hydrated) and the panel being visible, both true while the
+  chunk may still be loading, so the first synthetic drag could arrive before the listener. The same holds the other
+  way: the Timeline check expects the guard gone, which happens in the effect's cleanup when the tab's Activity boundary
+  hides it.
+- **Fix (test only).** Wait for the tab's own content (`input[type=file]` attached), then `expect.poll` the guard's
+  observable effect (the drag event's default prevented) until it holds; the Timeline check polls for "not prevented".
+  No sleeps; a guard that never attaches (or never detaches) still fails at the poll's timeout.
+- **Proof** (scratch build copy only; the repository's `files-tab.tsx` untouched):
 
-Recorded as a timing flake under load (a unit-test run shared the machine at the start of this run); CI's WebKit and
-Chromium shards run it again.
+| Run | Result |
+|---|---|
+| Scratch build with the listener attached 2 s late; the old test, `--repeat-each=3` | 3 failed, each at line 565 with `dragover: false, drop: false` (the run's failure, made reliable) |
+| Same scratch build; the fixed test, `--repeat-each=3` | 3 passed |
+| Real code (scratch build restored, rebuilt); the fixed test, `--repeat-each=10` | 10 passed (9.7 min) |

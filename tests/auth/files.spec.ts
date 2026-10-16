@@ -562,13 +562,19 @@ test("hidden tab: an outcome shows as a toast and the line waits; a file dropped
       }
       return out;
     }, selector);
-  expect(await dropped("main h1")).toEqual({ dragover: true, drop: true });
+  // The Files tab is a client-only chunk (next/dynamic, ssr: false): its panel shows a skeleton first, and the drop guard
+  // is a window listener added by the tab's mount effect, after its content is drawn. appReady() only means the shell has
+  // hydrated, so wait for the tab's own content, then poll the guard's observable effect (the drag event's default is
+  // prevented) until it holds; a guard that never attaches still fails at the poll's timeout.
+  await expect(filesPanel(page).locator("input[type=file]")).toBeAttached();
+  await expect.poll(() => dropped("main h1")).toEqual({ dragover: true, drop: true });
   expect(await dropped("section:has(input[type=file]) h2")).toEqual({ dragover: true, drop: true });
   await filesPanel(page).locator("input[type=file]").setInputFiles({ name, mimeType: "application/pdf", buffer: pdfBytes(64_000) });
   await expect(filesPanel(page).getByRole("button", { name: "Cancel" })).toBeVisible();
   await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page.getByRole("tabpanel", { name: "Timeline" })).toBeVisible();
-  expect(await dropped("main h1")).toEqual({ dragover: false, drop: false });
+  // The guard is removed by the effect's cleanup when the Files tab is hidden: poll for that too (same reason as above).
+  await expect.poll(() => dropped("main h1")).toEqual({ dragover: false, drop: false });
   storage.open();
   await expect(page.getByText(`${name} wasn’t added. Connection lost. Try again.`).filter({ visible: true })).toBeVisible(); // the toast (the tab’s own status line is hidden with the tab)
   await page.getByRole("tab", { name: "Files" }).click();
