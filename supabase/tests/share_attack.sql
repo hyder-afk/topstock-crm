@@ -336,10 +336,11 @@ begin
                  or i ->> 0 ~ '-') then
     raise exception 'FAIL: share_view_payload_keys_exact (items are 8-place arrays, no internal id)';
   end if;
-  -- The planted minimum price and cost never travel. generated_at is left out of the search: it is now() with
-  -- microseconds, so a clock reading such as 23:31:01.114 matched '%1.11%' (the keys check above still requires it).
+  -- The planted minimum price and cost never travel. generated_at is left out of the search (it is now() with
+  -- microseconds, so a clock reading such as 23:31:01.114 matched '%1.11%') and checked exactly instead: one block is
+  -- one transaction, so it must equal now().
   if (r - 'generated_at')::text like '%1.11%' or (r - 'generated_at')::text like '%0.42%'
-     or r::text not like '%999.99%' then
+     or (r ->> 'generated_at')::timestamptz is distinct from now() or r::text not like '%999.99%' then
     raise exception 'FAIL: share_view sends the minimum price or the cost';
   end if;
 end $$;

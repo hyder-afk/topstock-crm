@@ -17,6 +17,11 @@ on:
     paths: ["supabase/**"]
 permissions:
   contents: read
+env:
+  # The tests must not depend on the session's day (the guards use the Paris day). A session on UTC differs from Paris
+  # only 1 to 2 hours a day; one on Kiritimati (UTC+14) is a day ahead of Paris from 10:00 to 22:00/23:00 UTC, so a test
+  # that builds a day limit from current_date fails here for most of the working day instead of late at night.
+  PGTZ: Pacific/Kiritimati
 # One run per PR: a new commit cancels the run for the older one (only the newest commit counts for merging, and it
 # always gets the full suite). Pushes to main are never cancelled.
 concurrency:
