@@ -362,6 +362,8 @@ test("admin_settings", async ({ browser }) => {
   await settled(page);
   await page.goto("/inventory/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Inventory settings" })).toBeVisible();
+  // Typed before hydration, the controlled field went back to its saved 14 and Save sent 14 (WebKit, PR #18).
+  await appReady(page);
   await page.getByLabel("Default hold length (days)").fill("21");
   await page.getByRole("button", { name: "Save" }).nth(1).click();
   await expect(toast(page)).toHaveText("Settings saved.");
