@@ -88,7 +88,9 @@ export function DealSheet({
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
-            "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-12px)] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pb-[env(safe-area-inset-bottom)]",
+            // Below 1024 px a bottom sheet the width of the screen: clear of the status bar (top inset) and, in landscape, of
+            // the notch side (side insets); the bottom inset as before.
+            "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-max(12px,env(safe-area-inset-top,0px)))] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pr-[env(safe-area-inset-right,0px)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left,0px)]",
             "lg:inset-y-3 lg:right-3 lg:left-auto lg:mx-0 lg:max-h-none lg:w-[440px] lg:rounded-[24px]",
           )}
         >
@@ -197,7 +199,9 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
             <Link
               href={`/leads/${deal.lead.id}`}
               onPointerEnter={() => router.prefetch(`/leads/${deal.lead.id}`)}
-              className="underline-offset-4 hover:underline"
+              // The name is 25 px tall in the title; on phones its tap area reaches 45 px (10 px above and below, at least
+              // 44 px wide) without moving the title (Day 7c phone pass).
+              className="relative underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-2.5 max-sm:before:min-w-11 max-sm:before:content-['']"
             >
               {deal.lead.name}
             </Link>

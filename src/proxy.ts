@@ -47,8 +47,9 @@ function contentSecurityPolicy(nonce: string, https: boolean) {
   ].join("; ");
 }
 
-// Open to everyone: the sign-in screens, the email-link landing page and robots.txt.
-const publicPaths = ["/login", "/forgot-password", "/auth/confirm", "/robots.txt"];
+// Open to everyone: the sign-in screens, the email-link landing page, robots.txt and the web app manifest (browsers fetch
+// it without cookies; it holds the app's name, colours and icon paths only).
+export const publicPaths = ["/login", "/forgot-password", "/auth/confirm", "/robots.txt", "/manifest.webmanifest"];
 // The client stock link (6e): served before any session code, with no cookie read or written.
 export const sharePaths = ["/s", "/api/share"];
 // Need a session, but not yet two-factor (aal1): the two-factor screens and choosing a password.

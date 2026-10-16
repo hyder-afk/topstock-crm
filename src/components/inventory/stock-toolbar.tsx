@@ -75,7 +75,9 @@ export function StockToolbar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-[1_1_220px]">
+        {/* Below 1024 px the search has the row to itself, so its placeholder ("name, category or P-0042") shows whole
+            (Day 7c: cut at 768 in French). */}
+        <div className="relative min-w-0 flex-[1_1_220px] max-lg:basis-full">
           <label htmlFor={`${id}-q`} className="sr-only">
             {t("search")}
           </label>
@@ -136,7 +138,7 @@ export function StockToolbar({
       <div
         role="group"
         aria-label={t("filters")}
-        className="-mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
+        className="edge-fade -mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
       >
         {chips.map((f) => (
           <button

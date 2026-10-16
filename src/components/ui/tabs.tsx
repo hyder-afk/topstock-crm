@@ -15,10 +15,15 @@ export type TabItem<T extends string> = { id: T; label: React.ReactNode };
 export const tabId = (base: string, id: string) => `${base}-tab-${id}`;
 export const panelId = (base: string, id: string) => `${base}-panel-${id}`;
 
+/** The width of the `edge-fade` utility's fade (globals.css): an edge fades only while more tabs lie past it. */
+const EDGE_FADE = 24;
+
 /**
- * Scrolls a sideways tab strip (only the strip, never the page) so the tab is whole on screen. The strip snaps each tab
- * to its start (`snap-mandatory`), so any other scroll position is snapped again by the browser and can leave the tab
- * cut: the strip goes to the first tab start from which this tab shows whole, measured in fractional pixels.
+ * Scrolls a sideways tab strip (only the strip, never the page) so the tab is whole on screen and clear of the edge
+ * fades (Day 7c: a tab left inside a fade looked dimmed; the first and last tab need no room, as no fade shows at the
+ * strip's ends). The strip snaps each tab to its start (`snap-mandatory`) inset by its scroll padding (the fade's
+ * width, from `edge-fade`), so only those positions hold: forwards, the strip goes to the first one from which this
+ * tab shows whole with room for the end fade; backwards, to the last one that leaves room for the start fade.
  */
 function revealTab(el: HTMLElement) {
   const strip = el.parentElement;
@@ -28,16 +33,19 @@ function revealTab(el: HTMLElement) {
   const left = at(el);
   const right = left + el.getBoundingClientRect().width;
   const view = strip.clientWidth;
-  if (left >= strip.scrollLeft - 0.5 && right <= strip.scrollLeft + view + 0.5) return;
-  let target = left;
-  if (left > strip.scrollLeft) {
-    for (const b of Array.from(strip.children)) {
-      const start = at(b);
-      if (start + view >= right) {
-        target = Math.min(start, left);
-        break;
-      }
-    }
+  const max = strip.scrollWidth - view;
+  const needLeft = left - (el === strip.firstElementChild ? 0 : EDGE_FADE);
+  const needRight = right + (el === strip.lastElementChild ? 0 : EDGE_FADE);
+  if (needLeft >= strip.scrollLeft - 0.5 && needRight <= strip.scrollLeft + view + 0.5) return;
+  const inset = parseFloat(getComputedStyle(strip).scrollPaddingLeft) || 0;
+  const stops = Array.from(strip.children, (b) => Math.min(max, Math.max(0, at(b) - inset)));
+  let target = Math.min(max, Math.max(0, needLeft));
+  if (needRight > strip.scrollLeft + view + 0.5) {
+    const stop = stops.find((s) => s + view >= needRight - 0.5 && s <= needLeft + 0.5);
+    if (stop !== undefined) target = stop;
+  } else {
+    const before = stops.filter((s) => s <= needLeft + 0.5);
+    if (before.length) target = before[before.length - 1];
   }
   strip.scrollLeft = target;
 }
@@ -102,7 +110,7 @@ export function TabList<T extends string>({
         aria-label={label}
         onKeyDown={onKeyDown}
         className={cn(
-          "flex max-w-full snap-x snap-mandatory gap-0.5 overflow-x-auto overscroll-x-contain rounded-md bg-muted p-1 [scrollbar-width:none] sm:self-start [&::-webkit-scrollbar]:hidden",
+          "edge-fade flex max-w-full snap-x snap-mandatory gap-0.5 overflow-x-auto overscroll-x-contain rounded-md bg-muted p-1 [scrollbar-width:none] sm:self-start [&::-webkit-scrollbar]:hidden",
           className,
         )}
       >

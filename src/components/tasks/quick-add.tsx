@@ -103,7 +103,7 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
         </Button>
       </div>
 
-      <div role="group" aria-label={t("quickAdd.dateLabel")} className="-mx-1 flex min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div role="group" aria-label={t("quickAdd.dateLabel")} className="edge-fade -mx-1 flex min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {QUICK_CHIPS.map((c) => (
           <Tooltip key={c} content={now ? format.dateTime(new Date(`${chipDate(c, zone, now)}T12:00:00Z`), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : null}>
             <button type="button" aria-pressed={chip === c} onClick={() => setChip(chip === c ? null : c)} className={chipClass(chip === c)}>

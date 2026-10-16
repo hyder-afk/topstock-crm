@@ -213,7 +213,7 @@ export function DatePicker({
                 type="button"
                 disabled={disabled}
                 aria-label={current ? t("changeDate", { date: shown }) : t("chooseDate")}
-                className="absolute right-1 grid size-10 place-items-center rounded-md text-muted-foreground transition-transform duration-150 hover:text-foreground active:scale-[0.97] disabled:opacity-60 sm:size-9"
+                className="absolute right-0 grid size-11 place-items-center rounded-md text-muted-foreground transition-transform duration-150 hover:text-foreground active:scale-[0.97] disabled:opacity-60 sm:right-1 sm:size-9"
               >
                 <CalendarDays aria-hidden="true" strokeWidth={1.75} className="size-4" />
               </button>

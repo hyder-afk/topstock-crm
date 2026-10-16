@@ -22,9 +22,12 @@ function Row({ item, onOpen }: { item: AttentionItem; onOpen: (id: string) => vo
     item.reason === "overdue" && item.expected_close ? (
       <span className="font-bold text-status-red">{t("closePassed", { date: date(item.expected_close) })}</span>
     ) : item.reason === "stalled" ? (
-      <span className="inline-flex min-w-0 items-center gap-1.5 text-foreground">
-        <Dot tone="amber" />
-        <span className="truncate">{t("stalled", { days: item.quiet_days ?? 0 })}</span>
+      // Wraps to a second line rather than losing the day count (the French line is about 20 % longer; Day 7c).
+      <span className="inline-flex min-w-0 items-start gap-1.5 text-foreground">
+        <span className="flex h-4 shrink-0 items-center">
+          <Dot tone="amber" />
+        </span>
+        <span className="line-clamp-2 text-pretty">{t("stalled", { days: item.quiet_days ?? 0 })}</span>
       </span>
     ) : item.expected_close ? (
       <span className="text-muted-foreground">{t("closing", { date: date(item.expected_close) })}</span>

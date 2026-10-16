@@ -673,7 +673,7 @@ function Pipeline({
 
         {phone ? (
           <nav aria-label={t("stageTabs")} className="sticky top-0 z-[5] -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
-            <div className="flex gap-1 overflow-x-auto">
+            <div className="edge-fade flex gap-1 overflow-x-auto">
               {columns.map((c) => (
                 <button
                   key={c.key}
@@ -763,8 +763,11 @@ function Pipeline({
                   {t("lostReason", { reason: tReason(r.code), count: format.number(r.count) })}
                 </span>
               ))}
-              <span aria-hidden="true">·</span>
-              <Button variant="link" className="min-h-11 text-sm sm:min-h-0" onClick={() => setClosedList("lost")}>
+              {/* On phones the link takes its own line, so no separator is left hanging at a line's end (Day 7c). */}
+              <span aria-hidden="true" className="max-sm:hidden">
+                ·
+              </span>
+              <Button variant="link" className="min-h-11 text-sm max-sm:basis-full max-sm:justify-start sm:min-h-0" onClick={() => setClosedList("lost")}>
                 {t("seeLost")}
               </Button>
             </p>

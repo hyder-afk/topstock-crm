@@ -6,9 +6,11 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
     <html lang="en">
       <body style={{ fontFamily: "system-ui, sans-serif", background: "#f5f3ef", color: "#0e0e10", padding: 24 }}>
         <main>
-          <h1>Something went wrong / Une erreur est survenue</h1>
+          <h1>
+            Something went wrong / <span lang="fr">Une erreur est survenue</span>
+          </h1>
           <button type="button" onClick={reset}>
-            Try again / Réessayer
+            Try again / <span lang="fr">Réessayer</span>
           </button>
         </main>
       </body>

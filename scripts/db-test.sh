@@ -48,5 +48,6 @@ bash "$ROOT/supabase/tests/sales_concurrency.sh" "host=$WORK port=$PORT user=pos
 $PSQL -f "$ROOT/supabase/tests/share_attack.sql"
 bash "$ROOT/supabase/tests/share_concurrency.sh" "host=$WORK port=$PORT user=postgres dbname=postgres"
 $PSQL -f "$ROOT/supabase/tests/day7a_attack.sql"
+$PSQL -f "$ROOT/supabase/tests/sweeper_attack.sql"
 $PSQL -f "$ROOT/supabase/tests/gate1_attack.sql"  # Day 7d: catalog rules for every table and function
 bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p $PORT -U postgres -d postgres

@@ -55,7 +55,7 @@ export function ShareList({
           className="bg-card"
         />
         {categories.length >= 2 ? (
-          <div role="radiogroup" aria-label={t("categories")} className="flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
+          <div role="radiogroup" aria-label={t("categories")} className="edge-fade flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
             {[null, ...categories].map((c) => (
               <button
                 key={c ?? "*"}

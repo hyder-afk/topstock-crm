@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ThemeProvider } from "@/components/theme-provider";
+import { themeColors } from "@/lib/theme-colors";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -24,13 +25,22 @@ const dmMono = localFont({
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("Metadata");
-  return { title: t("title"), description: t("description") };
+  // Opened from the home screen (Day 7c PWA basics): full screen, the brand name under the icon, the system status bar.
+  return {
+    title: t("title"),
+    description: t("description"),
+    appleWebApp: { capable: true, title: "TopStock", statusBarStyle: "default" },
+  };
 }
 
+// viewportFit "cover": the page draws edge to edge on phones with a notch or a home indicator, and env(safe-area-inset-*)
+// then reports the real insets (it reports 0 without it): the dock, sheets and toasts already add the bottom inset, and
+// globals.css pads the body by the side and top insets.
 export const viewport: Viewport = {
+  viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f3ef" },
-    { media: "(prefers-color-scheme: dark)", color: "#0e0e10" },
+    { media: "(prefers-color-scheme: light)", color: themeColors.light },
+    { media: "(prefers-color-scheme: dark)", color: themeColors.dark },
   ],
 };
 

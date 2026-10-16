@@ -91,7 +91,7 @@ export function BoardToolbar({
           </div>
         ) : null}
         {canTeam && scope === "team" ? (
-          <div role="group" aria-label={t("owners.label")} className="-mx-4 flex max-w-[calc(100%+32px)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:max-w-full sm:px-0">
+          <div role="group" aria-label={t("owners.label")} className="edge-fade -mx-4 flex max-w-[calc(100%+32px)] gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:max-w-full sm:px-0">
             <button type="button" aria-pressed={owner === null} onClick={() => onOwner(null)} className={chip(owner === null)}>
               {t("owners.everyone")}
             </button>

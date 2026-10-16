@@ -348,6 +348,21 @@ function CallPanel({
     setOrigin(`${call.origin.x - r.left}px ${call.origin.y - r.top}px`);
   }, [call.origin]);
 
+  // The page behind the panel keeps a control reached with Tab clear of it (Day 7c, plan row 7c "call sheet scroll
+  // padding"): the panel's height goes to --call-panel-h on <html>, which phones' scroll-padding reads (globals.css).
+  // The panel stays non-modal (a call outlives page changes), so the page's controls remain reachable around it.
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty("--call-panel-h", `${Math.ceil(el.getBoundingClientRect().height)}px`));
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--call-panel-h");
+    };
+  }, []);
+
   const onDragEnd = (_: unknown, info: PanInfo) => {
     if (info.offset.y + (reduce ? 0 : project(info.velocity.y)) > 140) dismiss();
   };
@@ -358,6 +373,7 @@ function CallPanel({
   return (
     <motion.section
       ref={panelRef}
+      data-call-panel=""
       role="region"
       aria-labelledby={headingId}
       initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
@@ -366,9 +382,9 @@ function CallPanel({
       transition={reduce ? { duration: 0.12 } : springs.sheet}
       style={{ transformOrigin: origin }}
       className={cn(
-        "dock-glass fixed z-40 flex max-h-[calc(100dvh-24px)] flex-col overflow-y-auto overscroll-contain border border-border text-foreground shadow-[0_16px_48px_rgb(14_14_16/0.22)]",
+        "dock-glass fixed z-40 flex max-h-[calc(100dvh-max(24px,env(safe-area-inset-top,0px)))] flex-col overflow-y-auto overscroll-contain border border-border text-foreground shadow-[0_16px_48px_rgb(14_14_16/0.22)]",
         "inset-x-0 bottom-0 rounded-t-[24px] pb-[calc(16px+env(safe-area-inset-bottom,0px))]",
-        "sm:inset-x-auto sm:right-6 sm:bottom-[104px] sm:w-[320px] sm:rounded-[24px] sm:pb-4",
+        "sm:inset-x-auto sm:right-[max(24px,env(safe-area-inset-right,0px))] sm:bottom-[104px] sm:w-[320px] sm:rounded-[24px] sm:pb-4",
       )}
     >
       {/* The header is the drag handle: pull down to close (rubber band, velocity projected). */}

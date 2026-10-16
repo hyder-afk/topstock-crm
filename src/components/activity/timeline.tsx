@@ -785,7 +785,7 @@ const EntryItem = memo(function EntryItem({
 });
 
 const menuTrigger =
-  "-mt-1 -mr-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9";
+  "-mt-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:-mr-1 sm:size-9";
 
 /**
  * An entry's menu. Until it is first used it is a plain button (a menu per entry, 30 a page, cost the tab switch and the

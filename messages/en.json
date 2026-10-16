@@ -417,7 +417,7 @@
     "count": "{count, plural, one {# lead} other {# leads}}",
     "add": "Add lead",
     "searchLabel": "Search leads",
-    "searchPlaceholder": "Search company, contact, email, phone or city…",
+    "searchPlaceholder": "Company, contact, email, phone or city…",
     "filters": "Filters",
     "filtersCount": "Filters, {count} on",
     "clearFilters": "Clear filters",

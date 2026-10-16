@@ -187,7 +187,7 @@ export function StockTable({
                   e.preventDefault();
                   onOpen(r.id);
                 }}
-                className="flex min-w-0 flex-1 flex-col rounded-sm focus-visible:outline-offset-2"
+                className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-sm focus-visible:outline-offset-2"
               >
                 <span className="truncate font-bold" dir="auto">
                   {r.name}
