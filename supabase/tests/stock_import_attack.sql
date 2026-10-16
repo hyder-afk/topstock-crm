@@ -6,6 +6,13 @@
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
+-- The app's day. The guards compare dates with the Paris day ((now() at time zone 'Europe/Paris')::date), so every date
+-- this file checks against them is built from it too, never from current_date (the session's time zone: UTC on the
+-- runners, a day behind Paris from 22:00 or 23:00 UTC). The suite then passes under any PGTZ, at any hour.
+create function pg_temp.paris_today() returns date language sql stable as $$
+  select (now() at time zone 'Europe/Paris')::date
+$$;
+
 create function pg_temp.as_user(sub text, aal text, totp_age_s integer default null) returns void
 language sql as $$
   select set_config('request.jwt.claims', jsonb_build_object(
@@ -251,7 +258,7 @@ begin
   perform public.create_product(p_name => 'SI Archived', p_pieces_per_carton => 6, p_price_min => 3, p_price_max => 4);
   perform public.archive_product((select id from public.products where name = 'SI Archived'));
   perform public.create_product(p_name => 'SI Arrive', p_pieces_per_carton => 50, p_opening_qty => 500,
-                                p_opening_location => 'transit', p_transit_eta => current_date + 10);
+                                p_opening_location => 'transit', p_transit_eta => pg_temp.paris_today() + 10);
   perform public.post_stock_movement((select id from public.products where name = 'SI Arrive'), 'reserve', 100, 'transit',
                                      p_company => '33000000-0000-0000-0000-0000000000a1');
   perform public.create_product(p_name => 'SI Untouched', p_pieces_per_carton => 12, p_opening_qty => 300);

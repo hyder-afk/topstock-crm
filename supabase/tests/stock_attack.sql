@@ -13,6 +13,13 @@
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
+-- The app's day. The guards compare dates with the Paris day ((now() at time zone 'Europe/Paris')::date), so every date
+-- this file checks against them is built from it too, never from current_date (the session's time zone: UTC on the
+-- runners, a day behind Paris from 22:00 or 23:00 UTC). The suite then passes under any PGTZ, at any hour.
+create function pg_temp.paris_today() returns date language sql stable as $$
+  select (now() at time zone 'Europe/Paris')::date
+$$;
+
 -- Helpers --------------------------------------------------------------------------------------------------------------
 create function pg_temp.as_user(sub text, aal text, totp_age_s integer default null) returns void
 language sql as $$
@@ -427,7 +434,7 @@ begin
   perform pg_temp.expect_error($q$insert into private.stock_reservations (id, org_id, product_id, location_id, company_id,
     quantity, remaining, hold_until, created_by) values (gen_random_uuid(), current_setting('t.org')::uuid,
     '7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid, '33000000-0000-0000-0000-0000000000b1', 1, 1,
-    current_date, '00000000-0000-0000-0000-00000000000a')$q$, '42501');
+    pg_temp.paris_today(), '00000000-0000-0000-0000-00000000000a')$q$, '42501');
   perform pg_temp.expect_error($q$update private.stock_reservations set remaining = 1$q$, '42501');
   perform pg_temp.expect_error($q$delete from private.stock_reservations$q$, '42501');
   perform pg_temp.expect_error($q$insert into private.stock_hold_uses (movement_id, reservation_id, org_id, pieces)
@@ -557,9 +564,9 @@ begin
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, target => 50000001)', p, 'count'), '22023', 'quantity');
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L)', p, 'release'), '22023', 'reservation');
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s)', p, 'reserve', 1), '22023', 'document');
-  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, hold_until => current_date - 1)', p,
+  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, hold_until => pg_temp.paris_today() - 1)', p,
     'reserve', 1, '33000000-0000-0000-0000-0000000000b1'), '22023', 'hold_until');
-  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, hold_until => current_date + 92)', p,
+  perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, hold_until => pg_temp.paris_today() + 92)', p,
     'reserve', 1, '33000000-0000-0000-0000-0000000000b1'), '22023', 'hold_until');
   perform pg_temp.expect_error(format('select pg_temp.mv(%L, %L, %s, company => %L, note => %L)', p, 'reserve', 1,
     '33000000-0000-0000-0000-0000000000b1', repeat('h', 301)), '22023', 'note');
@@ -592,7 +599,7 @@ begin
   -- A hold's end date is checked by the guard too (a direct insert skips the RPC's check).
   perform pg_temp.expect_error($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty,
     company_id, hold_until) values (gen_random_uuid(), '7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid,
-    'reserve', 1, '33000000-0000-0000-0000-0000000000b1', current_date + 91)$q$, '22023', 'hold_until');
+    'reserve', 1, '33000000-0000-0000-0000-0000000000b1', pg_temp.paris_today() + 91)$q$, '22023', 'hold_until');
   perform pg_temp.expect_error($q$insert into private.stock_movements (group_id, product_id, location_id, kind, qty,
     company_id) values (gen_random_uuid(), '7a000000-0000-0000-0000-000000000001', current_setting('t.wh')::uuid,
     'reserve', 1, '33000000-0000-0000-0000-0000000000b1')$q$, '22023', 'hold_until');
@@ -609,7 +616,7 @@ begin
   -- A direct insert of the granted columns gets the server's values (and passes every engine rule).
   insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, company_id, deal_id, hold_until)
   values (gen_random_uuid(), '7a000000-0000-0000-0000-000000000008', current_setting('t.wh')::uuid, 'adjust_in', 2, 'found',
-          '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000b1', current_date)
+          '33000000-0000-0000-0000-0000000000b1', '43000000-0000-0000-0000-0000000000b1', pg_temp.paris_today())
   returning org_id, user_id, created_at, d_on_hand, on_hand_after, company_id, deal_id, hold_until into m;
   if m.org_id is distinct from current_setting('t.org')::uuid or m.user_id is distinct from '00000000-0000-0000-0000-00000000000a'
      or m.created_at is distinct from now() or m.d_on_hand is distinct from 2 or m.on_hand_after is distinct from 102
@@ -649,8 +656,8 @@ begin
       ($q$insert into public.products (name, pieces_per_carton, price_min) values ('MARK3 ok', 12, -0.01)$q$, 'price'),
       ($q$insert into public.products (name, pieces_per_carton, price_max) values ('MARK3 ok', 12, 1000000.01)$q$, 'price'),
       ($q$insert into public.products (name, pieces_per_carton, price_min, price_max) values ('MARK3 ok', 12, 5, 4)$q$, 'price_order'),
-      ($q$insert into public.products (name, pieces_per_carton, transit_eta) values ('MARK3 ok', 12, current_date + 731)$q$, 'eta'),
-      ($q$insert into public.products (name, pieces_per_carton, transit_eta) values ('MARK3 ok', 12, current_date - 366)$q$, 'eta'),
+      ($q$insert into public.products (name, pieces_per_carton, transit_eta) values ('MARK3 ok', 12, pg_temp.paris_today() + 731)$q$, 'eta'),
+      ($q$insert into public.products (name, pieces_per_carton, transit_eta) values ('MARK3 ok', 12, pg_temp.paris_today() - 366)$q$, 'eta'),
       ($q$insert into public.products (name, pieces_per_carton) values ('stock TEST 01', 12)$q$, 'name_taken'),
       ($q$insert into public.products (name, pieces_per_carton) values ('Stock-test (archived)', 12)$q$, 'name_taken'),
       ($q$insert into private.product_costs (product_id, cost_per_piece, source) values ('7a000000-0000-0000-0000-000000000009', -1, 'manual')$q$, 'cost'),
@@ -765,7 +772,7 @@ do $$ begin perform set_config('t.h1', (pg_temp.mv('7a000000-0000-0000-0000-0000
   company => '33000000-0000-0000-0000-0000000000b1') ->> 'reservation_id'), false); end $$;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
 do $$ begin perform set_config('t.h2', (pg_temp.mv('7a000000-0000-0000-0000-000000000002', 'reserve', 400, 'transit',
-  company => '33000000-0000-0000-0000-0000000000d1', hold_until => current_date + 30) ->> 'reservation_id'), false); end $$;
+  company => '33000000-0000-0000-0000-0000000000d1', hold_until => pg_temp.paris_today() + 30) ->> 'reservation_id'), false); end $$;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30); end $$;
 do $$
 begin
@@ -781,7 +788,7 @@ declare
   r jsonb;
   s record;
 begin
-  update public.products set transit_eta = current_date + 10 where id = p;
+  update public.products set transit_eta = pg_temp.paris_today() + 10 where id = p;
   -- Arrived needs no fresh code (D20): manager a1 entered the code 50 minutes ago.
   r := pg_temp.mv(p, 'transfer', 700);
   -- transfer_conserves_total and transfer_moves_holds_oldest_first_and_splits
@@ -800,7 +807,7 @@ begin
   select r2.* into s from private.stock_reservations r2 where r2.split_from = h2;
   if s.location_id is distinct from current_setting('t.wh')::uuid or s.remaining is distinct from 300
      or s.quantity is distinct from 300 or s.created_by is distinct from '00000000-0000-0000-0000-0000000000d1'
-     or s.company_id is distinct from '33000000-0000-0000-0000-0000000000d1' or s.hold_until is distinct from current_date + 30
+     or s.company_id is distinct from '33000000-0000-0000-0000-0000000000d1' or s.hold_until is distinct from pg_temp.paris_today() + 30
      or s.created_at is distinct from (select created_at from private.stock_reservations where id = h2) then
     raise exception 'FAIL: the split part: %', row_to_json(s);
   end if;
@@ -943,9 +950,9 @@ declare
 begin
   perform pg_temp.expect_ok($q$select pg_temp.mv('7a000000-0000-0000-0000-000000000005', 'adjust_in', 1, reason => 'found')$q$);
   -- create_product with a cost and opening stock; a retry with the same request id returns the same product.
-  v_id := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 40, 48, current_date + 20, true, 1.25, 72,
+  v_id := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 40, 48, pg_temp.paris_today() + 20, true, 1.25, 72,
                                 'transit', req);
-  v_again := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 40, 48, current_date + 20, true, 1.25, 72,
+  v_again := public.create_product('Manager product', 24, 2, 4.5, 'Shoes', 40, 48, pg_temp.paris_today() + 20, true, 1.25, 72,
                                    'transit', req);
   if v_again is distinct from v_id or (select count(*) from public.products where name = 'Manager product') <> 1
      or pg_temp.oh(v_id, 'transit') <> 72 or pg_temp.oh(v_id, 'warehouse') <> 0
@@ -1057,7 +1064,7 @@ begin
   r := pg_temp.mv(p, 'reserve', 10, company => '33000000-0000-0000-0000-0000000000b1', note => 'for the spring order');
   if not exists (select 1 from private.stock_reservations where id = (r ->> 'reservation_id')::uuid
                    and created_by = '00000000-0000-0000-0000-0000000000b1' and company_id = '33000000-0000-0000-0000-0000000000b1'
-                   and hold_until = current_date + 14 and note = 'for the spring order' and quantity = 10 and remaining = 10) then
+                   and hold_until = pg_temp.paris_today() + 14 and note = 'for the spring order' and quantity = 10 and remaining = 10) then
     raise exception 'FAIL: hold row: %', r;
   end if;
   perform set_config('t.hb', r ->> 'reservation_id', false);
@@ -1273,7 +1280,7 @@ begin
     company => '33000000-0000-0000-0000-0000000000b1') ->> 'reservation_id', false);
 end $$;
 reset role;
-update private.stock_reservations set hold_until = current_date - 1 where id = current_setting('t.e1')::uuid;
+update private.stock_reservations set hold_until = pg_temp.paris_today() - 1 where id = current_setting('t.e1')::uuid;
 set role authenticated;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30); end $$;
 do $$
@@ -1292,7 +1299,7 @@ begin
 end $$;
 -- sweep_throttled_once_a_minute: the page-load sweep ends due holds once a minute per organisation.
 reset role;
-update private.stock_reservations set hold_until = current_date - 1 where id = current_setting('t.e2')::uuid;
+update private.stock_reservations set hold_until = pg_temp.paris_today() - 1 where id = current_setting('t.e2')::uuid;
 update private.inventory_settings set last_sweep_at = null where org_id = current_setting('t.org')::uuid;
 set role authenticated;
 do $$ begin perform pg_temp.as_user('00000000-0000-0000-0000-0000000000d1', 'aal2', 30); end $$;
@@ -1300,7 +1307,7 @@ do $$ begin
   if public.release_expired_reservations() <> 1 then raise exception 'FAIL: the first sweep should end one hold'; end if;
 end $$;
 reset role;
-update private.stock_reservations set hold_until = current_date - 1 where id = current_setting('t.e3')::uuid;
+update private.stock_reservations set hold_until = pg_temp.paris_today() - 1 where id = current_setting('t.e3')::uuid;
 set role authenticated;
 do $$ begin
   if public.release_expired_reservations() <> 0 then raise exception 'FAIL: a second sweep within a minute should do nothing'; end if;
@@ -1323,11 +1330,11 @@ declare
 begin
   update private.inventory_settings set hold_days = 7;
   r := pg_temp.mv('7a000000-0000-0000-0000-000000000006', 'reserve', 1, company => '33000000-0000-0000-0000-0000000000a1');
-  if (select hold_until from private.stock_reservations where id = (r ->> 'reservation_id')::uuid) <> current_date + 7 then
+  if (select hold_until from private.stock_reservations where id = (r ->> 'reservation_id')::uuid) <> pg_temp.paris_today() + 7 then
     raise exception 'FAIL: hold length from settings';
   end if;
   perform pg_temp.expect_ok($q$select pg_temp.mv('7a000000-0000-0000-0000-000000000006', 'reserve', 1,
-    company => '33000000-0000-0000-0000-0000000000a1', hold_until => current_date)$q$);
+    company => '33000000-0000-0000-0000-0000000000a1', hold_until => pg_temp.paris_today())$q$);
   update private.inventory_settings set hold_days = 14;
 end $$;
 reset role;
@@ -1577,7 +1584,7 @@ end $$;
 reset role;
 -- nightly_stock_jobs: run as the system (no claims): ends due holds, opens one task a day when the checks find a
 -- difference, prunes old request ids; refuses a session with claims.
-update private.stock_reservations set hold_until = current_date - 1
+update private.stock_reservations set hold_until = pg_temp.paris_today() - 1
  where id = (select id from private.stock_reservations where product_id = '7a000000-0000-0000-0000-000000000007'
               and status = 'active' order by id limit 1);
 do $$
