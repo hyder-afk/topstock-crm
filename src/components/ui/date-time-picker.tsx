@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { DatePicker } from "@/components/ui/date-picker";
 import { TimePicker } from "@/components/ui/time-picker";
@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
 // TimePicker side by side. The value is "YYYY-MM-DDTHH:MM", or "" while either half is missing (as the native field),
 // submitted through one hidden input named `name`; onChange reads e.target.value. min and max take the same shape:
 // their date bounds the calendar, their time bounds the list on that first or last day. `id` goes on the date
-// button, so <label htmlFor={id}> keeps naming the field; the time box is named by its own label ("Time").
+// button, so <label htmlFor={id}> keeps naming the field. The time box is named from the field's label plus "Time"
+// (aria-labelledby: lead Details reads "Next call Time") when `labelId` (the visible label's id) or `aria-labelledby` is
+// given, and "Time" alone otherwise.
 
 export type DateTimePickerProps = {
   id?: string;
@@ -34,6 +36,8 @@ export type DateTimePickerProps = {
   timeZone?: string;
   className?: string;
   form?: string;
+  /** The id of the field's visible label (the one with htmlFor={id}): names the time box with it, plus "Time". */
+  labelId?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
@@ -58,6 +62,7 @@ export function DateTimePicker({
   timeZone,
   className,
   form,
+  labelId,
   "aria-label": ariaLabel,
   "aria-labelledby": labelledBy,
   "aria-describedby": describedBy,
@@ -65,6 +70,8 @@ export function DateTimePicker({
   ...rest
 }: DateTimePickerProps) {
   const t = useTranslations("Pickers");
+  const timeWordId = `${useId()}-time`;
+  const nameFrom = labelId ?? labelledBy;
   const controlled = value !== undefined;
   const [inner, setInner] = useState(defaultValue ?? "");
   const full = splitDateTime(controlled ? value : inner);
@@ -115,11 +122,17 @@ export function DateTimePicker({
         disabled={disabled}
         required={required}
         hourCycle={hourCycle}
-        aria-label={t("time")}
+        aria-label={nameFrom ? undefined : t("time")}
+        aria-labelledby={nameFrom ? `${nameFrom} ${timeWordId}` : undefined}
         aria-describedby={describedBy}
         aria-invalid={ariaInvalid}
         className="w-[8.5rem] flex-[0_0_auto]"
       />
+      {nameFrom ? (
+        <span id={timeWordId} hidden>
+          {t("time")}
+        </span>
+      ) : null}
       {name ? <input type="hidden" name={name} value={joinDateTime(full.date, full.time)} form={form} disabled={disabled} /> : null}
     </div>
   );

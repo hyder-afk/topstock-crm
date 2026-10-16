@@ -228,9 +228,12 @@ export function DatePicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {/* role="combobox", as Select and Combobox: aria-required is not allowed on a button. Radix adds
+          aria-haspopup="dialog" and aria-expanded (the APG date picker pattern). */}
       <PopoverTrigger
         id={id}
         type="button"
+        role="combobox"
         disabled={disabled}
         aria-required={required || undefined}
         aria-invalid={invalid}
@@ -328,6 +331,7 @@ export function DateRangePicker({
       <PopoverTrigger
         id={id}
         type="button"
+        role="combobox"
         disabled={disabled}
         aria-required={required || undefined}
         aria-invalid={ariaInvalid}

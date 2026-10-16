@@ -358,7 +358,7 @@ const pickers: Picker[] = [
     path: () => `/leads/${lead}?tab=details`,
     trigger: async (page) => page.getByRole("group").filter({ has: page.locator('input[name="next_action_at"]') }).first(),
     open: async (page, trigger) => {
-      await trigger.getByRole("button").first().click();
+      await trigger.getByRole("combobox").first().click();
       return page.getByRole("dialog").filter({ has: page.getByRole("grid") });
     },
   },

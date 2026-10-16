@@ -196,12 +196,13 @@ export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { 
 
           {lead.can_edit ? (
             <div className="flex flex-col gap-1.5">
-              <label htmlFor={`${id}-next`} className="font-bold">
+              <label id={`${id}-next-label`} htmlFor={`${id}-next`} className="font-bold">
                 {t("nextCall")}
               </label>
               <div className="flex flex-wrap items-center gap-2">
                 <DateTimePicker
                   id={`${id}-next`}
+                  labelId={`${id}-next-label`}
                   name="next_action_at"
                   data-focus="next"
                   value={next}

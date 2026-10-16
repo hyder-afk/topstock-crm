@@ -89,6 +89,21 @@ test("DatePicker shows the day in words and submits YYYY-MM-DD; typed mode shows
   expect(bad).toContain('<input type="hidden" name="due" value=""/>');
 });
 
+// ARIA allows aria-required on a combobox, not on a button: the date button is a combobox (as Select and Combobox)
+// whose popup is the calendar dialog (Radix's aria-haspopup="dialog" and aria-expanded: the APG date picker pattern).
+test("DatePicker and DateRangePicker triggers are comboboxes with a dialog popup, so aria-required is allowed", () => {
+  const trigger = (html: string) => html.match(/<button[^>]*aria-haspopup="dialog"[^>]*>/)?.[0] ?? "";
+  for (const html of [
+    render(h(DatePicker, { id: "due", name: "due", required: true })),
+    render(h(DateRangePicker, { id: "span", fromName: "from", toName: "to", required: true })),
+  ]) {
+    const button = trigger(html);
+    expect(button).toContain('role="combobox"');
+    expect(button).toContain('aria-required="true"');
+    expect(button).toContain('aria-expanded="false"');
+  }
+});
+
 test("DateRangePicker submits both ends", () => {
   const html = render(h(DateRangePicker, { fromName: "from", toName: "to", defaultValue: { from: "2026-10-01", to: "2026-10-15" } }));
   noNative(html);
@@ -119,6 +134,20 @@ test("DateTimePicker submits YYYY-MM-DDTHH:MM, or empty while a half is missing"
   expect(html).toContain('id="when"');
   const half = render(h(DateTimePicker, { name: "when", defaultValue: "2026-10-15" }));
   expect(half).toContain('<input type="hidden" name="when" value=""/>');
+});
+
+test("DateTimePicker passes required to both halves and names its time box from the field's label plus Time", () => {
+  const html = render(h(DateTimePicker, { id: "when", labelId: "when-label", name: "when", required: true }));
+  // The date combobox and the time combobox are both required.
+  expect(html.match(/role="combobox"[^>]*aria-required="true"|aria-required="true"[^>]*role="combobox"/g)?.length).toBe(2);
+  const labelledBy = html.match(/<input[^>]*role="combobox"[^>]*aria-labelledby="([^"]+)"/)?.[1] ?? "";
+  const [label, word] = labelledBy.split(" ");
+  expect(label).toBe("when-label");
+  expect(html).toContain(`<span id="${word}" hidden="">Time</span>`);
+  // Without a label id: "Time" alone.
+  const bare = render(h(DateTimePicker, { name: "when" }));
+  expect(bare).toMatch(/<input[^>]*aria-label="Time"/);
+  expect(bare).not.toContain("aria-labelledby");
 });
 
 test("SearchInput is a text box with role searchbox, never type=search", () => {
