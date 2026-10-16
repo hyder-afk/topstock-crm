@@ -31,9 +31,8 @@ const rel = (f: string) => relative(ROOT, f).split(sep).join("/");
 
 type Fn = { name: string; text: string; exported: boolean; isDefault: boolean; params: number };
 
-/** Top-level functions of a file (declarations and `const x = async (...) =>`), with their source text. */
-function functions(file: string): Fn[] {
-  const text = readFileSync(file, "utf8");
+/** Top-level functions of a file's text (declarations and `const x = async (...) =>`), with their source text. */
+function functions(file: string, text: string): Fn[] {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const out: Fn[] = [];
   const mods = (n: ts.Node) => (ts.canHaveModifiers(n) ? (ts.getModifiers(n) ?? []) : []);
@@ -74,7 +73,8 @@ function reach(fn: Fn, all: Fn[]) {
   return text;
 }
 
-const ZOD = /\.safeParse\(|\.parse\(|\bparse[A-Z]\w*\(/;
+// A Zod parse: .safeParse(, .parse( (but not JSON.parse), or a parseXxx( helper (but not parseInt or parseFloat).
+const ZOD = /\.safeParse\(|(?<!JSON)\.parse\(|\bparse(?!Int\b|Float\b)[A-Z]\w*\(/;
 const SESSION = /\b(requireSession|requireAdmin)\(/;
 
 // Sign-in steps that run before a full (aal2) session exists; each checks the session's stage itself (getGate) or needs
@@ -124,79 +124,127 @@ const REVIEWED = new Set([
   "src/app/api/stock-imports/[id]/changes/route.ts", "src/app/api/stock-imports/[id]/issues/route.ts", "src/app/api/tasks/route.ts",
 ]);
 
+// The rules, as functions of a file's repository path and text, so the tests below run them on the real files and the
+// planted-break test runs the very same code on in-memory fixtures.
+function routeProblems(path: string, text: string): string[] {
+  const problems: string[] = [];
+  const all = functions(path, text);
+  const handlers = all.filter((f) => f.exported && /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(f.name));
+  if (handlers.length === 0) problems.push(`${path}: no handler found`);
+  for (const h of handlers) {
+    const body = reach(h, all);
+    if (PUBLIC_ROUTES.has(path)) {
+      if (!/\bassertSameOrigin\(/.test(body)) problems.push(`${path} ${h.name}: public route without the same-origin check`);
+      if (!ZOD.test(body)) problems.push(`${path} ${h.name}: public route without a Zod parse`);
+      continue;
+    }
+    if (!/\bapiSession\(\)/.test(body)) problems.push(`${path} ${h.name}: no apiSession()`);
+    const readsInput = /\b(searchParams|params|readJsonBody|request\.json|request\.formData|request\.text)\b/.test(body);
+    if (readsInput && !ZOD.test(body)) problems.push(`${path} ${h.name}: reads the request without a Zod parse`);
+  }
+  return problems;
+}
+
+function actionProblems(path: string, text: string): { problems: string[]; exported: string[] } {
+  const problems: string[] = [];
+  const all = functions(path, text);
+  const exported = all.filter((f) => f.exported);
+  for (const fn of exported) {
+    const key = `${path}#${fn.name}`;
+    const body = reach(fn, all);
+    if (!SESSION.test(body) && !(key in PRE_SESSION_ACTIONS)) problems.push(`${key}: no requireSession()/requireAdmin()`);
+    if (fn.params > 0 && !NO_INPUT_ACTIONS.has(key) && !ZOD.test(body)) problems.push(`${key}: takes input without a Zod parse`);
+  }
+  return { problems, exported: exported.map((f) => `${path}#${f.name}`) };
+}
+
+function pageProblems(path: string, text: string): string[] {
+  const all = functions(path, text);
+  const page = all.find((f) => f.isDefault);
+  if (!page) return [`${path}: no default export found`];
+  return SESSION.test(reach(page, all)) ? [] : [`${path}: no requireSession()/requireAdmin()`];
+}
+
+function screenProblems(found: string[]): string[] {
+  return [
+    ...found.filter((f) => !REVIEWED.has(f)).map((f) => `${f}: not on the reviewed list`),
+    ...[...REVIEWED].filter((f) => !found.includes(f)).map((f) => `${f}: listed but gone`),
+  ];
+}
+
 const files = walk(APP);
 const routes = files.filter((f) => f.endsWith("/route.ts") && rel(f).startsWith("src/app/api/"));
 const pages = files.filter((f) => f.endsWith("/page.tsx"));
 const actionFiles = files.filter((f) => /\.tsx?$/.test(f) && /^\s*["']use server["']/.test(readFileSync(f, "utf8")));
 
+const read = (f: string) => readFileSync(f, "utf8");
+
 test("every page and route is a reviewed screen (no debug or test pages, item 10)", () => {
-  const found = [...routes, ...pages].map(rel).sort();
-  expect(found.filter((f) => !REVIEWED.has(f)), "not on the reviewed list").toEqual([]);
-  expect([...REVIEWED].filter((f) => !found.includes(f)), "listed but gone").toEqual([]);
+  expect(screenProblems([...routes, ...pages].map(rel).sort())).toEqual([]);
 });
 
 test("every route handler checks the two-factor session and parses what it reads with Zod", () => {
-  const problems: string[] = [];
-  for (const file of routes) {
-    const all = functions(file);
-    const handlers = all.filter((f) => f.exported && /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/.test(f.name));
-    if (handlers.length === 0) problems.push(`${rel(file)}: no handler found`);
-    for (const h of handlers) {
-      const text = reach(h, all);
-      if (PUBLIC_ROUTES.has(rel(file))) {
-        if (!/\bassertSameOrigin\(/.test(text)) problems.push(`${rel(file)} ${h.name}: public route without the same-origin check`);
-        if (!ZOD.test(text)) problems.push(`${rel(file)} ${h.name}: public route without a Zod parse`);
-        continue;
-      }
-      if (!/\bapiSession\(\)/.test(text)) problems.push(`${rel(file)} ${h.name}: no apiSession()`);
-      const readsInput = /\b(searchParams|params|readJsonBody|request\.json|request\.formData|request\.text)\b/.test(text);
-      if (readsInput && !ZOD.test(text)) problems.push(`${rel(file)} ${h.name}: reads the request without a Zod parse`);
-    }
-  }
-  expect(problems).toEqual([]);
+  expect(routes.length).toBeGreaterThan(30);
+  expect(routes.flatMap((f) => routeProblems(rel(f), read(f)))).toEqual([]);
 });
 
 test("every server action checks the two-factor session and parses its input with Zod", () => {
-  const problems: string[] = [];
-  let count = 0;
-  for (const file of actionFiles) {
-    const all = functions(file);
-    for (const fn of all.filter((f) => f.exported)) {
-      count++;
-      const key = `${rel(file)}#${fn.name}`;
-      const text = reach(fn, all);
-      if (!SESSION.test(text) && !(key in PRE_SESSION_ACTIONS)) problems.push(`${key}: no requireSession()/requireAdmin()`);
-      if (fn.params > 0 && !NO_INPUT_ACTIONS.has(key) && !ZOD.test(text)) problems.push(`${key}: takes input without a Zod parse`);
-    }
-  }
-  expect(count).toBeGreaterThan(80);
-  expect(problems).toEqual([]);
+  const results = actionFiles.map((f) => actionProblems(rel(f), read(f)));
+  expect(results.flatMap((r) => r.exported).length).toBeGreaterThan(80);
+  expect(results.flatMap((r) => r.problems)).toEqual([]);
   // The pre-session list holds only actions that exist.
-  const existing = new Set(actionFiles.flatMap((f) => functions(f).filter((x) => x.exported).map((x) => `${rel(f)}#${x.name}`)));
+  const existing = new Set(results.flatMap((r) => r.exported));
   expect(Object.keys(PRE_SESSION_ACTIONS).filter((k) => !existing.has(k))).toEqual([]);
 });
 
 test("every page of the app checks the two-factor session itself (the proxy is only the first wall)", () => {
-  const problems: string[] = [];
-  for (const file of pages.filter((f) => rel(f).startsWith("src/app/(app)/"))) {
-    const all = functions(file);
-    const page = all.find((f) => f.isDefault);
-    if (!page) problems.push(`${rel(file)}: no default export found`);
-    else if (!SESSION.test(reach(page, all))) problems.push(`${rel(file)}: no requireSession()/requireAdmin()`);
-  }
-  expect(problems).toEqual([]);
+  const appPages = pages.filter((f) => rel(f).startsWith("src/app/(app)/"));
+  expect(appPages.length).toBeGreaterThan(10);
+  expect(appPages.flatMap((f) => pageProblems(rel(f), read(f)))).toEqual([]);
 });
 
-test("the rules catch a planted break (route without a session, action without Zod, unlisted page)", () => {
-  const route = `export async function GET(request: Request) { const q = new URL(request.url).searchParams; return Response.json(q); }`;
-  const sf = ts.createSourceFile("x.ts", route, ts.ScriptTarget.Latest, true);
-  const fn = sf.statements[0] as ts.FunctionDeclaration;
-  const text = fn.getText(sf);
-  expect(/\bapiSession\(\)/.test(text)).toBe(false);
-  expect(ZOD.test(text)).toBe(false);
-  const action = `async function helper() { return requireSession(); } export async function act(input: unknown) { await helper(); return input; }`;
-  const sf2 = ts.createSourceFile("y.ts", action, ts.ScriptTarget.Latest, true);
-  expect(SESSION.test(sf2.getText())).toBe(true); // reached through the helper ...
-  expect(ZOD.test(sf2.getText())).toBe(false); // ... but no parse: the action rule would fail
-  expect(REVIEWED.has("src/app/(app)/debug/page.tsx")).toBe(false);
+// Planted breaks: the same rule functions on in-memory files. Each fixture must give exactly the named problem, and a
+// correct twin must give none (so a rule that flags everything fails too). Evidence: docs/evidence/day7d/route-inventory.md.
+const ROUTE = "src/app/api/planted/route.ts";
+test("planted break: a route without apiSession() is caught", () => {
+  const bad = `import { z } from "zod";
+export async function GET(request: Request) { const q = z.string().safeParse(new URL(request.url).searchParams.get("q")); return Response.json(q); }`;
+  expect(routeProblems(ROUTE, bad)).toEqual([`${ROUTE} GET: no apiSession()`]);
+  expect(routeProblems(ROUTE, bad.replace("{ const q", "{ const s = await apiSession(); if (!s) return null; const q"))).toEqual([]);
+});
+
+test("planted break: a route that reads its body with JSON.parse only (no Zod) is caught", () => {
+  const bad = `export async function POST(request: Request) { const s = await apiSession(); if (!s) return null;
+  const body = JSON.parse(await request.text()); const n = parseInt(body.n); const f = parseFloat(body.f); return Response.json({ n, f }); }`;
+  expect(routeProblems(ROUTE, bad)).toEqual([`${ROUTE} POST: reads the request without a Zod parse`]);
+  expect(routeProblems(ROUTE, bad.replace("const n =", "const ok = schema.safeParse(body); const n ="))).toEqual([]);
+});
+
+test("planted break: a route whose helper parses is accepted, and the helper is found through reach()", () => {
+  const good = `async function readQuery(request: Request) { return z.object({}).safeParse(Object.fromEntries(new URL(request.url).searchParams)); }
+export async function GET(request: Request) { const s = await apiSession(); if (!s) return null; return Response.json(await readQuery(request)); }`;
+  expect(routeProblems(ROUTE, good)).toEqual([]);
+});
+
+const ACTIONS = "src/app/(app)/planted/actions.ts";
+test("planted break: a server action without Zod is caught (its session check reached through a helper)", () => {
+  const bad = `"use server";
+async function session() { return requireSession(); }
+export async function act(input: unknown) { const { supabase } = await session(); return supabase.rpc("x", input as never); }`;
+  expect(actionProblems(ACTIONS, bad).problems).toEqual([`${ACTIONS}#act: takes input without a Zod parse`]);
+  expect(actionProblems(ACTIONS, bad.replace("const { supabase }", "const p = inputSchema.safeParse(input); const { supabase }")).problems).toEqual([]);
+});
+
+test("planted break: a server action without requireSession() is caught", () => {
+  const bad = `"use server";
+export async function act(input: unknown) { const p = inputSchema.safeParse(input); return p.success; }`;
+  expect(actionProblems(ACTIONS, bad).problems).toEqual([`${ACTIONS}#act: no requireSession()/requireAdmin()`]);
+});
+
+test("planted break: an unlisted page (and an app page without a session check) is caught", () => {
+  const page = "src/app/(app)/debug/page.tsx";
+  const found = [...[...routes, ...pages].map(rel), page].sort();
+  expect(screenProblems(found)).toEqual([`${page}: not on the reviewed list`]);
+  expect(pageProblems(page, `export default async function Debug() { return null; }`)).toEqual([`${page}: no requireSession()/requireAdmin()`]);
+  expect(pageProblems(page, `export default async function Debug() { await requireSession(); return null; }`)).toEqual([]);
 });
