@@ -167,6 +167,16 @@ re-run here). What remains is not code, but it is part of the gate.
 
 **Haider, 16 Oct 2026: "yes" — Gate 1 (code part) CONDITIONALLY PASSED.** It flips to passed only when (a) to (c) below are shown green; (d) is met. The ops part stays on Day 8, before any real data.
 
+**16 Oct 2026, 19:30 UTC: all four conditions shown met, so under Haider's decision Gate 1 (code part) is PASSED.**
+- (a) PR #19 merged as `d12a4a9` with every check green on its last head `942ddd7`: quality, semgrep, gitleaks scan,
+  rls (`db` suites incl. `gate1_attack.sql`), auth-journey Chromium 1/2 and 2/2, WebKit 1/2 and 2/2, Vercel.
+- (b) Dev re-read after `deploy-dev-db` (run 38954829775): 0 ERROR in both advisors, only the accepted WARNs, the stored
+  lead facts 0 wrong, fake data only ([`dev-checks.md`](dev-checks.md), last section).
+- (c) In the same CI run: `npm audit signatures` and `check-build.mjs` (quality job), WebKit, the storage-api e2e
+  (`E2E_STORAGE=1`) and `gate1.spec.ts` against real PostgREST (the spec fails in CI unless it detects real PostgREST,
+  and skips nothing), including step 3's RPC sweep.
+- (d) `/security-review`: met (below).
+
 HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four conditions hold:**
 
 - **(a) Day 7c's final head is merged** into this branch (done: f6f1f3f at acc33dc), and `scripts/gate1-run.sh` on the
