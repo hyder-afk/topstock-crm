@@ -231,3 +231,147 @@ Also on Day 8 (go-live part E, before migrate-prod): account B > topstock-prod >
 - Next.js (`/vercel/next.js`): `manifest.ts` (`MetadataRoute.Manifest`, served as `/manifest.webmanifest`), the
   `apple-icon` file convention, `appleWebApp` metadata tags. `viewportFit` was checked against Next's own `Viewport`
   type (typecheck) and the rendered tag (`tests/e2e/pwa.spec.ts`), not in Context7.
+
+---
+
+# Day 7c (part 2): the French pass, the phone pass, the restore runbook, 16 Oct 2026
+
+Same branch `day7c-local`, on part 1's advisor-approved head eb1b1bc. Not pushed, no PR. Plan row 7c (section 4):
+French and phone pass; restore runbook gains `share_reader`.
+
+## Step 0: Day 7b merged
+
+`day7b-local` 0e895b5 (custom pickers, check:native, the Leave-site prompt kept) merged with `--no-ff` (0159d96).
+Conflicts: `src/app/(app)/layout.tsx` keeps Day 7b's `data-role` and `group/app` with part 1's `min-h-safe-screen`;
+`src/app/layout.tsx` imports both `themeColors` and `TooltipProvider`; `docs/log.md` merged with both sides kept (no
+conflict markers). Day 7b's two new packages (`@radix-ui/react-select`, `@radix-ui/react-tooltip`, already in the
+lockfile) were installed into this worktree's `node_modules` (`npm install --ignore-scripts`; no package change).
+After the merge: lint 0 errors (3 old warnings), typecheck clean, `check:native` clean, unit 681 passed.
+
+## Step 1: the French pass (107529e)
+
+| Looked for | How | Found | Fix |
+|---|---|---|---|
+| Missing keys | Every key of `en.json` against `fr.json`, all 41 namespaces (2,434 strings); `messages.spec` only compared a list of namespaces | none | the parity test now covers the whole file and the top-level namespaces |
+| English left in `fr.json` | Every French value equal to its English value | 79, all legitimate: brand names and the tagline (Brand Pack), words spelt the same (Pipeline, Contacts, Note, Stock, Total, Message, Date, Admin, Manager, Administration, Actions, Import, Correction), units Haider fixed for both languages ("pcs", 11 Oct), argument-only patterns, the call scripts (both files hold both languages) | a named allowlist; any other identical value fails |
+| Typography | U+202F before `; ? ! » :` and after `«`, curly apostrophes, `…` | all good, except **12 numbers with ordinary spaces** ("1 000 000 €", "50 000 000", "15 Mo", "2 000 caractères"): a line could break inside a number | U+202F for thousands, U+00A0 before the unit, as Intl writes fr-FR; now a test rule |
+| ICU arguments and tags | Same argument names and rich-text tags per key (French may count on `done` where English counts on `doneFormatted`) | none | test |
+| Hardcoded strings | A TypeScript AST scan of every `.tsx` in `src/` for JSX text, string children and read attributes (`aria-label`, `placeholder`, `alt`, `title`, `label`) | none to fix; 10 legitimate: the root error boundary's bilingual text (no translations there), the logo's brand name, "FR" as a country-code example, the language names in their own language on the share-link card, a skeleton test hook | `tests/unit/hardcoded-strings.spec.ts` with these named exceptions (each must still match); the error boundary's French half now says `lang="fr"` |
+| Locale-blind formatting | `toLocaleString()` without a locale, `toFixed` shown to people, hardcoded "€", `en-US`/`en-GB` formats | only internal uses (ISO dates in a zone, a CSS width, the 24-hour task time that reads the same in both) | none |
+| Longer French labels at 390 | Screenshots plus the CI check below | Home's stalled reason lost its day count; the pipeline's lost line left a "·" hanging; the queue's scope control broke into two uneven rows | fixed in Step 2 |
+
+Unit tests added: `messages.spec.ts` block "the whole French file (Day 7c)" (4 tests: keys, allowlist, arguments and
+tags, typography in every namespace; each shown failing on a planted break), `hardcoded-strings.spec.ts` (2).
+
+## Step 2: the phone pass (07b1599, 2e3e882, cb09e3c, d5a59eb)
+
+`tests/auth/phone.spec.ts`, signed in as an admin of an org made for the run (Home's fixture, four products with
+stock and a hold, a lead with a number), 390 x 844, touch, Chromium:
+
+| Test | Runs | Checks |
+|---|---|---|
+| `phone_fit` | CI | Home, Leads, a lead, Pipeline, Tasks, Work queue, Inventory, Sales, More, Team, lead import, stock import, in EN and FR: no sideways scroll; every tap target hit-tested 22 px either side of its centre, across and down (what a tap really reaches, so a pseudo-element extension counts; inline links in a sentence and visually hidden controls are exempt; a disabled control is measured by its box; a large card passes if a 44 px cross fits in it); the page's end above the dock; no control or heading label cut by an ellipsis; no console error; at least 6 targets per route (not vacuous) |
+| `phone_sheets` | CI | Add lead, New deal, deal sheet, Lose (over the deal sheet), note sheet, call panel after the call (its tallest state), Record sale, Hold stock, command menu, EN and FR: inside the viewport, 44 px targets, whole labels, closed again cleanly |
+| `phone_safe_areas` | CI (Chromium) | Emulated insets 47 / 34 (`Emulation.setSafeAreaInsetsOverride`): header below the status bar, dock 16 px above the home indicator, no sideways scroll on every route, the deal sheet's top below the notch |
+| `phone_shots` | `DAY7C_PHONE=1` only | The screenshots below; CI time unchanged (skipped) |
+
+What it found, and the fixes (DESIGN.md: 44 px controls, never fix label widths, page padding 16 on phones):
+
+| Found | Fix | File |
+|---|---|---|
+| Today card: task link 20 px tall | phone-only pseudo-element, tap area 44 px, row height and skeleton unchanged | `home/today-card.tsx` |
+| Deal sheet: lead name in the title 25 px tall | same, 45 px | `pipeline/deal-sheet.tsx` |
+| Inventory: product name link 36 px tall | `min-h-11`, centred | `inventory/stock-table.tsx` |
+| Leads: Views and Columns 40 px wide (icon only on phones) | `min-w-11` | `leads/leads-toolbar.tsx` |
+| Date, time and search fields: the button inside the field 40 px | 44 px on phones, flush right (fields keep their right padding) | `ui/date-picker.tsx`, `ui/time-picker.tsx`, `ui/search-input.tsx` |
+| More: EN and FR segments 41-42 px wide | `min-w-11` on phones | `settings-bar.tsx` |
+| Timeline: entry menu drawn 44 px but 4 px of it outside its `content-visibility` row, which clips paint and taps | its negative margin only from `sm` | `activity/timeline.tsx` |
+| Home, Needs attention (FR): "Bloquée · aucun mouvement ni contact depuis 20 jours" cut before the count | `line-clamp-2 text-pretty`, dot on the first line | `home/attention-card.tsx` |
+| Pipeline (FR): "·" left at a line's end before "Voir les affaires perdues" | on phones the link takes its own line, no separator | `pipeline/board.tsx` |
+| Work queue (FR): "Les miens + sans responsable" broke the scope control into two rows | phones: one row of three, the middle label wraps inside its segment; skeleton matches | `queue/queue-workspace.tsx`, `leads/queue/loading.tsx` |
+| Strips that scroll sideways gave no sign of more (plan row 7c "edge fades") | `edge-fade` utility: an edge fades only while more lies past it, driven by the strip's own scroll (scroll-driven animation, no fade where unsupported or not overflowing); tab strips, stock / sales / share chips, quick-add dates, pipeline owners and phone stage tabs | `globals.css`, `ui/tabs.tsx` and the strips |
+| Stock chips: the first chip snapped flush to the screen edge (snap without scroll padding) | `scroll-px-4` on phones; the tab strip `scroll-px-1` | `inventory/stock-toolbar.tsx`, `ui/tabs.tsx` |
+| A tab revealed by the keyboard or a deep link could land inside the fade (audit) | `revealTab` leaves the fade's width clear except at the strip's ends | `ui/tabs.tsx` |
+| Nothing under the dock, no sideways scroll, sheets inside the screen, safe areas | none needed (the checks pass in both languages) | |
+
+### Screenshots (`phone/`, 66 PNG, 4.6 MB, local run, not in CI)
+
+Production build on :3900 against this builder's own stack (Postgres :54600, GoTrue :9990, gateway :54601),
+Chromium 1194, reduced motion, 390 x 844, touch. Each shot after the URL check, the skeletons gone, no sideways scroll;
+no console error in any context.
+
+- `{home,leads,lead,pipeline,tasks,queue,inventory,sales,more,team,import,stock-import}-{en,fr}-{light,dark}.png`:
+  48 full-page shots. In a full-page shot the floating dock shows where it sits in the first screen (it is fixed).
+- `sheet-{add-lead,new-deal,deal-sheet,lose,note-sheet,call-panel,record-sale,hold-stock,palette}-{en-light,fr-dark}.png`:
+  18 shots of the screen as a person sees it.
+
+## Step 3: the restore runbook (3cf82d0)
+
+`docs/ops-templates/restore-production.md`, for Haider on his own computer, never in a Claude session: which backup
+exists on which Supabase plan (Free, today: only our own nightly `backup-prod`; Pro: 7 daily backups; the PITR add-on:
+any second of the window), what to do first (team told, sweeper disabled, a fresh backup), part A (daily backup), part
+B (PITR), part C (our own dump, into a new project or back into production), the checks after (sign-in, row counts,
+Security Advisor, three files, a dry sweeper run), and **the Storage caveat**: no database backup holds the files, so
+a file deleted after the restore point is gone for good, and a file uploaded after it loses its entry and looks like
+an orphan to the sweeper (which is why the sweeper stays off until the dry run's count is understood). **Role
+`share_reader` first** for any restore that recreates the schema (spike S1); `restore-into-dev.md` step 7 now says why
+its data-only load needs no role. Facts checked against Supabase's "Database Backups" guide on 16 Oct 2026 (docs
+search). Docs only; nothing touched production.
+
+## Step 4: audits
+
+- `apple-design-audit-part2.md`: pass after the fixes above (hit targets, French legibility, edge fades and reveal).
+- `web-design-guidelines-audit-part2.md` (rules from the pinned commit 434b7f91364665f2f733b310ec54809bf8f37937,
+  sha256 `d246b026…0e0234`): every finding fixed; the one it raised beyond the screenshots (a revealed tab inside the
+  fade) fixed in d5a59eb.
+
+## Decisions (recommended option taken; logged in `docs/log.md`)
+
+1. **Equal-to-English French values are allowed by key**, not by value, so a changed English string never silently
+   joins the allowlist; "Pipeline", "Admin", "Manager" stay as they are (used in French CRMs; Henri or Kais can still
+   ask for other words, plan question 13).
+2. **Tap targets are measured by hit-testing**, not by box size: the codebase grows small links with pseudo-elements
+   (Day 4c), and a box check would miss a clipped target (the timeline menu) while flagging extended links.
+3. **List-row data may truncate**; the CI label check covers controls and headings only (names and notes in rows are
+   truncated by design and reviewed in the screenshots).
+4. **The phone spec's products have names no other spec uses**: `inventory.spec` seeds its catalogue only when its
+   marker product is missing from the stack, and the first run of this spec (with the catalogue's names) made it skip.
+5. **The restore runbook is a new page** (`restore-production.md`) rather than a section of the dev restore test: one
+   is an emergency in production, the other a quarterly test into dev.
+
+## Checks (16 Oct 2026, on `day7c-local` d5a59eb)
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors (the same 3 pre-existing warnings: `check-step.tsx`, `stock-table.tsx`, `leads-table.tsx`) |
+| `npm run typecheck` | clean |
+| `npm run check:native` | clean |
+| `npm run test:unit` | 687 passed (6 new: 4 in `messages.spec.ts`, 2 in `hardcoded-strings.spec.ts`) |
+| `tests/auth/phone.spec.ts` (own stack, Chromium 1194) | 4 passed (`phone_fit`, `phone_sheets`, `phone_safe_areas`, and `phone_shots` with `DAY7C_PHONE=1`); without the variable `phone_shots` is skipped |
+| Affected signed-in e2e (same stack; spec copies with :3100 swapped for :3900, nothing in the repo changed) | home 15, leads 9, lead-page 26, pipeline 18, lead-deals 9, tasks 12, inventory 12, sales 11, share 12, shell 21, team 5, day7b 21, files 13 (5 storage-api tests skipped, CI only), queue 20: **204 passed**. Evidence-only tests skipped without their variables (day7b 11, inventory 1). `queue` `call_keeps_claims` fails on this machine, as before this branch (Day 5b, 5c and 7b READMEs: this Chromium fires one `beforeunload` for two quick `tel:` links); left to CI |
+| Reruns explained | First batch: `day7b` disclosure lost its trace file because a second run started in the same output folder at the same time (rerun: pass); `inventory` stock table failed because the phone spec's first products used the catalogue's names (decision 4; renamed, rerun: pass); `files` "hidden tab" failed once on timing in a batch and passed alone |
+| Signed-out e2e (`tests/e2e`, 1440 and 390) | 26 passed |
+| gitleaks 8.28.0 (release binary, checksum verified) | `eb1b1bc..HEAD` (33 commits): no leaks; `docs/evidence/day7c`, `docs/ops-templates`, `messages`, `tests/unit`, `tests/auth/phone.spec.ts`: no leaks |
+| `npm audit --omit=dev --audit-level=high` | 0 vulnerabilities |
+| Semgrep | not run here (semgrep.dev blocked by the session's proxy, as in part 1); CI runs it |
+| Context7 | Tailwind v4 `@utility` with CSS nesting and `@property` (tailwindcss.com docs); Playwright `BrowserContext.newCDPSession` / `CDPSession.send` (Chromium only) |
+
+## Residuals (part 2)
+
+- **R1. Real iPhone.** Safe areas are proven with emulated insets (now in CI); a check on Haider's phone in
+  standalone mode waits for the Vercel preview.
+- **R2. French read by a French speaker.** The pass checked keys, typography and fit; plan question 13 (Henri or Kais
+  reads the French screens) stays open.
+- **R3. Data in list rows truncates by design** (names, notes); not in the CI label check.
+- **R4. `call_keeps_claims`** cannot be run on this machine (above).
+- **R5. No backup of Storage.** The runbook states the caveat; a nightly copy of the bucket is not in Release 1.
+- **R6. Plan row 7c's "call sheet focus trap"** was not changed here: the phone call panel is a non-modal region (a
+  call outlives page changes), and its focus order is covered by `lead-page.spec` `call_panel_focus_returns` (passes).
+  Whether it should trap focus on phones is a design question for the advisor; this pass checked its fit, targets
+  and labels only. The plan's "every route at 768 and 1280 in French" cut-text check runs at 390 (the narrowest, where
+  French is tightest); 768 and 1280 are covered by part 1's and Day 7b's screenshots, not by a CI check.
+
+## Not done here (needs the caller or Haider)
+
+- The `advisor` subagent round on part 2 (this builder has no Agent tool).
+- Push, PR, CI, Vercel preview (local only, as asked).
