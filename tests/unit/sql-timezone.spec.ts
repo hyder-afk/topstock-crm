@@ -141,16 +141,54 @@ const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
 const DEFINE = /\bcreate\s+(or\s+replace\s+)?function\s+([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)\s*\(/gi;
 
-// Each function defined in the file: its name and the span from `create` to the end of its dollar-quoted body.
+// Type spellings PostgreSQL treats as the same type, so `int` and `integer` name one signature.
+const TYPE_ALIASES: Record<string, string> = {
+  int: "integer", int4: "integer", int2: "smallint", int8: "bigint", bool: "boolean", float8: "double precision",
+  float4: "real", varchar: "character varying", timestamptz: "timestamp with time zone",
+  timestamp: "timestamp without time zone", timetz: "time with time zone", time: "time without time zone",
+};
+// Types written in more than one word: an argument that starts with one of these has no name in front.
+const MULTIWORD = /^(double\s+precision|timestamp\s+with(out)?\s+time\s+zone|time\s+with(out)?\s+time\s+zone|character\s+varying|bit\s+varying)\b/i;
+
+// One argument's type, as PostgreSQL's identity signature has it: no mode, no name, no default; lower case, single
+// spaces, aliases folded. OUT arguments are not part of the identity, so they give null.
+function argType(arg: string): string | null {
+  let text = arg.replace(/\s+(default\b|=)[\s\S]*$/i, "").trim().replace(/\s+/g, " ").toLowerCase();
+  const mode = /^(in|out|inout|variadic) /.exec(text);
+  if (mode) text = text.slice(mode[0].length);
+  if (mode?.[1] === "out") return null;
+  if (!MULTIWORD.test(text) && text.includes(" ")) text = text.slice(text.indexOf(" ") + 1);
+  text = text.replace(/\s*([(),])\s*/g, "$1");
+  const bare = text.replace(/\(.*\)$/, "");
+  const alias = TYPE_ALIASES[bare];
+  return alias ? alias + text.slice(bare.length) : text;
+}
+
+// The key of a function: schema-qualified name plus its argument types, e.g. "private.share_take(uuid,text)".
+function signature(name: string, argList: string): string {
+  // String defaults are emptied first, so a comma or parenthesis inside one cannot split an argument.
+  const list = argList.replace(/'(?:[^']|'')*'/g, "''");
+  const types = list.trim() ? args(list).map(argType).filter((t): t is string => t !== null) : [];
+  return `${name.toLowerCase()}(${types.join(",")})`;
+}
+
+// Each function defined in the file: its signature and the span from `create` to the end of its dollar-quoted body.
 function definitions(code: string): Array<{ fn: string; from: number; to: number; replaces: boolean }> {
   const out: Array<{ fn: string; from: number; to: number; replaces: boolean }> = [];
   for (const m of code.matchAll(DEFINE)) {
-    const open = /\$([a-z_]*)\$/i.exec(code.slice(m.index));
+    const paren = m.index + m[0].length - 1;
+    const argsEnd = closing(code, paren);
+    const open = /\$([a-z_]*)\$/i.exec(code.slice(argsEnd));
     if (!open) continue;
     const tag = open[0];
-    const bodyStart = m.index + open.index + tag.length;
+    const bodyStart = argsEnd + open.index + tag.length;
     const close = code.indexOf(tag, bodyStart);
-    out.push({ fn: m[2].toLowerCase(), from: m.index, to: close === -1 ? code.length : close + tag.length, replaces: !!m[1] });
+    out.push({
+      fn: signature(m[2], code.slice(paren + 1, argsEnd)),
+      from: m.index,
+      to: close === -1 ? code.length : close + tag.length,
+      replaces: !!m[1],
+    });
   }
   return out;
 }
@@ -205,7 +243,8 @@ function findLocalDates(sql: string): Hit[] {
   return hits.sort((a, b) => a.at - b.at).map(({ line, expr, fn }) => ({ line, expr, fn }));
 }
 
-// The later migration that redefines this function, if any (the finding then no longer runs).
+// The later migration that redefines this function (same name and argument types), if any: the finding no longer runs.
+// An overload with other argument types is another function and supersedes nothing.
 const redefined = new Map(files.map((f) => [f, definitions(scrub(readFileSync(join(dir, f), "utf8")).code)]));
 function supersededBy(file: string, fn: string | null, order: string[] = files, defs = redefined): string | null {
   if (!fn) return null;
@@ -266,26 +305,40 @@ test("every allowlisted finding is still there and still live, with a reason", (
 });
 
 test("share_take's session-zone buckets are fixed by a later migration, not allowlisted", () => {
-  const old = findLocalDates(readFileSync(join(dir, "20261020090000_client_share.sql"), "utf8")).filter((h) => h.fn === "private.share_take");
+  const old = findLocalDates(readFileSync(join(dir, "20261020090000_client_share.sql"), "utf8")).filter((h) => h.fn === "private.share_take(uuid,text)");
   expect(old.map((h) => h.expr)).toEqual(["date_trunc('hour', now())", "date_trunc('day', now())"]);
-  expect(supersededBy("20261020090000_client_share.sql", "private.share_take")).toBe("20261022130000_share_take_paris_day.sql");
+  expect(supersededBy("20261020090000_client_share.sql", "private.share_take(uuid,text)")).toBe("20261022130000_share_take_paris_day.sql");
   expect(findLocalDates(readFileSync(join(dir, "20261022130000_share_take_paris_day.sql"), "utf8"))).toEqual([]);
   expect(ALLOWED.filter((a) => a.file === "20261020090000_client_share.sql" && a.line >= 630 && a.line <= 667)).toEqual([]);
 });
 
-test("the check itself: a later create or replace supersedes, a plain create or another name does not", () => {
+test("the check itself: a later create or replace of the same signature supersedes; another name or overload does not", () => {
   const defs = new Map([
-    ["1_a.sql", definitions("create function x.f() returns int language sql as $$ select 1 $$;")],
-    ["2_b.sql", definitions("create or replace function x.f() returns int language sql as $q$ select 2 $q$;\ncreate function x.g() returns int language sql as $$ select 3 $$;")],
+    ["1_a.sql", definitions("create function x.f() returns int language sql as $$ select 1 $$;\n" +
+      "create function x.h(p_n int, p_at timestamptz default now()) returns int language sql as $$ select 1 $$;\n" +
+      "create function x.k(int) returns int language sql as $$ select 1 $$;")],
+    ["2_b.sql", definitions("create or replace function x.f() returns int language sql as $q$ select 2 $q$;\n" +
+      "create function x.g() returns int language sql as $$ select 3 $$;\n" +
+      "create or replace function x.h(n  INTEGER, at timestamp with time zone = now()) returns int language sql as $$ select 4 $$;\n" +
+      "create or replace function x.k(text) returns int language sql as $$ select 5 $$;")],
   ]);
   const order = ["1_a.sql", "2_b.sql"];
-  expect(supersededBy("1_a.sql", "x.f", order, defs)).toBe("2_b.sql");
-  expect(supersededBy("1_a.sql", "x.g", order, defs)).toBeNull();
-  expect(supersededBy("2_b.sql", "x.f", order, defs)).toBeNull();
+  expect(defs.get("1_a.sql")!.map((d) => d.fn)).toEqual(["x.f()", "x.h(integer,timestamp with time zone)", "x.k(integer)"]);
+  expect(supersededBy("1_a.sql", "x.f()", order, defs)).toBe("2_b.sql");
+  expect(supersededBy("1_a.sql", "x.g()", order, defs)).toBeNull();
+  expect(supersededBy("2_b.sql", "x.f()", order, defs)).toBeNull();
   expect(supersededBy("1_a.sql", null, order, defs)).toBeNull();
+  // Same types written differently (names, case, spaces, aliases, defaults): the same function.
+  expect(supersededBy("1_a.sql", "x.h(integer,timestamp with time zone)", order, defs)).toBe("2_b.sql");
+  // x.f(int) and x.f(text) are two functions: replacing the text one leaves the int one live.
+  expect(supersededBy("1_a.sql", "x.k(integer)", order, defs)).toBeNull();
+  expect(signature("x.f", "int")).not.toBe(signature("x.f", "text"));
+  expect(signature("x.f", "in p_a int, out p_b text, variadic p_c text[]")).toBe("x.f(integer,text[])");
+  expect(signature("x.f", "p_n numeric(12, 2) default 0, p_v character varying(20)")).toBe("x.f(numeric(12,2),character varying(20))");
+  expect(signature("x.f", "p_sep text default ', (', p_n int")).toBe("x.f(text,integer)");
   const hits = findLocalDates("create function x.f() returns date language sql as $$ select current_date $$;\nselect localtime;");
   expect(hits).toEqual([
-    { line: 1, expr: "current_date", fn: "x.f" },
+    { line: 1, expr: "current_date", fn: "x.f()" },
     { line: 2, expr: "localtime", fn: null },
   ]);
 });
