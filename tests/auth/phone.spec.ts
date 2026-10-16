@@ -150,13 +150,14 @@ function asUser(email: string, body: string) {
   return sql(`begin; select set_config('request.jwt.claims', ${claims}, true); set local role authenticated; ${body}; commit;`);
 }
 
-// A few invented products in the run's org, with stock and one hold for a lead, through the app's own functions.
+// A few invented products in the run's org, with stock and one hold for a lead, through the app's own functions. Names
+// no other spec uses: inventory.spec seeds its catalogue only when its marker product is missing from the stack.
 function seedCatalogue(org: string) {
   const products = [
-    { name: "T-shirt coton 180 g", cat: "Textile", ppc: 48, min: 2.1, max: 2.5, qty: 4200, reorder: 500 },
-    { name: "Sweat capuche molleton", cat: "Textile", ppc: 24, min: 7.5, max: 9.9, qty: 960, reorder: null },
-    { name: "Sac à dos urbain 20 L", cat: "Bagagerie", ppc: 12, min: 11, max: 14.5, qty: 40, reorder: 100 },
-    { name: "Batterie externe 10 000 mAh", cat: "Électronique", ppc: 40, min: 8.4, max: 10.9, qty: 0, reorder: null },
+    { name: "Veste en jean délavée", cat: "Textile", ppc: 24, min: 9.5, max: 12.9, qty: 4200, reorder: 500 },
+    { name: "Pull col roulé laine mérinos", cat: "Textile", ppc: 20, min: 14, max: 18.5, qty: 960, reorder: null },
+    { name: "Valise cabine coque rigide 40 L", cat: "Bagagerie", ppc: 6, min: 24, max: 31, qty: 40, reorder: 100 },
+    { name: "Enceinte Bluetooth étanche 20 W", cat: "Électronique", ppc: 30, min: 12.4, max: 16.9, qty: 0, reorder: null },
   ];
   for (const p of products) {
     asUser(
@@ -166,7 +167,7 @@ function seedCatalogue(org: string) {
         p_share_visible => true, p_opening_qty => ${p.qty || "null"}, p_opening_location => 'warehouse')`,
     );
   }
-  const product = sql(`select id from public.products where org_id = '${org}' and name = 'T-shirt coton 180 g'`);
+  const product = sql(`select id from public.products where org_id = '${org}' and name = 'Veste en jean délavée'`);
   asUser(adminEmail, `select public.post_stock_movement('${product}', 'reserve', 480, 'warehouse', p_company => '${leadId}')`);
 }
 
