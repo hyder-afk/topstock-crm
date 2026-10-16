@@ -47,6 +47,9 @@ passes on Day 8.
 | 61db722 | `.github/workflows/db-budgets.yml` | question 11: re-time the database budgets once on a GitHub runner |
 | ef2b74c | `tests/auth/gate1.spec.ts` (10 tests), `tests/e2e/signed-out.spec.ts` (repository files not served), `scripts/gate1-run.sh` | the two-user test as one run; item 2; item 45 |
 | f43f90d | `scripts/db-mutations.py`: Day 7f's `share_take` migration is a redefiner | day6e row 10 was dead on the base; now mirrored and caught |
+| bbe5eec | route inventory: stricter Zod rule; rules as functions; planted breaks on in-memory fixtures | advisor round 1 item 1 |
+| 13fe35e | `gate1_attack.sql` G2 compares `has_aal2`'s whole normalised body | advisor round 1 item 6 |
+| f27987e, e58485b, acc33dc | merges of `day7c-local` (624f647, 549191c, final f6f1f3f) | section "Merge with Day 7c" |
 
 No product code changed: the review found nothing to fix in `src/` or the migrations.
 
@@ -128,32 +131,31 @@ without being named):
 | 4 | The one run's output was not in the evidence | `gate1-run-output.md` (test lines and pass lines, no environment values), linked from `two-user-map.md` | this round |
 | 5 | Context7 not named for four libraries | the section above | this round |
 | 6 | `gate1_attack.sql` G2 accepted `aal2` in a comment | the whole normalised body is compared, with INVOKER, STABLE and search_path; 2 more planted breaks (17 of 17 caught) | 13fe35e |
-| 7 | Re-merge Day 7c's final head, re-run `gate1-run.sh` and unit, commit the refreshed run output | waiting for the coordinator's head | later |
+| 7 | Re-merge Day 7c's final head, re-run `gate1-run.sh` and unit, commit the refreshed run output | f6f1f3f merged at acc33dc; unit 741, check:native 0, `gate1-run.sh` on a fresh stack (above); `gate1-run-output.md` refreshed | acc33dc, this commit |
 
 ## Merge with Day 7c
 
-`day7c-local` merged **as it was at 624f647** ("Runbook: C2 never adapts the dev restore test; the Storage caveat by
-part") at f27987e. Day 7c was still being worked on in its own worktree (uncommitted files there were not taken); its
-later commits merge the same way.
+Merged three times as Day 7c moved: **624f647** at f27987e, **549191c** at e58485b, and **Day 7c's final,
+advisor-approved head f6f1f3f at acc33dc** (one commit over 549191c: `phone.spec.ts`'s call panel height check allows
+1 px of rounding). Every conflict was in `docs/log.md` (both sides' rows kept), and in the first merge also `db.yml` and
+`db-test.sh` (both appended a suite after `day7a_attack.sql`: the sweeper test, then the Gate 1 catalog checks last,
+then the advisors). Auto-merged: `scripts/db-mutations.py` (Day 7c's `day7c` set and this branch's `REDEFINERS` entry),
+messages, pipeline components.
 
-| Conflict | Resolution |
-|---|---|
-| `.github/workflows/db.yml`, `scripts/db-test.sh` | both appended a suite after `day7a_attack.sql`: the sweeper test, then the Gate 1 catalog checks last (they read the whole catalog), then the advisors; the header comment names both |
-| `docs/log.md` | both sides' rows kept, Day 7c's first |
-| auto-merged | `scripts/db-mutations.py` (Day 7c's `day7c` set and this branch's `REDEFINERS` entry both kept), messages, pipeline components |
+Day 7c on a security path: `src/proxy.ts` `publicPaths` gains `/manifest.webmanifest` (served signed out;
+`src/app/manifest.ts` returns the app's name, colours and icon paths only, no data; reviewed in `security-review.md`).
 
-Checks after the merge (f27987e):
+Checks on the final merged tree (acc33dc):
 
 | Check | Result |
 |---|---|
-| `npm run test:unit` | **736 passed** (697 before the merge plus Day 7c's) |
+| `npm run test:unit` | **741 passed** |
 | `npm run check:native` | 0 findings |
-| lint, typecheck | 0 errors (pre-commit hook on the merge commit) |
-| `DB_TEST_PORT=54669 bash scripts/db-test.sh` | exit 0: `sweeper_attack` and `gate1_attack` pass on Day 7c's migration (its three sweeper functions are SECURITY INVOKER and service-role only, so the reviewed DEFINER list holds); advisors 0 ERROR |
+| lint, typecheck | 0 errors (pre-commit hook) |
+| `scripts/gate1-run.sh` on a fresh stack | SQL exit 0 (`sweeper_attack`, `gate1_attack`); Playwright 99 passed, 5 storage skips, 1 timing flake in `files.spec.ts` that passed 3 of 3 alone and in the whole file (13 passed); journey mail-free 2 passed; signed-out 22; unit 18 (`two-user-map.md`, "The run"; `gate1-run-output.md`) |
 | `python3 scripts/db-mutations.py --anchors` | 672 rows in 16 sets apply, none dead |
-| gitleaks on the final head | all refs, 701 commits: no leaks; this branch's 35 commits (`287430b..HEAD`): no leaks |
-| `npm audit --omit=dev` | 0 vulnerabilities |
-| Not re-run after this first merge | `gate1.spec.ts` and the one run. Day 7c changed screens and the PWA, **and one security path: `src/proxy.ts` `publicPaths` gains `/manifest.webmanifest`** (served signed out; `src/app/manifest.ts` returns the app's name, colours and icon paths only, no data; reviewed in `security-review.md`). The local stack's database has not got Day 7c's sweeper migration. Both are re-run on the re-merge with Day 7c's final head (coordinator item 7) |
+| gitleaks | all refs, 708 commits: no leaks; this branch's 43 commits (`287430b..HEAD`): no leaks |
+| `npm audit --omit=dev` | 0 vulnerabilities (no dependency changed in Day 7c) |
 
 ## Recommendation
 
@@ -165,8 +167,9 @@ re-run here). What remains is not code, but it is part of the gate.
 
 HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four conditions hold:**
 
-- **(a) Day 7c's final head is merged** into this branch, and `scripts/gate1-run.sh` on the merged tree, or the CI
-  `auth-journey` and `db` jobs on it, are green.
+- **(a) Day 7c's final head is merged** into this branch (done: f6f1f3f at acc33dc), and `scripts/gate1-run.sh` on the
+  merged tree, or the CI `auth-journey` and `db` jobs on it, are green. Locally: green apart from one `files.spec.ts`
+  timing flake that passed on its own 3 of 3 times; CI's run on the PR closes this condition.
 - **(b) Dev re-read after the Day 6 and Day 7 deploys**: `dev-checks.sql` (read-only) and both dev advisors show
   0 ERROR and only the accepted WARNs (`set_user_role`, leaked password protection, and Day 6e's `share_view` and
   `share_request`).

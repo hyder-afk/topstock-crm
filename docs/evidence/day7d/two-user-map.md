@@ -67,17 +67,28 @@ answer now fails the test) before the results above.
 
 ## The run
 
-16 Oct 2026, code `day7d-local` at ef2b74c (the final test code; later commits change only the harness, this script's
-journey handling and evidence), throwaway stack: PostgreSQL 16 on 54650, Supabase Auth on 9988, gateway on 54651,
-`next start` on 4100, Chromium 141; `db-test.sh` on 54669. Trimmed output (every test line and every suite's pass line):
-[`gate1-run-output.md`](gate1-run-output.md).
+**Final run: `day7d-local` acc33dc, with Day 7c's final head f6f1f3f merged.** Fresh throwaway stack (new database
+with all 21 migrations, new keys, a new production build): PostgreSQL 16 on 54650, Supabase Auth on 9988, gateway on
+54651, `next start` on 4100, Chromium 141; `db-test.sh` on 54669. Trimmed output (every test line and every suite's
+pass line): [`gate1-run-output.md`](gate1-run-output.md).
 
 | Part | Result |
 |---|---|
-| 1. SQL: `db-test.sh` | exit 0: every attack file and concurrency script passed (rls, import, activity, outcome, queue, files, deals, deal links, home, team, stock with `twenty_reservers_one_product`, inventory, stock import, sales, share, day7a), `gate1_attack: all checks passed`; advisors 0 ERROR (WARN `share_view`, `share_request`, `set_user_role`, all accepted) |
-| 2. Playwright, Chromium, one worker, 13 files | **102 passed**, 5 skipped (the storage-api tests of `files.spec.ts`, CI only), 1 failed + 4 not run: `journey.spec.ts` stopped at its first test with "MAILPIT_URL is not set": it reads invitation and reset e-mails from a mail inbox the local stand-in does not have (an environment limit, not the app). Its two mail-free tests then ran on their own: **2 passed** ("an unknown address gets the same answer as a real one", "nobody can sign up"). The whole journey runs in CI (`supabase start` has the inbox); `gate1-run.sh` now runs only the mail-free two when there is no inbox |
-| 3. Signed-out spec | **22 passed** (including "no repository or environment file is served") |
-| 3. Unit: route inventory and file sniffing | **13 passed** |
+| 1. SQL: `db-test.sh` | exit 0: every attack file and concurrency script passed, including Day 7c's `sweeper_attack` and `gate1_attack` (with Day 7c's three INVOKER, service-role-only sweeper functions the reviewed DEFINER list holds); advisors 0 ERROR (WARN `share_view`, `share_request`, `set_user_role`, all accepted) |
+| 2. Playwright, Chromium, one worker, 12 files | **99 passed**, 5 skipped (storage-api, CI), 1 failed + 2 not run: `files.spec.ts` "hidden tab … a file dropped outside the zone never leaves the page" read the drop guard before it was attached. Day 7c changed no files code; the test passed in the first run and alone on this build 3 of 3 times, and the whole `files.spec.ts` then passed (13 passed, 5 storage skips). Recorded as a timing flake under load |
+| 2. `journey.spec.ts` mail-free tests | **2 passed** (the full journey needs a mail inbox: CI) |
+| 3. Signed-out spec | **22 passed** |
+| 3. Unit: route inventory and file sniffing | **18 passed** (the route inventory now has 10 tests) |
+
+Earlier runs, kept as history:
+- **Run 1** on ef2b74c (before Day 7c): SQL exit 0; Playwright 102 passed, 5 storage skips, `journey.spec.ts` stopped
+  at its first test (no mail inbox) with its other 4 not run, its 2 mail-free tests then passed alone; signed-out 22;
+  unit 13.
+- **Run 2** on e58485b (Day 7c at 549191c) on the *reused* stack: SQL exit 0; Playwright 85 passed, 2 failed, 15 not
+  run, both failures from the stack having run once already: `day7a.spec.ts` creates a fixed address
+  (`d7a-audit@example.test`, "email_exists"), and `inventory.spec.ts` seeds its catalogue once per stack while
+  `leads.spec.ts` had cleared every stock level. These specs expect a fresh stack (as CI's is); run 3 used one and both
+  passed.
 
 Every step in the map has its tests in this run, apart from what only CI or the hosted service can show: real-bytes
 file checks (storage-api), real PostgREST's POST/DELETE and private-schema answers, the full sign-in journey, and
