@@ -4,8 +4,11 @@ import { expect, test } from "@playwright/test";
 import ts from "typescript";
 
 // Day 7c French pass: words people read come from messages/en.json and messages/fr.json, never from the source. This
-// walks every .tsx file in src/ and reports JSX text with letters (or French punctuation) and the literal value of an
-// attribute people read or hear (aria-label, placeholder, alt, title, label). The few exceptions are named below.
+// walks every .tsx file in src/ and reports JSX text with letters (or French punctuation) and the string literals of an
+// attribute people read or hear (aria-label, placeholder, alt, title, label) or of a JSX child, including those in the
+// branches of a conditional (a ? "x" : "y") and the operands of || and ?? (t("a") || "x"). The few exceptions are
+// named below. Not scanned: .ts files (helpers that build text are reviewed by hand, and their words go through
+// next-intl at the call site) and the arguments of toast() and other function calls.
 
 const SRC = path.join(__dirname, "..", "..", "src");
 const READ_ATTRS = new Set(["aria-label", "aria-description", "aria-roledescription", "aria-valuetext", "aria-placeholder", "placeholder", "alt", "title", "label"]);
@@ -26,10 +29,22 @@ const ALLOWED = new Set([
   // Each language named in its own language, so a person finds theirs whatever the interface says.
   "components/share-links/link-card.tsx|Français",
   "components/share-links/link-card.tsx|English",
-  // Not text: the skeleton card's test hook ("label" prop of CardSkeleton).
-  "components/home/home-skeleton.tsx|recent",
-  "components/home/home-skeleton.tsx|low-stock",
+  // The command menu's language switch, each language named in itself (as on the share-link card).
+  "components/shell/command-palette.tsx|English",
+  "components/shell/command-palette.tsx|Français",
 ]);
+
+// The string literals an expression can evaluate to: itself, the branches of a conditional, the operands of || and ??
+// (through parentheses). Calls, template literals with values and other expressions are left out.
+function literals(expr: ts.Expression): string[] {
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) return [expr.text];
+  if (ts.isParenthesizedExpression(expr)) return literals(expr.expression);
+  if (ts.isConditionalExpression(expr)) return [...literals(expr.whenTrue), ...literals(expr.whenFalse)];
+  if (ts.isBinaryExpression(expr) && [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(expr.operatorToken.kind)) {
+    return [...literals(expr.left), ...literals(expr.right)];
+  }
+  return [];
+}
 
 function scan(code: string, file: string): Finding[] {
   const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -41,15 +56,13 @@ function scan(code: string, file: string): Finding[] {
     }
     if (ts.isJsxAttribute(node) && node.initializer && READ_ATTRS.has(node.name.getText(source))) {
       const init = node.initializer;
-      const literal = ts.isStringLiteral(init)
-        ? init
-        : ts.isJsxExpression(init) && init.expression && (ts.isStringLiteral(init.expression) || ts.isNoSubstitutionTemplateLiteral(init.expression))
-          ? init.expression
-          : null;
-      if (literal && /[A-Za-zÀ-ÿ]{2,}/.test(literal.text)) found.push({ file, kind: node.name.getText(source), text: literal.text });
+      const kind = node.name.getText(source);
+      for (const text of ts.isStringLiteral(init) ? [init.text] : ts.isJsxExpression(init) && init.expression ? literals(init.expression) : []) {
+        if (/[A-Za-zÀ-ÿ]{2,}/.test(text)) found.push({ file, kind, text });
+      }
     }
-    if (ts.isJsxExpression(node) && node.expression && ts.isStringLiteral(node.expression) && node.parent && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
-      if (/[A-Za-zÀ-ÿ]{2,}/.test(node.expression.text)) found.push({ file, kind: "text", text: node.expression.text });
+    if (ts.isJsxExpression(node) && node.expression && node.parent && (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))) {
+      for (const text of literals(node.expression)) if (/[A-Za-zÀ-ÿ]{2,}/.test(text)) found.push({ file, kind: "text", text });
     }
     ts.forEachChild(node, visit);
   };
@@ -73,6 +86,12 @@ test("the scan finds text, read attributes and string children, and leaves code 
   expect(kinds(`const a = <p>{"Hello"}</p>;`)).toEqual(["text:Hello"]);
   expect(kinds(`const a = <p className="flex gap-2" data-x="abc">{t("ok")} · {n}</p>;`)).toEqual([]);
   expect(kinds(`const a = <img alt="" />;`)).toEqual([]);
+  // Literals hidden in a conditional or a fallback, in an attribute and as a child.
+  expect(kinds(`const a = <b title={on ? "Open" : t("closed")} />;`)).toEqual(["title:Open"]);
+  expect(kinds(`const a = <b aria-label={name ?? (x || "Untitled")} />;`)).toEqual(["aria-label:Untitled"]);
+  expect(kinds(`const a = <p>{done ? t("done") : "Pending"}</p>;`)).toEqual(["text:Pending"]);
+  expect(kinds(`const a = <p>{name || "Unknown"}</p>;`)).toEqual(["text:Unknown"]);
+  expect(kinds(`const a = <p>{cn("flex gap-2")}{count > 1 ? n : null}</p>;`)).toEqual([]);
 });
 
 test("no words in src/ bypass next-intl (outside the named exceptions)", () => {
