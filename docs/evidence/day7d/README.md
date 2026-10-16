@@ -105,6 +105,37 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
 
 ## Merge with Day 7c
 
-(filled in below after the merge)
+`day7c-local` merged **as it was at 624f647** ("Runbook: C2 never adapts the dev restore test; the Storage caveat by
+part") at f27987e. Day 7c was still being worked on in its own worktree (uncommitted files there were not taken); its
+later commits merge the same way.
 
-HAIDER DECIDES: pass Gate 1 (code part)?
+| Conflict | Resolution |
+|---|---|
+| `.github/workflows/db.yml`, `scripts/db-test.sh` | both appended a suite after `day7a_attack.sql`: the sweeper test, then the Gate 1 catalog checks last (they read the whole catalog), then the advisors; the header comment names both |
+| `docs/log.md` | both sides' rows kept, Day 7c's first |
+| auto-merged | `scripts/db-mutations.py` (Day 7c's `day7c` set and this branch's `REDEFINERS` entry both kept), messages, pipeline components |
+
+Checks after the merge (f27987e):
+
+| Check | Result |
+|---|---|
+| `npm run test:unit` | **736 passed** (697 before the merge plus Day 7c's) |
+| `npm run check:native` | 0 findings |
+| lint, typecheck | 0 errors (pre-commit hook on the merge commit) |
+| `DB_TEST_PORT=54669 bash scripts/db-test.sh` | exit 0: `sweeper_attack` and `gate1_attack` pass on Day 7c's migration (its three sweeper functions are SECURITY INVOKER and service-role only, so the reviewed DEFINER list holds); advisors 0 ERROR |
+| `python3 scripts/db-mutations.py --anchors` | 672 rows in 16 sets apply, none dead |
+| gitleaks on the final head | all refs, 701 commits: no leaks; this branch's 35 commits (`287430b..HEAD`): no leaks |
+| `npm audit --omit=dev` | 0 vulnerabilities |
+| Not re-run after the merge | `gate1.spec.ts` and the one run (Day 7c changed screens and the PWA, not the security paths; the local stack's database has not got Day 7c's migration). The PR's CI runs both on the merged code |
+
+## Recommendation
+
+Pass the code part. Every step of the two-user attack test passes, the whole-release review found nothing at HIGH or
+MEDIUM, history and dependencies are clean, and every section 8 item that code can prove is proven by a test that was
+shown to fail when its protection is removed. What remains is not code: CI when billing is back (WebKit, storage-api,
+real PostgREST, `npm audit signatures`, the budgets run), the dev re-read after the Day 6 and 7 deploys, and the Day 8
+ops part. The advisor reviews this step first.
+
+HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes**, on the condition that the PR's CI is green when billing
+is back; the ops part (backup, restore test, keep-alive, Vercel Pro, production settings) passes on Day 8 before any
+real data.
