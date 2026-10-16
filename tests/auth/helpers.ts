@@ -167,11 +167,52 @@ export async function twoFrames(page: Page) {
 
 // Requests each page has in flight, counted from the first call for that page (call it right after opening the page).
 const inFlight = new WeakMap<Page, Set<Request>>();
+// Diagnosis for WebKit's "ResizeObserver loop completed with undelivered notifications" (PR #19 CI): every observer
+// callback is logged with the elements it saw, and when the loop is reported a console error names the observers that
+// ran in the last 100 ms and where they were created, so the test's own error check shows the source.
+export async function addResizeObserverProbe(context: BrowserContext) {
+  await context.addInitScript(() => {
+    const Native = window.ResizeObserver;
+    if (!Native) return;
+    const recent: { t: number; who: string; created: string }[] = [];
+    const describe = (el: Element) => {
+      const own = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${[...el.classList].slice(0, 4).map((c) => `.${c}`).join("")}`;
+      const named = el.closest("[id],[role],[aria-label],[data-slot]");
+      const anchor = named && named !== el ? ` in ${named.tagName.toLowerCase()}${named.id ? `#${named.id}` : ""}${named.getAttribute("role") ? `[role=${named.getAttribute("role")}]` : ""}${named.getAttribute("aria-label") ? `[aria-label=${named.getAttribute("aria-label")}]` : ""}` : "";
+      return own + anchor;
+    };
+    class Probe extends Native {
+      constructor(callback: ResizeObserverCallback) {
+        const created = (new Error().stack ?? "").split("\n").slice(1, 4).map((l) => l.trim()).join(" < ");
+        super((entries, observer) => {
+          recent.push({ t: performance.now(), who: entries.map((e) => describe(e.target)).join(", "), created });
+          if (recent.length > 60) recent.shift();
+          callback(entries, observer);
+        });
+      }
+    }
+    window.ResizeObserver = Probe;
+    window.addEventListener("error", (e) => {
+      if (!String(e.message).includes("ResizeObserver loop")) return;
+      const now = performance.now();
+      const last = recent.filter((r) => now - r.t < 100).map((r) => `${r.who} {${r.created}}`);
+      console.error(`ResizeObserver loop diagnosis: ${last.join(" | ") || "no observer callback in the last 100 ms"}`);
+    });
+  });
+}
+
 export function trackRequests(page: Page) {
   let pending = inFlight.get(page);
   if (!pending) {
     const set = new Set<Request>();
-    page.on("request", (r) => set.add(r));
+    // Next's link prefetches are speculative and never hold data a test waits for; on CI's Chromium 156 a prefetch the
+    // router dropped was sometimes never reported finished or failed (PR #19: /inventory/import?_rsc= and
+    // /inventory/settings?_rsc= open for good). Their cancellation noise is already filtered by isCancelledPrefetch.
+    page.on("request", (r) => {
+      const h = r.headers();
+      if (h["next-router-prefetch"] || h["next-router-segment-prefetch"]) return;
+      set.add(r);
+    });
     page.on("requestfinished", (r) => set.delete(r));
     page.on("requestfailed", (r) => set.delete(r));
     inFlight.set(page, set);
@@ -330,6 +371,7 @@ export async function signedInPage(
     hasTouch: width < 600,
   });
   if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: o.baseURL ?? "http://localhost:3100" }]);
+  await addResizeObserverProbe(context);
   await context.addInitScript(() => {
     document.addEventListener(
       "click",

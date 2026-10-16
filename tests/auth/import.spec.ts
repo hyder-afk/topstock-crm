@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, choose as chooseOption, clearStockHistory, createUser, expectChosen, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { addResizeObserverProbe, ageStepUp, appReady, choose as chooseOption, clearStockHistory, createUser, expectChosen, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // Lead import (Day 3b): an admin imports the fake sample files end to end (choose, match, check, import, undo), the
 // problems file, a check that fails part way (thrown away, choices kept), a paused import resumed, a checked import
@@ -57,7 +57,9 @@ async function adminContext(browser: Browser, viewport = { width: 1440, height: 
     adminState = await fullSession(browser, adminEmail, password, adminSecret);
     adminSignedAt = Date.now();
   }
-  return browser.newContext({ storageState: adminState, viewport, acceptDownloads: true });
+  const context = await browser.newContext({ storageState: adminState, viewport, acceptDownloads: true });
+  await addResizeObserverProbe(context);
+  return context;
 }
 
 function watchErrors(page: Page) {

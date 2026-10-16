@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { addResizeObserverProbe, ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // The lead page (Day 4b, design 8.5): open from the list and back, J/K, local time, the call panel and every outcome,
 // email and WhatsApp with one-tap logging, notes (edit, undo, delete with a fresh code, draft), read-only and Do not
@@ -49,6 +49,7 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
     hasTouch: width < 600,
   });
   if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: "http://localhost:3100" }]);
+  await addResizeObserverProbe(context);
   await context.addInitScript(() => {
     document.addEventListener(
       "click",
