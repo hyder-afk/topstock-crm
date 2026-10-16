@@ -294,7 +294,7 @@ What it found, and the fixes (DESIGN.md: 44 px controls, never fix label widths,
 | A tab revealed by the keyboard or a deep link could land inside the fade (audit) | `revealTab` leaves the fade's width clear except at the strip's ends | `ui/tabs.tsx` |
 | Nothing under the dock, no sideways scroll, sheets inside the screen, safe areas | none needed (the checks pass in both languages) | |
 
-### Screenshots (`phone/`, 66 PNG, 4.6 MB, local run, not in CI)
+### Screenshots (`phone/`, local run, not in CI; first round: 66 PNG, now 147 after advisor round 1, see below)
 
 Production build on :3900 against this builder's own stack (Postgres :54600, GoTrue :9990, gateway :54601),
 Chromium 1194, reduced motion, 390 x 844, touch. Each shot after the URL check, the skeletons gone, no sideways scroll;
@@ -356,6 +356,65 @@ search). Docs only; nothing touched production.
 | Semgrep | not run here (semgrep.dev blocked by the session's proxy, as in part 1); CI runs it |
 | Context7 | Tailwind v4 `@utility` with CSS nesting and `@property` (tailwindcss.com docs); Playwright `BrowserContext.newCDPSession` / `CDPSession.send` (Chromium only) |
 
+## Advisor round 1 (part 2): CHANGES NEEDED on 9446997, all ten fixed
+
+| # | Advisor point | Fix | Proof |
+|---|---|---|---|
+| 1 | "Every route": add the missing signed-in routes and the pages outside the shell | phone_fit and the shots now also cover `/inventory/p/[id]`, `/inventory/settings`, `/inventory/client-view`, `/analytics`, `/files/unavailable`, and, each in its own context, `/login`, `/forgot-password` (signed out), `/mfa` (password done, code to come), `/mfa/setup` (a person without an authenticator), `/set-password`, and the client page `/s/fr`, `/s/en` (a fresh link each visit; sharing switched on in the run's org) | `phone.spec.ts` phone_fit: 17 signed-in routes and 6 outside pages, EN and FR |
+| 2 | French at 768 and 1280 too; 768 shots per route; desktop shots of the part-2 changes | phone_fit runs the sideways-scroll and cut checks in French at 768 and 1280 on every route (tap targets stay at 390). Shots: every route at 768 in French; the strips (lead and inventory tab strips, quick-add chips, share chips) at 1280 / 1440 / 1728 in EN light and FR dark (both languages and both schemes); the lead's tab strip after a deep link at 390 (revealTab) | 23 + 24 + 2 shots below |
+| 3 | Call panel: scroll padding, a Tab test, the focus-trap decision | The panel publishes its height (`--call-panel-h`, ResizeObserver); on phones `html:has([data-call-panel])` sets `scroll-padding-bottom` and main's bottom padding from it (the import action bar's pattern). Non-modal kept: **builder decision, Haider to confirm** (log) | `phone_call_panel_tab`: 10+ distinct controls reached with Tab, each above the panel; it **fails** with the padding removed (the quick actions and the deal button reported under the panel, checked) |
+| 4 | Placeholders cut; the check missed them | Inventory search FR "Nom, catégorie ou P-0042…" and its own row below 1024 px (172 px at 768); Leads search shortened in EN and FR. cutLabels measures each placeholder in the field's font against its content box, flags overflowing `-webkit-line-clamp` labels, and counts terms (`dt`) as labels | It found, and we fixed, the product page's figure labels (cut at 390 in EN and FR); phone_fit green |
+| 5 | hardcoded-strings.spec gaps | Literals in conditional branches and `\|\|` / `??` operands (attributes and children) are collected; the palette's endonyms are an exception; CardSkeleton's prop is `skeleton`, its two exceptions dropped; the header says .ts files and toast() are not scanned | 5 new self-test cases; the src scan passes |
+| 6 | Runbook C2 must not reuse the dev restore test | C2 now says: ask Claude for the exact production steps at the time; do not adapt `restore-into-dev.md` (separate truncate, dev ref, no auth schema). C1 stays recommended | `restore-production.md` Part C |
+| 7 | Storage caveat by part | A/B (daily, PITR) rewind `storage.objects` too: files uploaded after the restore point are stranded (invisible to the API and the sweeper), not swept. C (no storage schema): they look like orphans; after C1 the new bucket starts empty. Sweeper off in every part; step 2.5 explains "found" per part | `restore-production.md` "Storage" and step 2.5 |
+| 8 | A focused chip in the fade | `edge-fade` sets `scroll-padding-inline: 24px`; revealTab picks among the strip's real snap stops; the strips' own scroll-px went | desktop and 390 shots; files, lead-page, inventory specs green |
+| 9 | The dock's five | phone_fit asserts exactly 5 visible dock links on every signed-in route | phone_fit |
+| 10 | Log the `--no-verify` | Row in `docs/log.md` (3cf82d0 changed docs only; the hook lints and typechecks code) | log |
+
+Found by the wider checks and fixed: the client links' lead link on Inventory settings (20 px, its tap area clipped
+by `truncate`; now 44 px on phones), the product figure labels, the inventory search width at 768.
+
+### Screenshots after round 1 (`phone/`, 147 PNG, 8.5 MB)
+
+- 390, signed in: `{home,leads,lead,pipeline,tasks,queue,inventory,sales,more,team,import,stock-import,product,
+  inventory-settings,client-view,analytics,file-unavailable}-{en,fr}-{light,dark}.png` (68).
+- 390, outside the shell: `{login,forgot-password,mfa,mfa-setup,set-password,share}-{en-light,fr-dark}.png` (12).
+- 390, sheets: `sheet-{…}-{en-light,fr-dark}.png` (18); the lead's tab strip after `?tab=files`:
+  `lead-tab-files-{en-light,fr-dark}.png` (2).
+- 768, French light, every route: `768-{route}-fr-light.png` (23).
+- Desktop, clipped to the strip: `desktop-{lead-tabs,inventory-tabs,quick-add-chips,share-chips}-{en-light,fr-dark}-
+  {1280,1440,1728}.png` (24). Where a strip fits (most desktops), no fade shows, as designed.
+
+### Checks after round 1 (16 Oct 2026, fresh stack: Postgres :54600, GoTrue :9990, gateway :54601, Next :3900)
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors (the same 3 pre-existing warnings) |
+| `npm run typecheck` | clean |
+| `npm run check:native` | clean |
+| `npm run test:unit` | 687 passed |
+| `tests/auth/phone.spec.ts` | 5 passed: phone_fit, phone_sheets, phone_call_panel_tab, phone_safe_areas, and phone_shots with `DAY7C_PHONE=1` (skipped without it) |
+| Affected signed-in e2e | home, leads, lead-page, pipeline, lead-deals, tasks, inventory, sales, share, shell, team, day7b, files: 183 passed, 16 skipped (11 day7b evidence tests without their variable, 5 files storage-api tests, CI only), 0 failed; queue without `call_keeps_claims`: 20 passed. **203 passed** |
+| Signed-out e2e | 26 passed |
+| gitleaks 8.28.0 | `eb1b1bc..HEAD`: no leaks; the evidence, ops templates, messages, unit tests and phone spec: no leaks |
+| `npm audit --omit=dev --audit-level=high` | 0 vulnerabilities |
+
+## Advisor round 2 (part 2): one bug, fixed
+
+| Point | Fix | Proof |
+|---|---|---|
+| `--call-panel-h` was read with `getBoundingClientRect()`, which includes the panel's entrance scale (0.6). A transform never fires a ResizeObserver, so for anyone without reduced motion the padding stayed about 40 % short for the whole call | The observer reads the layout height (`borderBoxSize[0].blockSize`, else `offsetHeight`) | `phone_call_panel_tab` now runs twice, with reduced motion and with `no-preference`, and checks Tab both during the call (small panel) and after it (outcome keys), each time after polling until `--call-panel-h` equals the panel's `offsetHeight`. On the old code the no-preference run **fails** ("103px of 170px"); with the fix both pass |
+
+Checks after round 2: lint 0 errors (3 old warnings), typecheck clean, check:native clean, unit 687, `phone.spec.ts` 5
+passed (phone_fit, phone_sheets, phone_call_panel_tab in both motion modes, phone_safe_areas; phone_shots skipped
+without `DAY7C_PHONE=1`), `lead-page.spec.ts` 26 passed (the call panel's own tests). Screenshots unchanged (the fix
+changes no layout at rest).
+
+**CI time to watch:** `phone_fit` is one serial test with a 900 s timeout (17 signed-in routes and 6 outside pages at
+390 in two languages, then French at 768 and 1280). Locally it takes about 1.5 minutes; its first CI run time (and
+WebKit's, if the spec is ever added to the WebKit project) should be read from the auth-journey job before the PR is
+merged, and the test split per locale if it comes close to the limit.
+
 ## Residuals (part 2)
 
 - **R1. Real iPhone.** Safe areas are proven with emulated insets (now in CI); a check on Haider's phone in
@@ -365,11 +424,9 @@ search). Docs only; nothing touched production.
 - **R3. Data in list rows truncates by design** (names, notes); not in the CI label check.
 - **R4. `call_keeps_claims`** cannot be run on this machine (above).
 - **R5. No backup of Storage.** The runbook states the caveat; a nightly copy of the bucket is not in Release 1.
-- **R6. Plan row 7c's "call sheet focus trap"** was not changed here: the phone call panel is a non-modal region (a
-  call outlives page changes), and its focus order is covered by `lead-page.spec` `call_panel_focus_returns` (passes).
-  Whether it should trap focus on phones is a design question for the advisor; this pass checked its fit, targets
-  and labels only. The plan's "every route at 768 and 1280 in French" cut-text check runs at 390 (the narrowest, where
-  French is tightest); 768 and 1280 are covered by part 1's and Day 7b's screenshots, not by a CI check.
+- **R6. Call panel focus trap: decided "no trap"** (builder, under Haider's standing instruction, **Haider to
+  confirm**; `docs/log.md`): the panel stays non-modal and keeps Tab-focused page controls clear of it instead (advisor
+  round 1, below).
 
 ## Not done here (needs the caller or Haider)
 
