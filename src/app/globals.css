@@ -15,7 +15,8 @@
 /* Edge fades on strips that scroll sideways (tab strips, chip rows; Day 7c phone pass): an edge fades out only while
    more content lies past it, so a cut tab reads as "scroll for more" rather than as a clipped label. Driven by the
    strip's own scroll position (scroll-driven animation; not motion, so reduced motion keeps it). A strip that does not
-   overflow has an inactive timeline and no fade; a browser without scroll timelines shows no fade. */
+   overflow has an inactive timeline and no fade; a browser without scroll timelines shows no fade. The scroll padding
+   keeps a focused or snapped item out of the fade. */
 @property --edge-fade-start {
   syntax: "<length>";
   inherits: false;
@@ -43,6 +44,8 @@
   }
 }
 @utility edge-fade {
+  /* A chip or tab scrolled into view (Tab, snapping, scrollIntoView) stops clear of the fade. */
+  scroll-padding-inline: 24px;
   mask-image: linear-gradient(
     to right,
     transparent 0,
@@ -262,6 +265,15 @@
   /* The import steps' action bar sticks above the dock: a control reached with Tab is scrolled clear of both. */
   html:has(.import-action-bar) {
     scroll-padding-bottom: 16rem;
+  }
+  /* The call panel covers the bottom of the screen on phones (non-modal: the page stays usable): a control reached with
+     Tab is scrolled clear of it. Its height comes from a ResizeObserver in call-panel.tsx (Day 7c). */
+  html:has([data-call-panel]) {
+    scroll-padding-bottom: calc(var(--call-panel-h, 0px) + 16px);
+  }
+  /* ...and the page can scroll its last controls above the panel (main's pb-36 clears the dock only). */
+  html:has([data-call-panel]) #main {
+    padding-bottom: max(9rem, calc(var(--call-panel-h, 0px) + 16px));
   }
 }
 
