@@ -2283,8 +2283,13 @@ MUTATIONS_7C = [
      [("or p_removed not between 0 and p_found", "or p_removed < 0")]),
     ("Sweeper audit row: a dry run may report removals",
      [(" or (p_dry and p_removed <> 0) then", " then")]),
+    # With the column grant widened too, so the test's "no organisation" check catches it (without it the local
+    # runner's service_role, which holds only the granted columns, refuses the insert first: a second layer that
+    # Supabase's default grants to service_role do not give).
     ("Sweeper audit row: carries an organisation (a later reader could tie a sweep to a team's leads)",
-     [("  insert into public.audit_log (action, table_name, diff_json)\n  values ('file_sweep', 'storage.objects',",
+     [("grant insert (action, table_name, diff_json) on public.audit_log to service_role;",
+       "grant insert (org_id, action, table_name, diff_json) on public.audit_log to service_role;"),
+      ("  insert into public.audit_log (action, table_name, diff_json)\n  values ('file_sweep', 'storage.objects',",
        "  insert into public.audit_log (org_id, action, table_name, diff_json)\n  values ('00000000-0000-0000-0000-0000d7c000cc', "
        "'file_sweep', 'storage.objects',")]),
 ]
