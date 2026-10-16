@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal, Trash2, Copy, Undo2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { StageStepper } from "@/components/pipeline/stage-stepper";
 import { fetchLead, leadKey } from "@/components/leads/use-leads";
@@ -18,6 +20,7 @@ import {
   DEAL_TITLE_MAX,
   UNSAFE_TITLE,
   dealPath,
+  deleteOffered,
   elapsedDays,
   fulfilments,
   reopenStage,
@@ -38,7 +41,9 @@ import { cn } from "@/lib/utils";
 // value (inline edits), the stage stepper (the main way to move on a phone), the status line, the expected close (chips),
 // the contact, how it ships, the owner (managers and admins), the path with undo pairs folded, the history, the last
 // entries linked to the deal (never their text), and a ⋯ menu (copy link, delete). Closed deals are read-only ("Reopen
-// to change the value"). An edit that meets a colleague's change asks Keep yours / Use theirs.
+// to change the value"). An edit that meets a colleague's change asks Keep yours / Use theirs. Day 7: what the database
+// would refuse is left out (it still refuses it): Reopen on a won deal that stock records hold (with the reason in its
+// place), Delete while stock records hold the deal, and the creator's Delete once its 120 s are over.
 export type SheetFlows = {
   openWin: (card: DealCard) => void;
   openLose: (card: DealCard) => void;
@@ -83,7 +88,9 @@ export function DealSheet({
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
-            "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-12px)] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pb-[env(safe-area-inset-bottom)]",
+            // Below 1024 px a bottom sheet the width of the screen: clear of the status bar (top inset) and, in landscape, of
+            // the notch side (side insets); the bottom inset as before.
+            "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-max(12px,env(safe-area-inset-top,0px)))] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pr-[env(safe-area-inset-right,0px)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left,0px)]",
             "lg:inset-y-3 lg:right-3 lg:left-auto lg:mx-0 lg:max-h-none lg:w-[440px] lg:rounded-[24px]",
           )}
         >
@@ -99,6 +106,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
   const tStage = useTranslations("Stages");
   const tPipe = useTranslations("Pipeline");
   const tHint = useTranslations("Errors.hint");
+  const tErr = useTranslations("Errors");
   const tF = useTranslations("Fulfilment");
   const tReason = useTranslations("LostReasons");
   const format = useFormatter();
@@ -167,6 +175,9 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
   const open = deal.status === "open";
   const editable = deal.can_edit && open;
+  // Reopening a won deal is refused while stock records hold it (private.deal_guard); a lost deal always reopens.
+  const reopenHeld = deal.status === "won" && deal.stock_held === true;
+  const heldId = `deal-held-${deal.id}`;
   const ownerName = personName(deal.owner) || null;
   const undo = deal.undo && Date.parse(deal.undo.until) > now ? deal.undo : null;
   const days = elapsedDays(deal.stage_entered_at, now);
@@ -176,7 +187,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
     if (!deal.can_edit) return;
     if (stage === "won") return flows.openWin(deal);
     if (stage === "lost") return flows.openLose(deal);
-    if (!open) return flows.openReopen(deal, stage);
+    if (!open) return reopenHeld ? undefined : flows.openReopen(deal, stage);
     void flows.actions.move(deal, stage);
   };
 
@@ -188,7 +199,9 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
             <Link
               href={`/leads/${deal.lead.id}`}
               onPointerEnter={() => router.prefetch(`/leads/${deal.lead.id}`)}
-              className="underline-offset-4 hover:underline"
+              // The name is 25 px tall in the title; on phones its tap area reaches 45 px (10 px above and below, at least
+              // 44 px wide) without moving the title (Day 7c phone pass).
+              className="relative underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-2.5 max-sm:before:min-w-11 max-sm:before:content-['']"
             >
               {deal.lead.name}
             </Link>
@@ -220,7 +233,13 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
         <section aria-label={t("sheet.stage")} className="flex flex-col gap-2">
           <h3 className="text-sm font-bold text-muted-foreground">{t("sheet.stage")}</h3>
-          <StageStepper card={deal} disabled={!deal.can_edit} onPick={pick} onLose={() => flows.openLose(deal)} />
+          <StageStepper
+            card={deal}
+            disabled={!deal.can_edit || reopenHeld}
+            describedBy={reopenHeld && deal.can_edit ? heldId : undefined}
+            onPick={pick}
+            onLose={() => flows.openLose(deal)}
+          />
           <p className="text-sm text-muted-foreground">
             {open
               ? `${t("daysInStage", { count: days })}${deal.is_stalled && deal.stall_days ? ` · ${t("stalledHint", { quiet: deal.quiet_days ?? days, limit: deal.stall_days, stage: tStage(deal.stage) })}` : ""}`
@@ -228,7 +247,22 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                 ? t("sheet.closedOn", { date: format.dateTime(new Date(deal.closed_at), { day: "numeric", month: "short", year: "numeric" }) })
                 : null}
           </p>
-          {!open && deal.can_edit ? (
+          {!open && deal.can_edit && reopenHeld ? (
+            // In the Reopen row's place and shape: why the stepper is off, and where to sort it out (the lead's Stock
+            // tab, with its holds and sales).
+            <div data-reopen-held className="flex flex-wrap items-center gap-2">
+              <p id={heldId} className="text-sm text-muted-foreground">
+                {tErr("blocked")}
+              </p>
+              <Link
+                href={`/leads/${deal.lead.id}?tab=stock`}
+                onPointerEnter={() => router.prefetch(`/leads/${deal.lead.id}?tab=stock`)}
+                className={cn(buttonVariants({ variant: "quiet" }), "min-h-11 sm:min-h-9")}
+              >
+                {t("sheet.heldStock")}
+              </Link>
+            </div>
+          ) : !open && deal.can_edit ? (
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm text-muted-foreground">{t("sheet.reopenToEdit")}</p>
               <Button variant="quiet" className="min-h-11 sm:min-h-9" onClick={() => flows.openReopen(deal, reopenStage(deal.history))}>
@@ -258,9 +292,10 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
         <CloseDate deal={deal} disabled={!editable} flows={flows} />
 
         <Field label={t("fields.contact")}>
-          <select
+          <Select
             name="contact"
-            className="min-h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+            aria-label={t("fields.contact")}
+            className="text-sm"
             value={deal.contact_id ?? ""}
             disabled={!deal.can_edit || !leadQuery.data}
             onChange={(e) => void saveField(deal, flows, toast, t, ["contact_id"], { contactId: e.target.value || null }, (d) => d.contact_id === deal.contact_id)}
@@ -271,7 +306,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                 {personName(c)}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         <Field label={t("fields.fulfilment")}>
@@ -300,9 +335,10 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
         {canAssign ? (
           <Field label={t("fields.owner")}>
-            <select
+            <Select
               name="owner"
-              className="min-h-11 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+              aria-label={t("fields.owner")}
+              className="text-sm"
               value={deal.owner_id ?? ""}
               disabled={!deal.can_edit}
               onChange={(e) => e.target.value && void saveField(deal, flows, toast, t, ["owner_id"], { ownerId: e.target.value }, (d) => d.owner_id === deal.owner_id)}
@@ -312,7 +348,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                   {personName(m)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         ) : ownerName ? (
           <Field label={t("fields.owner")}>
@@ -359,8 +395,8 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                     {text}
                     {h.undone ? <span className="sr-only"> ({t("history.undoneTag")})</span> : null}
                   </span>
-                  <time dateTime={h.created_at} title={format.dateTime(new Date(h.created_at), { dateStyle: "medium", timeStyle: "short" })} className="shrink-0 font-mono text-xs text-muted-foreground">
-                    {format.dateTime(new Date(h.created_at), { day: "numeric", month: "short" })}
+                  <time dateTime={h.created_at} className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {format.dateTime(new Date(h.created_at), { day: "numeric", month: "short" })}<span className="sr-only"> ({format.dateTime(new Date(h.created_at), { dateStyle: "medium", timeStyle: "short" })})</span>
                   </time>
                 </li>
               );
@@ -607,14 +643,13 @@ function CloseDate({ deal, disabled, flows }: { deal: DealDetail; disabled: bool
         ) : null}
       </div>
       {picking ? (
-        <input
-          type="date"
+        <DatePicker
           name="expected_close"
           aria-label={t("closeChips.pick")}
           defaultValue={deal.expected_close ?? ""}
           disabled={disabled}
-          onChange={(e) => e.target.value && set(e.target.value)}
-          className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground"
+          clearable={false}
+          onValueChange={(v) => v && set(v)}
         />
       ) : null}
     </Field>
@@ -641,13 +676,23 @@ function SheetMenu({ deal, flows, onDeleted }: { deal: DealDetail; flows: SheetF
           <Copy aria-hidden="true" strokeWidth={1.75} className="size-4 text-muted-foreground" />
           {t("menu.copyLink")}
         </DropdownMenuItem>
-        {deal.can_delete ? (
-          <DropdownMenuItem className="text-status-red" onSelect={() => flows.openDelete(deal, (ok) => ok && onDeleted())}>
-            <Trash2 aria-hidden="true" strokeWidth={1.75} className="size-4" />
-            {t("menu.delete")}
-          </DropdownMenuItem>
-        ) : null}
+        <SheetDeleteItem deal={deal} flows={flows} onDeleted={onDeleted} />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// Drawn each time the menu opens (Radix mounts the content then), so "now" is the moment it opened: the creator's Delete
+// is gone once its 120 s window is over, as the database would refuse it by then.
+function SheetDeleteItem({ deal, flows, onDeleted }: { deal: DealDetail; flows: SheetFlows; onDeleted: () => void }) {
+  const t = useTranslations("Deals");
+  const [now] = useState(() => Date.now());
+  const until = deal.delete_until ? Date.parse(deal.delete_until) : null;
+  if (!deleteOffered({ can_delete: deal.can_delete, held: deal.stock_held, until }, now)) return null;
+  return (
+    <DropdownMenuItem className="text-status-red" onSelect={() => flows.openDelete(deal, (ok) => ok && onDeleted())}>
+      <Trash2 aria-hidden="true" strokeWidth={1.75} className="size-4" />
+      {t("menu.delete")}
+    </DropdownMenuItem>
   );
 }

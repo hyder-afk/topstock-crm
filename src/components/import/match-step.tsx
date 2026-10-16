@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "rea
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { Combobox } from "@/components/ui/combobox";
 import { Select } from "@/components/ui/select";
 import { countriesByName } from "@/lib/countries";
 import {
@@ -374,7 +375,7 @@ export function MatchStep({
         <ValueSection title={t("countryTitle")} hint={t("countryHint")}>
           {unknownCountries.slice(0, 200).map((c) => (
             <ValueRow key={c.key} label={c.label} count={c.count} amber={!countryChoices.get(c.key)}>
-              <Select
+              <Combobox
                 aria-label={t("countryFor", { value: c.label })}
                 value={countryChoices.get(c.key) ?? ""}
                 onChange={(e) => setCountryChoices((m) => new Map(m).set(c.key, e.target.value || null))}
@@ -385,7 +386,7 @@ export function MatchStep({
                     {country.name}
                   </option>
                 ))}
-              </Select>
+              </Combobox>
             </ValueRow>
           ))}
           {unknownCountries.length > 200 ? <Notice tone="amber">{t("tooManyValues")}</Notice> : null}
@@ -406,13 +407,13 @@ export function MatchStep({
             </Select>
           </ValueRow>
           <ValueRow label={t("timeZone")} count={null}>
-            <Select aria-label={t("timeZone")} value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
+            <Combobox aria-label={t("timeZone")} value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
               {zoneOptions.map(({ zone, label }) => (
                 <option key={zone} value={zone}>
                   {label}
                 </option>
               ))}
-            </Select>
+            </Combobox>
           </ValueRow>
         </ValueSection>
       ) : null}
@@ -475,7 +476,7 @@ function ColumnRow({
             </span>
           ) : null}
         </div>
-        <p className="min-w-0 truncate text-sm text-muted-foreground" title={examples.join(" · ")}>
+        <p className="min-w-0 text-sm text-muted-foreground wrap-anywhere">
           {examples.length ? examples.join(" · ") : t("emptyColumn")}
         </p>
       </div>
@@ -528,7 +529,7 @@ function ValueRow({
         {needsChoice || amber ? (
           <span aria-hidden="true" className={needsChoice ? "size-1.5 shrink-0 rounded-full bg-status-red" : "size-1.5 shrink-0 rounded-full bg-status-amber"} />
         ) : null}
-        <span className="truncate" title={label}>
+        <span className="min-w-0 wrap-anywhere">
           {label}
         </span>
         {count !== null ? (

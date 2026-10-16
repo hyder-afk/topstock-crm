@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FormMessage } from "@/components/ui/form-message";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Combobox } from "@/components/ui/combobox";
 import { Select } from "@/components/ui/select";
 import { countriesByName } from "@/lib/countries";
 import { leadInput, leadStatuses, personName, type LeadDetail, type TeamMember } from "@/lib/leads";
@@ -199,14 +200,15 @@ export function LeadForm({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor={`${id}-country`}>{t("country")}</Label>
-          <Select id={`${id}-country`} name="country" value={values.country} onChange={(e) => set("country", e.target.value)}>
+          {/* About 250 countries: a searchable list (accents and case ignored). */}
+          <Combobox id={`${id}-country`} name="country" value={values.country} onChange={(e) => set("country", e.target.value)}>
             <option value="">{t("chooseCountry")}</option>
             {countries.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.name}
               </option>
             ))}
-          </Select>
+          </Combobox>
         </div>
       </div>
       <FormMessage id={msg} tone="error">

@@ -3,6 +3,7 @@
 import { z } from "zod";
 import type { AuthError } from "@supabase/supabase-js";
 import { requireSession, stepUpSecondsLeft } from "@/lib/auth";
+import { recordAuthEvent } from "@/lib/auth-events";
 
 // "Confirm it's you": checks a fresh authenticator code for a signed-in (aal2) user, which renews the code time in the
 // session, so the database's step-up rule (a code from the last 10 minutes) passes again. Answers with a short code;
@@ -26,6 +27,7 @@ export async function verifyStepUp(input: unknown): Promise<StepUpResult> {
   if (listError || !factor) return { ok: false, error: "unavailable" };
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: parsed.data });
   if (error) return { ok: false, error: isRateLimited(error) ? "rateLimited" : "codeWrong" };
+  await recordAuthEvent(supabase, "mfa_verify");
   const { data } = await supabase.auth.getClaims();
   return { ok: true, secondsLeft: data?.claims ? stepUpSecondsLeft(data.claims) : 0 };
 }

@@ -88,7 +88,7 @@ export const DealCardView = memo(function DealCardView({
       <>
         {t("daysInStage", { count: days })}
         {card.is_stalled ? (
-          <span className="inline-flex items-center gap-1" title={stallDays ? t("stalledHint", { quiet: card.quiet_days ?? days, limit: stallDays, stage: tStage(card.stage) }) : undefined}>
+          <span className="inline-flex items-center gap-1">
             <span aria-hidden="true">·</span>
             <span aria-hidden="true" className="size-1.5 rounded-full bg-status-amber" />
             <span className="text-status-amber">{t("stalled")}</span>
@@ -168,7 +168,7 @@ export const DealCardView = memo(function DealCardView({
                 {card.company_name}
               </span>
               {showOwner && owner ? (
-                <span aria-hidden="true" title={owner} className="grid size-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-[10px] text-muted-foreground">
+                <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-muted font-mono text-[10px] text-muted-foreground">
                   {initials(card.owner_first_name, card.owner_last_name)}
                 </span>
               ) : null}

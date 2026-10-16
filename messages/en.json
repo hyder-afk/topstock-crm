@@ -209,7 +209,16 @@
     "signOut": "Sign out",
     "sections": "Other sections",
     "settings": "Settings",
-    "status": "System"
+    "status": "System",
+    "everywhere": {
+      "open": "Sign out of all devices",
+      "title": "Sign out of all devices?",
+      "body": "You will be signed out here and on every other phone, tablet and computer. Other devices lose access within an hour at most. You will need your password and a code from your authenticator app to sign in again.",
+      "cancel": "Cancel",
+      "confirm": "Sign out everywhere",
+      "unavailable": "Could not sign out of all devices. Please try again.",
+      "rateLimited": "Too many attempts. Wait a minute and try again."
+    }
   },
   "Team": {
     "title": "Team",
@@ -408,7 +417,7 @@
     "count": "{count, plural, one {# lead} other {# leads}}",
     "add": "Add lead",
     "searchLabel": "Search leads",
-    "searchPlaceholder": "Search company, contact, email, phone or city…",
+    "searchPlaceholder": "Company, contact, email, phone or city…",
     "filters": "Filters",
     "filtersCount": "Filters, {count} on",
     "clearFilters": "Clear filters",
@@ -569,6 +578,7 @@
       "d30": "In 30 days",
       "d90": "In 90 days",
       "pick": "Pick a date",
+      "needDate": "Pick a date from tomorrow up to two years ahead.",
       "cancel": "Cancel",
       "confirm": "Set Cool off"
     },
@@ -1426,6 +1436,7 @@
       "stepper": "Move this deal",
       "markLost": "Mark lost",
       "reopenToEdit": "Reopen to change the value or how it ships.",
+      "heldStock": "See the lead’s stock",
       "notAvailable": "This deal isn’t available.",
       "notAvailableBody": "It may have been deleted, or it belongs to someone else.",
       "loadFailed": "Couldn’t load this deal",
@@ -2076,7 +2087,6 @@
     "toolbar": {
       "search": "Search products",
       "searchPlaceholder": "Search name, category or P-0042…",
-      "clearSearch": "Clear search",
       "category": "Category",
       "allCategories": "All categories",
       "sort": "Sort",
@@ -2823,5 +2833,31 @@
     "perPiece": "{price}/pc",
     "priceOnRequest": "price on request",
     "more": "… and more items."
+  },
+  "Pickers": {
+    "choose": "Choose…",
+    "search": "Search…",
+    "loading": "Loading…",
+    "noMatch": "No match",
+    "chosen": "chosen",
+    "chooseDate": "Choose a date",
+    "changeDate": "Change the date, now {date}",
+    "noDate": "No date chosen",
+    "chooseDates": "Choose dates",
+    "rangeValue": "{from} to {to}",
+    "rangeFromOnly": "From {from}",
+    "pickEnd": "Now choose the end date.",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "clear": "Clear",
+    "dayLetters": "dd",
+    "monthLetters": "mm",
+    "yearLetters": "yyyy",
+    "chooseTime": "Choose a time",
+    "times": "Times",
+    "time": "Time",
+    "timePattern24": "hh:mm",
+    "timePattern12": "h:mm am",
+    "clearSearch": "Clear search"
   }
 }

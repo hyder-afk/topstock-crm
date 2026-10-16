@@ -639,7 +639,7 @@ const EntryItem = memo(function EntryItem({
               {entry.pending ? (
                 <span>{t("saving")}</span>
               ) : (
-                <time dateTime={entry.created_at} title={absolute}>
+                <time dateTime={entry.created_at}>
                   {now ? format.relativeTime(created, now) : format.dateTime(created, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}
                   <span className="sr-only"> ({absolute})</span>
                 </time>
@@ -688,7 +688,7 @@ const EntryItem = memo(function EntryItem({
         </div>
 
         {editing ? (
-          <form
+          <form noValidate
             ref={formRef}
             className="flex flex-col gap-2"
             onSubmit={(e) => {
@@ -785,7 +785,7 @@ const EntryItem = memo(function EntryItem({
 });
 
 const menuTrigger =
-  "-mt-1 -mr-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9";
+  "-mt-1 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:-mr-1 sm:size-9";
 
 /**
  * An entry's menu. Until it is first used it is a plain button (a menu per entry, 30 a page, cost the tab switch and the

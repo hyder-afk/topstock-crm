@@ -85,26 +85,98 @@ language sql as $$
   )::text, false)
 $$;
 
--- 1. anon has no access to any table or API function --------------------------------------------------
+-- 1. anon has no access to anything in public or private (Day 7a: read from the catalog, so every table, view,
+-- sequence and function a later migration adds is covered without editing this list) ---------------------------------
+-- Privileges first (every relation and function, as the catalog says), then a live attempt of each statement as anon.
+-- The allowlists hold objects that anon may use on purpose, each with a comment and a review. Relations: none.
+-- Functions, by full signature (regprocedure text with an empty search_path, so always schema-qualified): Day 6's
+-- public share page calls exactly these two as anon by design (they are owned by share_reader and run as it):
+-- supabase/migrations/20261020090000_client_share.sql, the "grant execute ... to anon" line (line 1050 on day6a-local).
+-- Before Day 6 is merged they do not exist and the list matches nothing.
+do $$
+declare
+  allowed_rel constant text[] := array[]::text[];
+  allowed_fn constant text[] := array['public.share_view(text,text)', 'public.share_request(text,jsonb)'];
+  r record;
+  n_rel int := 0;
+  n_fn int := 0;
+begin
+  perform set_config('search_path', '', true);  -- regprocedure then prints every name with its schema
+  if has_schema_privilege('anon', 'private', 'usage') or has_schema_privilege('anon', 'private', 'create')
+     or has_schema_privilege('anon', 'public', 'create') then
+    raise exception 'FAIL: anon has usage or create on schema private, or create on public';
+  end if;
+  for r in select c.oid, n.nspname, c.relname, c.relkind from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'f', 'S') loop
+    n_rel := n_rel + 1;
+    continue when (r.nspname || '.' || r.relname) = any (allowed_rel);
+    if r.relkind = 'S' then
+      if has_sequence_privilege('anon', r.oid, 'usage') or has_sequence_privilege('anon', r.oid, 'select')
+         or has_sequence_privilege('anon', r.oid, 'update') then
+        raise exception 'FAIL: anon has a privilege on sequence %.%', r.nspname, r.relname;
+      end if;
+    elsif has_table_privilege('anon', r.oid, 'select') or has_table_privilege('anon', r.oid, 'insert')
+       or has_table_privilege('anon', r.oid, 'update') or has_table_privilege('anon', r.oid, 'delete')
+       or has_table_privilege('anon', r.oid, 'truncate') or has_table_privilege('anon', r.oid, 'references')
+       or has_table_privilege('anon', r.oid, 'trigger')
+       or has_any_column_privilege('anon', r.oid, 'select') or has_any_column_privilege('anon', r.oid, 'insert')
+       or has_any_column_privilege('anon', r.oid, 'update') or has_any_column_privilege('anon', r.oid, 'references') then
+      raise exception 'FAIL: anon has a privilege on %.%', r.nspname, r.relname;
+    end if;
+  end loop;
+  for r in select p.oid, n.nspname, p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname in ('public', 'private') loop
+    n_fn := n_fn + 1;
+    continue when r.oid::regprocedure::text = any (allowed_fn);
+    if has_function_privilege('anon', r.oid, 'execute') then
+      raise exception 'FAIL: anon can execute %.%(%)', r.nspname, r.proname, pg_get_function_identity_arguments(r.oid);
+    end if;
+  end loop;
+  -- The sweep must have seen the schema (Day 1's 12 tables and its functions at the very least).
+  if n_rel < 12 or n_fn < 20 then
+    raise exception 'FAIL: the anon sweep saw only % relations and % functions', n_rel, n_fn;
+  end if;
+end $$;
+
 set role anon;
 do $$ begin perform set_config('request.jwt.claims', '{"role":"anon"}', false); end $$;
 do $$
-declare t text;
+declare
+  r record;
+  col text;
+  stmt text;
+  n_rel int := 0;
 begin
-  foreach t in array array['orgs','profiles','companies','import_batches','contacts','pipeline_stages','deals',
-                           'activities','tasks','files','saved_views','audit_log'] loop
-    begin
-      execute format('select count(*) from public.%I', t);
-      raise exception 'FAIL: anon could read %', t;
-    exception when insufficient_privilege then null;
-    end;
+  for r in select c.oid, n.nspname, c.relname, c.relkind from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'f') loop
+    n_rel := n_rel + 1;
+    select a.attname into col from pg_attribute a
+     where a.attrelid = r.oid and a.attnum > 0 and not a.attisdropped
+       and a.attidentity = '' and a.attgenerated = ''  -- an identity or generated column refuses the update earlier
+     order by a.attnum limit 1;
+    -- Each statement must fail on privileges (42501) before touching a row; a success would roll back with the raise.
+    foreach stmt in array array[
+        format('select 1 from %I.%I limit 1', r.nspname, r.relname),
+        format('insert into %I.%I default values', r.nspname, r.relname),
+        format('update %I.%I set %I = %I', r.nspname, r.relname, col, col),
+        format('delete from %I.%I', r.nspname, r.relname)] loop
+      continue when r.relkind = 'm' and stmt !~ '^select';  -- a materialized view takes no writes at all
+      begin
+        execute stmt;
+        raise exception 'FAIL: anon could run: %', stmt;
+      exception when insufficient_privilege then null;
+      end;
+    end loop;
   end loop;
-  foreach t in array array['select * from public.list_leads()', 'select public.count_leads()',
-                           'select public.get_lead(gen_random_uuid())', 'select * from public.list_team()',
-                           $q$select public.create_lead('x')$q$, $q$select * from public.list_saved_views('leads')$q$] loop
+  if n_rel < 12 then raise exception 'FAIL: the anon statement sweep saw only % relations', n_rel; end if;
+  -- A few API functions called for real (privileges above cover every function).
+  foreach stmt in array array['select * from public.list_leads()', 'select public.count_leads()',
+                              'select public.get_lead(gen_random_uuid())', 'select * from public.list_team()',
+                              $q$select public.create_lead('x')$q$, $q$select * from public.list_saved_views('leads')$q$,
+                              $q$select public.record_auth_event('sign_in')$q$] loop
     begin
-      execute t;
-      raise exception 'FAIL: anon could call %', t;
+      execute stmt;
+      raise exception 'FAIL: anon could call %', stmt;
     exception when insufficient_privilege then null;
     end;
   end loop;

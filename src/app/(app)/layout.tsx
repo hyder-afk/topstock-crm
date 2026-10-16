@@ -19,7 +19,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <KeyboardLayer isAdmin={profile?.role === "admin"}>
           {/* The call panel lives here, so a call started on one page survives moving to another (Day 4 design 7.3). */}
           <CallPanelProvider>
-            <div className="mx-auto flex min-h-dvh w-full max-w-[1440px] flex-col px-4 sm:px-8">
+            {/* data-role only shapes skeletons (More draws Administration for admins only, Day 7b); every page and the
+                database check the role again. */}
+            <div data-role={profile?.role ?? "rep"} className="group/app mx-auto flex min-h-safe-screen w-full max-w-[1440px] flex-col px-4 sm:px-8">
               <header className="flex h-[72px] shrink-0 items-center justify-between gap-4">
                 <Logo className="h-auto w-[184px] text-foreground" />
                 <SearchButton />

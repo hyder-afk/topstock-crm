@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 function Chips<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { id: T; label: string }[]; onChange: (v: T) => void }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
+    <div role="radiogroup" aria-label={label} className="edge-fade flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
       {options.map((o) => (
         <button
           key={o.id}
@@ -327,7 +327,7 @@ function CancelSaleDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className={cn(phoneSheet, "sm:max-w-md")}>
-        <form
+        <form noValidate
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();

@@ -329,8 +329,10 @@ begin
                  or i ->> 0 ~ '-') then
     raise exception 'FAIL: share_view_payload_keys_exact (items are 8-place arrays, no internal id)';
   end if;
-  -- The planted minimum price and cost never travel.
-  if r::text like '%1.11%' or r::text like '%0.42%' or r::text not like '%999.99%' then
+  -- The planted minimum price and cost never travel. Only the items are checked: generated_at and the
+  -- signature change every run and could contain these digits by chance.
+  if (r -> 'items')::text like '%1.11%' or (r -> 'items')::text like '%0.42%'
+     or (r -> 'items')::text not like '%999.99%' then
     raise exception 'FAIL: share_view sends the minimum price or the cost';
   end if;
 end $$;
@@ -675,7 +677,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30) \g /d
 select set_config('t.tok_day', public.create_share_link('5e000000-0000-0000-0000-0000000000b2', 'en') ->> 'token', false) \g /dev/null
 reset role;
 insert into private.share_rate (scope_id, kind, span, bucket, n)
-select l.id, 'request', 'd', date_trunc('day', now()), 20 from private.share_links l
+select l.id, 'request', 'd', date_trunc('day', now(), 'Europe/Paris'), 20 from private.share_links l
  where l.token_hash = sha256(convert_to(current_setting('t.tok_day'), 'UTF8'));
 set role anon;
 do $$
@@ -689,7 +691,7 @@ delete from private.share_rate where kind = 'request' and span = 'd'
    and scope_id = (select l.id from private.share_links l
                     where l.token_hash = sha256(convert_to(current_setting('t.tok_day'), 'UTF8')));
 insert into private.share_rate (scope_id, kind, span, bucket, n)
-values ((select id from public.orgs where name = 'TopStock Wholesale'), 'request', 'd', date_trunc('day', now()), 200)
+values ((select id from public.orgs where name = 'TopStock Wholesale'), 'request', 'd', date_trunc('day', now(), 'Europe/Paris'), 200)
 on conflict (scope_id, kind, span, bucket) do update set n = 200;
 set role anon;
 do $$
@@ -700,6 +702,69 @@ begin
 end $$;
 reset role;
 delete from private.share_rate where scope_id = (select id from public.orgs where name = 'TopStock Wholesale');
+-- share_take_day_bucket_is_the_paris_day (Day 7f, 20261022130000): whatever the session's zone, the day and hour buckets
+-- are Paris ones. With the session on UTC (production's zone; these tests otherwise run on PGTZ=Europe/Paris, where the
+-- old code looked right), a request writes its day rows at Paris midnight, never UTC midnight, and a link whose Paris-day
+-- bucket is full is refused.
+set timezone = 'UTC';
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30) \g /dev/null
+select set_config('t.tok_tz', public.create_share_link('5e000000-0000-0000-0000-0000000000b2', 'en') ->> 'token', false) \g /dev/null
+reset role;
+set role anon;
+do $$
+declare
+  r jsonb;
+begin
+  r := public.share_request(current_setting('t.tok_tz'), pg_temp.req('[]'::jsonb, 'Counted in the Paris day'));
+  if r ->> 'status' <> 'received' then
+    raise exception 'FAIL: share_take_day_bucket_is_the_paris_day (first request): %', r;
+  end if;
+end $$;
+reset role;
+do $$
+declare
+  l constant uuid := (select id from private.share_links
+                       where token_hash = sha256(convert_to(current_setting('t.tok_tz'), 'UTF8')));
+  o constant uuid := (select org_id from private.share_links
+                       where token_hash = sha256(convert_to(current_setting('t.tok_tz'), 'UTF8')));
+  paris_day constant timestamptz := date_trunc('day', now(), 'Europe/Paris');
+  paris_hour constant timestamptz := date_trunc('hour', now(), 'Europe/Paris');
+begin
+  if current_setting('TimeZone') <> 'UTC' or paris_day = date_trunc('day', now()) then
+    raise exception 'FAIL: the session must be on UTC, where Paris midnight is another instant';
+  end if;
+  if (select array_agg(bucket) from private.share_rate where scope_id = l and kind = 'request' and span = 'd')
+       is distinct from array[paris_day]
+     or (select array_agg(bucket) from private.share_rate where scope_id = o and kind = 'request' and span = 'd')
+       is distinct from array[paris_day]
+     or (select array_agg(bucket) from private.share_rate where scope_id = l and kind = 'request' and span = 'h')
+       is distinct from array[paris_hour] then
+    raise exception 'FAIL: share_take_day_bucket_is_the_paris_day: buckets % (want day %, hour %)',
+      (select jsonb_agg(jsonb_build_object('span', span, 'bucket', bucket, 'scope', scope_id = l))
+         from private.share_rate where scope_id in (l, o) and kind = 'request'), paris_day, paris_hour;
+  end if;
+  update private.share_rate set n = 20 where scope_id = l and kind = 'request' and span = 'd';
+end $$;
+set role anon;
+do $$
+begin
+  if public.share_request(current_setting('t.tok_tz'), pg_temp.req('[]'::jsonb, 'Over the Paris day'))::text <> '{"status": "slow_down"}' then
+    raise exception 'FAIL: share_take_day_bucket_is_the_paris_day (a full Paris-day bucket must refuse)';
+  end if;
+end $$;
+reset role;
+delete from private.share_rate
+ where scope_id in (select id from private.share_links where token_hash = sha256(convert_to(current_setting('t.tok_tz'), 'UTF8')))
+    or scope_id = (select id from public.orgs where name = 'TopStock Wholesale');
+-- The link is revoked again so the lead keeps room under its 3 active links for the tests below.
+select set_config('t.tz_id', l.id::text, false) from private.share_links l
+ where l.token_hash = sha256(convert_to(current_setting('t.tok_tz'), 'UTF8')) \g /dev/null
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30) \g /dev/null
+select public.revoke_share_link(current_setting('t.tz_id')::uuid) \g /dev/null
+reset role;
+reset timezone;
 -- share_request_too_many_open: 10 new requests on the link already.
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30) \g /dev/null

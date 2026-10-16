@@ -24,9 +24,15 @@ export default async function Loading() {
         <p aria-hidden="true" className="max-w-[65ch] select-none">
           <span className={ghost}>{q("intro")}</span>
         </p>
-        <div aria-hidden="true" className="flex max-w-full flex-wrap gap-0.5 self-start rounded-md bg-muted p-1 select-none motion-safe:animate-pulse">
+        <div
+          aria-hidden="true"
+          className="flex max-w-full flex-wrap gap-0.5 self-start rounded-md bg-muted p-1 select-none motion-safe:animate-pulse max-sm:grid max-sm:w-full max-sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+        >
           {(["mine", "mineUnassigned", "team"] as const).map((s) => (
-            <span key={s} className="flex min-h-11 shrink-0 items-center px-3.5 text-sm whitespace-nowrap text-transparent sm:min-h-9">
+            <span
+              key={s}
+              className="flex min-h-11 shrink-0 items-center justify-center px-3.5 text-center text-sm whitespace-nowrap text-transparent max-sm:py-1 max-sm:leading-tight max-sm:text-balance max-sm:whitespace-normal sm:min-h-9"
+            >
               {q(`scope.${s}`)}
             </span>
           ))}

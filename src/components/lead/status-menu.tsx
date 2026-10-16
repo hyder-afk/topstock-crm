@@ -4,7 +4,9 @@ import { useId, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
+import { FormMessage } from "@/components/ui/form-message";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,6 +102,7 @@ function UntilDialog({
   const zone = primaryZone(callZoneKey);
   const [choice, setChoice] = useState<(typeof choices)[number]>("d90");
   const [picked, setPicked] = useState("");
+  const [tried, setTried] = useState(false);
   const today = localDate(zone, new Date());
   const date = choice === "d30" ? addDays(today, 30) : choice === "d90" ? addDays(today, 90) : picked;
   const valid = !!date && date > today && date <= addDays(today, 730);
@@ -108,10 +111,11 @@ function UntilDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? null : onCancel())}>
       <DialogContent className={cn(phoneSheet, "sm:w-[min(440px,calc(100%-32px))]")}>
-        <form
+        <form noValidate
           className="flex flex-col gap-5 p-6"
           onSubmit={(e) => {
             e.preventDefault();
+            setTried(true);
             if (valid) onConfirm(zonedInstant(date, "09:00", zone).toISOString());
           }}
         >
@@ -140,17 +144,23 @@ function UntilDialog({
               </label>
             ))}
             {choice === "pick" ? (
-              <input
-                type="date"
+              <DatePicker
                 aria-label={t("pick")}
                 value={picked}
                 min={addDays(today, 1)}
                 max={addDays(today, 730)}
-                onChange={(e) => setPicked(e.target.value)}
-                className="mt-1 min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground"
+                timeZone={zone}
+                required
+                aria-invalid={tried && !valid ? true : undefined}
+                aria-describedby={`${id}-error`}
+                onValueChange={setPicked}
+                className="mt-1"
               />
             ) : null}
           </fieldset>
+          <FormMessage id={`${id}-error`} tone="error">
+            {tried && !valid ? t("needDate") : null}
+          </FormMessage>
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button variant="quiet" onClick={onCancel}>
               {t("cancel")}

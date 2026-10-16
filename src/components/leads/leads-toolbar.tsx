@@ -2,7 +2,7 @@
 
 import { useEffect, useEffectEvent, useId, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Bookmark, ChevronDown, Columns3, ListFilter, Search, Trash2, X } from "lucide-react";
+import { Bookmark, ChevronDown, Columns3, ListFilter, Trash2, X } from "lucide-react";
 import { deleteView, saveView } from "@/app/(app)/leads/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchInput } from "@/components/ui/search-input";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/components/ui/toast";
 import { countriesByName, countryName } from "@/lib/countries";
@@ -35,7 +36,7 @@ import {
 import type { SavedView } from "@/lib/leads-server";
 import { cn } from "@/lib/utils";
 
-const control = cn(buttonVariants({ variant: "quiet" }), "min-h-11 gap-2 px-3 text-sm font-normal sm:min-h-10");
+const control = cn(buttonVariants({ variant: "quiet" }), "min-h-11 min-w-11 justify-center gap-2 px-3 text-sm font-normal sm:min-h-10");
 
 // Calls onSettle once the value has stopped changing for ms. Only the value restarts the timer (useEffectEvent
 // always sees the latest onSettle without being a dependency).
@@ -91,19 +92,14 @@ export function LeadsToolbar({
           <label htmlFor={searchId} className="sr-only">
             {t("searchLabel")}
           </label>
-          <Search aria-hidden="true" strokeWidth={1.75} className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+          <SearchInput
             id={searchId}
             name="q"
-            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setSearch("")}
             placeholder={t("searchPlaceholder")}
             maxLength={100}
-            autoComplete="off"
-            spellCheck={false}
-            className="pl-9 text-sm sm:min-h-10"
+            className="text-sm sm:min-h-10"
           />
         </div>
 
@@ -242,14 +238,12 @@ function FilterPanel({ filters, onChange, team }: { filters: LeadFilters; onChan
         </fieldset>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-xs font-bold text-muted-foreground">{tF("country")}</legend>
-          <Input
-            type="search"
+          <SearchInput
             name="country-search"
-            aria-label={tF("countrySearch")}
+            label={tF("countrySearch")}
             placeholder={tF("countrySearch")}
             value={countryQuery}
             onChange={(e) => setCountryQuery(e.target.value)}
-            autoComplete="off"
             className="text-sm sm:min-h-10"
           />
           {countryList.length ? (
@@ -454,7 +448,7 @@ function ViewsPopover({
         ) : (
           <p className="text-sm text-muted-foreground">{t("viewsEmpty")}</p>
         )}
-        <form onSubmit={save} className="flex flex-col gap-2 border-t border-border pt-3">
+        <form noValidate onSubmit={save} className="flex flex-col gap-2 border-t border-border pt-3">
           <Label htmlFor={`${id}-name`} className="text-xs text-muted-foreground">
             {t("viewName")}
           </Label>

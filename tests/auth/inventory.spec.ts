@@ -88,7 +88,12 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
     colorScheme: o.scheme ?? "light",
     timezoneId: "Europe/Paris",
   });
-  if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: "http://localhost:3100" }]);
+  if (o.locale) {
+    // The app's address from the Playwright config (PLAYWRIGHT_BASE_URL, else port 3100), as share.spec reads it.
+    const base = test.info().project.use.baseURL;
+    if (!base) throw new Error("baseURL is not set (playwright.auth.config.ts)");
+    await context.addCookies([{ name: "locale", value: o.locale, url: new URL(base).origin }]);
+  }
   const page = await context.newPage();
   trackRequests(page);
   const errors: string[] = [];
@@ -295,10 +300,11 @@ test("inventory_390_no_horizontal_scroll_and_product_page", async ({ browser }) 
   await expect(page).toHaveURL(/\/inventory\/p\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: "Câble USB-C 1 m" })).toBeVisible();
   expect(await noSideways(page)).toBeLessThanOrEqual(0);
-  // Touch targets: every button and link on the product page is at least 44 px tall.
+  // Touch targets: every button and link on the product page is at least 44 px tall. Heights are compared at 2 decimals:
+  // layout can land a 44 px box at 43.9999 px (sub-pixel rounding), which is 44 px on screen.
   const small = await page.locator("main button:visible, main a:visible").evaluateAll((els) =>
     els
-      .filter((e) => e.getBoundingClientRect().height < 44)
+      .filter((e) => Math.round(e.getBoundingClientRect().height * 100) / 100 < 44)
       .map((e) => `${e.textContent?.trim()} (${e.getBoundingClientRect().height}px, min-height ${getComputedStyle(e).minHeight}, display ${getComputedStyle(e).display})`),
   );
   expect(small).toEqual([]);

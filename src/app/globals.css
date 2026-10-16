@@ -6,6 +6,59 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* A full-height page inside the body's top safe-area padding: 100dvh less that inset, so a short page does not scroll
+   by the inset (min-h-dvh plus the padding did). The body itself stays min-h-dvh (border-box: the padding is inside). */
+@utility min-h-safe-screen {
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+}
+
+/* Edge fades on strips that scroll sideways (tab strips, chip rows; Day 7c phone pass): an edge fades out only while
+   more content lies past it, so a cut tab reads as "scroll for more" rather than as a clipped label. Driven by the
+   strip's own scroll position (scroll-driven animation; not motion, so reduced motion keeps it). A strip that does not
+   overflow has an inactive timeline and no fade; a browser without scroll timelines shows no fade. The scroll padding
+   keeps a focused or snapped item out of the fade. */
+@property --edge-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --edge-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes edge-fade {
+  from {
+    --edge-fade-start: 0px;
+    --edge-fade-end: 24px;
+  }
+  8% {
+    --edge-fade-start: 24px;
+  }
+  92% {
+    --edge-fade-end: 24px;
+  }
+  to {
+    --edge-fade-start: 24px;
+    --edge-fade-end: 0px;
+  }
+}
+@utility edge-fade {
+  /* A chip or tab scrolled into view (Tab, snapping, scrollIntoView) stops clear of the fade. */
+  scroll-padding-inline: 24px;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--edge-fade-start),
+    #000 calc(100% - var(--edge-fade-end)),
+    transparent 100%
+  );
+  @supports (animation-timeline: scroll()) {
+    animation: edge-fade linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
 @theme inline {
   --font-sans: var(--font-outfit), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -87,6 +140,18 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     touch-action: manipulation;
+    /* Safe areas (Day 7c PWA basics; the viewport has viewport-fit=cover): the notch side in landscape and the status
+       bar when opened from the home screen. The bottom inset is added by the dock, the sheets and the toasts. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  /* While a dialog is open, Radix's scroll lock (react-remove-scroll-bar) rewrites the body's padding from its margins
+     (0), which dropped the safe-area padding and moved the page behind the sheet by the inset. Kept here. */
+  body[data-scroll-locked] {
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-right: env(safe-area-inset-right, 0px) !important;
+    padding-left: env(safe-area-inset-left, 0px) !important;
   }
   h1,
   h2,
@@ -201,6 +266,15 @@
   html:has(.import-action-bar) {
     scroll-padding-bottom: 16rem;
   }
+  /* The call panel covers the bottom of the screen on phones (non-modal: the page stays usable): a control reached with
+     Tab is scrolled clear of it. Its height comes from a ResizeObserver in call-panel.tsx (Day 7c). */
+  html:has([data-call-panel]) {
+    scroll-padding-bottom: calc(var(--call-panel-h, 0px) + 16px);
+  }
+  /* ...and the page can scroll its last controls above the panel (main's pb-36 clears the dock only). */
+  html:has([data-call-panel]) #main {
+    padding-bottom: max(9rem, calc(var(--call-panel-h, 0px) + 16px));
+  }
 }
 
 /* The product panel as a right-hand sheet (1024 to 1279 px) slides in from the right edge it is attached to, and the
@@ -280,7 +354,38 @@
 
 /* Popovers and menus settle in from 98% at their trigger (Radix sets the origin). */
 .floating-content {
-  transform-origin: var(--radix-popover-content-transform-origin, var(--radix-dropdown-menu-content-transform-origin));
+  transform-origin: var(
+    --radix-popover-content-transform-origin,
+    var(
+      --radix-dropdown-menu-content-transform-origin,
+      var(--radix-select-content-transform-origin, var(--radix-tooltip-content-transform-origin))
+    )
+  );
+}
+/* Radix Tooltip marks an opening "delayed-open" or "instant-open" rather than "open". */
+.floating-content[data-state="delayed-open"],
+.floating-content[data-state="instant-open"] {
+  animation: settle-in 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* No native pickers or popups (Haider 15 Oct 2026). A safety net under the app's own components: no WebKit clear
+   cross or results button on a search field, no disclosure triangle on <summary> (give it a chevron of its own). */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+summary::marker {
+  content: "";
 }
 .floating-content[data-state="open"] {
   animation: settle-in 160ms cubic-bezier(0.16, 1, 0.3, 1);

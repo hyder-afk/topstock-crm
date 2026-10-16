@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, countryInHours, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
+import { ageStepUp, appReady, choose, countryInHours, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -405,8 +405,8 @@ test("lead import: choose, match, results, undo, done, discard, confirm it's you
   const checkFile = async (page: Page) => {
     // Status words with no obvious meaning ("Hot lead", "Prospect") get a choice first.
     for (const status of ["warm", "cold"]) {
-      const open = page.locator('select[aria-invalid="true"]').first();
-      if (await open.count()) await open.selectOption(status);
+      const open = page.locator('[role="combobox"][aria-invalid="true"]').first();
+      if (await open.count()) await choose(open, status);
     }
     await page.getByRole("button", { name: /^(Check file|Vérifier le fichier)/ }).click();
   };
@@ -441,8 +441,8 @@ test("lead import: choose, match, results, undo, done, discard, confirm it's you
   await shoot(browser, "importer", "/leads/import", "import-match-ready", async (page) => {
     await pick(page, "leads-500-fake.csv");
     for (const status of ["warm", "cold"]) {
-      const open = page.locator('select[aria-invalid="true"]').first();
-      if (await open.count()) await open.selectOption(status);
+      const open = page.locator('[role="combobox"][aria-invalid="true"]').first();
+      if (await open.count()) await choose(open, status);
     }
     await expect(page.getByRole("status").filter({ hasText: /^450 / })).toBeVisible();
   }, matrix, clean);

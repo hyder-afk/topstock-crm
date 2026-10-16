@@ -4,6 +4,11 @@ import { defineConfig, devices } from "@playwright/test";
 // .github/workflows/ci.yml; locally scripts/local-auth/start.sh). Needs NEXT_PUBLIC_SUPABASE_URL/ANON_KEY,
 // SUPABASE_LOCAL_URL, SUPABASE_LOCAL_SERVICE_ROLE_KEY (local stack only; helpers refuse non-local URLs) and MAILPIT_URL.
 const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
+// The app's address: PLAYWRIGHT_BASE_URL when set (a second checkout serves on another port at the same time), else the
+// port `npm run start` uses. Specs read it from here (test.info().project.use.baseURL or the page's own relative URLs).
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3100";
+const port = new URL(baseURL).port || "80";
+const startCommand = port === "3100" ? "npm run start" : `npx next start -p ${port}`;
 
 export default defineConfig({
   testDir: "./tests/auth",
@@ -13,7 +18,7 @@ export default defineConfig({
   retries: 0,
   timeout: 180_000,
   reporter: process.env.CI ? "github" : "list",
-  use: { baseURL: "http://localhost:3100", trace: "retain-on-failure" },
+  use: { baseURL, trace: "retain-on-failure" },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } } },
     // Safari's engine for the shell, the leads screen and the import (dock drag, keyboard, command menu, table,
@@ -24,5 +29,5 @@ export default defineConfig({
     // CI installs WebKit; locally run `--project chromium` when only Chromium is available.
     { name: "webkit", testMatch: /(shell|leads|import|lead-page|queue|queue-multi|tasks|files|pipeline|lead-deals|home|team|inventory|sales|share)\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
   ],
-  webServer: { command: "npm run start", url: "http://localhost:3100/login", reuseExistingServer: true, timeout: 60_000 },
+  webServer: { command: startCommand, url: `${baseURL}/login`, reuseExistingServer: true, timeout: 60_000 },
 });

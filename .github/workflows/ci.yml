@@ -33,12 +33,20 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Day 7b: no native pickers or popups (raw <select>, date/time/search inputs, title= tooltips, <summary>,
+      # confirm/alert/prompt, forms without noValidate). Also covered by tests/unit/native-controls.spec.ts.
+      - run: npm run check:native
       # Pure import rules in Node (playwright.unit.config.ts): no browser, no server.
       - run: npm run test:unit
       - run: npm audit --omit=dev --audit-level=high
+      # Day 7d (Gate 1 item 38): every installed package's registry signature and provenance attestation checks out.
+      - run: npm audit signatures
       - name: npm audit (dev tooling, report only)
         run: npm audit --audit-level=critical || true
       - run: npm run build
+      # Day 7d (Gate 1 items 1, 14, 36): the browser bundle holds no source map, server key, connection string or JWT
+      # other than the anon key.
+      - run: node scripts/check-build.mjs
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

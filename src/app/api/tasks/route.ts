@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiSession } from "@/lib/auth";
+import { listRateLimited } from "@/lib/rate-limit";
 import { noStore } from "@/lib/http";
 import { tasksParams } from "@/lib/tasks";
 import { fetchTaskCounts, fetchTaskPage } from "@/lib/tasks-server";
@@ -11,6 +12,8 @@ import { fetchTaskCounts, fetchTaskPage } from "@/lib/tasks-server";
 export async function GET(request: NextRequest) {
   const session = await apiSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: noStore });
+  const limited = listRateLimited(session.claims.sub);
+  if (limited) return limited;
   const query = tasksParams.safeParse(Object.fromEntries(request.nextUrl.searchParams));
   if (!query.success) return NextResponse.json({ error: "invalid" }, { status: 400, headers: noStore });
   const { bucket, scope = "mine", after_sort, after_id } = query.data;

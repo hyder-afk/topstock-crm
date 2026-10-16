@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiSession } from "@/lib/auth";
+import { listRateLimited } from "@/lib/rate-limit";
 import { stockImportError } from "@/lib/stock-import-server";
 import type { StockIssue } from "@/lib/stock-import/types";
 
@@ -10,6 +11,8 @@ import type { StockIssue } from "@/lib/stock-import/types";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await apiSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const limited = listRateLimited(session.claims.sub);
+  if (limited) return limited;
   const { id } = await params;
   const parsed = z
     .object({ id: z.uuid(), after: z.coerce.number().int().min(0).max(5001).default(0) })

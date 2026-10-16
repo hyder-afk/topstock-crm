@@ -4,9 +4,11 @@ import { useId, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
+import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { fetchLead, leadKey } from "@/components/leads/use-leads";
 import type { useDealActions } from "@/components/pipeline/use-pipeline";
@@ -270,7 +272,7 @@ function OpenDealForm({
             <label htmlFor={`${id}-close`} className="text-sm font-bold">
               {tD("fields.expectedClose")}
             </label>
-            <input id={`${id}-close`} name="expected_close" type="date" value={close} onChange={(e) => setClose(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground" />
+            <DatePicker id={`${id}-close`} name="expected_close" value={close} onValueChange={setClose} />
           </div>
         </div>
         {detail.data && detail.data.contacts.length > 0 ? (
@@ -278,41 +280,41 @@ function OpenDealForm({
             <label htmlFor={`${id}-contact`} className="text-sm font-bold">
               {tD("fields.contact")}
             </label>
-            <select id={`${id}-contact`} name="contact" value={contactId} onChange={(e) => setContactId(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+            <Select id={`${id}-contact`} name="contact" value={contactId} onChange={(e) => setContactId(e.target.value)}>
               <option value="">{tD("fields.noContact")}</option>
               {detail.data.contacts.map((c) => (
                 <option key={c.id} value={c.id}>
                   {personName(c)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         ) : null}
         <div className="flex flex-col gap-2">
           <label htmlFor={`${id}-ships`} className="text-sm font-bold">
             {tD("fields.fulfilment")}
           </label>
-          <select id={`${id}-ships`} name="fulfilment" value={ships} onChange={(e) => setShips(e.target.value as Fulfilment | "")} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+          <Select id={`${id}-ships`} name="fulfilment" value={ships} onChange={(e) => setShips(e.target.value as Fulfilment | "")}>
             <option value="">{tF("undecided")}</option>
             {fulfilments.map((f) => (
               <option key={f} value={f}>
                 {tF(`${f}.title`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {canAssign ? (
           <div className="flex flex-col gap-2">
             <label htmlFor={`${id}-owner`} className="text-sm font-bold">
               {tD("fields.owner")}
             </label>
-            <select id={`${id}-owner`} name="owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+            <Select id={`${id}-owner`} name="owner" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
               {team.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.id === meId ? t("ownerMe") : personName(m)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         ) : null}
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
