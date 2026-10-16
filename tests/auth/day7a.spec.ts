@@ -147,7 +147,9 @@ test("Sign out of all devices ends the session in the other browser too", async 
     expect((await phone.request.get("/api/leads")).status()).toBe(200);
     const { exp } = jwtPayload(held.access_token);
     expect(typeof exp).toBe("number");
+    // Between 10 and 15 minutes left: the token was issued for 900 s (a 3600 s token would fail the upper bound).
     expect(exp! - Date.now() / 1000).toBeLessThanOrEqual(900);
+    expect(exp! - Date.now() / 1000).toBeGreaterThan(600);
   }
   expect(errors).toEqual([]);
   await laptop.close();

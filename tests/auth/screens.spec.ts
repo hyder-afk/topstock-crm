@@ -22,6 +22,21 @@ const withFactor = `screens-a-${Date.now()}@example.test`;
 const noFactor = `screens-b-${Date.now()}@example.test`;
 let secret = "";
 const states: Record<string, Awaited<ReturnType<BrowserContext["storageState"]>> | undefined> = { none: undefined };
+// When states.full was signed in. Access tokens last 15 minutes (jwt_expiry 900, Haider's decision 9 of 16 Oct 2026) and
+// this file runs about 13 minutes on CI: past the token's expiry, every context built from the same saved state would
+// refresh with the same refresh token, the first one rotates it and the later ones are refused ("already used") and land
+// on /login. So states.full is signed in again once it is older than 10 minutes.
+let fullSignedAt = 0;
+const fullMaxAge = 10 * 60_000;
+
+async function freshFull(browser: Browser) {
+  if (Date.now() - fullSignedAt < fullMaxAge) return states.full;
+  const age = Math.round((Date.now() - fullSignedAt) / 1000);
+  states.full = await fullSession(browser, withFactor, password, secret);
+  fullSignedAt = Date.now();
+  console.log(`screens.spec: states.full signed in again (was ${age} s old)`);
+  return states.full;
+}
 
 async function signIn(browser: Browser, email: string) {
   const context = await browser.newContext();
@@ -54,6 +69,7 @@ async function shoot(
 ) {
   for (const { locale, scheme, widths } of combos) {
     for (const width of widths) {
+      if (state === "full") await freshFull(browser);
       const context = await browser.newContext({
         storageState: states[state],
         viewport: { width, height: width < 600 ? 844 : 900 },
@@ -99,6 +115,7 @@ test.beforeAll(async ({ browser }) => {
   await a.page.getByRole("button", { name: "Verify" }).click();
   await expect(a.page).toHaveURL(/\/$/);
   states.full = await a.context.storageState();
+  fullSignedAt = Date.now();
   await a.context.close();
 });
 
@@ -314,7 +331,7 @@ test("lead page: route skeleton at 1024 and 1280", async ({ browser }) => {
     { locale: "fr", scheme: "dark" },
   ] as const) {
     for (const width of [1024, 1280]) {
-      const context = await browser.newContext({ storageState: states.full, viewport: { width, height: 900 }, colorScheme: scheme });
+      const context = await browser.newContext({ storageState: await freshFull(browser), viewport: { width, height: 900 }, colorScheme: scheme });
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
       const errors: string[] = [];
@@ -689,7 +706,7 @@ test("tasks, queue and more: route skeletons", async ({ browser }) => {
       { route: "more", from: "/leads", link: /^(More|Plus)$/, width: 1440 },
       { route: "more", from: "/leads", link: /^(More|Plus)$/, width: 390 },
     ]) {
-      const context = await browser.newContext({ storageState: states.full, viewport: { width, height: width < 600 ? 844 : 900 }, colorScheme: scheme });
+      const context = await browser.newContext({ storageState: await freshFull(browser), viewport: { width, height: width < 600 ? 844 : 900 }, colorScheme: scheme });
       await context.addCookies([{ name: "locale", value: locale, url: "http://localhost:3100" }]);
       const page = await context.newPage();
       const errors: string[] = [];
