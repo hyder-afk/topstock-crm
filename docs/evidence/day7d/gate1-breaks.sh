@@ -24,4 +24,6 @@ G4 a DEFINER function made INVOKER|alter function private.lead_has_files(uuid) s
 G5 PUBLIC can execute a function|grant execute on function public.get_lead(uuid) to public;
 G6 dynamic SQL in a new function|create function public.planted_exec(t text) returns void language plpgsql as $$ begin execute 'select 1'; end $$; revoke execute on function public.planted_exec(text) from public;
 G7 TRUNCATE for authenticated|grant truncate on public.tasks to authenticated;
+G2 has_aal2 always true, aal2 only in a comment|create or replace function private.has_aal2() returns boolean language sql stable set search_path = '' as $$ select true -- aal2 $$;
+G2 has_aal2 made SECURITY DEFINER|alter function private.has_aal2() security definer;
 LIST

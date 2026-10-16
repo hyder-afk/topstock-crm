@@ -59,9 +59,15 @@ begin
                    and regexp_replace(p.with_check, '\s+', ' ', 'g') = '( SELECT private.has_aal2() AS has_aal2)') loop
     raise exception 'FAIL: G2 %.% has no restrictive two-factor policy (require_mfa, has_aal2)', r.nspname, r.relname;
   end loop;
-  -- has_aal2 itself: reads the verified JWT's aal claim and nothing else.
-  if (select prosrc from pg_proc where oid = 'private.has_aal2()'::regprocedure) !~ 'aal2' then
-    raise exception 'FAIL: G2 private.has_aal2() no longer checks aal2';
+  -- has_aal2 itself: its whole body (comments removed, whitespace collapsed) is the reviewed one, reading the verified
+  -- JWT's aal claim and nothing else; a comment that only mentions aal2 cannot pass for it.
+  if (select btrim(regexp_replace(regexp_replace(regexp_replace(prosrc, '/\*.*?\*/', ' ', 'g'), '--[^\n]*', ' ', 'g'),
+                                  '\s+', ' ', 'g'))
+        from pg_proc where oid = 'private.has_aal2()'::regprocedure)
+     is distinct from $b$select coalesce((select auth.jwt() ->> 'aal'), '') = 'aal2'$b$
+     or (select prosecdef or provolatile <> 's' or proconfig is distinct from array['search_path=""']
+           from pg_proc where oid = 'private.has_aal2()'::regprocedure) then
+    raise exception 'FAIL: G2 private.has_aal2() is not the reviewed check (aal claim = aal2, INVOKER, STABLE, search_path empty)';
   end if;
 end $$;
 

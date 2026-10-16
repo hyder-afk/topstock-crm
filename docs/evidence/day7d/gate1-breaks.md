@@ -17,3 +17,7 @@
 | G5 PUBLIC can execute a function | caught | FAIL: G5 PUBLIC can execute public.get_lead(uuid) |
 | G6 dynamic SQL in a new function | caught | FAIL: G6 dynamic SQL outside the reviewed lead list functions: { |
 | G7 TRUNCATE for authenticated | caught | FAIL: G7 authenticated has TRUNCATE on public.tasks |
+| G2 has_aal2 always true, aal2 only in a comment | caught | FAIL: G2 private.has_aal2() is not the reviewed check (aal claim = aal2, INVOKER, STABLE, search_path empty) |
+| G2 has_aal2 made SECURITY DEFINER | caught | FAIL: G2 private.has_aal2() is not the reviewed check (aal claim = aal2, INVOKER, STABLE, search_path empty) |
+
+The last two rows were added after the advisor round: the earlier G2 check (`prosrc !~ 'aal2'`) would have passed a body that returns true and only mentions aal2 in a comment; G2 now compares the whole body (comments removed, whitespace collapsed) with the reviewed text and checks INVOKER, STABLE and the empty search_path.
