@@ -92,7 +92,15 @@ export function StockImportWorkspace({ initialImports, stepUpSeconds }: { initia
   }, []);
   const runner: Runner = useMemo(() => ({ requireFresh: stepUp.requireFresh }), [stepUp.requireFresh]);
   const n = useCallback((v: number) => format.number(v), [format]);
-  const focusHeading = useCallback(() => requestAnimationFrame(() => headingRef.current?.focus()), []);
+  // The step heading takes the focus after React has drawn the new step: a request is a render-time counter, so the
+  // focus runs in the effect of the same commit that mounts the new heading. A requestAnimationFrame scheduled next to a
+  // setState from an async callback could run before that commit in Safari, focus the old heading and lose the focus
+  // when it unmounted (CI, PR #18, WebKit stock-import screens).
+  const [headingFocus, setHeadingFocus] = useState(0);
+  const focusHeading = useCallback(() => setHeadingFocus((n) => n + 1), []);
+  useEffect(() => {
+    if (headingFocus) headingRef.current?.focus();
+  }, [headingFocus]);
 
   const refreshImports = useCallback(async () => {
     const res = await listStockImports({}).catch(() => null);

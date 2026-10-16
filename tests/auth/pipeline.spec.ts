@@ -71,7 +71,8 @@ async function open(browser: Browser, o: { width?: number; locale?: string; redu
 async function gotoBoard(page: Page, query = "") {
   await settled(page);
   await page.goto(`/pipeline${query}`);
-  await expect(page.getByRole("region", { name: /Pipeline board|Tableau du pipeline/ })).toBeVisible();
+  // includeHidden: with ?deal= the sheet can open first, and its dialog marks the board aria-hidden (CI, PR #18).
+  await expect(page.getByRole("region", { name: /Pipeline board|Tableau du pipeline/, includeHidden: true })).toBeVisible();
   await appReady(page);
 }
 
