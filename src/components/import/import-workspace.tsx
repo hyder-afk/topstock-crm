@@ -184,8 +184,9 @@ export function ImportWorkspace({
   }, []);
 
   // Closing or reloading the tab while rows are being sent or imported would pause the work: ask first. This is the one
-  // native popup the app keeps (Haider, 15 Oct 2026, docs/log.md): no page can replace the browser's "Leave site?" once
-  // the tab is closing. scripts/check-native-controls.mjs allows exactly this one use (ALLOWED).
+  // native popup the app keeps (builder's decision, taken under Haider's standing instruction on 15 Oct 2026; Haider
+  // to confirm; docs/log.md): no page can replace the browser's "Leave site?" once the tab is closing.
+  // scripts/check-native-controls.mjs allows exactly this one use (ALLOWED).
   useEffect(() => {
     if (!busy) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
