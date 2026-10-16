@@ -16,11 +16,14 @@ export function StageStepper({
   onPick,
   onLose,
   disabled,
+  describedBy,
 }: {
   card: Pick<DealCard, "stage" | "status">;
   onPick: (stage: StageKey) => void;
   onLose: () => void;
   disabled: boolean;
+  /** The id of the text that says why the stepper is off (Day 7f: stock records hold the deal). */
+  describedBy?: string;
 }) {
   const t = useTranslations("Deals.sheet");
   const tStage = useTranslations("Stages");
@@ -28,7 +31,7 @@ export function StageStepper({
   const current = STEPS.indexOf(card.stage as (typeof STEPS)[number]);
   return (
     <div className="flex flex-col gap-2">
-      <div ref={group} role="radiogroup" aria-label={t("stepper")} className="grid grid-cols-4 gap-1 rounded-md bg-muted p-1">
+      <div ref={group} role="radiogroup" aria-label={t("stepper")} aria-describedby={describedBy} aria-disabled={disabled || undefined} className="grid grid-cols-4 gap-1 rounded-md bg-muted p-1">
         {STEPS.map((s, i) => {
           const on = card.stage === s;
           const done = current > i || card.stage === "won";

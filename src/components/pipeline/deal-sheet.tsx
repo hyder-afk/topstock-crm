@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { MoreHorizontal, Trash2, Copy, Undo2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -175,6 +175,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
   const editable = deal.can_edit && open;
   // Reopening a won deal is refused while stock records hold it (private.deal_guard); a lost deal always reopens.
   const reopenHeld = deal.status === "won" && deal.stock_held === true;
+  const heldId = `deal-held-${deal.id}`;
   const ownerName = personName(deal.owner) || null;
   const undo = deal.undo && Date.parse(deal.undo.until) > now ? deal.undo : null;
   const days = elapsedDays(deal.stage_entered_at, now);
@@ -228,7 +229,13 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
         <section aria-label={t("sheet.stage")} className="flex flex-col gap-2">
           <h3 className="text-sm font-bold text-muted-foreground">{t("sheet.stage")}</h3>
-          <StageStepper card={deal} disabled={!deal.can_edit || reopenHeld} onPick={pick} onLose={() => flows.openLose(deal)} />
+          <StageStepper
+            card={deal}
+            disabled={!deal.can_edit || reopenHeld}
+            describedBy={reopenHeld && deal.can_edit ? heldId : undefined}
+            onPick={pick}
+            onLose={() => flows.openLose(deal)}
+          />
           <p className="text-sm text-muted-foreground">
             {open
               ? `${t("daysInStage", { count: days })}${deal.is_stalled && deal.stall_days ? ` · ${t("stalledHint", { quiet: deal.quiet_days ?? days, limit: deal.stall_days, stage: tStage(deal.stage) })}` : ""}`
@@ -237,9 +244,20 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                 : null}
           </p>
           {!open && deal.can_edit && reopenHeld ? (
-            <p data-reopen-held className="text-sm text-muted-foreground">
-              {tErr("blocked")}
-            </p>
+            // In the Reopen row's place and shape: why the stepper is off, and where to sort it out (the lead's Stock
+            // tab, with its holds and sales).
+            <div data-reopen-held className="flex flex-wrap items-center gap-2">
+              <p id={heldId} className="text-sm text-muted-foreground">
+                {tErr("blocked")}
+              </p>
+              <Link
+                href={`/leads/${deal.lead.id}?tab=stock`}
+                onPointerEnter={() => router.prefetch(`/leads/${deal.lead.id}?tab=stock`)}
+                className={cn(buttonVariants({ variant: "quiet" }), "min-h-11 sm:min-h-9")}
+              >
+                {t("sheet.heldStock")}
+              </Link>
+            </div>
           ) : !open && deal.can_edit ? (
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm text-muted-foreground">{t("sheet.reopenToEdit")}</p>

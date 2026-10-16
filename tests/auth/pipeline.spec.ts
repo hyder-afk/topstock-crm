@@ -341,7 +341,10 @@ test("won_deal_held_by_stock_hides_reopen_and_delete", async ({ browser }) => {
   const { context, page, errors } = await open(browser);
   await gotoBoard(page, `?deal=${deal}`);
   const sheet = page.getByRole("dialog");
-  await expect(sheet.locator("[data-reopen-held]")).toHaveText("Stock records hold this deal. Sort them out first.");
+  const held = sheet.locator("[data-reopen-held]");
+  await expect(held.locator("p")).toHaveText("Stock records hold this deal. Sort them out first.");
+  await expect(held.getByRole("link", { name: "See the lead’s stock" })).toHaveAttribute("href", /\/leads\/[0-9a-f-]{36}\?tab=stock$/);
+  await expect(sheet.getByRole("radiogroup", { name: "Move this deal" })).toHaveAttribute("aria-describedby", (await held.locator("p").getAttribute("id"))!);
   await expect(sheet.getByRole("button", { name: "Reopen…" })).toHaveCount(0);
   const steps = sheet.getByRole("radiogroup", { name: "Move this deal" }).getByRole("radio");
   await expect(steps).toHaveCount(4);
@@ -356,6 +359,8 @@ test("won_deal_held_by_stock_hides_reopen_and_delete", async ({ browser }) => {
   await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Reopen…" })).toHaveCount(0);
   await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+  // With Reopen gone the menu starts with an item, not a separator line.
+  await expect(page.getByRole("menu").locator(":scope > *").first()).toHaveAttribute("role", "menuitem");
   await page.keyboard.press("Escape");
   await mainOf(page, deal).focus();
   await page.keyboard.press("Delete");

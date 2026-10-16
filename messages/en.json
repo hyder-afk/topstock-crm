@@ -1436,6 +1436,7 @@
       "stepper": "Move this deal",
       "markLost": "Mark lost",
       "reopenToEdit": "Reopen to change the value or how it ships.",
+      "heldStock": "See the lead’s stock",
       "notAvailable": "This deal isn’t available.",
       "notAvailableBody": "It may have been deleted, or it belongs to someone else.",
       "loadFailed": "Couldn’t load this deal",

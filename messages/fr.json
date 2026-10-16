@@ -1436,6 +1436,7 @@
       "stepper": "Déplacer cette affaire",
       "markLost": "Marquer perdue",
       "reopenToEdit": "Rouvrez-la pour modifier le montant ou l’expédition.",
+      "heldStock": "Voir le stock du prospect",
       "notAvailable": "Cette affaire n’est pas disponible.",
       "notAvailableBody": "Elle a peut-être été supprimée, ou elle appartient à quelqu’un d’autre.",
       "loadFailed": "Impossible de charger cette affaire",

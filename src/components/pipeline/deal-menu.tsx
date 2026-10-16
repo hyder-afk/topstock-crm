@@ -99,7 +99,8 @@ export function DealMenuItems({ card, kind, actions }: { card: DealCard; kind: k
           {keyHint("E")}
         </Item>
       ) : null}
-      {card.can_edit ? <Separator /> : null}
+      {/* Only under items drawn above: a won deal that stock records hold has none (no Reopen), so no leading line. */}
+      {(card.can_edit && open) || actions.reopen ? <Separator /> : null}
       <Item onSelect={actions.openLead}>
         <ExternalLink aria-hidden="true" strokeWidth={1.75} className={icon} />
         {t("openLead")}
