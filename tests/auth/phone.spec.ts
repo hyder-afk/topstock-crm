@@ -205,7 +205,10 @@ function seedCatalogue(org: string) {
   asUser(adminEmail, `select public.set_sharing_enabled(true)`);
 }
 
-async function open(browser: Browser, o: { locale: "en" | "fr"; scheme?: "light" | "dark"; width?: number; who?: Who }) {
+async function open(
+  browser: Browser,
+  o: { locale: "en" | "fr"; scheme?: "light" | "dark"; width?: number; who?: Who; motion?: "reduce" | "no-preference" },
+) {
   const width = o.width ?? 390;
   const who = o.who ?? "in";
   const context = await browser.newContext({
@@ -217,7 +220,7 @@ async function open(browser: Browser, o: { locale: "en" | "fr"; scheme?: "light"
     isMobile: false,
     colorScheme: o.scheme ?? "light",
     timezoneId: "Europe/Paris",
-    reducedMotion: "reduce",
+    reducedMotion: o.motion ?? "reduce",
   });
   const base = test.info().project.use.baseURL ?? "http://localhost:3100";
   await context.addCookies([{ name: "locale", value: o.locale, url: base }]);
@@ -656,17 +659,11 @@ test("phone_shots: every route at 390 and 768, the sheets, and the desktop strip
   }
 });
 
-// With the call panel open on a phone (its tallest state), every page control reached with Tab ends above the panel:
-// the panel stays non-modal (a call outlives page changes), so the page scrolls the focused control clear of it.
-test("phone_call_panel_tab: with the call panel open, a control reached with Tab is not hidden under it", async ({ browser }) => {
-  const { context, page, errors } = await open(browser, { locale: "fr" });
-  await go(page, `/leads/${leadId}`);
-  await page.locator("main").getByRole("link", { name: say("fr", "QuickActions.call"), exact: true }).first().click();
-  await page.getByRole("button", { name: say("fr", "CallPanel.end") }).click();
-  await expect(page.locator("[data-outcome]").first()).toBeVisible();
-  await page.waitForTimeout(350);
-  // From the top of the page, Tab through the page's own controls (the panel comes later in the order).
+// From the top of the page, Tab through the page's own controls (the panel comes later in the order): each one ends above
+// the call panel. Distinct controls are counted, so a Tab that went nowhere cannot pass.
+async function tabAbovePanel(page: Page) {
   await page.evaluate(() => {
+    for (const el of document.querySelectorAll("[data-tab-seen]")) el.removeAttribute("data-tab-seen");
     window.scrollTo(0, 0);
     (document.querySelector("main a[href], main button") as HTMLElement).focus({ preventScroll: true });
   });
@@ -689,17 +686,57 @@ test("phone_call_panel_tab: with the call panel open, a control reached with Tab
     reached++;
     // A region taller than the room above the panel (a focusable tab panel) cannot fit whole: part of it shows.
     const tall = m.bottom - m.top > m.panelTop;
-    if (tall ? m.top >= m.panelTop || m.bottom <= 0 : m.bottom > m.panelTop + 0.5 || m.top < 0) hidden.push(`${m.name}: ${Math.round(m.top)}-${Math.round(m.bottom)}, panel at ${Math.round(m.panelTop)}`);
+    if (tall ? m.top >= m.panelTop || m.bottom <= 0 : m.bottom > m.panelTop + 0.5 || m.top < 0) {
+      hidden.push(`${m.name}: ${Math.round(m.top)}-${Math.round(m.bottom)}, panel at ${Math.round(m.panelTop)}`);
+    }
   }
-  // Distinct controls, so a Tab that went nowhere cannot pass.
-  expect(reached, "controls reached with Tab").toBeGreaterThanOrEqual(10);
-  expect(hidden).toEqual([]);
-  await page.getByRole("button", { name: say("fr", "CallPanel.close") }).click();
-  await page.getByRole("button", { name: say("fr", "CallPanel.close") }).click();
-  await settled(page);
-  expect(errors).toEqual([]);
-  await context.close();
-});
+  return { reached, hidden };
+}
+
+// The height the page pads by equals the panel's laid-out height (offsetHeight), once its entrance has settled. The
+// entrance scales the panel from 0.6 when motion is allowed, and a transform never fires a ResizeObserver, so a height
+// read from getBoundingClientRect() at mount stayed about 40 % short for the whole call (advisor round 2).
+async function panelHeightSettled(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const panel = document.querySelector<HTMLElement>("[data-call-panel]");
+          const padded = getComputedStyle(document.documentElement).getPropertyValue("--call-panel-h").trim();
+          return panel ? `${padded} of ${panel.offsetHeight}px` : "no panel";
+        }),
+      { timeout: 3_000, message: "--call-panel-h follows the panel's layout height" },
+    )
+    .toMatch(/^(\d+)px of \1px$/);
+}
+
+// With the call panel open on a phone, every page control reached with Tab ends above the panel: the panel stays
+// non-modal (a call outlives page changes), so the page scrolls the focused control clear of it. Checked during the call
+// (the small panel) and after it (the outcome keys, its tallest state), with reduced motion and without it (the panel
+// then rises with a spring that scales it from 0.6).
+for (const motion of ["reduce", "no-preference"] as const) {
+  test(`phone_call_panel_tab (${motion} motion): with the call panel open, a control reached with Tab is not hidden under it`, async ({ browser }) => {
+    const { context, page, errors } = await open(browser, { locale: "fr", motion });
+    await go(page, `/leads/${leadId}`);
+    await page.locator("main").getByRole("link", { name: say("fr", "QuickActions.call"), exact: true }).first().click();
+    await expect(page.getByRole("button", { name: say("fr", "CallPanel.end") })).toBeVisible();
+    await panelHeightSettled(page);
+    const during = await tabAbovePanel(page);
+    expect(during.reached, "controls reached with Tab during the call").toBeGreaterThanOrEqual(10);
+    expect(during.hidden, "during the call").toEqual([]);
+    await page.getByRole("button", { name: say("fr", "CallPanel.end") }).click();
+    await expect(page.locator("[data-outcome]").first()).toBeVisible();
+    await panelHeightSettled(page);
+    const after = await tabAbovePanel(page);
+    expect(after.reached, "controls reached with Tab after the call").toBeGreaterThanOrEqual(10);
+    expect(after.hidden, "after the call").toEqual([]);
+    await page.getByRole("button", { name: say("fr", "CallPanel.close") }).click();
+    await page.getByRole("button", { name: say("fr", "CallPanel.close") }).click();
+    await settled(page);
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+}
 
 // Safe areas on a notched phone (Chromium can emulate the insets; WebKit cannot): 390 x 844 with the status bar's 47 px
 // and the home indicator's 34 px. The header starts below the status bar, the dock floats 16 px above the home

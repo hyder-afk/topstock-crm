@@ -355,7 +355,12 @@ function CallPanel({
     const el = panelRef.current;
     if (!el) return;
     const root = document.documentElement;
-    const observer = new ResizeObserver(() => root.style.setProperty("--call-panel-h", `${Math.ceil(el.getBoundingClientRect().height)}px`));
+    // The layout height, not getBoundingClientRect(): the entrance scales the panel from 0.6, and a transform never fires
+    // this observer, so a scaled reading at mount stayed about 40 % short for the whole call.
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.borderBoxSize?.[0]?.blockSize ?? el.offsetHeight;
+      root.style.setProperty("--call-panel-h", `${Math.ceil(height)}px`);
+    });
     observer.observe(el);
     return () => {
       observer.disconnect();
