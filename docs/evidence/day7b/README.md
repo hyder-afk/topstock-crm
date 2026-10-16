@@ -6,7 +6,7 @@ section 4 row **7b**, UI only. Rule: Haider 15 Oct 2026, "do not keep any native
 scope here: plan items 24, 25, 47, 49, 28 and 42 (Day 7a or decided otherwise).
 
 **Merged with Day 7a** (`day7a-local` 33f3347: main, Day 5, Team, Day 6 with its latest fixes, and the 7a security
-work) at 35d5841, then finished for the advisor: the "Leave site?" decision recorded and enforced by `check:native`,
+work) at 35d5841, and again at a62b405 when Day 7a moved to 2e90b7a, then finished for the advisor: the "Leave site?" decision recorded and enforced by `check:native`,
 the CLAUDE.md audits with three fixes, screenshots at every width, and the checks re-run on the merged code (sections
 "Merge with Day 7a", "Audits", "Screenshots", "Checks").
 
@@ -143,6 +143,10 @@ Watched points:
   pipeline edits are in `deal-card.tsx`, `deal-sheet.tsx`, `open-deal-sheet.tsx`), so 7a's versions stand as they were.
   `pipeline.spec.ts` re-run below.
 - **Messages**: no key clashes; both namespaces checked for EN/FR parity.
+- **Second merge**: the coordinator moved `day7a-local` to 2e90b7a (Day 6's PR #18 fixes: arrival focus retries for
+  1.5 s, WebKit journey in two shards, Paris time zone for DB tests, a `nosemgrep` line). Merged again at **a62b405**;
+  only `docs/log.md` conflicted (both sides' rows kept). `ci.yml` merged by itself: the matrix is chromium 1/2, 2/2 and
+  webkit 1/2, 2/2, and 7b's `check:native` step stays in the quality job. 7b now sits on 2e90b7a.
 - **`npm run check:native` after the merge: 0 findings.** Day 6 code reached 7b through its base (6f13709), so 7b's
   conversion already covered it; the 7a delta (`sign-out-everywhere.tsx`, the More page, files-tab, the pipeline
   files) adds no native control, `title=` or form without `noValidate` (7a's sheet uses the app's Dialog).
@@ -231,6 +235,7 @@ Nothing inside a picker is clicked; each step asserts focus and the submitted va
 
 | Spec | Was | Now |
 |---|---|---|
+| `stock-import.spec.ts` | `toHaveValue("fr"/"en")` on the Number style ×3 | `expectChosen` (found by this round's run, 747e17a) |
 | `import.spec.ts` | `selectOption` ×12, `toHaveValue` on selects ×11, `inputValue()` | `choose(trigger, value)`, `expectChosen(trigger, value)` (the trigger's `data-value`, same value the hidden input submits), `getAttribute("data-value")` |
 | `import-perf.spec.ts` | `select[aria-invalid]` + `selectOption` | `[role=combobox][aria-invalid]` + `choose`, looping until none is left |
 | `screens.spec.ts` (lead import) | same as import-perf, ×2 | same as import-perf |
@@ -263,32 +268,37 @@ Both run on the pickers and the changed screens, from the code and the 552 scree
 
 ## Checks
 
-Run on 15 Oct 2026 on the isolated local stack (Postgres 54570, GoTrue 9992, gateway 54571, Next 3600; built with
-that stack's keys), Chromium only.
+Re-run on 15 and 16 Oct 2026 on the merged code (head a62b405 plus the stock-import.spec fix 747e17a), on this
+builder's own isolated stack: Postgres 54570, GoTrue 9992, gateway 54571, Next 3600 (production build with that
+stack's keys; a copy of `scripts/local-auth/start.sh` and `gateway.mjs` with those ports, scratch under
+`/tmp/day7b-builder`), Chromium 141 (`/opt/pw-browsers/chromium-1194`). The Next build was redone after the second
+Day 7a merge (arrival focus); specs that could see that change (team, team-screens, day7a, day7b, shell, queue,
+stock-import and the batch below) ran on the new build.
 
 | Check | Result |
 |---|---|
 | `npm run lint` | 0 errors (3 warnings, all existing: `useVirtualizer` in check-step, stock-table, leads-table) |
 | `npm run typecheck` | pass |
-| `npm run check:native` | 0 findings; a planted `<select>` in `lead/deal-chip.tsx` made it exit 1 (reverted) |
-| `npm run test:unit` | 630 passed (incl. `native-controls.spec.ts` 11, `pickers-render.spec.ts` 9, `messages.spec.ts` 10) |
-| `day7b.spec.ts` | 19 passed: 5 keyboard-only runs, 4 list-state tests, 2 skeleton tests, 8 screenshot tests (the last ones in their own run) |
-| `leads.spec.ts` | 9 passed |
-| `lead-deals.spec.ts` | 9 passed |
-| `lead-page.spec.ts` | 26 passed (re-run after the TimePicker change) |
-| `tasks.spec.ts` | 12 passed (re-run after the TimePicker change) |
-| `import.spec.ts` | 11 passed (run alone: it counts every lead in the database, so a concurrent run of another spec broke one count once) |
-| `queue.spec.ts` | 20 passed; `call_keeps_claims` fails on this machine before and after this step (this Chromium fires one `beforeunload` for two quick `tel:` links; recorded the same way on origin/main in `docs/evidence/day5c/README.md`), left to CI |
-| `home.spec.ts` | 15 passed |
-| `inventory.spec.ts` | 11 passed |
-| `sales.spec.ts` | 11 passed |
-| `shell.spec.ts` | 21 passed (dock Tooltip) |
-| `pipeline.spec.ts` | 16 passed |
-| `share.spec.ts` | 12 passed with a throwaway copy that reads port 3600 where the spec hard-codes `localhost:3100` (two assertions on the link's origin); unchanged spec: those assertions fail here only for the port |
-| `day4-security.spec.ts` | 9 passed |
-| `team.spec.ts` | 5 passed |
-| `screens.spec.ts`, `import-perf.spec.ts` | not run (their only change is the `choose()` swap on the import status menus, proven by `import.spec.ts`); left to CI |
-| WebKit | not run (Chromium only, as asked) |
+| `npm run check:native` | 0 findings (the import's "Leave site?" prompt is the one `ALLOWED` use) |
+| `npm run test:unit` | **644 passed** (incl. `native-controls.spec.ts` 13, `rate-limit.spec.ts`, `messages.spec.ts`) |
+| `DB_TEST_PORT=54598 scripts/db-test.sh` | **all 26 suites pass** (7a's `day7a_attack` included), advisors **0 ERROR**; 3 WARN, all known and by design (anon EXECUTE on `share_view`/`share_request`, authenticated on `set_user_role`); INFO unindexed_foreign_keys 8 (Day 7a's accepted composite keys), unused_index 11 |
+| `day7b.spec.ts` | 19 passed (5 keyboard-only, 4 list states, 2 skeletons, 8 picker screenshot tests at the CI widths); the evidence run: 15 passed (8 picker tests at six widths, 7 changed screens) |
+| `day7a.spec.ts` | 6 passed (its users have fixed emails, so the re-run on the same database needed them removed first; CI starts fresh) |
+| `pipeline.spec.ts` | 18 passed (PR #17's column height, `initialOffset` and `readScope` tests included) |
+| `files.spec.ts` | 13 passed, 5 storage-only skipped (CI only) |
+| `leads.spec.ts` / `lead-deals.spec.ts` / `lead-page.spec.ts` | 9 / 9 / 26 passed |
+| `tasks.spec.ts` / `home.spec.ts` / `inventory.spec.ts` | 12 / 15 / 11 passed |
+| `shell.spec.ts` / `sales.spec.ts` / `team.spec.ts` / `day4-security.spec.ts` | 21 / 11 / 5 / 9 passed |
+| `import.spec.ts` | 11 passed (run alone: it counts every lead in the database) |
+| `stock-import.spec.ts` | **failed first** on `toHaveValue` on the Number style (now the app's Select; the previous round had not run this spec); fixed in 747e17a with `expectChosen`, then 6 passed |
+| `queue.spec.ts` | 20 passed without `call_keeps_claims`; that test fails on this machine before and after this step (this Chromium fires one `beforeunload` for two quick `tel:` links; recorded the same way in `docs/evidence/day5c/README.md`), left to CI |
+| `day5-screens.spec.ts` / `home-screens.spec.ts` / `team-screens.spec.ts` | 5 / 4 / 4 passed |
+| `screens.spec.ts` | 15 passed |
+| `day5-security` / `import-security` / `files-screens` / `pipeline-multi` / `queue-multi` | 6 / 3 / 3 / 1 / 1 passed |
+| `share.spec.ts` | 12 passed with a scratch copy that reads port 3600 where the spec hard-codes `localhost:3100` (unchanged spec: only those origin assertions differ here) |
+| `journey.spec.ts` | not run: needs Mailpit, which this container lacks; CI runs it |
+| `import-perf.spec.ts`, `*-perf`, `day4-chunks` | skipped without `PERF=1`, as in CI |
+| WebKit | not run (not installed here; CI runs it in two shards) |
 
 ## Deviations and choices
 
@@ -313,7 +323,7 @@ that stack's keys), Chromium only.
 4. The time zone Combobox (419 options, cmdk, not virtualised) paints its list 46 ms after a press on this machine but
    about 240 ms with the CPU slowed 4× (a slow phone); the press itself answers at once. Left for the Day 7c phone
    pass (render the list lazily or virtualise it); recorded in `web-guidelines-audit.md`.
-5. `screens.spec.ts` and `import-perf.spec.ts` were not run locally (only the import status menus changed in them).
+5. `import-perf.spec.ts` was not run locally (speed run, `PERF=1`; only the import status menus changed in it); `journey.spec.ts` needs Mailpit (CI only).
 6. CI time: `day7b.spec.ts` adds about 5 minutes to a Chromium auth-journey half (about 2.5 for the 128 shots), the
    same as before this round; the extra widths and whole screens add nothing to CI. The 128 CI shots could move behind
    `DAY7B_WIDTHS` too if the Actions budget runs low (plan question 12).
