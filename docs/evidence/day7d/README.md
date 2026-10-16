@@ -13,9 +13,9 @@ passes on Day 8.
   `tests/auth/gate1.spec.ts` and the existing specs it maps to). Step 7's login and reset limits are Supabase's own and
   can only be seen on the hosted service (Day 1 residual 2, Firewall rule on Day 8).
 - **Manual security pass over all of Release 1 (a supplement): no HIGH or MEDIUM finding.** Four test gaps closed with
-  new checks. **`/security-review`: pending, run by the main session on the final head**; not counted as done.
+  new checks. **`/security-review`: done** by the main session on 942ab62 (all of Day 6 and 7): 0 HIGH or MEDIUM ([`security-review-command.md`](security-review-command.md)).
 - **No secret in the whole git history** (gitleaks, 678 commits); **0 vulnerabilities** in what ships (`npm audit`).
-- **Section 8: 50 of 59 items done**, 1 pending in the main session (`/security-review`, item 50), 1 accepted residual
+- **Section 8: 51 of 59 items done** (item 50 with `/security-review`), 0 pending, 1 accepted residual
   (rate limits, R1), 3 wait for Day 8, 1 runs in CI when billing is back (`npm audit signatures`), 3 not applicable.
 - **Dev project**: fake data only, the lead checks return 0, 14 MB used; advisors 0 ERROR. Dev still has only main's
   migrations (up to Team), so these are read again after the Day 6 and Day 7 PRs deploy.
@@ -26,9 +26,9 @@ passes on Day 8.
 | # | Deliverable | Where | Result |
 |---|---|---|---|
 | 1 | Two-user attack test, steps 1 to 8, one Playwright plus SQL run, step-to-test map | `two-user-map.md`; `tests/auth/gate1.spec.ts`; `supabase/tests/gate1_attack.sql`; `scripts/gate1-run.sh` | all 8 steps pass (step 7 login/reset: hosted only); 8 planted breaks against the new browser/API tests: 7 caught, 1 refused by a second database layer (as it should be); `gate1_attack.sql` 15 of 15 |
-| 2 | `/security-review` over all of Release 1 | `security-review.md` | **pending: the main session runs `/security-review` on the final head.** The builder's manual pass, a supplement: 0 HIGH, 0 MEDIUM at confidence 8+; 4 test gaps closed; 3 informational notes |
+| 2 | `/security-review` over all of Release 1 | [`security-review-command.md`](security-review-command.md), `security-review.md` | **done: `/security-review` by the main session on 942ab62, 0 HIGH or MEDIUM at confidence 8+** ([`security-review-command.md`](security-review-command.md)). The builder's manual pass, a supplement: 0 HIGH, 0 MEDIUM at confidence 8+; 4 test gaps closed; 3 informational notes |
 | 3 | Full-history gitleaks; `npm audit --omit=dev`; `npm audit signatures` | `gitleaks.md` | no leaks (678 commits); 0 vulnerabilities; signatures blocked by this session's network policy, added to CI |
-| 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 50 done, 1 pending (`/security-review`), 1 residual, 3 Day 8, 1 CI, 3 N/A |
+| 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 51 done, 0 pending, 1 residual, 3 Day 8, 1 CI, 3 N/A |
 | 5 | Day 5a mutation rows 64 to 73 re-run | `mutations.md` | 10 of 10 caught; row 58 back to its documented NOT CAUGHT (the fixture fix) |
 | 6 | Dev data checks (item 15), size query (item 16), dev advisors | `dev-checks.sql`, `dev-checks.md` | 0 wrong (one check read by hand: the read-only role cannot run private functions); 14 MB; Security 0 ERROR, 2 accepted WARN; Performance 0 ERROR/WARN |
 | 7 | Spike S5 from Vercel's docs; Day 1 residuals; leaked-password WARN | `spike-s5.md`; sections below | answered; restated; recorded as accepted |
@@ -104,7 +104,7 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
 5. **Day 8 (ops part, Haider)**: preview opened signed out of Vercel; member lists (item 35); production auth settings,
    Storage S3 keys, Vercel settings; backup, restore test, keep-alive (items 43, 44); Vercel Pro and the Firewall rule
    (spike S5); the `x-forwarded-host` check on the preview; `jwt_expiry` (R2); Dependabot alerts on.
-6. **`/security-review`** on the final head (main session; condition (d)). **Advisor**: round 1 CHANGES NEEDED on
+6. **`/security-review`**: done by the main session on 942ab62, 0 HIGH or MEDIUM; condition (d) met ([`security-review-command.md`](security-review-command.md)). **Advisor**: round 1 CHANGES NEEDED on
    f4e5cff, fixed (section "Advisor round 1"); the next round is the main session's (it runs the subagent before the
    REPORT).
 
@@ -126,7 +126,7 @@ without being named):
 | # | Advisor item | Fix | Commit |
 |---|---|---|---|
 | 1 | The route inventory's Zod regex accepted `JSON.parse`, `parseInt`, `parseFloat`; its planted-break test did not run the real rules | Stricter regex; the rules became functions of a path and text, run by the tests over `src/app` and by six planted-break tests on in-memory fixtures (each with a correct twin); the old regex fails the `JSON.parse` case; evidence `route-inventory.md` | bbe5eec |
-| 2 | The manual pass is not `/security-review` | `security-review.md` and this README call it a supplement; `/security-review` is pending (main session, final head) and is condition (d); checklist item 50 is "pending" | this round |
+| 2 | The manual pass is not `/security-review` | `security-review.md` and this README call it a supplement; `/security-review` ran in the main session on 942ab62, 0 HIGH or MEDIUM ([`security-review-command.md`](security-review-command.md)); condition (d) done; checklist item 50 done | this round |
 | 3 | The HAIDER DECIDES condition was too loose; the "7c did not touch security paths" line was wrong | Conditions (a) to (d) named below, with the PGRST203 note; the proxy's `/manifest.webmanifest` change recorded and reviewed; the recommendation's claim narrowed to what was shown | this round |
 | 4 | The one run's output was not in the evidence | `gate1-run-output.md` (test lines and pass lines, no environment values), linked from `two-user-map.md` | this round |
 | 5 | Context7 not named for four libraries | the section above | this round |
@@ -178,6 +178,6 @@ HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four condi
   public function called as anon with all its arguments set to null) has only met the local stand-in, never real
   PostgREST; there an overloaded name may answer 300 (`PGRST203`, ambiguous call) instead of 401, which the test
   counts as a failure until the sweep names the overload.
-- **(d) `/security-review`** run by the main session on the final head with no HIGH or MEDIUM finding left open.
+- **(d) `/security-review`** run by the main session on the final head with no HIGH or MEDIUM finding left open: **done** on 942ab62 (0 HIGH or MEDIUM; e688f10 changed only a test and docs since), [`security-review-command.md`](security-review-command.md).
 
 The ops part (backup, restore test, keep-alive, Vercel Pro, production settings) passes on Day 8 before any real data.

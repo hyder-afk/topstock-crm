@@ -1,7 +1,7 @@
 # Day 7d manual security pass over all of Release 1 (a supplement to `/security-review`)
 
-**`/security-review`: pending, run by the main session on the final head.** This file is not that review and is not
-counted as it. It is the builder's manual pass, done with the same method (read the code paths an attacker can reach,
+**`/security-review`: done** by the main session on 942ab62 (`git diff origin/main...942ab62`, all of Day 6 and 7): 0 HIGH
+or MEDIUM at confidence 8+, [`security-review-command.md`](security-review-command.md). This file is not that review and is not counted as it. It is the builder's manual pass, done with the same method (read the code paths an attacker can reach,
 keep only exploitable findings, rate each, report HIGH and MEDIUM at confidence 8 or more) because the slash command
 cannot run inside a sub-agent session. No parallel sub-agents were available in this session (no agent tool); the areas
 were reviewed one after the other.
