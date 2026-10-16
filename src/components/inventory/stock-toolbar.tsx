@@ -136,7 +136,7 @@ export function StockToolbar({
       <div
         role="group"
         aria-label={t("filters")}
-        className="-mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
+        className="edge-fade -mx-4 flex snap-x scroll-px-4 gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:scroll-px-0 sm:px-0 [&::-webkit-scrollbar]:hidden"
       >
         {chips.map((f) => (
           <button

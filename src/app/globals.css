@@ -12,6 +12,50 @@
   min-height: calc(100dvh - env(safe-area-inset-top, 0px));
 }
 
+/* Edge fades on strips that scroll sideways (tab strips, chip rows; Day 7c phone pass): an edge fades out only while
+   more content lies past it, so a cut tab reads as "scroll for more" rather than as a clipped label. Driven by the
+   strip's own scroll position (scroll-driven animation; not motion, so reduced motion keeps it). A strip that does not
+   overflow has an inactive timeline and no fade; a browser without scroll timelines shows no fade. */
+@property --edge-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --edge-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes edge-fade {
+  from {
+    --edge-fade-start: 0px;
+    --edge-fade-end: 24px;
+  }
+  8% {
+    --edge-fade-start: 24px;
+  }
+  92% {
+    --edge-fade-end: 24px;
+  }
+  to {
+    --edge-fade-start: 24px;
+    --edge-fade-end: 0px;
+  }
+}
+@utility edge-fade {
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--edge-fade-start),
+    #000 calc(100% - var(--edge-fade-end)),
+    transparent 100%
+  );
+  @supports (animation-timeline: scroll()) {
+    animation: edge-fade linear both;
+    animation-timeline: scroll(self inline);
+  }
+}
+
 @theme inline {
   --font-sans: var(--font-outfit), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;

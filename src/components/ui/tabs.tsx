@@ -102,7 +102,7 @@ export function TabList<T extends string>({
         aria-label={label}
         onKeyDown={onKeyDown}
         className={cn(
-          "flex max-w-full snap-x snap-mandatory gap-0.5 overflow-x-auto overscroll-x-contain rounded-md bg-muted p-1 [scrollbar-width:none] sm:self-start [&::-webkit-scrollbar]:hidden",
+          "edge-fade flex max-w-full snap-x snap-mandatory scroll-px-1 gap-0.5 overflow-x-auto overscroll-x-contain rounded-md bg-muted p-1 [scrollbar-width:none] sm:self-start [&::-webkit-scrollbar]:hidden",
           className,
         )}
       >
