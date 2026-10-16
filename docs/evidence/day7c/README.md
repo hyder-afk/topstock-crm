@@ -399,6 +399,22 @@ by `truncate`; now 44 px on phones), the product figure labels, the inventory se
 | gitleaks 8.28.0 | `eb1b1bc..HEAD`: no leaks; the evidence, ops templates, messages, unit tests and phone spec: no leaks |
 | `npm audit --omit=dev --audit-level=high` | 0 vulnerabilities |
 
+## Advisor round 2 (part 2): one bug, fixed
+
+| Point | Fix | Proof |
+|---|---|---|
+| `--call-panel-h` was read with `getBoundingClientRect()`, which includes the panel's entrance scale (0.6). A transform never fires a ResizeObserver, so for anyone without reduced motion the padding stayed about 40 % short for the whole call | The observer reads the layout height (`borderBoxSize[0].blockSize`, else `offsetHeight`) | `phone_call_panel_tab` now runs twice, with reduced motion and with `no-preference`, and checks Tab both during the call (small panel) and after it (outcome keys), each time after polling until `--call-panel-h` equals the panel's `offsetHeight`. On the old code the no-preference run **fails** ("103px of 170px"); with the fix both pass |
+
+Checks after round 2: lint 0 errors (3 old warnings), typecheck clean, check:native clean, unit 687, `phone.spec.ts` 5
+passed (phone_fit, phone_sheets, phone_call_panel_tab in both motion modes, phone_safe_areas; phone_shots skipped
+without `DAY7C_PHONE=1`), `lead-page.spec.ts` 26 passed (the call panel's own tests). Screenshots unchanged (the fix
+changes no layout at rest).
+
+**CI time to watch:** `phone_fit` is one serial test with a 900 s timeout (17 signed-in routes and 6 outside pages at
+390 in two languages, then French at 768 and 1280). Locally it takes about 1.5 minutes; its first CI run time (and
+WebKit's, if the spec is ever added to the WebKit project) should be read from the auth-journey job before the PR is
+merged, and the test split per locale if it comes close to the limit.
+
 ## Residuals (part 2)
 
 - **R1. Real iPhone.** Safe areas are proven with emulated insets (now in CI); a check on Haider's phone in
