@@ -167,7 +167,7 @@ export function fieldPieces(text: string, unit: QtyUnit, piecesPerCarton: number
 export function Figure({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1 rounded-md bg-muted/60 p-3">
-      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-pretty break-words text-muted-foreground">{label}</dt>
       <dd className="font-mono text-lg leading-tight tabular-nums">{value}</dd>
       {sub ? <dd className="truncate font-mono text-xs text-muted-foreground">{sub}</dd> : null}
     </div>

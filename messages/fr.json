@@ -417,7 +417,7 @@
     "count": "{count, plural, one {# prospect} other {# prospects}}",
     "add": "Ajouter un prospect",
     "searchLabel": "Rechercher des prospects",
-    "searchPlaceholder": "Rechercher une société, un contact, un e-mail, un téléphone ou une ville…",
+    "searchPlaceholder": "Société, contact, e-mail, tél. ou ville…",
     "filters": "Filtres",
     "filtersCount": "Filtres, {count} actifs",
     "clearFilters": "Effacer les filtres",
@@ -2085,7 +2085,7 @@
     },
     "toolbar": {
       "search": "Rechercher des produits",
-      "searchPlaceholder": "Rechercher un nom, une catégorie ou P-0042…",
+      "searchPlaceholder": "Nom, catégorie ou P-0042…",
       "category": "Catégorie",
       "allCategories": "Toutes les catégories",
       "sort": "Tri",
