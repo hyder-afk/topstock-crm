@@ -12,7 +12,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 |---|---|---|---|
 | 1 | DB credentials never in client code | 0 `service_role`/`sb_secret_`/`postgres://` in `src`; `scripts/check-build.mjs` on the production build: no server key, no connection string, only the anon JWT (`check-build.md`); CI step added after `next build` | done |
 | 2 | No public `.env` | `git ls-files` lists only `.env.example`; `tests/e2e/signed-out.spec.ts` "no repository or environment file is served" (signed out: sign-in redirect) and `gate1.spec.ts` `item2_repository_files_not_served` (signed in: 404, no contents) | done; production URL checked again Day 8 |
-| 3 | No hardcoded secrets | gitleaks 8.28.0 full history, all refs, 678 commits: no leaks (`gitleaks.md`); gitleaks on every PR (`gitleaks.yml`) | done |
+| 3 | No hardcoded secrets | gitleaks 8.28.0 full history, all refs, 708 commits after the 7c merge (678 on the base): no leaks (`gitleaks.md`); gitleaks on every PR (`gitleaks.yml`) | done |
 | 10 | No debug tools in production | `tests/unit/route-inventory.spec.ts`: every page and route is on the reviewed screen list (59 entries, Master Plan section 5); GraphQL not exposed (`[api] schemas = ["public"]`, log line 64) | done |
 | 11 | Logs do not leak | 0 console calls (ESLint `no-console: error`); spike S5: Vercel's runtime logs hold only what the app writes, the app writes nothing (`spike-s5.md`) | done |
 | 12 | Generic errors | `gate1.spec.ts` `step5_bad_input_every_api`: every route answers codes only, never database text (a planted leak was caught, `two-user-map.md`); `error.tsx`, `global-error.tsx` | done |

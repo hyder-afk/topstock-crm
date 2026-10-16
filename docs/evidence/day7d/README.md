@@ -14,7 +14,7 @@ passes on Day 8.
   can only be seen on the hosted service (Day 1 residual 2, Firewall rule on Day 8).
 - **Manual security pass over all of Release 1 (a supplement): no HIGH or MEDIUM finding.** Four test gaps closed with
   new checks. **`/security-review`: done** by the main session on 942ab62 (all of Day 6 and 7): 0 HIGH or MEDIUM ([`security-review-command.md`](security-review-command.md)).
-- **No secret in the whole git history** (gitleaks, 678 commits); **0 vulnerabilities** in what ships (`npm audit`).
+- **No secret in the whole git history** (gitleaks, 708 commits after the 7c merge); **0 vulnerabilities** in what ships (`npm audit`).
 - **Section 8: 51 of 59 items done** (item 50 with `/security-review`), 0 pending, 1 accepted residual
   (rate limits, R1), 3 wait for Day 8, 1 runs in CI when billing is back (`npm audit signatures`), 3 not applicable.
 - **Dev project**: fake data only, the lead checks return 0, 14 MB used; advisors 0 ERROR. Dev still has only main's
@@ -25,9 +25,9 @@ passes on Day 8.
 
 | # | Deliverable | Where | Result |
 |---|---|---|---|
-| 1 | Two-user attack test, steps 1 to 8, one Playwright plus SQL run, step-to-test map | `two-user-map.md`; `tests/auth/gate1.spec.ts`; `supabase/tests/gate1_attack.sql`; `scripts/gate1-run.sh` | all 8 steps pass (step 7 login/reset: hosted only); 8 planted breaks against the new browser/API tests: 7 caught, 1 refused by a second database layer (as it should be); `gate1_attack.sql` 15 of 15 |
+| 1 | Two-user attack test, steps 1 to 8, one Playwright plus SQL run, step-to-test map | `two-user-map.md`; `tests/auth/gate1.spec.ts`; `supabase/tests/gate1_attack.sql`; `scripts/gate1-run.sh` | all 8 steps pass (step 7 login/reset: hosted only); 8 planted breaks against the new browser/API tests: 7 caught, 1 refused by a second database layer (as it should be); `gate1_attack.sql` 17 of 17 |
 | 2 | `/security-review` over all of Release 1 | [`security-review-command.md`](security-review-command.md), `security-review.md` | **done: `/security-review` by the main session on 942ab62, 0 HIGH or MEDIUM at confidence 8+** ([`security-review-command.md`](security-review-command.md)). The builder's manual pass, a supplement: 0 HIGH, 0 MEDIUM at confidence 8+; 4 test gaps closed; 3 informational notes |
-| 3 | Full-history gitleaks; `npm audit --omit=dev`; `npm audit signatures` | `gitleaks.md` | no leaks (678 commits); 0 vulnerabilities; signatures blocked by this session's network policy, added to CI |
+| 3 | Full-history gitleaks; `npm audit --omit=dev`; `npm audit signatures` | `gitleaks.md` | no leaks (708 commits after the 7c merge; 678 on the base); 0 vulnerabilities; signatures blocked by this session's network policy, added to CI |
 | 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 51 done, 0 pending, 1 residual, 3 Day 8, 1 CI, 3 N/A |
 | 5 | Day 5a mutation rows 64 to 73 re-run | `mutations.md` | 10 of 10 caught; row 58 back to its documented NOT CAUGHT (the fixture fix) |
 | 6 | Dev data checks (item 15), size query (item 16), dev advisors | `dev-checks.sql`, `dev-checks.md` | 0 wrong (one check read by hand: the read-only role cannot run private functions); 14 MB; Security 0 ERROR, 2 accepted WARN; Performance 0 ERROR/WARN |
