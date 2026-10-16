@@ -77,7 +77,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | # | Item | Evidence | Status |
 |---|---|---|---|
 | 37 | Vulnerable dependencies | `npm audit --omit=dev`: 0 vulnerabilities; dev tooling: 5 high in eslint-config-next's `braces` chain, build-time only, report-only in CI (`gitleaks.md`) | done; Dependabot alerts on = Haider |
-| 38 | Malicious packages | lockfile, `npm ci`, exact pins; `npm audit signatures` could not run here (the session's proxy refuses `tuf-repo-cdn.sigstore.dev`); added to `ci.yml` | prepared, runs in CI later |
+| 38 | Malicious packages | lockfile, `npm ci`, exact pins; `npm audit signatures` could not run here (the session's proxy refuses `tuf-repo-cdn.sigstore.dev`); added to `ci.yml` | done: passed in CI (quality job) on 942ddd7, PR #19 |
 | 39 | Prompt injection | no AI in Release 1 | N/A |
 | 40 | No production access for AI | `.mcp.json` unchanged since 105fe44: dev project only, `read_only=true`; the MCP answered as `supabase_read_only_user` on `swhkafqlmfhvgpsgdqjp` | done |
 | 42 | Audit log | append-only triggers (imports, roles, deletes, file access, stock); sign-in rows (`day7a.spec.ts`, `day7a_attack.sql` B1) | done |
@@ -105,6 +105,6 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | Backup and restore tested, keep-alive running | templates ready | Day 8 |
 | Hosting decision | Vercel Pro before go-live (6 Oct) | Day 8 |
 
-**Count:** 54 numbered items plus F1 to F5 = 59 rows. **51 done** (2, 4, 8, 29, 30 and 46 also get a production
-check on Day 8; 25 and 47 carry an accepted residual; 50 with `/security-review` on 942ab62), **0 pending**, **1 residual** as its status (28: R1, log line 366, with the Firewall rule on Day 8), **3 Day 8 only**
-(35, 43, 44), **1 prepared for CI** (38: `npm audit signatures`), **3 N/A** (31, 39, 54).
+**Count:** 54 numbered items plus F1 to F5 = 59 rows. **52 done** (2, 4, 8, 29, 30 and 46 also get a production
+check on Day 8; 25 and 47 carry an accepted residual; 50 with `/security-review` on 942ab62; 38 passed in CI on 942ddd7), **0 pending**, **1 residual** as its status (28: R1, log line 366, with the Firewall rule on Day 8), **3 Day 8 only**
+(35, 43, 44), **0 prepared for CI**, **3 N/A** (31, 39, 54).
