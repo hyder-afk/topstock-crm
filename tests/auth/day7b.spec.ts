@@ -702,6 +702,8 @@ test("list states: Inventory tabs (arriving, reserved, movements, sales, request
     await expect(pulse(page.locator("main")), tab).toBeVisible();
     await expect(page.getByRole("heading", { name: m("en", empty) }), tab).toBeVisible();
     await page.unrouteAll({ behavior: "wait" });
+    // Nothing left in flight when the next tab is opened (no request crosses a navigation).
+    await settled(page);
   }
 
   // The work queue's counts (the server's first answer is on the page; a changed setting reads them again in the
@@ -714,8 +716,15 @@ test("list states: Inventory tabs (arriving, reserved, movements, sales, request
   const countsError = page.getByRole("alert").filter({ hasText: m("en", "Queue.summaryError") });
   await expect(countsError).toBeVisible({ timeout: 15_000 });
   await page.unrouteAll({ behavior: "wait" });
+  // The alert goes the moment Retry starts reading (the counts have no data yet, so the query is pending again), not
+  // when the answer lands: wait for the answer and the counts it draws, and leave the page only once nothing is in
+  // flight. Navigating while that read was open left it counted as pending for good on CI (PR #19).
+  const answered = page.waitForResponse((r) => summary(new URL(r.url())) && r.request().method() === "GET");
   await countsError.getByRole("button", { name: m("en", "Queue.retry") }).click();
+  expect((await answered).status()).toBe(200);
   await expect(countsError).toBeHidden();
+  await expect(page.locator("#queue-counts + ul")).toBeVisible();
+  await settled(page);
 
   // Past stock imports: none yet in this organisation.
   await page.goto("/inventory/import");

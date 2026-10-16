@@ -184,10 +184,11 @@ export function trackRequests(page: Page) {
 // action) makes WebKit log "Fetch API cannot load … due to access control checks", which the console-error checks
 // would rightly count. `waitForLoadState("networkidle")` resolves at once when the document reached that state
 // earlier, so it cannot wait for a request started later; the page's own request count can.
+// On a timeout the failure names the requests still open (method, kind and URL), so a CI failure says which one.
 export async function settled(page: Page) {
   if (page.url() === "about:blank") return;
   const pending = trackRequests(page);
-  await expect.poll(() => pending.size, { timeout: 15_000 }).toBe(0);
+  await expect.poll(() => [...pending].map((r) => `${r.method()} ${r.resourceType()} ${r.url()}`), { timeout: 15_000 }).toEqual([]);
 }
 
 // WebKit reports a fetch the page itself cancelled as "Fetch API cannot load <url> due to access control checks" (as a
