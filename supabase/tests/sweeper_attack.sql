@@ -252,20 +252,35 @@ end $$;
 
 -- B6. The candidates read the files table under the caller's rights: a files row the sweeper's role could not see would
 -- make its object a candidate, so service_role must read storage_path whatever row level security says (it bypasses
--- RLS by design; here proven with a row of another organisation, uploaded by nobody, still pending).
+-- RLS by design). Proven across organisations: a second organisation made here (no member, so no policy of any signed-in
+-- person reaches it), with a files row uploaded by nobody and still pending, next to one in this file's organisation;
+-- neither object is a candidate, while the second organisation's object with no files row is (so the second
+-- organisation's objects are listed at all, and only the files row keeps the first one out).
 do $$
 declare
-  o constant text := '00000000-0000-0000-0000-0000d7c000cc';
-  l constant text := '30000000-0000-0000-0000-0000d7c00001';
-  p constant text := o || '/' || l || '/b0000000-0000-4000-8000-000000000001.docx';
+  o1 constant text := '00000000-0000-0000-0000-0000d7c000cc';
+  l1 constant text := '30000000-0000-0000-0000-0000d7c00001';
+  o2 constant text := '00000000-0000-0000-0000-0000d7c000dd';
+  l2 constant text := '30000000-0000-0000-0000-0000d7c00002';
+  p1 constant text := o1 || '/' || l1 || '/b0000000-0000-4000-8000-000000000001.docx';
+  p2 constant text := o2 || '/' || l2 || '/b0000000-0000-4000-8000-000000000002.docx';
+  p2_orphan constant text := o2 || '/' || l2 || '/b0000000-0000-4000-8000-000000000003.pdf';
+  got text[];
 begin
-  perform pg_temp.obj(p, interval '10 days');
+  insert into public.orgs (id, name) values (o2::uuid, 'Sweeper Second Org');
+  insert into public.companies (id, org_id, name) values (l2::uuid, o2::uuid, 'Sweeper second lead');
+  perform pg_temp.obj(p1, interval '10 days');
+  perform pg_temp.obj(p2, interval '10 days');
+  perform pg_temp.obj(p2_orphan, interval '10 days');
   insert into public.files (org_id, company_id, name, mime, size, storage_path, status)
-  values (o::uuid, l::uuid, 'x.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1000, p, 'pending');
+  values (o1::uuid, l1::uuid, 'x.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1000, p1, 'pending'),
+         (o2::uuid, l2::uuid, 'y.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 1000, p2, 'pending');
   perform pg_temp.svc();
-  if exists (select 1 from public.lead_file_orphans() x where x.name = p) then
-    raise exception 'FAIL: an object with a files row the sweeper reads was returned';
-  end if;
+  select array_agg(x.name order by x.name) into got
+    from public.lead_file_orphans(interval '24 hours', 1000) x where x.name in (p1, p2, p2_orphan);
+  perform pg_temp.su();
+  perform pg_temp.eq('candidates across organisations (only the second organisation''s object with no files row)',
+    got, array[p2_orphan]);
   raise exception 'undo' using errcode = 'TS001';
 exception when sqlstate 'TS001' then perform pg_temp.su();
 end $$;
