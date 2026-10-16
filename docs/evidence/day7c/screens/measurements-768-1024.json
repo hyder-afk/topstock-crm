@@ -1,0 +1,430 @@
+{
+  "home-en-light-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "home-en-light-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "home-fr-dark-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "home-fr-dark-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "leads-en-light-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "leads-en-light-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "leads-fr-dark-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "leads-fr-dark-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "pipeline-en-light-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "pipeline-en-light-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "pipeline-fr-dark-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "pipeline-fr-dark-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": null,
+    "insets": null,
+    "errors": []
+  },
+  "deal-sheet-en-light-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": {
+      "rect": {
+        "left": 0,
+        "right": 0,
+        "top": 12,
+        "bottom": 0,
+        "width": 768
+      },
+      "paddingBottom": 0,
+      "paddingLeft": 0,
+      "paddingRight": 0,
+      "contentLeftMin": 21,
+      "contentRightMin": 13,
+      "contentBottomMin": -182,
+      "scrollerBottom": {
+        "scrollHeight": 1008,
+        "clientHeight": 805
+      },
+      "bigBottomSpacing": []
+    },
+    "insets": null,
+    "errors": []
+  },
+  "deal-sheet-en-light-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": {
+      "rect": {
+        "left": 572,
+        "right": 12,
+        "top": 12,
+        "bottom": 12,
+        "width": 440
+      },
+      "paddingBottom": 0,
+      "paddingLeft": 0,
+      "paddingRight": 0,
+      "contentLeftMin": 593,
+      "contentRightMin": 25,
+      "contentBottomMin": -182,
+      "scrollerBottom": {
+        "scrollHeight": 1008,
+        "clientHeight": 793
+      },
+      "bigBottomSpacing": []
+    },
+    "insets": null,
+    "errors": []
+  },
+  "deal-sheet-fr-dark-768": {
+    "viewport": "768x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 164,
+      "right": 164,
+      "top": 820,
+      "bottom": 16,
+      "width": 440
+    },
+    "sheet": {
+      "rect": {
+        "left": 0,
+        "right": 0,
+        "top": 12,
+        "bottom": 0,
+        "width": 768
+      },
+      "paddingBottom": 0,
+      "paddingLeft": 0,
+      "paddingRight": 0,
+      "contentLeftMin": 21,
+      "contentRightMin": 13,
+      "contentBottomMin": -182,
+      "scrollerBottom": {
+        "scrollHeight": 1008,
+        "clientHeight": 805
+      },
+      "bigBottomSpacing": []
+    },
+    "insets": null,
+    "errors": []
+  },
+  "deal-sheet-fr-dark-1024": {
+    "viewport": "1024x900",
+    "sidewaysScroll": 0,
+    "bodyPadding": {
+      "top": 0,
+      "right": 0,
+      "bottom": 0,
+      "left": 0
+    },
+    "wrapperMinHeight": 900,
+    "fullHeightOverflow": 0,
+    "dock": {
+      "left": 212,
+      "right": 212,
+      "top": 820,
+      "bottom": 16,
+      "width": 600
+    },
+    "sheet": {
+      "rect": {
+        "left": 572,
+        "right": 12,
+        "top": 12,
+        "bottom": 12,
+        "width": 440
+      },
+      "paddingBottom": 0,
+      "paddingLeft": 0,
+      "paddingRight": 0,
+      "contentLeftMin": 593,
+      "contentRightMin": 25,
+      "contentBottomMin": -182,
+      "scrollerBottom": {
+        "scrollHeight": 1008,
+        "clientHeight": 793
+      },
+      "bigBottomSpacing": []
+    },
+    "insets": null,
+    "errors": []
+  }
+}

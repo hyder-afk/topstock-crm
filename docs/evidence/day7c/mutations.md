@@ -29,3 +29,6 @@ sweeper test's catalog check would catch it too).
 day7c: 12 rows run: 12 caught, 0 documented two-layer rows not caught, 0 not as listed
 
 `python3 scripts/db-mutations.py --anchors`: 672 rows in 16 sets, every edit applies (day7c 12 of 12).
+
+Re-run on 16 Oct 2026 after advisor round 1 (the merge of `day7a-local`, the new B6 with two organisations):
+12 of 12 caught again, same first failures (rows 1 to 9 in one run, rows 10 to 12 in a second; `--anchors` 672 of 672).
