@@ -19,12 +19,15 @@ import { expect, test } from "@playwright/test";
 // A cast to text is not flagged: the text carries the offset, so the instant survives.
 //
 // Already-applied migrations are never edited (a changed applied file would not re-run and would drift from the
-// databases that ran it), so the findings in them are listed below with the reason each one is acceptable. A new
-// migration that needs one of these patterns should use the explicit-zone form instead of growing this list.
+// databases that ran it). A finding inside a function that a later migration redefines (`create or replace function`
+// with the same name) is not live any more: the later body is what runs, and it is checked in its own file. That is how
+// a fix lands (20261022130000 redefines private.share_take with the Paris day). The live findings left in applied
+// migrations are listed below with the reason each one is acceptable; a new migration that needs one of these patterns
+// should use the explicit-zone form instead of growing this list.
 const dir = join(__dirname, "../../supabase/migrations");
 const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
 
-type Hit = { line: number; expr: string };
+type Hit = { line: number; expr: string; fn: string | null };
 
 // Comments become spaces (newlines kept, so line numbers hold); string literals stay, but their spans are returned so
 // a hit inside one ('... current_date ...' in a message) is ignored. Dollar-quoted bodies are code and stay as they are.
@@ -136,13 +139,31 @@ const LOCAL_TYPE = /^(?:date|timetz|time(?:\s+with(?:out)?\s+time\s+zone)?|times
 const COARSE = new Set(["hour", "day", "week", "month", "quarter", "year", "decade", "century", "millennium"]);
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
+const DEFINE = /\bcreate\s+(or\s+replace\s+)?function\s+([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)\s*\(/gi;
+
+// Each function defined in the file: its name and the span from `create` to the end of its dollar-quoted body.
+function definitions(code: string): Array<{ fn: string; from: number; to: number; replaces: boolean }> {
+  const out: Array<{ fn: string; from: number; to: number; replaces: boolean }> = [];
+  for (const m of code.matchAll(DEFINE)) {
+    const open = /\$([a-z_]*)\$/i.exec(code.slice(m.index));
+    if (!open) continue;
+    const tag = open[0];
+    const bodyStart = m.index + open.index + tag.length;
+    const close = code.indexOf(tag, bodyStart);
+    out.push({ fn: m[2].toLowerCase(), from: m.index, to: close === -1 ? code.length : close + tag.length, replaces: !!m[1] });
+  }
+  return out;
+}
+
 function findLocalDates(sql: string): Hit[] {
   const { code, strings } = scrub(sql);
   const inString = (at: number) => strings.some(([a, b]) => at >= a && at <= b);
   const lineOf = (at: number) => code.slice(0, at).split("\n").length;
+  const defs = definitions(code);
+  const fnAt = (at: number) => defs.find((d) => at >= d.from && at < d.to)?.fn ?? null;
   const hits: Array<Hit & { at: number }> = [];
   const add = (at: number, expr: string) => {
-    if (!inString(at)) hits.push({ at, line: lineOf(at), expr: norm(expr) });
+    if (!inString(at)) hits.push({ at, line: lineOf(at), expr: norm(expr), fn: fnAt(at) });
   };
 
   for (const m of code.matchAll(/\b(?:current_date|current_time|localtime|localtimestamp)\b/gi)) add(m.index, m[0]);
@@ -181,7 +202,14 @@ function findLocalDates(sql: string): Hit[] {
     }
   }
 
-  return hits.sort((a, b) => a.at - b.at).map(({ line, expr }) => ({ line, expr }));
+  return hits.sort((a, b) => a.at - b.at).map(({ line, expr, fn }) => ({ line, expr, fn }));
+}
+
+// The later migration that redefines this function, if any (the finding then no longer runs).
+const redefined = new Map(files.map((f) => [f, definitions(scrub(readFileSync(join(dir, f), "utf8")).code)]));
+function supersededBy(file: string, fn: string | null, order: string[] = files, defs = redefined): string | null {
+  if (!fn) return null;
+  return order.find((later) => later > file && (defs.get(later) ?? []).some((d) => d.replaces && d.fn === fn)) ?? null;
 }
 
 // Reviewed findings in migrations that are already applied (see the header). Each entry is file, line and the
@@ -190,17 +218,10 @@ const BOUNDS =
   "A sanity bound years wide (it only refuses absurd dates); in another session zone the bound moves by at most one " +
   "day at its far edge, which changes nothing a person can do. Applied migration: not edited.";
 const ALLOWED: Array<{ file: string; line: number; expr: string; reason: string }> = [
-  // A task's due date within five years, in private.task_guard (written in 20261011, redefined on Day 5 and Day 6).
-  ...(
-    [
-      ["20261011120000_activity_hardening.sql", 333],
-      ["20261015090000_deals_pipeline.sql", 227],
-      ["20261019090000_sales_requests.sql", 792],
-    ] as const
-  ).flatMap(([file, line]) => [
-    { file, line, expr: "(now() - interval '5 years')::date", reason: BOUNDS },
-    { file, line, expr: "(now() + interval '5 years')::date", reason: BOUNDS },
-  ]),
+  // A task's due date within five years, in private.task_guard as Day 6 last redefined it (the earlier definitions in
+  // 20261011120000 and 20261015090000 are superseded).
+  { file: "20261019090000_sales_requests.sql", line: 792, expr: "(now() - interval '5 years')::date", reason: BOUNDS },
+  { file: "20261019090000_sales_requests.sql", line: 792, expr: "(now() + interval '5 years')::date", reason: BOUNDS },
   // A deal's expected close date between a year ago and three years ahead.
   ...[377, 571, 1049, 1361].flatMap((line) => [
     { file: "20261015090000_deals_pipeline.sql", line, expr: "(now() - interval '1 year')::date", reason: BOUNDS },
@@ -214,24 +235,6 @@ const ALLOWED: Array<{ file: string; line: number; expr: string; reason: string 
       "transit_eta is a date: the implicit cast to timestamptz is midnight in the session zone and the ::date after " +
       "it reads the same zone back, so the Monday is the same in every zone. Applied migration: not edited.",
   },
-  {
-    file: "20261020090000_client_share.sql",
-    line: 635,
-    expr: "date_trunc('hour', now())",
-    reason:
-      "Rate-limit bucket key. Only a zone with a half-hour offset would move the hour edge, and the bucket is only " +
-      "compared with buckets made the same way. Applied migration: not edited.",
-  },
-  {
-    file: "20261020090000_client_share.sql",
-    line: 636,
-    expr: "date_trunc('day', now())",
-    reason:
-      "Rate-limit bucket key: the daily share caps restart at midnight in the session zone (UTC on Supabase, so " +
-      "01:00 or 02:00 in Paris). Harmless as long as the zone does not change between calls; a fix migration that " +
-      "redefines private.share_take with date_trunc('day', now(), 'Europe/Paris') is noted in docs/log.md. Applied " +
-      "migration: not edited.",
-  },
 ];
 
 test("there are migrations to check", () => {
@@ -243,7 +246,7 @@ for (const file of files) {
   test(`${file}: no date or time of day taken in the session's time zone`, () => {
     const found = findLocalDates(readFileSync(join(dir, file), "utf8"));
     const unexplained = found.filter(
-      (h) => !ALLOWED.some((a) => a.file === file && a.line === h.line && a.expr === h.expr),
+      (h) => !supersededBy(file, h.fn) && !ALLOWED.some((a) => a.file === file && a.line === h.line && a.expr === h.expr),
     );
     expect(
       unexplained.map((h) => `${file}:${h.line}  ${h.expr}`),
@@ -252,13 +255,39 @@ for (const file of files) {
   });
 }
 
-test("every allowlisted finding is still there, with a reason", () => {
+test("every allowlisted finding is still there and still live, with a reason", () => {
   for (const a of ALLOWED) {
     expect(files, `${a.file} exists`).toContain(a.file);
     expect(a.reason.length, `${a.file}:${a.line} has a reason`).toBeGreaterThan(40);
-    const found = findLocalDates(readFileSync(join(dir, a.file), "utf8"));
-    expect(found, `${a.file}:${a.line} ${a.expr} is still found`).toContainEqual({ line: a.line, expr: a.expr });
+    const hit = findLocalDates(readFileSync(join(dir, a.file), "utf8")).find((h) => h.line === a.line && h.expr === a.expr);
+    expect(hit, `${a.file}:${a.line} ${a.expr} is still found`).toBeTruthy();
+    expect(supersededBy(a.file, hit?.fn ?? null), `${a.file}:${a.line} is superseded: drop the entry`).toBeNull();
   }
+});
+
+test("share_take's session-zone buckets are fixed by a later migration, not allowlisted", () => {
+  const old = findLocalDates(readFileSync(join(dir, "20261020090000_client_share.sql"), "utf8")).filter((h) => h.fn === "private.share_take");
+  expect(old.map((h) => h.expr)).toEqual(["date_trunc('hour', now())", "date_trunc('day', now())"]);
+  expect(supersededBy("20261020090000_client_share.sql", "private.share_take")).toBe("20261022130000_share_take_paris_day.sql");
+  expect(findLocalDates(readFileSync(join(dir, "20261022130000_share_take_paris_day.sql"), "utf8"))).toEqual([]);
+  expect(ALLOWED.filter((a) => a.file === "20261020090000_client_share.sql" && a.line >= 630 && a.line <= 667)).toEqual([]);
+});
+
+test("the check itself: a later create or replace supersedes, a plain create or another name does not", () => {
+  const defs = new Map([
+    ["1_a.sql", definitions("create function x.f() returns int language sql as $$ select 1 $$;")],
+    ["2_b.sql", definitions("create or replace function x.f() returns int language sql as $q$ select 2 $q$;\ncreate function x.g() returns int language sql as $$ select 3 $$;")],
+  ]);
+  const order = ["1_a.sql", "2_b.sql"];
+  expect(supersededBy("1_a.sql", "x.f", order, defs)).toBe("2_b.sql");
+  expect(supersededBy("1_a.sql", "x.g", order, defs)).toBeNull();
+  expect(supersededBy("2_b.sql", "x.f", order, defs)).toBeNull();
+  expect(supersededBy("1_a.sql", null, order, defs)).toBeNull();
+  const hits = findLocalDates("create function x.f() returns date language sql as $$ select current_date $$;\nselect localtime;");
+  expect(hits).toEqual([
+    { line: 1, expr: "current_date", fn: "x.f" },
+    { line: 2, expr: "localtime", fn: null },
+  ]);
 });
 
 test("the check itself: session-zone forms are caught", () => {
