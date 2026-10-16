@@ -88,7 +88,7 @@ database made by our migrations already has the role.) `share_reader` has no pas
 
 1. **Sign in** to the CRM yourself (password, then the 6-digit code). Open Home, a lead and Inventory.
 2. **Row counts**: compare with `row-counts.txt` of the backup you restored (Part C) or with what you expect (A, B).
-3. Account B > topstock-prod > **Advisors** > **Security Advisor**: the same warnings as before (go-live part F),
+3. Account B > topstock-prod > **Advisors** > **Security Advisor**: the same warnings as before (go-live part E),
    no new error.
 4. **Files (Storage), see below**: open three files from leads, one recent and two older.
 5. Run **sweep-lead-files once by hand as a dry run** (Run workflow, leave the confirm box empty) and read "found":
