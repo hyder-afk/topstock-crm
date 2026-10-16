@@ -329,8 +329,10 @@ begin
                  or i ->> 0 ~ '-') then
     raise exception 'FAIL: share_view_payload_keys_exact (items are 8-place arrays, no internal id)';
   end if;
-  -- The planted minimum price and cost never travel.
-  if r::text like '%1.11%' or r::text like '%0.42%' or r::text not like '%999.99%' then
+  -- The planted minimum price and cost never travel. Only the items are checked: generated_at and the
+  -- signature change every run and could contain these digits by chance.
+  if (r -> 'items')::text like '%1.11%' or (r -> 'items')::text like '%0.42%'
+     or (r -> 'items')::text not like '%999.99%' then
     raise exception 'FAIL: share_view sends the minimum price or the cost';
   end if;
 end $$;
