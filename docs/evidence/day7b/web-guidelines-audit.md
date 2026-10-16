@@ -24,8 +24,8 @@ src/components/ui/disclosure.tsx:23 - summary (clickable) has no hover state →
 ```text
 src/components/ui/combobox.tsx:178 - options.map without virtualisation: up to about 400 time zones / 250 countries. Measured: see "Combobox open time" below; cmdk filters in memory, the list scrolls in a 320 px box. Kept.
 src/components/ui/time-picker.tsx:211 - 96 quarter hours, not virtualised; short rows, one scroll box. Kept.
-src/components/import/import-workspace.tsx:190 - beforeunload prompt: the rules ask for it ("Warn before navigation with unsaved changes"); it is the one native popup Haider kept (docs/log.md, 15 Oct). Allowed exactly once by check:native.
-src/components/ui/search-input.tsx:357 - type="text" role="searchbox" instead of type="search": Haider's no-native-popups rule (no WebKit clear cross or history bubble); enterKeyHint="search" keeps the phone keyboard's Search key.
+src/components/import/import-workspace.tsx:192 - beforeunload prompt: the rules ask for it ("Warn before navigation with unsaved changes"); it is the one native popup kept (builder's decision under Haider's standing instruction, Haider to confirm; docs/log.md, 15 Oct). Allowed exactly once by check:native.
+src/components/ui/search-input.tsx:55 - type="text" role="searchbox" instead of type="search": Haider's no-native-popups rule (no WebKit clear cross or history bubble); enterKeyHint="search" keeps the phone keyboard's Search key.
 src/components/ui/date-picker.tsx:181, time-picker.tsx:146 - placeholders are the pattern ("dd/mm/yyyy", "hh:mm"), no "…": an example pattern, as the rules ask.
 ```
 
