@@ -16,9 +16,43 @@ rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-a
 | 4 | **Later:** the real data import, "when everything is ready" | J (deferred) |
 | 5 | **Later:** inviting Henri and Kais, "when everything is ready" | K (deferred) |
 
-**So, now:** parts A, B, C, D, E, F, G, H, I, I2 and I3, in that order. **Not now:** parts J and K. Before either of
-them, Claude comes back with a free hosting option (decision 4), the daily security digest (part I3) and, for part K,
-the email sender question (decision 2).
+**So, in two sessions:** **now** decisions 1 and 9, parts A, B, C, D (and optionally G1 with G2 step 1), I3.1 and
+I3.2; **from 31 Oct** parts E, F, the rest of G, then H, I and I2 (next section explains why). **Not now:** parts J
+and K. Before either of them, Claude comes back with hosting options, free ones first, with what each costs and
+changes (decision 4), the daily security digest (part I3) and, for part K, the email sender question (decision 2).
+
+### GitHub Actions minutes (until 31 Oct)
+
+You reported on 16 Oct 2026 that this month's GitHub Actions minutes are used up (2000 of 2000); they come back on
+**31 Oct**. topstock-ops is private, so none of its workflows (migrate-prod, backup-prod, keep-alive,
+sweep-lead-files) can run before then. topstock-crm is public, so its own CI uses no minutes and Claude can keep
+working.
+
+**Now (no topstock-ops workflow runs):**
+- decisions 1 and 9, then parts A and B;
+- C1 to C6. Pasting migrate-prod in C6 is fine, because it only runs when you start it by hand: **do not start it**;
+- all of part D;
+- optionally G1 and G2 step 1 (the key pair and the `AGE_PUBLIC_KEY` secret);
+- I3.1 and I3.2.
+
+Meanwhile Claude does the `jwt_expiry` PR (if you say yes to decision 9), the security digest template (I3.3) and the
+hosting options (decision 4).
+
+**From 31 Oct**, after you check github.com > your avatar > **Settings** > **Billing and plans** that the Actions
+minutes are back:
+- part E, then part F straight after. **Never F before E**: F1 would point the live address at an empty database;
+- G2 step 2 and G3, then H, then I, then I2 (its dry-run week starts then).
+
+**Do not paste** backup-prod, keep-alive or sweep-lead-files into topstock-ops before 31 Oct: their schedules would
+fail and email you every night.
+
+**Paying for extra minutes now** is your choice. Recommended: **wait**. Waiting is free, and no real data is at risk
+(production holds nothing yet).
+
+**After the reset**, topstock-ops needs about 150 to 200 minutes a month. GitHub rounds each job up to a whole
+minute: backup about 3 a night, keep-alive 1 a day, sweeper 1 a day, plus a few minutes for each migrate-prod run.
+That stays well inside the 2000 **only while topstock-crm stays public**. If topstock-crm ever goes private again,
+its CI eats the same pool and the backups stop, so tell Claude before changing that.
 
 **How to use this:** do one part at a time, in order. After each part, tell Claude only "Part X done" (or what did
 not match, in words). Claude never touches production: `topstock-prod` lives in Supabase **account B**, which has no
@@ -29,7 +63,8 @@ to. So every production step below is yours, in your own browser or Terminal.
 from account B, lead or stock rows, the CSV or stock files, or screenshots that show data.
 
 **Have ready:** your password manager, your phone with the authenticator app, a private browser window for account
-B (the ops@ login), your Mac's Terminal (parts F5, G and H), and about 3 hours in total for parts A to I3.
+B (the ops@ login), your Mac's Terminal (parts F5, G and H), and two sessions: about 1.5 hours now (A, B, C, D,
+I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2).
 
 ---
 
@@ -55,9 +90,12 @@ B (the ops@ login), your Mac's Terminal (parts F5, G and H), and about 3 hours i
    extra cost no"). Said plainly: Vercel's fair-use guidelines limit the Hobby plan to non-commercial, personal use
    (https://vercel.com/docs/limits/fair-use-guidelines, "Commercial usage"). They count as commercial any deployment
    used for the financial gain of anyone involved in it. A company's own sales CRM falls under that rule, so **the
-   hosting question stays open**. Parts A to I3 hold no real data and only your own account, so they go ahead now.
-   **Claude comes back with a free hosting option before part J (real data) and part K (invites)**, and you decide
-   then. Meanwhile: **Deployment Protection stays on Standard Protection** and one free Firewall rule is added
+   hosting question stays open**. Vercel can enforce that rule, for example by asking for an upgrade or by pausing
+   the project (Master Plan section 3 already says Hobby "risks suspension"). The harm today is low: nothing real is
+   on it, and a pause would only take the login page offline; no data would be lost, because the data lives in
+   Supabase, not in Vercel. Parts A to I3 hold no real data and only your own account, so they go ahead.
+   **Claude comes back with hosting options, free ones first, with what each costs and changes, before part J (real
+   data) and part K (invites)**, and you decide then. Meanwhile: **Deployment Protection stays on Standard Protection** and one free Firewall rule is added
    (part B).
 5. **Leaked password protection** (Supabase rejects passwords known from breaches) exists only on Supabase's paid
    plan. **Stay on Free for now** (decided 15 Oct 2026; the setting stays off; passwords are 12+ characters with mixed
@@ -112,8 +150,11 @@ Why: production must get only reviewed code that passed the security gate.
 
 Why: you decided on 16 Oct 2026 not to pay for Vercel Pro. Production stays on the free Hobby plan for now. Vercel's
 fair-use guidelines limit Hobby to non-commercial use (https://vercel.com/docs/limits/fair-use-guidelines), and that
-rule covers this business app, so the hosting question stays open: **Claude comes back with a free hosting option
-before part J (real data) and part K (invites).** Nothing in this part costs money; do not upgrade anything.
+rule covers this business app, so the hosting question stays open. Vercel can enforce the rule (for example by
+asking for an upgrade or pausing the project); today that would only take the login page offline, and no data would
+be lost, because the data lives in Supabase. **Claude comes back with hosting options, free ones first, with what
+each costs and changes, before part J (real data) and part K (invites).** Nothing in this part costs money; do not
+upgrade anything.
 
 ### B1. Deployment Protection
 1. Go to vercel.com and sign in. If Vercel offers Pro or a trial anywhere, decline it.
@@ -238,6 +279,10 @@ must be closed before the schema exists. Every value below is the one in `supaba
 Private window, account B, project **topstock-prod**. Menu names are those of October 2026; if a name differs,
 look for the setting itself.
 
+**If topstock-prod shows Paused**, click **Restore project** (free, nothing is lost) and wait until it is active
+before D, and again before E if it has paused again. Why: a free project pauses after about a week without activity
+(it has had none since Day 0); while it is paused the settings below cannot be saved and migrate-prod fails.
+
 ### D1. Authentication > Sign In / Providers
 | Setting | Value | config.toml |
 |---|---|---|
@@ -341,6 +386,9 @@ the Postgres number if it is not 17).
 
 Why: this creates the CRM's tables, security rules and functions in production, from the reviewed code on main.
 
+**From 31 Oct only** (GitHub Actions minutes, see the top). Before you start: check that the minutes are back, and
+that topstock-prod is not Paused (part D). Do part F straight after this part.
+
 **First, switch on pg_cron in production** (your decision of 15 Oct 2026, plan question 3). The stock migration
 schedules the nightly stock job (holds that end, the integrity check) only where pg_cron is already on, so this comes
 before the migration run:
@@ -386,8 +434,9 @@ listed. Tell Claude "Part E done".
 
 ## Part F. Point the production app at production, sign in, enrol two-factor, check from outside
 
-Why: until now the production address used the dev database (decided 9 Oct 2026). Do this right after part E. This
-part ends with your own account only; Henri and Kais wait for part K (later).
+Why: until now the production address used the dev database (decided 9 Oct 2026). Do this right after part E.
+**Never F before E**: F1 would point the live address at an empty database. This part ends with your own account
+only; Henri and Kais wait for part K (later).
 
 ### F1. Vercel production variables
 1. vercel.com > project **topstock-crm** > **Settings** > **Environment Variables**.
@@ -461,6 +510,9 @@ what is written above. Tell Claude "Part F done" (plus any check that differed, 
 
 Why: nightly encrypted copies of the production database, which only your offline key can open.
 
+G1 and G2 step 1 can be done now. **G2 step 2 and G3 wait for 31 Oct** (GitHub Actions minutes, see the top): a
+backup-prod workflow pasted earlier would fail every night and email you.
+
 ### G1. Make the backup key pair on your Mac (Terminal)
 This is your own operations step on your own Mac (not building the app). The private key is never shown on screen:
 it goes from the file to your password manager through the clipboard.
@@ -495,7 +547,8 @@ it goes from the file to your password manager through the clipboard.
    age-keygen -y topstock-backup-key.txt | tr -d '\n' | pbcopy
    ```
    Go straight on to G2 step 1 and paste it there. (The public key is not secret; you may also keep it in the same
-   password-manager note.)
+   password-manager note.) If you use a clipboard-history app, clear its history after this step, because it may
+   have kept the private key from step 3.
 6. After G2 step 1, delete the key file and its folder:
    ```bash
    cd ~ && rm -rf ~/topstock-key
@@ -520,7 +573,7 @@ decision 6). From now on it runs every night; GitHub emails you if a run fails.
 ## Part H. Restore test into topstock-dev
 
 Why: a backup only counts once it has been restored (Master Plan section 8 row 44, Gate 1). It also proves that the
-private key in your password manager is the right one.
+private key in your password manager is the right one. From 31 Oct, after G3 (it needs that backup).
 
 Follow **docs/ops-templates/restore-into-dev.md** on your Mac, start to end. In short: download the artifact,
 decrypt it with your private key, save dev's fake data, load the backup's CRM tables into dev, compare row counts,
@@ -540,7 +593,8 @@ now, so you know it exists; it is not a test).
 
 ## Part I. Keep-alive
 
-Why: Supabase pauses a free project after about a week with too little activity; a paused CRM is offline.
+Why: Supabase pauses a free project after about a week with too little activity; a paused CRM is offline. From
+31 Oct, after H (GitHub Actions minutes, see the top).
 
 1. Paste `docs/ops-templates/keep-alive.yml` from topstock-crm into topstock-ops as
    `.github/workflows/keep-alive.yml` (as in C6).
@@ -557,7 +611,8 @@ should be)".
 Why: bytes left behind by a cancelled upload (no file entry in the CRM) are removed once a day, so they never fill the
 team's 800 MB. It runs in topstock-ops with its own Supabase secret key (your decision of 15 Oct 2026: "orphan sweeper
 runs from topstock-ops with its own key; dry-run week first"). The database side is the migration
-`20261022090000_orphan_sweeper` (in part E's run).
+`20261022090000_orphan_sweeper` (in part E's run). From 31 Oct, after part I (GitHub Actions minutes, see the top):
+its dry-run week starts then.
 
 Follow **docs/ops-templates/sweep-lead-files.md**, "Day 8 set-up", steps 1 to 5 now: create the secret key named
 `sweeper` in account B, store it as `PROD_SWEEPER_KEY` in topstock-ops, add the variables `SWEEPER_SHA` (the SHA from
@@ -601,10 +656,11 @@ paste it into topstock-ops then. Nothing to do now.
 **Done when:** the five lists hold only you and Dependabot alerts are on. Tell Claude "Part I3 done" (plus anyone
 you removed, by role only, for example "one old Vercel member").
 
-**Where Gate 1 stands after part I3.** Done: the code part (16 Oct), production settings and checks (D, E, F5),
-backup and restore tested (G, H), keep-alive running (I), access checked (I3). **Still open, so Gate 1 is not fully
-passed:** the hosting decision (decision 4) and the security digest (I3.3). Real data (part J) waits for both, and
-for your "when everything is ready".
+**Where Gate 1 stands.** Done: the code part (16 Oct). Now: production settings (D) and access checked (I3.1,
+I3.2). **Waiting for 31 Oct** (GitHub Actions minutes): the database in production and its checks (E, F5), backups
+(G), the restore test (H), keep-alive (I) and the sweeper's dry runs (I2). **Still open as well, so Gate 1 is not
+fully passed:** the hosting decision (decision 4) and the security digest (I3.3). Real data (part J) waits for all
+of these, and for your "when everything is ready".
 
 ---
 
@@ -644,8 +700,9 @@ match. Delete local copies of the files you no longer need.
 
 ## Part K. Invite Henri and Kais (DEFERRED)
 
-**Deferred** (your decision of 16 Oct 2026: "when everything is ready"). **Do not start this part.** Before it: the
-hosting answer (decision 4), your choice of email sender (decision 2) and Claude's "part K ready". The steps below
+**Deferred** (your decision of 16 Oct 2026: "when everything is ready"). **Do not start this part.** Before it: part J
+done and Gate 1 fully passed, the hosting answer (decision 4), your choice of email sender (decision 2) and Claude's
+"part K ready". The steps below
 stay as written for that day.
 
 Why: everyone gets their own account with two-factor; nobody shares a login.
@@ -688,8 +745,9 @@ If it says "You are the last admin", you tried to change your own role: leave yo
 - Never send: passwords, keys (including the publishable key), tokens, the backup private key, connection strings,
   the production project reference or anything else from account B, lead or stock rows, the files, screenshots that
   show data, IP addresses from the Firewall page.
-- After part I3, Claude logs "go-live parts A to I3 done" in docs/log.md and lists what stays open: hosting
-  (decision 4, Claude's free option before parts J and K), the security digest (I3.3), parts J and K (deferred), the
+- After the first session, Claude logs which parts are done; after the 31 Oct session (parts E to I2), Claude logs
+  "go-live parts A to I3 done" in docs/log.md and lists what stays open: hosting (decision 4, Claude's hosting
+  options, free ones first, before parts J and K), the security digest (I3.3), parts J and K (deferred), the
   email sender (decision 2), backup storage (decision 6), later restore tests (decision 7), `jwt_expiry` if still
   open (decision 9), the sweeper's switch-on after its dry-run week (I2 step 7), the Firewall rule's switch from Log
   to 429 (B3), and switching the client stock link on in production (off until you decide, after Gate 1).

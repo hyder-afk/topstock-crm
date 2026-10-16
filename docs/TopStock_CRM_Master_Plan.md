@@ -10,7 +10,7 @@ Haider answered the section 16 questions. Everything below is updated to match; 
 |---|---|
 | **Pipeline stages: Lead → Qualified → Negotiations → Closed/won** (plus Closed/lost with a reason) | Sections 5, 6, 9 Day 5. A deal is opened at "Lead" when a rep marks a lead as interested; the rest of the 30k contacts never appear on the board |
 | **Users: Haider, Henri, Kais, all admins** | MFA mandatory for all three. Roles stay in the schema for later hires. Section 8 items 4 and 45 |
-| **Hosting: Vercel Pro ($20/month)** | Build on Hobby, upgrade before the first live deploy. Section 3 |
+| **Hosting: Vercel Pro ($20/month)** | Build on Hobby, upgrade before the first live deploy. Section 3 *Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.* |
 | **Zoom: paid plan, cloud recording and transcripts on** | R3 unchanged. Verify the two Zoom settings before Day 14 |
 | **No Google Workspace** | Calendar sync and mailbox integration removed. Email opens the mail app and is logged with one tap. Meetings are dated tasks (Zoom meetings from R3). The former R2 (Calendar) is now **R2: Inventory depth** |
 | **TopStock is a wholesale importer in France** (buys its own containers, sells wholesale across Europe, and sources direct for clients as "supply chain as a service"); existing stock sheets to import | IMS is a first-class half of the product: basics in R1 (Day 6), containers, orders and fulfilment in R2. Section 5, 6, 7, 8F, 10 |
@@ -91,7 +91,7 @@ Verified against current published terms (September 2026). Confirm again before 
 
 | Item | Reality | What to do |
 |---|---|---|
-| **Vercel Hobby (free)** | **Non-commercial use only.** Vercel's terms say commercial use requires Pro ($20/user/month). TopStock is a company, so production on Hobby breaks their terms and risks suspension. | **Decided 6 Oct 2026: Vercel Pro ($20/month, one seat).** Build and preview on Hobby, upgrade the project to Pro before the first live deploy (Day 8). |
+| **Vercel Hobby (free)** | **Non-commercial use only.** Vercel's terms say commercial use requires Pro ($20/user/month). TopStock is a company, so production on Hobby breaks their terms and risks suspension. | **Decided 6 Oct 2026: Vercel Pro ($20/month, one seat).** Build and preview on Hobby, upgrade the project to Pro before the first live deploy (Day 8). *Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.* |
 | **Supabase Free** | 500 MB database, 1 GB file storage, 5 GB egress, 2 projects. **Pauses after 7 days of inactivity.** **No daily backups** (paid feature). | 30,000 leads fit comfortably. Add a keep-alive ping and our own backups (section 12). Use the 2 projects as **dev** and **prod**. Upgrade to Pro ($25/month) when convenient. |
 | **Zoom transcripts** | Cloud recording and audio transcripts require a **paid Zoom plan** (Pro, Business, Education or Enterprise). Cannot be tested on free Zoom. | Haider confirmed a paid plan with cloud recording and transcripts (6 Oct 2026). Before Day 14, check in Zoom web settings that "Cloud recording" and "Audio transcript" are on for the account. |
 | **Claude API** | Claude Max does **not** include API credits, so the app cannot call Claude live for free. | AI coaching runs **from Claude Code on your Mac** as a manual batch command (section 11). The app itself uses free rule-based metrics. |
@@ -447,6 +447,7 @@ Run the full checklist in section 8 (A to F), two-user attack test, `/security-r
 
 **Day 8: Go live**
 Upgrade the Vercel project to Pro. Deploy prod, enable backup and keep-alive Actions, do one restore test. **Import the real 30,000 leads into prod** (dry run first, then full) and the real stock sheets. Invite Henri and Kais; all three enrol MFA. Buffer for fixes.
+*Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.*
 
 **If you truly only have 4 days:** do Days 1 to 4 fully, compress Day 5 to "pipeline + basic dashboard", run a shortened security gate, and go live with import. Defer French polish, PWA offline, saved views and bulk actions, and move inventory basics to the start of R2.
 
@@ -637,7 +638,7 @@ Every UI change: /apple-design audit + Playwright screenshots (see /docs/TopStoc
 | 1 | Pipeline stages and lead statuses | Lead, Qualified, Negotiations, Closed/won | Seeded as the four stages, plus Closed/lost with a reason. Lead statuses on contacts proposed as new / contacted / interested / not interested / do not contact / customer; confirm when the import is built |
 | 2 | Users and roles | Haider, Henri, Kais, all admins | MFA mandatory for all three. Roles stay in the schema for later hires |
 | 3 | CSV header and sample rows | Not yet; use placeholders | Import built with a column-mapping step so the real header maps without code changes. Header plus 3 fake rows needed before Day 3 |
-| 4 | Hosting | Vercel Pro ($20/month) | Build on Hobby, upgrade before the first live deploy |
+| 4 | Hosting | Vercel Pro ($20/month) | Build on Hobby, upgrade before the first live deploy *Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.* |
 | 5 | Zoom plan | Paid, cloud recording and transcripts on | R3 unchanged; verify the two settings in Zoom before Day 14 |
 | 6 | Google Workspace admin | TopStock does not use Google Workspace | Calendar sync and mailbox integration removed. Email opens the mail app and is logged. R2 is now inventory depth |
 | 7 | Main markets | UK, US, France, rest of EU | Work queue hours per lead timezone: Europe/London, Europe/Paris and other EU zones, America/New_York to America/Los_Angeles. Henri and Kais on Europe/Paris, Haider on Asia/Karachi |

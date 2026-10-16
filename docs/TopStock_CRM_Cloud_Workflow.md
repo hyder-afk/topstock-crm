@@ -13,7 +13,7 @@ This addendum **overrides** every instruction in `START_HERE.md`, the Master Pla
 3. GitHub Actions runs CI on the PR. Vercel builds a **preview deployment** and posts its URL on the PR.
 4. Before reporting, Claude Code runs the **`advisor` subagent** (`.claude/agents/advisor.md`): a read-only reviewer with a fresh context that checks the step against the plan, the security checklist and the evidence bundle. Claude Code fixes what it raises until it returns APPROVED.
 5. Claude Code shows Haider the `REPORT` with the advisor's verdict and the preview link. Haider looks at the preview on his phone or any browser (signed in to Vercel).
-6. When the advisor approved and CI is green, Haider clicks **Merge**. `main` deploys to Vercel production (Pro plan before go-live).
+6. When the advisor approved and CI is green, Haider clicks **Merge**. `main` deploys to Vercel production (Pro plan before go-live). *(Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.)*
 
 Haider works **only in Claude Code**; there is no separate advisor chat (decided 6 Oct 2026).
 
@@ -95,8 +95,8 @@ A Supabase personal access token can reach **every project in every organisation
 
 ## 6. Vercel
 
-- Import `hyder-afk/topstock-crm` in Vercel. Hobby while building, **Pro before go-live** (Hobby is non-commercial). Function region `cdg1` (Paris) or `fra1` (Frankfurt), matching Supabase.
-- **Deployment Protection: Standard Protection + Vercel Authentication.** Original plan was All Deployments during the build, but Vercel Hobby offers only Standard. **Haider approved Standard on 9 Oct 2026:** previews stay behind Vercel login; the production URL is public and shows only the app's login page, in front of fake dev data. Revisit at the Pro upgrade. Before any app screen ships to production, open sign-ups on the dev project are disabled.
+- Import `hyder-afk/topstock-crm` in Vercel. Hobby while building, **Pro before go-live** (Hobby is non-commercial). Function region `cdg1` (Paris) or `fra1` (Frankfurt), matching Supabase. *(Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.)*
+- **Deployment Protection: Standard Protection + Vercel Authentication.** Original plan was All Deployments during the build, but Vercel Hobby offers only Standard. **Haider approved Standard on 9 Oct 2026:** previews stay behind Vercel login; the production URL is public and shows only the app's login page, in front of fake dev data. Revisit at the Pro upgrade. Before any app screen ships to production, open sign-ups on the dev project are disabled. *(Superseded 16 Oct 2026 by Haider: no Vercel Pro for now; see docs/log.md and go-live decision 4.)*
 - Every PR gets a preview URL. That is how Haider sees screens on his phone and Mac.
 
 ## 7. Real data without a Mac (replaces the local import script)
