@@ -703,11 +703,13 @@ async function panelHeightSettled(page: Page) {
         page.evaluate(() => {
           const panel = document.querySelector<HTMLElement>("[data-call-panel]");
           const padded = getComputedStyle(document.documentElement).getPropertyValue("--call-panel-h").trim();
-          return panel ? `${padded} of ${panel.offsetHeight}px` : "no panel";
+          // Math.ceil of the box height against offsetHeight's rounding: within 1 px is the same height.
+          const gap = panel ? Math.abs(Number.parseFloat(padded) - panel.offsetHeight) : NaN;
+          return gap <= 1 ? "settled" : panel ? `${padded} of ${panel.offsetHeight}px` : "no panel";
         }),
       { timeout: 3_000, message: "--call-panel-h follows the panel's layout height" },
     )
-    .toMatch(/^(\d+)px of \1px$/);
+    .toBe("settled");
 }
 
 // With the call panel open on a phone, every page control reached with Tab ends above the panel: the panel stays
