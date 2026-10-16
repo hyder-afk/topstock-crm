@@ -118,6 +118,10 @@ do $$ begin
   perform pg_temp.invariants('the earlier test files');
   -- Open records from the earlier files (deal_concurrency.sh opens many as r1) would trip the 30-an-hour limit here.
   delete from private.deal_opens;
+  -- The deals behind them go too (deal_concurrency.sh commits 28 opened by r1): a guard that counted live deals instead
+  -- of open records would otherwise be stopped by that volume, not by this file's checks (Day 5a mutation row 58,
+  -- Day 7 plan section 2 item 20).
+  delete from public.deals where created_by = '00000000-0000-0000-0000-0000000005a1';
 end $$;
 
 -- 0. What the database itself says (threats 1, 17, 28) ------------------------------------------------------------------
