@@ -339,7 +339,7 @@ search). Docs only; nothing touched production.
 5. **The restore runbook is a new page** (`restore-production.md`) rather than a section of the dev restore test: one
    is an emergency in production, the other a quarterly test into dev.
 
-## Checks (16 Oct 2026, on `day7c-local` d5a59eb)
+## Checks (16 Oct 2026, on the code of `day7c-local` 727074e; the runs used the working tree that became it)
 
 | Check | Result |
 |---|---|
