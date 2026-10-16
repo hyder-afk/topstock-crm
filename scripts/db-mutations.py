@@ -59,7 +59,9 @@ MIG_7A = ROOT / "supabase/migrations/20261021100000_day7a_security.sql"
 # request guards (6d), the settings guard (6a), the settings read (6b) and the untouched rule again. Day 6's
 # deal_stock_blocks migration redefines Day 6d's sale guard (order_guard: one branch added first, the rest verbatim).
 # An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
-REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E, MIG_6F]
+# Day 7f redefines private.share_take (Paris-day buckets, the rest verbatim), so Day 6e's share_take rows edit it there too.
+MIG_7F_SHARE = ROOT / "supabase/migrations/20261022130000_share_take_paris_day.sql"
+REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E, MIG_6F, MIG_7F_SHARE]
 
 
 class Region:
