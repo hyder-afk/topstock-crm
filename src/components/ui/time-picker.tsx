@@ -8,6 +8,7 @@ import { pickerChangeEvent, type PickerChangeEvent } from "@/lib/pickers/event";
 import { formatTime, isTime, isTimeOutOfRange, nearestTimeIndex, parseTypedTime, timeList, type HourCycle } from "@/lib/pickers/time";
 import { cn } from "@/lib/utils";
 import { floatingPanel, idList } from "./picker-styles";
+import { useAnchorWidth } from "./use-anchor-width";
 
 // The app's own time picker (Haider 15 Oct 2026: no native time input). A WAI-ARIA combobox: type the time ("9:15",
 // "0915", "9h15", "9:15 pm") or open the list of 15-minute steps with Alt+Down, Down or the clock button; arrows move,
@@ -74,7 +75,7 @@ export function TimePicker({
   const [active, setActive] = useState(0);
   const [draft, setDraft] = useState<string | null>(null);
   const [badText, setBadText] = useState(false);
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const { ref: anchorRef, measure: measureAnchor, style: anchorStyle } = useAnchorWidth<HTMLDivElement>();
   const listRef = useRef<HTMLUListElement>(null);
 
   const emit = (next: string) => {
@@ -107,6 +108,7 @@ export function TimePicker({
     if (disabled) return;
     const typed = draft !== null ? parseTypedTime(draft) : null;
     setActive(Math.max(0, nearestTimeIndex(times, typed ?? (current || "09:00"))));
+    measureAnchor();
     setOpen(true);
   };
 
@@ -200,7 +202,9 @@ export function TimePicker({
         </div>
       </PopoverAnchor>
       <PopoverContent
-        className={cn(floatingPanel, "w-[max(var(--radix-popover-trigger-width),160px)] p-1.5")}
+        // Width from the field, measured on opening (use-anchor-width.ts).
+        style={anchorStyle}
+        className={cn(floatingPanel, "w-[max(var(--anchor-width,0px),160px)] p-1.5")}
         // Focus stays in the field (combobox pattern); a press on the field itself is not "outside".
         onOpenAutoFocus={(e) => e.preventDefault()}
         onCloseAutoFocus={(e) => e.preventDefault()}

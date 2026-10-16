@@ -9,6 +9,7 @@ import { pickerChangeEvent, type PickerChangeEvent } from "@/lib/pickers/event";
 import { flattenEntries, parseOptionChildren, searchScore, type PickerOption } from "@/lib/pickers/options";
 import { cn } from "@/lib/utils";
 import { fieldTrigger, floatingPanel, idList, listItem } from "./picker-styles";
+import { useAnchorWidth } from "./use-anchor-width";
 
 // A searchable picker for long lists (countries, time zones, teammates, deals): a field-like button opens a popover
 // with a search box and the list (cmdk). Type to filter (accents and case ignored), arrows move, Enter picks, Escape
@@ -23,7 +24,7 @@ const fromItem = (value: string) => (value === EMPTY ? "" : value);
 
 export type ComboboxOption = { value: string; label: React.ReactNode; textValue?: string; keywords?: string[]; disabled?: boolean };
 
-export type ComboboxProps = Omit<React.ComponentProps<"button">, "value" | "defaultValue" | "onChange" | "type" | "children"> & {
+export type ComboboxProps = Omit<React.ComponentProps<"button">, "ref" | "value" | "defaultValue" | "onChange" | "type" | "children"> & {
   options?: ComboboxOption[];
   /** Or <option>/<optgroup> children, as for Select. */
   children?: React.ReactNode;
@@ -87,7 +88,9 @@ export function Combobox({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [active, setActive] = useState("");
+  const { ref: anchorRef, measure: measureAnchor, style: anchorStyle } = useAnchorWidth<HTMLButtonElement>();
   const onOpenChange = (next: boolean) => {
+    if (next) measureAnchor();
     setOpen(next);
     if (next) {
       // Each opening starts with an empty search, the chosen option highlighted.
@@ -110,6 +113,7 @@ export function Combobox({
     <>
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger
+          ref={anchorRef}
           type="button"
           disabled={disabled}
           // A select-only combobox whose popup is a dialog with a search box (WAI-ARIA 1.2 allows a dialog popup): the
@@ -135,7 +139,9 @@ export function Combobox({
           <ChevronsUpDown aria-hidden="true" strokeWidth={1.75} className="size-4 shrink-0 text-muted-foreground" />
         </PopoverTrigger>
         <PopoverContent
-          className={cn(floatingPanel, "w-[min(360px,calc(100vw-32px))] min-w-[var(--radix-popover-trigger-width)] p-0", contentClassName)}
+          // Width from the trigger, measured on opening (use-anchor-width.ts).
+          style={anchorStyle}
+          className={cn(floatingPanel, "w-[min(360px,calc(100vw-32px))] min-w-[var(--anchor-width,0px)] p-0", contentClassName)}
           aria-label={searchPlaceholder ?? t("search")}
         >
           <Command

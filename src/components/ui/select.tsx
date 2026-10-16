@@ -8,6 +8,7 @@ import { pickerChangeEvent, type PickerChangeEvent } from "@/lib/pickers/event";
 import { flattenEntries, parseOptionChildren, resolveSelectValue, type PickerOption } from "@/lib/pickers/options";
 import { cn } from "@/lib/utils";
 import { fieldTrigger, floatingPanel } from "./picker-styles";
+import { useAnchorWidth } from "./use-anchor-width";
 
 // The app's own select (Haider 15 Oct 2026: no native pickers or popups). A Radix listbox on our tokens: arrows,
 // typeahead, Home/End, Enter/Space and Escape come from Radix, on the closed trigger too, as on a native select.
@@ -22,7 +23,7 @@ const EMPTY = "\u0000empty";
 const toRadix = (value: string) => (value === "" ? EMPTY : value);
 const fromRadix = (value: string) => (value === EMPTY ? "" : value);
 
-export type SelectProps = Omit<React.ComponentProps<"button">, "value" | "defaultValue" | "onChange" | "type" | "children"> & {
+export type SelectProps = Omit<React.ComponentProps<"button">, "ref" | "value" | "defaultValue" | "onChange" | "type" | "children"> & {
   children?: React.ReactNode;
   value?: string;
   defaultValue?: string;
@@ -58,6 +59,12 @@ export function Select({
   const controlled = value !== undefined;
   const current = resolveSelectValue(options, controlled ? value : inner, placeholder !== undefined);
   const selected = options.find((o) => o.value === current);
+  const [open, setOpen] = useState(false);
+  const { ref: anchorRef, measure: measureAnchor, style: anchorStyle } = useAnchorWidth<HTMLButtonElement>();
+  const onOpenChange = (next: boolean) => {
+    if (next) measureAnchor();
+    setOpen(next);
+  };
 
   const pick = (radixValue: string) => {
     const next = fromRadix(radixValue);
@@ -69,8 +76,15 @@ export function Select({
 
   return (
     <>
-      <SelectPrimitive.Root value={selected ? toRadix(current) : ""} onValueChange={pick} disabled={disabled}>
+      <SelectPrimitive.Root
+        value={selected ? toRadix(current) : ""}
+        onValueChange={pick}
+        open={open}
+        onOpenChange={onOpenChange}
+        disabled={disabled}
+      >
         <SelectPrimitive.Trigger
+          ref={anchorRef}
           aria-required={required || undefined}
           // The submitted value, readable without opening the list (tests assert it; the hidden input needs a name).
           data-value={current}
@@ -90,9 +104,11 @@ export function Select({
             position="popper"
             sideOffset={8}
             collisionPadding={16}
+            // Width from the trigger, measured on opening (use-anchor-width.ts); 420 px tall until Radix knows the space.
+            style={anchorStyle}
             className={cn(
               floatingPanel,
-              "max-h-[min(var(--radix-select-content-available-height),420px)] min-w-[max(var(--radix-select-trigger-width),180px)] max-w-[calc(100vw-32px)] overflow-hidden",
+              "max-h-[min(var(--radix-select-content-available-height,420px),420px)] min-w-[max(var(--anchor-width,0px),180px)] max-w-[calc(100vw-32px)] overflow-hidden",
               contentClassName,
             )}
           >
