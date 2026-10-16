@@ -28,7 +28,9 @@ export function ArrivalFocus({ target }: { target: string }) {
     const tick = () => {
       const active = document.activeElement;
       const el = document.getElementById(target);
-      if (!active || active === document.body) el?.focus();
+      // <main> counts as free: it only holds the focus as the fallback of a dialog that closed while this page was still
+      // loading (focusPageIfLost found no heading yet), never as a place the person chose (CI, PR #18).
+      if (!active || active === document.body || active === document.querySelector("main")) el?.focus();
       else if (active !== el && active !== held) return;
       if (performance.now() < stopAt) frame = requestAnimationFrame(tick);
     };
