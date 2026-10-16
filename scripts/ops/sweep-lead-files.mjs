@@ -26,7 +26,7 @@
 //   SWEEPER_KEY           the dedicated secret key named "sweeper" (topstock-ops secret PROD_SWEEPER_KEY); sent only in
 //                         the apikey header (a legacy service_role JWT is also sent as a bearer token, as Supabase asks)
 //   SWEEP_MODE            dry (default) or apply
-//   SWEEP_MAX_OBJECTS     1 to 1000, default 50
+//   SWEEP_MAX_OBJECTS     1 to 999, default 50 (the listing asks for one more; the database gives at most 1000 a call)
 //   SWEEP_MAX_MIB         1 to 1024, default 200
 //   SWEEP_MIN_AGE_HOURS   24 to 8760, default 24 (the database refuses less than 24)
 //   GITHUB_STEP_SUMMARY   set by GitHub Actions: the run's summary (counts only) is appended to it

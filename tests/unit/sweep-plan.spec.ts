@@ -4,9 +4,11 @@ import {
   batches,
   bothLists,
   ConfigError,
+  MAX_OBJECTS,
   planSweep,
   readConfig,
   runSweep,
+  SQL_LIMIT,
 } from "../../scripts/ops/sweep-core.mjs";
 
 // Day 7c: the orphan sweeper's rules (scripts/ops/sweep-core.mjs, run by scripts/ops/sweep-lead-files.mjs; plan section 3 on day7-local). A fake fetch
@@ -47,6 +49,9 @@ function fakeServer(opts: { stats?: object; first?: Rows; second?: Rows; gone?: 
       return json([opts.stats ?? { bucket_objects: 10, bucket_bytes: 10_000, file_rows: 7, odd_names: 0 }]);
     }
     if (u.pathname === "/rest/v1/rpc/lead_file_orphans") {
+      // Same bounds as the migration: 1 to 1000 rows a call, anything else is refused (22023).
+      const limit = (body as { p_limit: number }).p_limit;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) return json({ code: "22023", message: "bounds" }, 400);
       listings += 1;
       return json(listings === 1 ? (opts.first ?? []) : (opts.second ?? opts.first ?? []));
     }
@@ -123,6 +128,7 @@ test.describe("readConfig and headers", () => {
       { ...env, SWEEP_MODE: "yes" },
       { ...env, SWEEP_MAX_OBJECTS: "0" },
       { ...env, SWEEP_MAX_OBJECTS: "5000" },
+      { ...env, SWEEP_MAX_OBJECTS: "1000" },
       { ...env, SWEEP_MAX_MIB: "2048" },
       { ...env, SWEEP_MIN_AGE_HOURS: "1" },
       { ...env, SWEEP_MAX_OBJECTS: "1e3" },
@@ -134,6 +140,12 @@ test.describe("readConfig and headers", () => {
     } catch (e) {
       expect(String(e)).not.toContain("has spaces");
     }
+  });
+  test("the object cap stops at 999, one below the database's 1000 rows a call", () => {
+    expect(MAX_OBJECTS).toBe(999);
+    expect(SQL_LIMIT).toBe(1000);
+    expect(readConfig({ ...env, SWEEP_MAX_OBJECTS: "999" }).maxObjects).toBe(999);
+    expect(() => readConfig({ ...env, SWEEP_MAX_OBJECTS: "1000" })).toThrow("1 to 999");
   });
   test("a local address only with SWEEP_ALLOW_LOCAL=1 (the CI test)", () => {
     expect(readConfig({ ...env, SUPABASE_URL: "http://127.0.0.1:54321", SWEEP_ALLOW_LOCAL: "1" }).url).toBe("http://127.0.0.1:54321");
@@ -156,6 +168,39 @@ test.describe("runSweep", () => {
     const lists = s.calls.filter((c) => c.path.endsWith("/lead_file_orphans"));
     expect(lists).toHaveLength(1);
     expect(lists[0].body).toEqual({ p_min_age: "24 hours", p_limit: 51 });
+  });
+  test("an apply run that finds nothing records an apply row (dry_run false), not a dry run", async () => {
+    const s = fakeServer({ first: [] });
+    const r = await runSweep({ config: config({ apply: true }), fetchFn: s.fetchFn, ...quiet });
+    expect(r).toMatchObject({ exitCode: 0, mode: "apply", found: 0, removed: 0, bytes: 0, deleteCalls: 0 });
+    expect(s.recorded()).toEqual([{ p_found: 0, p_removed: 0, p_bytes: 0, p_dry: false }]);
+    expect(s.calls.filter((c) => c.path.endsWith("/lead_file_orphans"))).toHaveLength(1);
+    // A dry run that finds nothing still records a dry run.
+    const d = fakeServer({ first: [] });
+    await runSweep({ config: config(), fetchFn: d.fetchFn, ...quiet });
+    expect(d.recorded()).toEqual([{ p_found: 0, p_removed: 0, p_bytes: 0, p_dry: true }]);
+  });
+  test("cap edge: the highest cap (999) asks for 1000 rows, which the database accepts; 1000 rows found is over the cap", async () => {
+    const thousand = Array.from({ length: 1000 }, (_, i) => row(ORG_A, i + 1, 1));
+    const s = fakeServer({ first: thousand });
+    const r = await runSweep({ config: config({ apply: true, maxObjects: MAX_OBJECTS, maxBytes: 1024 * 1024 * 1024 }), fetchFn: s.fetchFn, ...quiet });
+    const lists = s.calls.filter((c) => c.path.endsWith("/lead_file_orphans"));
+    expect(lists.map((c) => (c.body as { p_limit: number }).p_limit)).toEqual([1000]);
+    expect(r).toMatchObject({ exitCode: 1, found: 1000 });
+    expect(r.stopped).toContain("more objects than the cap (found 1000+");
+    expect(s.deleteCalls()).toHaveLength(0);
+    // 999 found under a 999 cap is fine and is swept.
+    const ok = fakeServer({ first: thousand.slice(0, 999) });
+    const r2 = await runSweep({ config: config({ apply: true, maxObjects: MAX_OBJECTS, maxBytes: 1024 * 1024 * 1024 }), fetchFn: ok.fetchFn, ...quiet });
+    expect(r2).toMatchObject({ exitCode: 0, found: 999, removed: 999 });
+    // A caller that skips readConfig and sets a cap of 1000 still never asks for more than 1000 rows, and a full page
+    // of 1000 is treated as over the cap (there may be more than were listed).
+    const raw = fakeServer({ first: thousand });
+    const r3 = await runSweep({ config: config({ apply: true, maxObjects: 1000, maxBytes: 1024 * 1024 * 1024 }), fetchFn: raw.fetchFn, ...quiet });
+    expect(raw.calls.filter((c) => c.path.endsWith("/lead_file_orphans")).map((c) => (c.body as { p_limit: number }).p_limit)).toEqual([1000]);
+    expect(r3).toMatchObject({ exitCode: 1, found: 1000 });
+    expect(raw.deleteCalls()).toHaveLength(0);
+    expect(planSweep(thousand, { maxObjects: 1000, maxBytes: 1024 * 1024 * 1024 })).toMatchObject({ ok: false, reason: "too_many" });
   });
   test("the log and the summary hold counts per org id, never a name", async () => {
     const out: string[] = [];

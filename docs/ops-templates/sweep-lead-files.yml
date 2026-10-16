@@ -39,7 +39,7 @@ on:
         type: string
         default: ""
       max_objects:
-        description: "Cap for this run: stop if more objects than this are found (default 50)"
+        description: "Cap for this run: stop if more objects than this are found (default 50, at most 999)"
         required: false
         type: string
         default: "50"

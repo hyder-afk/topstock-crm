@@ -7,6 +7,10 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 export const PATH_SHAPE = new RegExp(`^${UUID}/${UUID}/${UUID}\\.(pdf|png|jpg|docx|xlsx)$`);
 export const BUCKET = "lead-files";
 export const BATCH = 100;
+/** lead_file_orphans returns at most this many rows a call (the migration refuses p_limit above it). */
+export const SQL_LIMIT = 1000;
+/** The highest SWEEP_MAX_OBJECTS: the listing asks for one more than the cap, so the cap stays below SQL_LIMIT. */
+export const MAX_OBJECTS = SQL_LIMIT - 1;
 const MIB = 1024 * 1024;
 const TIMEOUT_MS = 30_000;
 
@@ -37,7 +41,7 @@ export function readConfig(env) {
     url,
     key,
     apply: mode === "apply",
-    maxObjects: intSetting(env, "SWEEP_MAX_OBJECTS", 50, 1, 1000),
+    maxObjects: intSetting(env, "SWEEP_MAX_OBJECTS", 50, 1, MAX_OBJECTS),
     maxBytes: intSetting(env, "SWEEP_MAX_MIB", 200, 1, 1024) * MIB,
     minAgeHours: intSetting(env, "SWEEP_MIN_AGE_HOURS", 24, 24, 8760),
   };
@@ -78,7 +82,8 @@ export function planSweep(rows, caps) {
     byOrg[org].bytes += size;
   }
   const found = names.size;
-  if (found > caps.maxObjects) return { ok: false, reason: "too_many", found, bytes, byOrg, names };
+  // A full SQL page means there may be more than were listed: over the cap even if a caller set a cap of SQL_LIMIT.
+  if (found > caps.maxObjects || found >= SQL_LIMIT) return { ok: false, reason: "too_many", found, bytes, byOrg, names };
   if (bytes > caps.maxBytes) return { ok: false, reason: "too_big", found, bytes, byOrg, names };
   return { ok: true, found, bytes, byOrg, names };
 }
@@ -136,8 +141,12 @@ async function call(fetchFn, config, method, path, body) {
 }
 
 const rpc = (fetchFn, config, fn, args) => call(fetchFn, config, "POST", `/rest/v1/rpc/${fn}`, args);
+// One more than the cap, so "more than the cap" is seen; never above what the SQL accepts.
 const listOrphans = (fetchFn, config) =>
-  rpc(fetchFn, config, "lead_file_orphans", { p_min_age: `${config.minAgeHours} hours`, p_limit: config.maxObjects + 1 });
+  rpc(fetchFn, config, "lead_file_orphans", {
+    p_min_age: `${config.minAgeHours} hours`,
+    p_limit: Math.min(config.maxObjects + 1, SQL_LIMIT),
+  });
 
 /**
  * @typedef {{ exitCode: number, mode: string, found: number, removed: number, bytes: number,
@@ -182,7 +191,7 @@ export async function runSweep({ config, fetchFn = fetch, log = console.log, sum
     report.found = first.found;
     report.byOrg = first.byOrg;
     if (!first.ok) {
-      stop(`${REASONS[first.reason]} (found ${first.found}${first.found > caps.maxObjects ? "+" : ""}, ${formatBytes(first.bytes)}; caps ${caps.maxObjects} objects, ${formatBytes(caps.maxBytes)}); nothing was deleted`);
+      stop(`${REASONS[first.reason]} (found ${first.found}${first.reason === "too_many" ? "+" : ""}, ${formatBytes(first.bytes)}; caps ${caps.maxObjects} objects, ${formatBytes(caps.maxBytes)}); nothing was deleted`);
       return report;
     }
     lines.push(`- Older than ${config.minAgeHours} hours with no files row: ${first.found} objects, ${formatBytes(first.bytes)}`);
@@ -198,7 +207,7 @@ export async function runSweep({ config, fetchFn = fetch, log = console.log, sum
 
     if (!config.apply || first.found === 0) {
       report.bytes = first.bytes;
-      await rpc(fetchFn, config, "record_file_sweep", { p_found: first.found, p_removed: 0, p_bytes: first.bytes, p_dry: true });
+      await rpc(fetchFn, config, "record_file_sweep", { p_found: first.found, p_removed: 0, p_bytes: first.bytes, p_dry: !config.apply });
       lines.push(config.apply ? "- Nothing to remove." : "- Dry run: nothing removed. Deleting starts only when SWEEP_APPLY is yes (runbook).");
       return report;
     }

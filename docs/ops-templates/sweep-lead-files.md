@@ -100,7 +100,9 @@ what it finds.
 
 ### Raising a cap for one run (only when Claude asks)
 **Run workflow** > confirm `SWEEP` > set **max_objects** or **max_mib** to the number Claude gives you. The next
-scheduled run uses the normal caps again.
+scheduled run uses the normal caps again. The highest **max_objects** is 999 and the highest **max_mib** is 1024: a
+bigger number stops the run at once with "bad settings" and nothing is deleted. More than 999 orphans means something
+is wrong; tell Claude instead of raising the cap further.
 
 ### Moving to newer sweeper code
 Claude gives you a new commit SHA after a reviewed change is merged. Edit the variable `SWEEPER_SHA` to it. Nothing
@@ -132,7 +134,7 @@ Nothing else uses this key, so no other part of the CRM is affected.
   `public.lead_file_sweep_stats()`, `public.record_file_sweep(p_found, p_removed, p_bytes, p_dry)`; SECURITY INVOKER,
   `search_path = ''`, executable by `service_role` only. Audit rows: `action = 'file_sweep'`,
   `table_name = 'storage.objects'`, no org, actor or record id, `diff_json` = `{found, removed, bytes, dry_run}`.
-- Script settings: `SUPABASE_URL`, `SWEEPER_KEY`, `SWEEP_MODE` (dry or apply), `SWEEP_MAX_OBJECTS` (50),
+- Script settings: `SUPABASE_URL`, `SWEEPER_KEY`, `SWEEP_MODE` (dry or apply), `SWEEP_MAX_OBJECTS` (50, at most 999: the listing asks for one more than the cap and the database gives at most 1000 a call),
   `SWEEP_MAX_MIB` (200), `SWEEP_MIN_AGE_HOURS` (24, never less). Exit 0 done, 1 stopped or failed, 2 bad settings.
 - Tests: `supabase/tests/sweeper_attack.sql` (CI job db), `tests/unit/sweep-plan.spec.ts` (unit),
   `tests/auth/sweeper.spec.ts` (CI auth-journey with real storage-api), mutation set `day7c` in
