@@ -21,9 +21,17 @@ bash scripts/db-test.sh || status=1
 echo "== 2. Two-user browser and API run (Chromium)"
 npx playwright test -c playwright.auth.config.ts --project=chromium --workers=1 \
   tests/auth/gate1.spec.ts tests/auth/day4-security.spec.ts tests/auth/day5-security.spec.ts \
-  tests/auth/import-security.spec.ts tests/auth/day7a.spec.ts tests/auth/journey.spec.ts tests/auth/team.spec.ts \
+  tests/auth/import-security.spec.ts tests/auth/day7a.spec.ts tests/auth/team.spec.ts \
   tests/auth/files.spec.ts tests/auth/leads.spec.ts tests/auth/tasks.spec.ts tests/auth/stock-import.spec.ts \
   tests/auth/inventory.spec.ts tests/auth/share.spec.ts || status=1
+# The sign-in journey reads invitation and reset e-mails from the stack's mail inbox (MAILPIT_URL, CI's supabase start);
+# the local stand-in has none, so only its two mail-free tests run there.
+if [ -n "${MAILPIT_URL:-}" ]; then
+  npx playwright test -c playwright.auth.config.ts --project=chromium tests/auth/journey.spec.ts || status=1
+else
+  echo "gate1-run: no MAILPIT_URL, journey.spec.ts runs its mail-free tests only (the rest in CI)"
+  npx playwright test -c playwright.auth.config.ts --project=chromium tests/auth/journey.spec.ts -g "unknown address|nobody can sign up" || status=1
+fi
 echo "== 3. Signed-out checks and the route inventory"
 npx playwright test tests/e2e/signed-out.spec.ts || status=1
 npx playwright test -c playwright.unit.config.ts tests/unit/route-inventory.spec.ts tests/unit/file-sniff.spec.ts || status=1
