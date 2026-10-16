@@ -297,7 +297,9 @@ test("inventory_390_no_horizontal_scroll_and_product_page", async ({ browser }) 
   expect(await noSideways(page)).toBeLessThanOrEqual(0);
   // Touch targets: every button and link on the product page is at least 44 px tall.
   const small = await page.locator("main button:visible, main a:visible").evaluateAll((els) =>
-    els.filter((e) => e.getBoundingClientRect().height < 44).map((e) => e.textContent?.trim()),
+    els
+      .filter((e) => e.getBoundingClientRect().height < 44)
+      .map((e) => `${e.textContent?.trim()} (${e.getBoundingClientRect().height}px, min-height ${getComputedStyle(e).minHeight}, display ${getComputedStyle(e).display})`),
   );
   expect(small).toEqual([]);
   await page.getByRole("link", { name: "Inventory" }).first().tap();
@@ -360,6 +362,8 @@ test("admin_settings", async ({ browser }) => {
   await settled(page);
   await page.goto("/inventory/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Inventory settings" })).toBeVisible();
+  // Typed before hydration, the controlled field went back to its saved 14 and Save sent 14 (WebKit, PR #18).
+  await appReady(page);
   await page.getByLabel("Default hold length (days)").fill("21");
   await page.getByRole("button", { name: "Save" }).nth(1).click();
   await expect(toast(page)).toHaveText("Settings saved.");

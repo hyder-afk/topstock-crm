@@ -465,7 +465,7 @@ function RecentMovements({ p }: { p: ProductDetail }) {
           })}
         </ul>
       )}
-      <Link href={`/inventory?tab=movements&product=${p.id}`} className="inline-flex min-h-11 items-center self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-9">
+      <Link href={`/inventory?tab=movements&product=${p.id}`} className="flex min-h-11 w-fit items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-9">
         {t("allMovements")}
       </Link>
     </section>
