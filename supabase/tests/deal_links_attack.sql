@@ -194,15 +194,23 @@ declare
   r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
   r2 constant uuid := '00000000-0000-0000-0000-0000000005a2';
   admin constant uuid := '00000000-0000-0000-0000-00000000000a';
-  lead uuid := pg_temp.new_lead(r1, 'warm');
-  lead2 uuid := pg_temp.new_lead(r1, 'warm');
-  shared uuid := pg_temp.new_lead(r2, 'warm');
-  deal uuid := pg_temp.su_deal(lead, r1);
-  deal2 uuid := pg_temp.su_deal(lead2, r1);
-  r1_deal_on_shared uuid := pg_temp.su_deal(shared, r1);
+  lead uuid;
+  lead2 uuid;
+  shared uuid;
+  deal uuid;
+  deal2 uuid;
+  r1_deal_on_shared uuid;
   r jsonb;
   act uuid;
 begin
+  -- Fixtures in the body, not in DECLARE: initialisers run before the block's exception savepoint, so the TS001 undo
+  -- would leave these deals behind (Day 7 plan section 2 item 20; Day 5a mutation row 58 was caught by their volume).
+  lead := pg_temp.new_lead(r1, 'warm');
+  lead2 := pg_temp.new_lead(r1, 'warm');
+  shared := pg_temp.new_lead(r2, 'warm');
+  deal := pg_temp.su_deal(lead, r1);
+  deal2 := pg_temp.su_deal(lead2, r1);
+  r1_deal_on_shared := pg_temp.su_deal(shared, r1);
   perform pg_temp.act(r1);
   -- log_activity_with_deal_same_lead_only: a note on the deal's lead names it (direct insert and RPC)
   insert into public.activities (company_id, deal_id, type, body) values (lead, deal, 'note', 'direct, with the deal') returning id into act;
@@ -339,13 +347,17 @@ declare
   r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
   r2 constant uuid := '00000000-0000-0000-0000-0000000005a2';
   admin constant uuid := '00000000-0000-0000-0000-00000000000a';
-  lead uuid := pg_temp.new_lead(r1, 'cold');
-  dnc uuid := pg_temp.new_lead(r1, 'do_not_contact');
-  deal uuid := pg_temp.su_deal(lead, r1);
+  lead uuid;
+  dnc uuid;
+  deal uuid;
   r jsonb;
   stmt text;
   n_acts integer;
 begin
+  -- Fixtures in the body so the TS001 undo removes them (see block 2).
+  lead := pg_temp.new_lead(r1, 'cold');
+  dnc := pg_temp.new_lead(r1, 'do_not_contact');
+  deal := pg_temp.su_deal(lead, r1);
   -- log_activity_open_deal_non_editor_skipped: r2 may log on r1's lead but not change it: the call stays, no deal
   perform pg_temp.act(r2);
   r := pg_temp.interested(lead, true);
@@ -520,14 +532,20 @@ declare
   r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
   r2 constant uuid := '00000000-0000-0000-0000-0000000005a2';
   admin constant uuid := '00000000-0000-0000-0000-00000000000a';
-  lead uuid := pg_temp.new_lead(r1, 'warm');
-  dnc uuid := pg_temp.new_lead(r1, 'do_not_contact');
-  empty uuid := pg_temp.new_lead(r1, 'cold');
-  old_deal uuid := pg_temp.su_deal(lead, r1);
+  lead uuid;
+  dnc uuid;
+  empty uuid;
+  old_deal uuid;
   new_deal uuid;
-  won_deal uuid := pg_temp.su_deal(lead, r1);
+  won_deal uuid;
   g jsonb;
 begin
+  -- Fixtures in the body so the TS001 undo removes them (see block 2).
+  lead := pg_temp.new_lead(r1, 'warm');
+  dnc := pg_temp.new_lead(r1, 'do_not_contact');
+  empty := pg_temp.new_lead(r1, 'cold');
+  old_deal := pg_temp.su_deal(lead, r1);
+  won_deal := pg_temp.su_deal(lead, r1);
   update public.deals set stage_entered_at = now() - interval '20 days', title = 'Older' where id = old_deal;
   update public.deals set stage_id = (select id from public.pipeline_stages s where s.key = 'won'
                                        and s.org_id = (select org_id from public.companies where id = lead)),
@@ -574,13 +592,18 @@ declare
   r1 constant uuid := '00000000-0000-0000-0000-0000000005a1';
   r2 constant uuid := '00000000-0000-0000-0000-0000000005a2';
   admin constant uuid := '00000000-0000-0000-0000-00000000000a';
-  lead uuid := pg_temp.new_lead(r1, 'warm');
-  empty uuid := pg_temp.new_lead(r1, 'cold');
-  old_deal uuid := pg_temp.su_deal(lead, r1);
-  won_deal uuid := pg_temp.su_deal(lead, r1);
+  lead uuid;
+  empty uuid;
+  old_deal uuid;
+  won_deal uuid;
   new_deal uuid;
   c jsonb;
 begin
+  -- Fixtures in the body so the TS001 undo removes them (see block 2).
+  lead := pg_temp.new_lead(r1, 'warm');
+  empty := pg_temp.new_lead(r1, 'cold');
+  old_deal := pg_temp.su_deal(lead, r1);
+  won_deal := pg_temp.su_deal(lead, r1);
   update public.deals set stage_entered_at = now() - interval '20 days' where id = old_deal;
   update public.deals set stage_id = (select id from public.pipeline_stages s where s.key = 'won'
                                        and s.org_id = (select org_id from public.companies where id = lead)),
