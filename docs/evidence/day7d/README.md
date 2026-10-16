@@ -15,11 +15,13 @@ passes on Day 8.
 - **Manual security pass over all of Release 1 (a supplement): no HIGH or MEDIUM finding.** Four test gaps closed with
   new checks. **`/security-review`: done** by the main session on 942ab62 (all of Day 6 and 7): 0 HIGH or MEDIUM ([`security-review-command.md`](security-review-command.md)).
 - **No secret in the whole git history** (gitleaks, 708 commits after the 7c merge); **0 vulnerabilities** in what ships (`npm audit`).
-- **Section 8: 51 of 59 items done** (item 50 with `/security-review`), 0 pending, 1 accepted residual
-  (rate limits, R1), 3 wait for Day 8, 1 runs in CI when billing is back (`npm audit signatures`), 3 not applicable.
-- **Dev project**: fake data only, the lead checks return 0, 14 MB used; advisors 0 ERROR. Dev still has only main's
-  migrations (up to Team), so these are read again after the Day 6 and Day 7 PRs deploy.
-- **Database budgets on a GitHub runner**: workflow prepared (`db-budgets`), runs when CI billing is back.
+- **Section 8: 52 of 59 items done** (item 50 with `/security-review`; item 38 `npm audit signatures` passed in CI on
+  942ddd7), 0 pending, 1 accepted residual (rate limits, R1), 3 wait for Day 8, 3 not applicable.
+- **Dev project**: fake data only, the lead checks return 0; advisors 0 ERROR. (Before PR #19: 14 MB, main's migrations
+  up to Team. Now, re-read after the Day 6 and 7 deploy: all migrations, 16.6 MB, only the accepted WARNs; see
+  [`dev-checks.md`](dev-checks.md), last section.)
+- **Database budgets on a GitHub runner**: workflow prepared (`db-budgets`); the one manual run is still open (it needs
+  the workflow on main, which it now is). Not a Gate 1 condition.
 
 ## Deliverables
 
@@ -27,10 +29,10 @@ passes on Day 8.
 |---|---|---|---|
 | 1 | Two-user attack test, steps 1 to 8, one Playwright plus SQL run, step-to-test map | `two-user-map.md`; `tests/auth/gate1.spec.ts`; `supabase/tests/gate1_attack.sql`; `scripts/gate1-run.sh` | all 8 steps pass (step 7 login/reset: hosted only); 8 planted breaks against the new browser/API tests: 7 caught, 1 refused by a second database layer (as it should be); `gate1_attack.sql` 17 of 17 |
 | 2 | `/security-review` over all of Release 1 | [`security-review-command.md`](security-review-command.md), `security-review.md` | **done: `/security-review` by the main session on 942ab62, 0 HIGH or MEDIUM at confidence 8+** ([`security-review-command.md`](security-review-command.md)). The builder's manual pass, a supplement: 0 HIGH, 0 MEDIUM at confidence 8+; 4 test gaps closed; 3 informational notes |
-| 3 | Full-history gitleaks; `npm audit --omit=dev`; `npm audit signatures` | `gitleaks.md` | no leaks (708 commits after the 7c merge; 678 on the base); 0 vulnerabilities; signatures blocked by this session's network policy, added to CI |
-| 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 51 done, 0 pending, 1 residual, 3 Day 8, 1 CI, 3 N/A |
+| 3 | Full-history gitleaks; `npm audit --omit=dev`; `npm audit signatures` | `gitleaks.md` | no leaks (708 commits after the 7c merge; 678 on the base); 0 vulnerabilities; signatures blocked by this session's network policy, added to CI (now: passed in CI on 942ddd7) |
+| 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 52 done (38 passed in CI on 942ddd7), 0 pending, 1 residual, 3 Day 8, 0 CI, 3 N/A |
 | 5 | Day 5a mutation rows 64 to 73 re-run | `mutations.md` | 10 of 10 caught; row 58 back to its documented NOT CAUGHT (the fixture fix) |
-| 6 | Dev data checks (item 15), size query (item 16), dev advisors | `dev-checks.sql`, `dev-checks.md` | 0 wrong (one check read by hand: the read-only role cannot run private functions); 14 MB; Security 0 ERROR, 2 accepted WARN; Performance 0 ERROR/WARN |
+| 6 | Dev data checks (item 15), size query (item 16), dev advisors | `dev-checks.sql`, `dev-checks.md` | 0 wrong (one check read by hand: the read-only role cannot run private functions); 14 MB; Security 0 ERROR, 2 accepted WARN; Performance 0 ERROR/WARN (before PR #19; now: 16.6 MB, Security 0 ERROR and 4 accepted WARN, Performance INFO only, `dev-checks.md` last section) |
 | 7 | Spike S5 from Vercel's docs; Day 1 residuals; leaked-password WARN | `spike-s5.md`; sections below | answered; restated; recorded as accepted |
 | 8 | Database budgets on a GitHub runner | `.github/workflows/db-budgets.yml` | prepared, runs when CI billing is back (manual start only) |
 | 9 | This README, log rows | here, `docs/log.md` | |
@@ -66,7 +68,7 @@ No product code changed: the review found nothing to fix in `src/` or the migrat
 | `tests/auth/gate1.spec.ts` alone | 10 passed (2.4 min) |
 | `python3 scripts/db-mutations.py --anchors` | 660 rows in 15 sets apply, none dead |
 | Chromium | 141 (`/opt/pw-browsers/chromium-1194`), throwaway stack: PostgreSQL 54650, GoTrue 9988, gateway 54651, `next start` 4100 |
-| WebKit, storage-api, real PostgREST, Semgrep | CI only (GitHub Actions blocked by billing): prepared, runs in CI later |
+| WebKit, storage-api, real PostgREST, Semgrep | CI only (GitHub Actions blocked by billing at the time). Now: all green in CI on 942ddd7 (PR #19) |
 
 ## Day 1 residual risks, restated at Gate 1 (`docs/evidence/day1-step2/security-review.md` lines 26 to 35, log line 58)
 
@@ -90,13 +92,14 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
 
 ## Open items (for the main session, CI or Day 8)
 
-1. **CI when billing is back**: the PR's full CI (WebKit, storage-api e2e, real PostgREST checks in `gate1.spec.ts`
+1. **CI when billing is back** (CI part closed: all green on 942ddd7, PR #19 merged as d12a4a9; still open: the
+   `db-budgets` manual run and the speed baseline, neither a Gate 1 condition): the PR's full CI (WebKit, storage-api e2e, real PostgREST checks in `gate1.spec.ts`
    steps 2, 3 and 8, `db.yml` with `gate1_attack.sql` on the real Supabase image, `npm audit signatures`,
    `check-build.mjs`, Semgrep), then one manual run of `db-budgets` (question 11; `workflow_dispatch` needs the workflow on the default branch, so after the PR merges) and the Release 1 speed baseline from
    its log (question 14).
-2. **Dev after the Day 6 and Day 7 PRs deploy**: re-run `dev-checks.sql` (read-only MCP) and both dev advisors; expect
+2. **Closed** (16 Oct, after deploy-dev-db 38954829775; `dev-checks.md` last section). **Dev after the Day 6 and Day 7 PRs deploy**: re-run `dev-checks.sql` (read-only MCP) and both dev advisors; expect
    the WARNs `share_view`/`share_request` (Day 6e, accepted) to join.
-3. **`call_zone_matches_map` as the owner**: the read-only MCP role cannot call the private zone functions; Haider runs
+3. **Closed** (Haider's owner run: 0 rows, log line 438; re-read by hand after the deploy: 0 wrong). **`call_zone_matches_map` as the owner**: the read-only MCP role cannot call the private zone functions; Haider runs
    that one query in the dev SQL editor after the import (1 minute), or it runs on the next restore test.
 4. **`supabase config push --yes` diff check** (plan step 7a, log line 71) is not built: it changes the dev deploy
    workflow, so it goes with the next deploy change, with Haider; until then `deploy-dev-db` keeps reading back the
@@ -166,6 +169,16 @@ protection it guards; the per-day checks it relies on were shown so in their own
 re-run here). What remains is not code, but it is part of the gate.
 
 **Haider, 16 Oct 2026: "yes" — Gate 1 (code part) CONDITIONALLY PASSED.** It flips to passed only when (a) to (c) below are shown green; (d) is met. The ops part stays on Day 8, before any real data.
+
+**16 Oct 2026, about 19:27 UTC: all four conditions shown met, so under Haider's decision Gate 1 (code part) is PASSED.**
+- (a) PR #19 merged as `d12a4a9` with every check green on its last head `942ddd7`: quality, semgrep, gitleaks scan,
+  rls (`db` suites incl. `gate1_attack.sql`), auth-journey Chromium 1/2 and 2/2, WebKit 1/2 and 2/2, Vercel.
+- (b) Dev re-read after `deploy-dev-db` (run 38954829775): 0 ERROR in both advisors, only the accepted WARNs, the stored
+  lead facts 0 wrong, fake data only ([`dev-checks.md`](dev-checks.md), last section).
+- (c) In the same CI run: `npm audit signatures` and `check-build.mjs` (quality job), WebKit, the storage-api e2e
+  (`E2E_STORAGE=1`) and `gate1.spec.ts` against real PostgREST (the spec fails in CI unless it detects real PostgREST,
+  and skips nothing), including step 3's RPC sweep.
+- (d) `/security-review`: met (below).
 
 HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four conditions hold:**
 

@@ -21,7 +21,7 @@ Re-run on the final head after the Day 7c merge: see README, "Merge with Day 7c"
 |---|---|
 | `npm audit --omit=dev` (runtime dependencies, what ships) | **found 0 vulnerabilities** (exit 0) |
 | `npm audit` (everything, report only) | 5 high, one chain: `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm, stack exhaustion on deeply nested patterns) via `micromatch` 4.0.8, `fast-glob` 3.3.1, `@next/eslint-plugin-next` 16.4.0, `eslint-config-next` 16.4.0. Lint-time only, never in the build output or the server; the only offered fix downgrades `eslint-config-next` to 14.2.35 (breaking). CI keeps it report-only (`npm audit --audit-level=critical \|\| true`). Accepted until Next ships a fixed plugin |
-| `npm audit signatures` | **not run here**: npm fetches Sigstore's trust root from `tuf-repo-cdn.sigstore.dev`, which this session's network proxy refuses (403 at CONNECT, recorded in the proxy status). Not worked around. Added as a step in `ci.yml`'s quality job: **prepared, runs in CI later** (GitHub Actions is blocked by billing) |
+| `npm audit signatures` | **not run here**: npm fetches Sigstore's trust root from `tuf-repo-cdn.sigstore.dev`, which this session's network proxy refuses (403 at CONNECT, recorded in the proxy status). Not worked around. Added as a step in `ci.yml`'s quality job: **prepared, runs in CI later** (GitHub Actions is blocked by billing). Now: passed in CI (quality job) on 942ddd7, PR #19 |
 
 ## Production bundle scan (`scripts/check-build.mjs`)
 

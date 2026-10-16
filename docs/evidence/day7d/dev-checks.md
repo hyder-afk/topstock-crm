@@ -54,3 +54,26 @@ Projection from the designs: ~255 MB a year with 30k leads (Day 4 design line 54
 Local splinter (pinned rules, `scripts/db-advisors.sh`) on all 20 migrations of this branch, in today's `db-test.sh`:
 0 ERROR; WARN `share_view`, `share_request` (anon SECURITY DEFINER, Day 6e by design) and `set_user_role`; INFO
 `unindexed_foreign_keys` 8, `unused_index` 10 to 12. These are what dev will show once Day 6 and 7 deploy.
+
+## Re-read after Day 6 and Day 7 reached dev (Gate 1 condition b)
+
+16 Oct 2026, about 19:27 UTC (after the deploy finished at 19:26:37). PR #19 merged as `d12a4a9`; `deploy-dev-db` run 38954829775 succeeded (auth settings, sign-ups
+closed, REST API public schema only, migrations). Same project, MCP `read_only=true`, SELECTs only.
+
+| Read | Result |
+|---|---|
+| Migrations on dev | up to `20261022130000_share_take_paris_day` (all of Day 6 and Day 7a to 7f) |
+| `has_contact_phone_consistent` | **0** wrong |
+| `queue_rank_matches_rule` | **0** wrong |
+| `call_zone_matches_map` | still not runnable by the read-only role (private function, by design). Haider's owner run returned 0 rows (log line 438), but that was before this deploy. Re-read by hand after it: the 1 lead has no country and no time zone and its stored zone is `Europe/Paris` (the map's fallback), so **0** wrong |
+| Auth users | 1, on the company's own domain; no test or default accounts |
+| Rows | companies 1 (no e-mail), contacts 0, activities 1, tasks 0, deals 0, files 0, products 0, stock movements 0, orders 0, audit rows 10 |
+| Database size | 16.6 MB of 500 MB |
+| `pg_cron` | installed |
+
+| Advisor | ERROR | WARN | INFO |
+|---|---|---|---|
+| Security | **0** | 4, all accepted: `anon_security_definer_function_executable` on `share_view` and `share_request` (Day 6e client share by design: token-gated, rate-limited), `authenticated_security_definer_function_executable` on `set_user_role` (Day 1), `auth_leaked_password_protection` (paid plan only, Haider question 4) | 0 |
+| Performance | **0** | 0 | `unindexed_foreign_keys` 8 (the `org_id` and same-org owner keys predicted by the local splinter run above; one organisation, accepted Day 4b); `unused_index` 98 (dev is empty, no index has been used) |
+
+Same ERROR and WARN lints as the local splinter run predicted, plus leaked-password protection, which only the hosted project can show. The `unused_index` count is higher than locally because dev has more indexes and an empty database. Condition (b) is met.

@@ -25,4 +25,4 @@ Planted cases on a scratch folder shaped like `.next/static` (holding one anon J
 | `//# sourceMappingURL=b.js.map` | fail | exit 1, "sourceMappingURL comment" |
 
 CI: `ci.yml` quality job runs it after `npm run build` (placeholder public values there, so no JWT at all): prepared,
-runs in CI later.
+runs in CI later. Now: passed in CI on 942ddd7 (PR #19).
