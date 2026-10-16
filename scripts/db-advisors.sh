@@ -7,8 +7,9 @@ SPLINTER_COMMIT=fccca4b1c4d8b48b8ccd69bd6b30e84adcb92975
 SPLINTER_SHA256=d8d558baad3e03832e521c527907fa50a9a172fabd899dd0f5c2504a5a0e9349
 CACHE="${TMPDIR:-/tmp}/splinter-$SPLINTER_COMMIT.sql"
 if [ ! -f "$CACHE" ]; then
-  curl -fsSL "https://raw.githubusercontent.com/supabase/splinter/$SPLINTER_COMMIT/splinter.sql" -o "$CACHE.part"
-  mv "$CACHE.part" "$CACHE"
+  # One part file per run: two runs side by side (DB_TEST_PORT) each download, and the rename is atomic.
+  curl -fsSL "https://raw.githubusercontent.com/supabase/splinter/$SPLINTER_COMMIT/splinter.sql" -o "$CACHE.$$.part"
+  mv "$CACHE.$$.part" "$CACHE"
 fi
 echo "$SPLINTER_SHA256  $CACHE" | sha256sum -c --quiet
 # Columns: name, title, level, facing, categories, description, detail, remediation, metadata, cache_key.

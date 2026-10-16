@@ -6,6 +6,13 @@
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
+-- The app's day. The guards compare dates with the Paris day ((now() at time zone 'Europe/Paris')::date), so every date
+-- this file checks against them is built from it too, never from current_date (the session's time zone: UTC on the
+-- runners, a day behind Paris from 22:00 or 23:00 UTC). The suite then passes under any PGTZ, at any hour.
+create function pg_temp.paris_today() returns date language sql stable as $$
+  select (now() at time zone 'Europe/Paris')::date
+$$;
+
 create function pg_temp.as_user(sub text, aal text, totp_age_s integer default null) returns void
 language sql as $$
   select set_config('request.jwt.claims', jsonb_build_object(
@@ -80,13 +87,13 @@ select set_config('t.p_held', public.create_product(p_name => 'SH Fully held', p
   p_opening_qty => 48, p_opening_location => 'warehouse')::text, false) \g /dev/null
 select public.post_stock_movement(current_setting('t.p_held')::uuid, 'reserve', 48, 'warehouse',
   p_company => '5e000000-0000-0000-0000-0000000000a0') \g /dev/null
-select set_config('t.eta', (date_trunc('month', current_date + 40)::date + 2
-  + ((3 - extract(isodow from date_trunc('month', current_date + 40)::date + 2)::integer + 7) % 7))::text, false) \g /dev/null
+select set_config('t.eta', (date_trunc('month', pg_temp.paris_today() + 40)::date + 2
+  + ((3 - extract(isodow from date_trunc('month', pg_temp.paris_today() + 40)::date + 2)::integer + 7) % 7))::text, false) \g /dev/null
 select set_config('t.p_tr', public.create_product(p_name => 'SH Transit', p_pieces_per_carton => 50, p_price_max => 1.5,
   p_category => 'Cups', p_transit_eta => current_setting('t.eta')::date, p_opening_qty => 500,
   p_opening_location => 'transit')::text, false) \g /dev/null
 select set_config('t.p_past', public.create_product(p_name => 'SH Past eta', p_pieces_per_carton => 50, p_price_max => 1.5,
-  p_category => 'Cups', p_transit_eta => current_date - 7, p_opening_qty => 200, p_opening_location => 'transit')::text,
+  p_category => 'Cups', p_transit_eta => pg_temp.paris_today() - 7, p_opening_qty => 200, p_opening_location => 'transit')::text,
   false) \g /dev/null
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000c1', 'aal2', 30) \g /dev/null
 select set_config('t.p_other', public.create_product(p_name => 'SH Other org', p_pieces_per_carton => 10, p_price_max => 5,
@@ -329,8 +336,10 @@ begin
                  or i ->> 0 ~ '-') then
     raise exception 'FAIL: share_view_payload_keys_exact (items are 8-place arrays, no internal id)';
   end if;
-  -- The planted minimum price and cost never travel.
-  if r::text like '%1.11%' or r::text like '%0.42%' or r::text not like '%999.99%' then
+  -- The planted minimum price and cost never travel. generated_at is left out of the search: it is now() with
+  -- microseconds, so a clock reading such as 23:31:01.114 matched '%1.11%' (the keys check above still requires it).
+  if (r - 'generated_at')::text like '%1.11%' or (r - 'generated_at')::text like '%0.42%'
+     or r::text not like '%999.99%' then
     raise exception 'FAIL: share_view sends the minimum price or the cost';
   end if;
 end $$;

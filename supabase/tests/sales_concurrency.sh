@@ -162,7 +162,7 @@ integrity transfer_vs_sell_no_deadlock
 # 7. expiry_vs_sale ------------------------------------------------------------------------------------------------------
 receive 'SC P8' 50
 as_user "$(U 9)" "select public.post_stock_movement('$(pid 'SC P8')', 'reserve', 50, p_company => '$L1') \g /dev/null" >/dev/null
-as_owner "update private.stock_reservations set hold_until = current_date - 1 where product_id = '$(pid 'SC P8')';" >/dev/null
+as_owner "update private.stock_reservations set hold_until = (now() at time zone 'Europe/Paris')::date - 1 where product_id = '$(pid 'SC P8')';" >/dev/null
 ( as_owner "begin;
    select private.expire_holds_for(p.org_id, p.id, null, 100) from public.products p where p.id = '$(pid 'SC P8')' \g /dev/null
    select pg_sleep(1) \g /dev/null

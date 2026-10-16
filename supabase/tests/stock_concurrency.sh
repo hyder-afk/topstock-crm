@@ -357,7 +357,7 @@ wait $p1 || fail "lock order (a): the ordered session failed: $(head -3 "$WORKDI
 #    Arrived empties transit and clears the expected date: it takes the product lock first, so it waits behind X instead
 #    of holding the levels while waiting for the product.
 opening "$(p 11)" 0 30
-as_owner "update public.products set transit_eta = current_date + 5 where id = '$(p 11)';" >/dev/null
+as_owner "update public.products set transit_eta = (now() at time zone 'Europe/Paris')::date + 5 where id = '$(p 11)';" >/dev/null
 as_owner "begin;
 select 1 from public.products where id = '$(p 11)' for share \g /dev/null
 select pg_sleep(2) \g /dev/null
@@ -421,7 +421,7 @@ opening "$(p 15)" 100 0
 as_owner "$REOPEN_DEAL" >/dev/null
 mv "$CR1" "$(p 15)" reserve 10 "p_company => '$LB', p_deal => '$DEAL'" || fail "reserve_vs_deal_lost (c): the deal's hold failed"
 mv "$CR1" "$(p 15)" reserve 5 "p_company => '$LB'" || fail "reserve_vs_deal_lost (c): the hold to expire failed"
-as_owner "update private.stock_reservations set hold_until = current_date - 1
+as_owner "update private.stock_reservations set hold_until = (now() at time zone 'Europe/Paris')::date - 1
            where product_id = '$(p 15)' and deal_id is null and status = 'active';" >/dev/null
 as_user "$CR1" "begin;
 update public.deals set value = coalesce(value, 0) + 1 where id = '$DEAL';
@@ -442,7 +442,7 @@ opening "$(p 16)" 100 0
 as_owner "$REOPEN_DEAL" >/dev/null
 as_user "$CR1" "begin;
 insert into private.stock_movements (group_id, product_id, location_id, kind, qty, company_id, deal_id, hold_until)
-select gen_random_uuid(), '$(p 16)', l.id, 'reserve', 30, '$LB', '$DEAL', current_date + 7
+select gen_random_uuid(), '$(p 16)', l.id, 'reserve', 30, '$LB', '$DEAL', (now() at time zone 'Europe/Paris')::date + 7
   from public.locations l where l.kind = 'warehouse';
 select pg_sleep(2) \g /dev/null
 commit;" >"$WORKDIR/x.out" 2>&1 & p1=$!

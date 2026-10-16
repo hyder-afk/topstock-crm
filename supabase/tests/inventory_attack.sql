@@ -7,6 +7,13 @@
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
+-- The app's day. The guards compare dates with the Paris day ((now() at time zone 'Europe/Paris')::date), so every date
+-- this file checks against them is built from it too, never from current_date (the session's time zone: UTC on the
+-- runners, a day behind Paris from 22:00 or 23:00 UTC). The suite then passes under any PGTZ, at any hour.
+create function pg_temp.paris_today() returns date language sql stable as $$
+  select (now() at time zone 'Europe/Paris')::date
+$$;
+
 -- Helpers (the same as stock_attack.sql) --------------------------------------------------------------------------------
 create function pg_temp.as_user(sub text, aal text, totp_age_s integer default null) returns void
 language sql as $$
@@ -153,7 +160,7 @@ begin
     'select * from public.list_stock()', 'select public.count_stock()', 'select public.stock_summary()',
     format('select public.get_product(%L)', ids[1]), 'select * from public.list_movements()',
     'select * from public.list_reservations()', 'select public.get_inventory_settings()',
-    format('select public.set_product_eta(%L, current_date)', ids[1]),
+    format('select public.set_product_eta(%L, pg_temp.paris_today())', ids[1]),
     format('select public.set_product_share_visible(%L, true)', ids[1])] loop
     perform pg_temp.expect_error(stmt, '42501', 'forbidden');
   end loop;
@@ -172,7 +179,7 @@ begin
      or exists (select 1 from public.list_reservations(p_status => 'all', p_limit => 100) r where r.product_id = any (ids)) then
     raise exception 'FAIL: the other org reads this org''s movements or holds';
   end if;
-  perform pg_temp.expect_error(format('select public.set_product_eta(%L, current_date)', ids[21]), 'P0002');
+  perform pg_temp.expect_error(format('select public.set_product_eta(%L, pg_temp.paris_today())', ids[21]), 'P0002');
 end $$;
 
 -- 3. Costs: managers and admins read the cost per piece; a rep reads null (row level security on product_costs) -------
@@ -215,7 +222,7 @@ begin
   perform pg_temp.expect_error('select * from public.list_movements(p_limit => 101)', '22023', 'bounds');
   perform pg_temp.expect_error('select * from public.list_movements(p_kinds => array[''steal''])', '22023', 'bad_types');
   perform pg_temp.expect_error('select * from public.list_movements(p_kinds => array[null::text])', '22023', 'bad_types');
-  perform pg_temp.expect_error('select * from public.list_movements(p_from => current_date, p_to => current_date - 1)',
+  perform pg_temp.expect_error('select * from public.list_movements(p_from => pg_temp.paris_today(), p_to => pg_temp.paris_today() - 1)',
                                '22023', 'bounds');
   perform pg_temp.expect_error('select * from public.list_reservations(p_status => ''gone'')', '22023', 'state');
   perform pg_temp.expect_error('select * from public.list_reservations(p_before_created => now())', '22023', 'bad_cursor');
@@ -381,7 +388,7 @@ begin
                                                      p_limit => 100)) <> 26
      or (select count(*) from public.list_movements(p_product => ids[1], p_user => '00000000-0000-0000-0000-0000000000b1',
                                                      p_limit => 100)) <> 0
-     or (select count(*) from public.list_movements(p_product => ids[1], p_from => current_date + 1, p_limit => 100)) <> 0 then
+     or (select count(*) from public.list_movements(p_product => ids[1], p_from => pg_temp.paris_today() + 1, p_limit => 100)) <> 0 then
     raise exception 'FAIL: list_movements filters';
   end if;
   -- Holds: active, then closed after a release; the lead filter.
@@ -464,15 +471,15 @@ begin
   perform public.rename_location('warehouse', 'Warehouse France');
   -- The one-field changes: managers and admins only; the date window; a missing product.
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2');
-  perform pg_temp.expect_error(format('select public.set_product_eta(%L, current_date + 7)', ids[21]), '42501', 'forbidden');
+  perform pg_temp.expect_error(format('select public.set_product_eta(%L, pg_temp.paris_today() + 7)', ids[21]), '42501', 'forbidden');
   perform pg_temp.expect_error(format('select public.set_product_share_visible(%L, false)', ids[21]), '42501', 'forbidden');
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
-  perform pg_temp.expect_error(format('select public.set_product_eta(%L, current_date + 1000)', ids[21]), '22023', 'eta');
-  perform pg_temp.expect_error(format('select public.set_product_eta(%L, current_date)', gen_random_uuid()), 'P0002');
+  perform pg_temp.expect_error(format('select public.set_product_eta(%L, pg_temp.paris_today() + 1000)', ids[21]), '22023', 'eta');
+  perform pg_temp.expect_error(format('select public.set_product_eta(%L, pg_temp.paris_today())', gen_random_uuid()), 'P0002');
   perform pg_temp.expect_error(format('select public.set_product_share_visible(%L, null)', ids[21]), '22023', 'bounds');
-  perform public.set_product_eta(ids[21], current_date + 7);
+  perform public.set_product_eta(ids[21], pg_temp.paris_today() + 7);
   perform public.set_product_share_visible(ids[21], false);
-  if (select s.transit_eta from public.list_stock(p_search => 'Inv6b Produit 21') s) is distinct from current_date + 7
+  if (select s.transit_eta from public.list_stock(p_search => 'Inv6b Produit 21') s) is distinct from pg_temp.paris_today() + 7
      or (select s.share_visible from public.list_stock(p_search => 'Inv6b Produit 21') s) then
     raise exception 'FAIL: set_product_eta or set_product_share_visible did not save';
   end if;
