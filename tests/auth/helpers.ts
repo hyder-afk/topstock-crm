@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { expect, type BrowserContext, type Locator, type Page, type Request } from "@playwright/test";
 import { callZone, isOpen } from "../../src/lib/timezones";
+import { authCookies, jwtPayload, sessionFromCookies } from "./auth-cookie";
 
 // RFC 6238 TOTP (SHA-1, 6 digits, 30 s), the same maths an authenticator app does.
 function base32Decode(input: string) {
@@ -107,6 +108,19 @@ export async function createUser(email: string, password: string, withAuthentica
   return factor.totp.secret as string;
 }
 
+// Tries to refresh a session with its refresh token (what a browser's Supabase client does when its access token is
+// about to expire); returns the HTTP status and Supabase's error code, and whether a new access token came back.
+export async function tryRefresh(refreshToken: string) {
+  const key = env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  const res = await fetch(`${env("SUPABASE_LOCAL_URL")}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST",
+    headers: { apikey: key, ...(key.startsWith("eyJ") ? { Authorization: `Bearer ${key}` } : {}), "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { error_code?: string; code?: string; access_token?: string };
+  return { status: res.status, code: body.error_code ?? body.code, refreshed: typeof body.access_token === "string" };
+}
+
 // Tries a public sign-up with the publishable key; returns the HTTP status and Supabase's error code.
 export async function trySignup(email: string, password: string) {
   const key = env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
@@ -153,11 +167,52 @@ export async function twoFrames(page: Page) {
 
 // Requests each page has in flight, counted from the first call for that page (call it right after opening the page).
 const inFlight = new WeakMap<Page, Set<Request>>();
+// Diagnosis for WebKit's "ResizeObserver loop completed with undelivered notifications" (PR #19 CI): every observer
+// callback is logged with the elements it saw, and when the loop is reported a console error names the observers that
+// ran in the last 100 ms and where they were created, so the test's own error check shows the source.
+export async function addResizeObserverProbe(context: BrowserContext) {
+  await context.addInitScript(() => {
+    const Native = window.ResizeObserver;
+    if (!Native) return;
+    const recent: { t: number; who: string; created: string }[] = [];
+    const describe = (el: Element) => {
+      const own = `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${[...el.classList].slice(0, 4).map((c) => `.${c}`).join("")}`;
+      const named = el.closest("[id],[role],[aria-label],[data-slot]");
+      const anchor = named && named !== el ? ` in ${named.tagName.toLowerCase()}${named.id ? `#${named.id}` : ""}${named.getAttribute("role") ? `[role=${named.getAttribute("role")}]` : ""}${named.getAttribute("aria-label") ? `[aria-label=${named.getAttribute("aria-label")}]` : ""}` : "";
+      return own + anchor;
+    };
+    class Probe extends Native {
+      constructor(callback: ResizeObserverCallback) {
+        const created = (new Error().stack ?? "").split("\n").slice(1, 4).map((l) => l.trim()).join(" < ");
+        super((entries, observer) => {
+          recent.push({ t: performance.now(), who: entries.map((e) => describe(e.target)).join(", "), created });
+          if (recent.length > 60) recent.shift();
+          callback(entries, observer);
+        });
+      }
+    }
+    window.ResizeObserver = Probe;
+    window.addEventListener("error", (e) => {
+      if (!String(e.message).includes("ResizeObserver loop")) return;
+      const now = performance.now();
+      const last = recent.filter((r) => now - r.t < 100).map((r) => `${r.who} {${r.created}}`);
+      console.error(`ResizeObserver loop diagnosis: ${last.join(" | ") || "no observer callback in the last 100 ms"}`);
+    });
+  });
+}
+
 export function trackRequests(page: Page) {
   let pending = inFlight.get(page);
   if (!pending) {
     const set = new Set<Request>();
-    page.on("request", (r) => set.add(r));
+    // Next's link prefetches are speculative and never hold data a test waits for; on CI's Chromium 156 a prefetch the
+    // router dropped was sometimes never reported finished or failed (PR #19: /inventory/import?_rsc= and
+    // /inventory/settings?_rsc= open for good). Their cancellation noise is already filtered by isCancelledPrefetch.
+    page.on("request", (r) => {
+      const h = r.headers();
+      if (h["next-router-prefetch"] || h["next-router-segment-prefetch"]) return;
+      set.add(r);
+    });
     page.on("requestfinished", (r) => set.delete(r));
     page.on("requestfailed", (r) => set.delete(r));
     inFlight.set(page, set);
@@ -170,10 +225,11 @@ export function trackRequests(page: Page) {
 // action) makes WebKit log "Fetch API cannot load … due to access control checks", which the console-error checks
 // would rightly count. `waitForLoadState("networkidle")` resolves at once when the document reached that state
 // earlier, so it cannot wait for a request started later; the page's own request count can.
+// On a timeout the failure names the requests still open (method, kind and URL), so a CI failure says which one.
 export async function settled(page: Page) {
   if (page.url() === "about:blank") return;
   const pending = trackRequests(page);
-  await expect.poll(() => pending.size, { timeout: 15_000 }).toBe(0);
+  await expect.poll(() => [...pending].map((r) => `${r.method()} ${r.resourceType()} ${r.url()}`), { timeout: 15_000 }).toEqual([]);
 }
 
 // WebKit reports a fetch the page itself cancelled as "Fetch API cannot load <url> due to access control checks" (as a
@@ -181,7 +237,7 @@ export async function settled(page: Page) {
 // cancels its own link prefetches (requests to this app with ?_rsc=) when a server action refreshes the page or a new
 // navigation starts; Chromium logs nothing for that. Only that exact case is ignored: same-origin RSC requests cannot
 // fail a real access-control check, and every other console error still counts.
-const cancelledPrefetch = /^(?:Fetch API cannot load )?(?:http:)?\/\/?localhost:3100\/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$/;
+const cancelledPrefetch = /^(?:Fetch API cannot load )?(?:http:)?\/\/?localhost:\d+\/[^\s?]*\?_rsc=[\w-]+ due to access control checks\.$/;
 export function isCancelledPrefetch(text: string) {
   return cancelledPrefetch.test(text);
 }
@@ -270,20 +326,9 @@ export function seedLeads(ownerEmails: string[], count = 120) {
 // database for this browser's session only, then refreshes the session and writes it back to the auth cookie (the
 // format @supabase/ssr reads: "base64-" + base64url JSON, split into .0, .1, ... above 3180 characters).
 export async function ageStepUp(context: BrowserContext, seconds: number) {
-  const cookies = (await context.cookies()).filter((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name));
-  if (cookies.length === 0) throw new Error("no auth cookie in this browser");
-  const key = cookies[0].name.replace(/\.\d+$/, "");
-  if (!/^sb-[a-z0-9-]+-auth-token$/.test(key)) throw new Error(`unexpected auth cookie ${key}`);
-  const whole = cookies.find((c) => c.name === key);
-  const raw =
-    whole?.value ??
-    cookies
-      .map((c) => ({ i: Number(c.name.slice(key.length + 1)), value: c.value }))
-      .sort((a, b) => a.i - b.i)
-      .map((c) => c.value)
-      .join("");
-  const session = JSON.parse(raw.startsWith("base64-") ? Buffer.from(raw.slice(7), "base64url").toString("utf8") : raw);
-  const sessionId = JSON.parse(Buffer.from(session.access_token.split(".")[1], "base64url").toString("utf8")).session_id;
+  const { key, cookies } = authCookies(await context.cookies());
+  const session = sessionFromCookies(cookies);
+  const sessionId = jwtPayload(session.access_token).session_id ?? "";
   if (!/^[0-9a-f-]{36}$/.test(sessionId) || !Number.isInteger(seconds)) throw new Error("bad session or age");
   sql(`update auth.mfa_amr_claims set created_at = now() - make_interval(secs => ${seconds}),
        updated_at = now() - make_interval(secs => ${seconds})
@@ -326,6 +371,7 @@ export async function signedInPage(
     hasTouch: width < 600,
   });
   if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: o.baseURL ?? "http://localhost:3100" }]);
+  await addResizeObserverProbe(context);
   await context.addInitScript(() => {
     document.addEventListener(
       "click",
@@ -342,4 +388,56 @@ export async function signedInPage(
   page.on("console", (m) => m.type() === "error" && !isCancelledPrefetch(m.text()) && errors.push(m.text()));
   page.on("pageerror", (e) => !isCancelledPrefetch(e.message) && errors.push(e.message));
   return { context, page, errors };
+}
+
+// Day 7b: the app's own pickers (no native <select> or date inputs, docs/evidence/day7/pickers.md). These replace
+// selectOption and fill on a native field with what a person does: open the trigger, pick an option, or type.
+
+/**
+ * Picks an option in a Select or Combobox the way a person does: click the trigger (role combobox), then the option.
+ * `option` is the option's value (as selectOption took it: matched on data-option) or `{ label }` for its words. For a
+ * Combobox, `search` is typed into its search box first (long lists such as time zones).
+ */
+export async function choose(trigger: Locator, option: string | { label: string | RegExp }, search?: string) {
+  const page = trigger.page();
+  await trigger.click();
+  if (search !== undefined) await page.getByRole("dialog").last().getByRole("combobox").fill(search);
+  const item =
+    typeof option === "string"
+      ? page.locator(`[role="option"][data-option="${option.replace(/"/g, '\\"')}"]`)
+      : // The first option with those words, as selectOption({ label }) took it.
+        page.getByRole("option", { name: option.label, exact: typeof option.label === "string" }).first();
+  await item.click();
+  await expect(item).toBeHidden();
+}
+
+/** The value a Select or Combobox submits (data-value on its trigger, which matches its hidden input). */
+export async function expectChosen(trigger: Locator, value: string) {
+  await expect(trigger).toHaveAttribute("data-value", value);
+}
+
+/**
+ * Types a day into a DatePicker with `typed` (the locale's digit order, as a person types it) and leaves the field, or
+ * picks it from the calendar when the picker is a button. `iso` is YYYY-MM-DD.
+ */
+export async function pickDate(field: Locator, iso: string, locale: "en" | "fr" = "en") {
+  const [y, m, d] = iso.split("-");
+  const tag = await field.evaluate((el) => el.tagName);
+  if (tag === "INPUT") {
+    await field.fill(locale === "fr" ? `${d}/${m}/${y}` : `${m}/${d}/${y}`);
+    await field.press("Enter");
+    return;
+  }
+  // A button: open the calendar, walk to the month, click the day.
+  await field.click();
+  const page = field.page();
+  const grid = page.getByRole("grid");
+  await expect(grid).toBeVisible();
+  const target = grid.locator(`button[data-iso="${iso}"]`);
+  for (let i = 0; i < 36 && !(await target.count()); i++) {
+    const first = (await grid.locator("button[data-iso]").first().getAttribute("data-iso")) ?? "";
+    await page.getByRole("button", { name: iso < first ? /^(Previous month|Mois précédent)$/ : /^(Next month|Mois suivant)$/ }).click();
+  }
+  await target.click();
+  await expect(grid).toBeHidden();
 }

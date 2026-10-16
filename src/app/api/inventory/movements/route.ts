@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiSession } from "@/lib/auth";
+import { listRateLimited } from "@/lib/rate-limit";
 import { movementParams } from "@/lib/inventory/filters";
 import { NO_STORE, fetchMovements } from "@/lib/inventory-server";
 
@@ -7,6 +8,8 @@ import { NO_STORE, fetchMovements } from "@/lib/inventory-server";
 export async function GET(request: NextRequest) {
   const session = await apiSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
+  const limited = listRateLimited(session.claims.sub);
+  if (limited) return limited;
   const raw = Object.fromEntries([...request.nextUrl.searchParams].filter(([, v]) => v !== ""));
   const parsed = movementParams.strict().safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "invalid" }, { status: 400, headers: NO_STORE });

@@ -224,7 +224,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
   );
 
   return (
-    <form
+    <form noValidate
       ref={formRef}
       aria-label={t("label")}
       className="flex min-w-0 flex-col gap-4"

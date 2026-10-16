@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiSession } from "@/lib/auth";
+import { listRateLimited } from "@/lib/rate-limit";
 import { cursorParams, parseFilters } from "@/lib/leads";
 import { fetchLeadPage } from "@/lib/leads-server";
 
@@ -8,6 +9,8 @@ import { fetchLeadPage } from "@/lib/leads-server";
 export async function GET(request: NextRequest) {
   const session = await apiSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const limited = listRateLimited(session.claims.sub);
+  if (limited) return limited;
   const params = request.nextUrl.searchParams;
   const cursor = params.has("after_id")
     ? cursorParams.safeParse({ after_value: params.get("after_value"), after_id: params.get("after_id") })

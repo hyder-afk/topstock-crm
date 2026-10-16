@@ -170,6 +170,9 @@ export function LeadsTable({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
     overscan: 8,
+    // Measure on the next frame: the scroll box's ResizeObserver resizing the list in the same frame makes Safari report
+    // "ResizeObserver loop completed with undelivered notifications" (as the timeline did; WebKit CI, PR #19).
+    useAnimationFrameWithResizeObserver: true,
     // The sticky column header sits above the rows inside the same scroll box: rows start below it, and scrolling to
     // a row (arrow keys) keeps it out from under the header.
     scrollMargin: headerHeight,

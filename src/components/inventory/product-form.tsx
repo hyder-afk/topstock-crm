@@ -7,6 +7,7 @@ import { createProduct, updateProduct } from "@/app/(app)/inventory/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { FormMessage } from "@/components/ui/form-message";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
@@ -179,7 +180,7 @@ export function ProductFormDialog({
             {field("cost", t("cost"), <Input {...inputProps("cost")} value={v.cost} onChange={set("cost")} inputMode="decimal" className="text-right font-mono" />, t("costHint"))}
             {field("reorder", t("reorder"), <Input {...inputProps("reorder")} value={v.reorder} onChange={set("reorder")} inputMode="numeric" className="text-right font-mono" />, t("reorderHint"))}
             {field("pallet", t("pallet"), <Input {...inputProps("pallet")} value={v.pallet} onChange={set("pallet")} inputMode="numeric" className="text-right font-mono" />)}
-            {field("eta", t("eta"), <Input {...inputProps("eta")} type="date" value={v.eta} onChange={set("eta")} className="font-mono" />, t("etaHint"))}
+            {field("eta", t("eta"), <DatePicker id={`${id}-eta`} name="eta" aria-invalid={failure?.field === "eta" || undefined} aria-describedby={errorFor("eta")} typed value={v.eta} onValueChange={(eta) => setV((s) => ({ ...s, eta }))} />, t("etaHint"))}
             <div className="flex min-w-0 flex-col gap-2">
               <Label htmlFor={`${id}-share`}>{t("shareVisible")}</Label>
               <Select id={`${id}-share`} value={v.shareVisible} onChange={set("shareVisible")}>

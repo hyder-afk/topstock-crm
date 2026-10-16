@@ -46,6 +46,9 @@ const namespaces = [
   "Share",
   "ShareLinks",
   "ShareText",
+  "Pickers",
+  // Day 7a: More (sign out of all devices).
+  "More",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {
@@ -221,3 +224,183 @@ test.describe("import and lead page messages", () => {
     }
   });
 });
+
+// Day 7c: the French pass covers every namespace, not only the ones listed above.
+test.describe("the whole French file (Day 7c)", () => {
+  const enAll = new Map(entries(en));
+  const frAll = new Map(entries(fr));
+
+  // French values that may equal the English one: brand names and the tagline, words spelt the same in French,
+  // units and codes Haider chose for both languages (pieces are "pcs", 11 Oct 2026), and patterns made only of
+  // arguments and symbols. Anything else identical is an English string left in fr.json.
+  const sameInBoth = new Set([
+    // Brand and product names.
+    "Metadata.title",
+    "Home.tagline",
+    "Share.meta.title",
+    "ShareText.company",
+    "ShareText.signature",
+    "QuickActions.whatsapp",
+    "Composer.types.whatsapp",
+    "Timeline.filters.whatsapp",
+    "LeadPage.whatsappContact",
+    // The same word in French.
+    "Home.pipeline.title",
+    "Nav.pipeline",
+    "Shortcuts.pipeline.title",
+    "Pipeline.title",
+    "Team.role.admin",
+    "Team.role.manager",
+    "Team.moreSection",
+    "Nav.label",
+    "Palette.actions",
+    "Leads.preview.contactsTitle",
+    "Queue.contacts",
+    "Deals.fields.contact",
+    "Import.steps.import",
+    "LeadPage.details.import",
+    "Import.match.dateTitle",
+    "Composer.date",
+    "Tasks.quickAdd.date",
+    "LeadPage.tabs.stock",
+    "Inventory.tabs.stock",
+    "Inventory.table.label",
+    "QuickActions.note",
+    "CallPanel.note",
+    "Composer.types.note",
+    "Composer.noteLabel",
+    "Timeline.filters.note",
+    "Deals.lose.note",
+    "Queue.note",
+    "Sales.sheet.note",
+    "Sales.hold.note",
+    "Sales.request.note",
+    "Composer.emailBody",
+    "Inventory.reasons.correction",
+    "Inventory.movement.correction",
+    "Sales.sheet.total",
+    "Sales.list.lineTotal",
+    "Sales.sheet.minMax",
+    // Units and codes kept in both languages.
+    "Inventory.units.pcs",
+    "Inventory.units.ctn",
+    "Inventory.units.ctnPlus",
+    "Inventory.units.pcsShort",
+    "Inventory.units.ctnShort",
+    "Inventory.table.carton",
+    "Inventory.kpi.pcs",
+    "Sales.tab.piecesCount",
+    "Share.item.pcs",
+    "Share.item.ctn",
+    "Share.item.equals",
+    "Share.item.equalsCartons",
+    "ShareText.perPiece",
+    "Share.ref",
+    "Pickers.monthLetters",
+    "Pickers.timePattern24",
+    "Pickers.timePattern12",
+    // Arguments and symbols only.
+    "Import.history.when",
+    "StockImport.history.when",
+    "StockImport.check.beforeAfter",
+    "Pipeline.lostReason",
+    "Deals.nextTo",
+    "Deals.lose.noteCount",
+    "Share.basket.line",
+    "Share.basket.counter",
+    "ShareLinks.hint",
+    // The call scripts: both files hold both languages (the caller picks the script's language, not the interface's).
+    "Queue.script.en",
+    "Queue.script.enNoName",
+    "Queue.script.fr",
+    "Queue.script.frNoName",
+  ]);
+  // English text or spreadsheet codes inside fr.json, outside the French typography rules.
+  const notFrenchProse = new Set(["Queue.script.en", "Queue.script.enNoName", "StockImport.problems.excel_error"]);
+
+  test("every key in both languages, across every namespace", () => {
+    expect([...frAll.keys()].sort()).toEqual([...enAll.keys()].sort());
+    expect(Object.keys(fr).sort()).toEqual(Object.keys(en).sort());
+  });
+
+  test("French values equal to English only where the allowlist says so", () => {
+    const same = [...enAll].filter(([key, text]) => frAll.get(key) === text).map(([key]) => key);
+    expect(same.filter((key) => !sameInBoth.has(key))).toEqual([]);
+    // The allowlist names live keys only, so it cannot hide a key that is gone.
+    expect([...sameInBoth].filter((key) => !enAll.has(key))).toEqual([]);
+  });
+
+  test("the same arguments and tags in both languages", () => {
+    // French may count on the raw number where English counts on another one, so "doneFormatted" and "done" (or
+    // "formatted" and "count") stand for the same value.
+    const value = (name: string) => (name === "formatted" ? "count" : name.replace(/Formatted$/, ""));
+    const shape = (text: string) => ({
+      args: [...new Set(icuArgs(text).map(value))].sort(),
+      tags: [...new Set(text.match(/<\/?[A-Za-z]+>/g) ?? [])].sort(),
+    });
+    const bad = [...enAll].filter(([key, text]) => JSON.stringify(shape(text)) !== JSON.stringify(shape(frAll.get(key) ?? "")));
+    expect(bad.map(([key]) => key)).toEqual([]);
+  });
+
+  test("French typography in every namespace", () => {
+    const bad: string[] = [];
+    for (const [key, text] of frAll) {
+      if (notFrenchProse.has(key)) continue;
+      const rules: [string, boolean][] = [
+        // A narrow no-break space (U+202F) before ; ? ! » and after «, never an ordinary or a wide no-break space.
+        ["space before ; ? ! »", /[^ ][;?!»]/.test(text)],
+        ["space after «", /«[^ ]/.test(text)],
+        // A colon in prose (end of text or followed by a space) has one too; "hh:mm" and "{a}:{b}" are not prose.
+        ["space before :", /[^ ]:(\s|$)/.test(text)],
+        // Numbers hold together: thousands by U+202F, a unit by a no-break space, as Intl writes them in fr-FR.
+        ["plain space in a number", /\d \d{3}(?!\d)|\d (€|%|Mo|Ko|Go)/.test(text)],
+        ["typewriter apostrophe", text.includes("'")],
+        ["three dots", text.includes("...")],
+      ];
+      for (const [rule, broken] of rules) if (broken) bad.push(`${key} (${rule}): ${text}`);
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+/** The argument names of an ICU message, including those inside plural and select options (not the option keys). */
+function icuArgs(text: string): string[] {
+  const names = new Set<string>();
+  let i = 0;
+  const skipBlock = () => {
+    for (let depth = 1; i < text.length && depth > 0; i++) depth += text[i] === "{" ? 1 : text[i] === "}" ? -1 : 0;
+  };
+  const message = (nested: boolean) => {
+    while (i < text.length) {
+      const c = text[i];
+      if (c === "}" && nested) return;
+      i++;
+      if (c === "{") argument();
+    }
+  };
+  const argument = () => {
+    const name = /^\s*([A-Za-z_]\w*)\s*/.exec(text.slice(i));
+    if (!name) return skipBlock();
+    names.add(name[1]);
+    i += name[0].length;
+    if (text[i] === "}") {
+      i++;
+      return;
+    }
+    i++; // the comma after the name
+    const type = /^\s*(\w+)\s*/.exec(text.slice(i));
+    i += type ? type[0].length : 0;
+    if (!type || !["plural", "select", "selectordinal"].includes(type[1])) return skipBlock();
+    if (text[i] === ",") i++;
+    while (i < text.length && text[i] !== "}") {
+      if (text[i] === "{") {
+        i++;
+        message(true);
+      }
+      i++;
+    }
+    i++;
+  };
+  message(false);
+  return [...names].sort();
+}

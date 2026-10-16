@@ -91,8 +91,13 @@ export function SharingSettings({ initialOn, stepUpSeconds }: { initialOn: boole
             {links.map((l) => (
               <li key={l.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 flex-col gap-0.5 text-sm">
-                  <Link href={`/leads/${l.company_id}?tab=stock`} className="truncate font-bold underline-offset-4 hover:underline" dir="auto">
-                    {l.company_name}
+                  {/* 20 px tall in the row; on phones the tap area reaches 44 px (Day 7c phone pass). */}
+                  <Link
+                    href={`/leads/${l.company_id}?tab=stock`}
+                    className="relative flex max-w-full min-w-0 self-start font-bold underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-3 max-sm:before:min-w-11 max-sm:before:content-['']"
+                    dir="auto"
+                  >
+                    <span className="truncate">{l.company_name}</span>
                   </Link>
                   <span className="text-xs text-muted-foreground">
                     {[

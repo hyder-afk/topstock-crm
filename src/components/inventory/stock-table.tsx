@@ -83,6 +83,9 @@ export function StockTable({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
     overscan: 8,
+    // Measure on the next frame: the scroll box's ResizeObserver resizing the list in the same frame makes Safari report
+    // "ResizeObserver loop completed with undelivered notifications" (as the timeline did; WebKit CI, PR #19).
+    useAnimationFrameWithResizeObserver: true,
     scrollMargin: layout === "narrow" ? 0 : headerHeight,
     scrollPaddingStart: layout === "narrow" ? 0 : headerHeight,
   });
@@ -187,7 +190,7 @@ export function StockTable({
                   e.preventDefault();
                   onOpen(r.id);
                 }}
-                className="flex min-w-0 flex-1 flex-col rounded-sm focus-visible:outline-offset-2"
+                className="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-sm focus-visible:outline-offset-2"
               >
                 <span className="truncate font-bold" dir="auto">
                   {r.name}
@@ -205,8 +208,11 @@ export function StockTable({
               </a>
             );
             const whCell = (
-              <span className="flex min-w-0 flex-col items-end gap-1" title={t("onHandHeld", { onHand: fmtPieces(locale, r.wh_on_hand), held: fmtPieces(locale, r.wh_reserved) })}>
-                <span className="font-mono">{qty(r.wh_available, r.pieces_per_carton, unit)}</span>
+              <span className="flex min-w-0 flex-col items-end gap-1">
+                <span className="font-mono">
+                  {qty(r.wh_available, r.pieces_per_carton, unit)}
+                  <span className="sr-only"> ({t("onHandHeld", { onHand: fmtPieces(locale, r.wh_on_hand), held: fmtPieces(locale, r.wh_reserved) })})</span>
+                </span>
                 {fill !== null ? (
                   <span aria-hidden="true" className="block h-1 w-20 overflow-hidden rounded-full bg-muted">
                     <span

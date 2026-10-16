@@ -11,6 +11,7 @@ import { useStepUp } from "@/components/auth/step-up-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
+import { Tooltip } from "@/components/ui/tooltip";
 import { TabList, TabPanel, panelId } from "@/components/ui/tabs";
 import { Composer, type ComposerMode } from "@/components/activity/composer";
 import { EntryList, Timeline } from "@/components/activity/timeline";
@@ -184,7 +185,9 @@ export function LeadPage({
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
           const panel = document.getElementById(panelId(`lead-${id}`, "details"));
-          const el = focus === "country" ? panel?.querySelector<HTMLElement>("select[name=country]") : focus ? panel?.querySelector<HTMLElement>(`[data-focus=${focus}]`) : null;
+          const target = focus ? panel?.querySelector<HTMLElement>(`[data-focus=${focus}]`) : null;
+          // The app's pickers put data-focus on a group (date + time) or a trigger: focus the first control inside.
+          const el = target && !target.matches("button, input, [tabindex]") ? target.querySelector<HTMLElement>("button, input, [tabindex]") : target;
           (el ?? panel)?.focus();
         }),
       );
@@ -283,26 +286,28 @@ export function LeadPage({
         {nav ? (
           <div className="flex items-center gap-1 text-sm text-muted-foreground">
             <span className="font-mono">{t("position", { index: format.number(nav.index + 1), total: format.number(nav.total) })}</span>
-            <Link
-              href={nav.previous ? `/leads/${nav.previous}` : "#"}
-              aria-disabled={!nav.previous || undefined}
-              aria-label={t("previous")}
-              title={t("previousKey")}
-              onClick={(e) => !nav.previous && e.preventDefault()}
-              className="grid size-11 place-items-center rounded-md transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
-            >
-              <ChevronLeft aria-hidden="true" strokeWidth={1.75} className="size-5" />
-            </Link>
-            <Link
-              href={nav.next ? `/leads/${nav.next}` : "#"}
-              aria-disabled={!nav.next || undefined}
-              aria-label={t("next")}
-              title={t("nextKey")}
-              onClick={(e) => !nav.next && e.preventDefault()}
-              className="grid size-11 place-items-center rounded-md transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
-            >
-              <ChevronRight aria-hidden="true" strokeWidth={1.75} className="size-5" />
-            </Link>
+            <Tooltip content={t("previousKey")}>
+              <Link
+                href={nav.previous ? `/leads/${nav.previous}` : "#"}
+                aria-disabled={!nav.previous || undefined}
+                aria-label={t("previous")}
+                onClick={(e) => !nav.previous && e.preventDefault()}
+                className="grid size-11 place-items-center rounded-md transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
+              >
+                <ChevronLeft aria-hidden="true" strokeWidth={1.75} className="size-5" />
+              </Link>
+            </Tooltip>
+            <Tooltip content={t("nextKey")}>
+              <Link
+                href={nav.next ? `/leads/${nav.next}` : "#"}
+                aria-disabled={!nav.next || undefined}
+                aria-label={t("next")}
+                onClick={(e) => !nav.next && e.preventDefault()}
+                className="grid size-11 place-items-center rounded-md transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
+              >
+                <ChevronRight aria-hidden="true" strokeWidth={1.75} className="size-5" />
+              </Link>
+            </Tooltip>
             <span className="hidden gap-1 lg:inline-flex" aria-hidden="true">
               <Kbd>J</Kbd>
               <Kbd>K</Kbd>

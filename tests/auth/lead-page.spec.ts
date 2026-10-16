@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { addResizeObserverProbe, ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // The lead page (Day 4b, design 8.5): open from the list and back, J/K, local time, the call panel and every outcome,
 // email and WhatsApp with one-tap logging, notes (edit, undo, delete with a fresh code, draft), read-only and Do not
@@ -49,6 +49,7 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
     hasTouch: width < 600,
   });
   if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: "http://localhost:3100" }]);
+  await addResizeObserverProbe(context);
   await context.addInitScript(() => {
     document.addEventListener(
       "click",
@@ -151,7 +152,7 @@ test("header_local_time_london (clock fixed) and span_zone_shows_range_then_set_
   await expect(page).toHaveURL(/tab=details/);
   const zone = page.getByRole("combobox", { name: "Time zone" });
   await expect(zone).toBeFocused();
-  await zone.selectOption("America/Chicago");
+  await choose(zone, "America/Chicago");
   await expect(page.getByRole("status").filter({ hasText: "Time zone saved." })).toBeVisible();
   expect(sql(`select timezone from public.companies where id = '${us}'`)).toBe("America/Chicago");
   await expect(page.getByText(/^04:00 there · 11:00 for you$/)).toBeVisible();
@@ -785,8 +786,11 @@ test("details_next_call_follows_an_outcome: Change shows the new date and Save s
   const { context, page, errors } = await open(browser, adminState);
   // The Details tab is drawn first, then kept (hidden) while the call is logged from Summary.
   await gotoLead(page, lead, "details");
-  const input = page.getByLabel("Next call", { exact: true });
-  await expect(input).toHaveValue(before);
+  // Day 7b: the app's DateTimePicker; the label names its date combobox (and, with "Time", its time box), the value
+  // travels in its hidden input.
+  const input = page.getByRole("combobox", { name: "Next call", exact: true });
+  const nextValue = page.locator('input[type="hidden"][name="next_action_at"]');
+  await expect(nextValue).toHaveValue(before);
   await page.getByRole("tab", { name: "Summary" }).click();
   await page.getByRole("link", { name: "Call", exact: true }).first().click();
   await panel(page).getByRole("button", { name: "End call" }).click();
@@ -799,7 +803,7 @@ test("details_next_call_follows_an_outcome: Change shows the new date and Save s
   expect(after).not.toBe(before);
   await page.getByRole("region", { name: "Next step" }).getByRole("button", { name: "Change", exact: true }).click();
   await expect(input).toBeFocused();
-  await expect(input).toHaveValue(after);
+  await expect(nextValue).toHaveValue(after);
   await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveAttribute("aria-disabled", "true");
   expect(errors).toEqual([]);
   await context.close();

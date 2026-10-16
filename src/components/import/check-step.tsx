@@ -444,6 +444,9 @@ function IssueList({ issues, names }: { issues: ImportIssue[]; names: Map<number
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 64,
     overscan: 8,
+    // Measure on the next frame: the scroll box's ResizeObserver resizing the list in the same frame makes Safari report
+    // "ResizeObserver loop completed with undelivered notifications" (as the timeline did; WebKit CI, PR #19).
+    useAnimationFrameWithResizeObserver: true,
   });
   return (
     <div className="overflow-hidden rounded-md border border-border">
@@ -473,7 +476,7 @@ function IssueList({ issues, names }: { issues: ImportIssue[]; names: Map<number
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <span className="font-mono">{issue.row_no}</span>
-                <span className="truncate max-sm:hidden" title={name || undefined}>
+                <span className="min-w-0 wrap-anywhere max-sm:hidden">
                   {names ? name || t("noName") : t("chooseFileForNames")}
                 </span>
                 <span className="flex items-start gap-2">

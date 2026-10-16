@@ -4,6 +4,9 @@ import { forwardRef, useId, useRef, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { CalendarClock, ListTodo, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
+import { TimePicker } from "@/components/ui/time-picker";
+import { Tooltip } from "@/components/ui/tooltip";
 import { LeadPicker, type PickedLead } from "@/components/tasks/lead-picker";
 import { QUICK_CHIPS, TASK_KINDS, chipDate, type TaskKind } from "@/lib/tasks";
 import { addDays, localDate, zonedInstant } from "@/lib/timezones";
@@ -64,7 +67,7 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
   };
 
   return (
-    <form
+    <form noValidate
       aria-label={t("quickAdd.label")}
       className="flex min-w-0 flex-col gap-3 rounded-lg bg-card p-4 sm:p-5"
       onSubmit={(e) => {
@@ -100,18 +103,13 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
         </Button>
       </div>
 
-      <div role="group" aria-label={t("quickAdd.dateLabel")} className="-mx-1 flex min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div role="group" aria-label={t("quickAdd.dateLabel")} className="edge-fade -mx-1 flex min-w-0 gap-1.5 overflow-x-auto overscroll-x-contain px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {QUICK_CHIPS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            aria-pressed={chip === c}
-            title={now ? format.dateTime(new Date(`${chipDate(c, zone, now)}T12:00:00Z`), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : undefined}
-            onClick={() => setChip(chip === c ? null : c)}
-            className={chipClass(chip === c)}
-          >
-            {t(`chips.${c}`)}
-          </button>
+          <Tooltip key={c} content={now ? format.dateTime(new Date(`${chipDate(c, zone, now)}T12:00:00Z`), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }) : null}>
+            <button type="button" aria-pressed={chip === c} onClick={() => setChip(chip === c ? null : c)} className={chipClass(chip === c)}>
+              {t(`chips.${c}`)}
+            </button>
+          </Tooltip>
         ))}
         <button
           type="button"
@@ -128,32 +126,34 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
 
       <div className="flex min-w-0 flex-wrap items-end gap-3">
         {chip === "pick" ? (
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">{t("quickAdd.date")}</span>
-            <input
-              type="date"
+          <div className="flex flex-col gap-1 text-sm">
+            <label htmlFor={`${id}-date`} className="text-muted-foreground">{t("quickAdd.date")}</label>
+            <DatePicker
+              id={`${id}-date`}
               name="task_date"
+              typed
               value={picked ?? ""}
               min={today ? addDays(today, -365) : undefined}
               max={today ? addDays(today, 365 * 2) : undefined}
-              onChange={(e) => setPicked(e.target.value || null)}
-              className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground sm:min-h-9"
+              timeZone={zone}
+              onValueChange={(v) => setPicked(v || null)}
             />
-          </label>
+          </div>
         ) : null}
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{kind === "meeting" ? t("quickAdd.timeRequired") : t("quickAdd.time")}</span>
-          <input
+        <div className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${id}-time`} className="text-muted-foreground">{kind === "meeting" ? t("quickAdd.timeRequired") : t("quickAdd.time")}</label>
+          <TimePicker
             ref={timeRef}
-            type="time"
+            id={`${id}-time`}
             name="task_time"
             value={time}
             disabled={!date}
+            required={kind === "meeting"}
             aria-invalid={tried && kind === "meeting" && !time ? true : undefined}
-            onChange={(e) => setTime(e.target.value)}
-            className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground aria-invalid:border-status-red disabled:opacity-60 sm:min-h-9"
+            aria-describedby={`${id}-reason`}
+            onValueChange={setTime}
           />
-        </label>
+        </div>
         <div role="group" aria-label={t("quickAdd.kindLabel")} className="flex gap-0.5 rounded-md bg-muted p-1">
           {TASK_KINDS.map((k) => {
             const Icon = kindIcon[k];

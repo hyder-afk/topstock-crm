@@ -1,0 +1,73 @@
+# Day 7d (Gate 1, plan question 11, Haider 15 Oct 2026 "the GitHub runner, once"): re-times the database speed budgets
+# once on a GitHub runner instead of loading fake test data into the dev project. Started by hand only
+# (Actions > db-budgets > Run workflow); never on a push or a PR, so it costs runner minutes only when asked.
+# PREPARED, RUNS WHEN CI BILLING IS BACK (GitHub Actions is blocked by billing on 16 Oct 2026).
+# workflow_dispatch runs only once this file is on the default branch (GitHub docs, "Manually running a workflow"):
+# start it after the PR merges, or with `gh workflow run db-budgets --ref <branch>` once main has the file.
+# ubuntu-24.04 ships PostgreSQL 16 (actions/runner-images toolset-2404.json) with its service disabled by default; this
+# job never starts that service, it runs its own throwaway cluster (initdb) as the scripts do locally.
+# What it does: a throwaway PostgreSQL 16 on the runner (the image ships it), the local auth shim and every migration,
+# then scripts/db-perf.sh (30k leads, 300k activities, 15k tasks, 10k deals, the stock engine with 5,000 products and
+# 200,000 ledger rows, inventory, sales, share, the 30k and 50k lead imports, the queue, files and stock concurrency
+# timings), then the 5,000-row stock sheet import (supabase/tests/perf_stock_import.sql). Fake data made on the runner
+# only; no secret, no Supabase project, nothing leaves the runner but the log artifact. Never production.
+name: db-budgets
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: db-budgets
+  cancel-in-progress: false
+
+jobs:
+  budgets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      PGTZ: Europe/Paris
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: PostgreSQL 16 binaries (preinstalled on the image)
+        run: |
+          test -x /usr/lib/postgresql/16/bin/initdb
+          /usr/lib/postgresql/16/bin/postgres --version
+          nproc; free -m
+      - name: Database budgets (scripts/db-perf.sh)
+        # The script runs initdb and the server as the postgres user (as on the local VMs), so it needs root.
+        run: sudo -E bash scripts/db-perf.sh 2>&1 | tee "$RUNNER_TEMP/db-perf.log"
+      - name: Stock sheet import at 5,000 rows (Day 6c budget, 30 s)
+        run: |
+          sudo bash -euo pipefail -c '
+            BIN=/usr/lib/postgresql/16/bin; WORK=$(mktemp -d -p /tmp); chown postgres "$WORK"
+            su postgres -c "$BIN/initdb -D $WORK/data -A trust -U postgres" >/dev/null
+            su postgres -c "$BIN/pg_ctl -D $WORK/data -o \"-p 54383 -k $WORK -c listen_addresses=\" -l $WORK/log start -w" >/dev/null
+            PSQL="psql -h $WORK -p 54383 -U postgres -d postgres -X -q -v ON_ERROR_STOP=1"
+            $PSQL -f supabase/tests/shim.sql
+            for f in supabase/migrations/*.sql; do $PSQL -f "$f"; done
+            # perf_stock.sql reuses the leads and people of perf_leads.sql and perf_day4.sql (its holds sit on 1,000 leads).
+            $PSQL -f supabase/tests/perf_leads.sql >/dev/null
+            $PSQL -f supabase/tests/perf_day4.sql >/dev/null
+            $PSQL -f supabase/tests/perf_stock.sql
+            $PSQL -f supabase/tests/perf_stock_import.sql
+            su postgres -c "$BIN/pg_ctl -D $WORK/data -m immediate stop" >/dev/null
+          ' 2>&1 | tee "$RUNNER_TEMP/stock-import-perf.log"
+      - name: Summary (budget lines)
+        if: always()
+        run: |
+          {
+            echo "## Database budgets on $(lsb_release -ds), $(nproc) cores"
+            echo '```'
+            grep -hiE "budget|timing|p95|p50| ms|sizes:" "$RUNNER_TEMP/db-perf.log" "$RUNNER_TEMP/stock-import-perf.log" | head -400 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: db-budgets
+          path: |
+            ${{ runner.temp }}/db-perf.log
+            ${{ runner.temp }}/stock-import-perf.log
+          retention-days: 30

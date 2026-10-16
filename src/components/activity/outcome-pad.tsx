@@ -2,7 +2,10 @@
 
 import { useId } from "react";
 import { useFormatter, useTranslations } from "next-intl";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Kbd } from "@/components/ui/kbd";
+import { TimePicker } from "@/components/ui/time-picker";
+import { Tooltip } from "@/components/ui/tooltip";
 import { CALL_OUTCOMES, OUTCOME_DIGIT, type CallOutcome, type FollowUpRule } from "@/lib/activities";
 import { DATE_CHIPS, chipDate, type DateChip } from "@/lib/tasks";
 import { addDays, localDate, primaryZone, zoneCity, zonedInstant } from "@/lib/timezones";
@@ -108,11 +111,10 @@ export function FollowUpPicker({
       <legend className="mb-1 text-sm font-bold">{legend ?? t("followUp")}</legend>
       <div className="flex flex-wrap gap-1.5">
         {DATE_CHIPS.map((c) => (
+          <Tooltip key={c} content={format.dateTime(new Date(`${dates[c]}T12:00:00Z`), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })}>
           <button
-            key={c}
             type="button"
             aria-pressed={chip === c}
-            title={format.dateTime(new Date(`${dates[c]}T12:00:00Z`), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })}
             onClick={() => onChange(chip === c && rule === "optional" ? noFollowUp : { ...value, date: dates[c] })}
             className={cn(
               "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
@@ -121,6 +123,7 @@ export function FollowUpPicker({
           >
             {t(`chips.${c}`)}
           </button>
+          </Tooltip>
         ))}
         <button
           type="button"
@@ -136,32 +139,33 @@ export function FollowUpPicker({
       </div>
       <div className="flex flex-wrap items-end gap-3">
         {picking ? (
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">{t("date")}</span>
-            <input
-              type="date"
+          <div className="flex flex-col gap-1 text-sm">
+            <label htmlFor={`${id}-date`} className="text-muted-foreground">{t("date")}</label>
+            <DatePicker
+              id={`${id}-date`}
               name="follow_up_date"
               value={value.date ?? ""}
               min={today}
               max={addDays(today, 365)}
-              onChange={(e) => onChange({ ...value, date: e.target.value || null })}
-              className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground"
+              timeZone={viewerZone}
+              required
+              onValueChange={(v) => onChange({ ...value, date: v || null })}
             />
-          </label>
+          </div>
         ) : null}
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{required ? t("timeRequired") : t("time")}</span>
-          <input
-            type="time"
+        <div className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${id}-time-field`} className="text-muted-foreground">{required ? t("timeRequired") : t("time")}</label>
+          <TimePicker
+            id={`${id}-time-field`}
             name="follow_up_time"
             value={value.time ?? ""}
             aria-describedby={`${id}-time`}
             aria-invalid={required && !!value.date && !value.time ? true : undefined}
+            required={required}
             disabled={!value.date}
-            onChange={(e) => onChange({ ...value, time: e.target.value || null })}
-            className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground aria-invalid:border-status-red disabled:opacity-60"
+            onValueChange={(v) => onChange({ ...value, time: v || null })}
           />
-        </label>
+        </div>
       </div>
       <p id={`${id}-time`} className="min-h-5 text-xs text-muted-foreground">
         {instant && theirs ? t("bothClocks", { mine: value.time ?? "", theirs, place: zoneCity(leadZone) }) : null}

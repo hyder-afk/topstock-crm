@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, isCancelledPrefetch, setRole, settled, sql, trackRequests } from "./helpers";
+import { appReady, choose, createUser, fullSession, isCancelledPrefetch, setRole, settled, sql, trackRequests } from "./helpers";
 
 // Deals on the lead page (Day 5b, design 8.5 "lead-deals.spec.ts" and 7.9): the Deals tab opens a deal and its toast
 // takes it back; Interested and Book meeting open a deal from the call panel (the switch is on when the lead has no
@@ -270,13 +270,13 @@ test("header_chip_and_summary_card, the deal sheet over the page, the composer's
   const composer = page.getByRole("form", { name: "Log activity" });
   const about = composer.getByRole("combobox", { name: "Choose the deal" });
   await expect(about).toBeVisible();
-  await about.selectOption(latest);
+  await choose(about, latest);
   await composer.getByRole("textbox", { name: "Note" }).fill(`About the jackets ${run}`);
   await composer.getByRole("button", { name: /^Save to timeline/ }).click();
   await expect(toast(page)).toContainText("Logged:");
   await expect.poll(() => sql(`select coalesce(deal_id::text, 'none') from public.activities where company_id = '${lead}' order by created_at desc limit 1`)).toBe(latest);
   await expect(about).toBeVisible();
-  await about.selectOption("");
+  await choose(about, "");
   await composer.getByRole("textbox", { name: "Note" }).fill(`No deal ${run}`);
   await composer.getByRole("button", { name: /^Save to timeline/ }).click();
   await expect

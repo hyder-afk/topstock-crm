@@ -50,14 +50,17 @@ function Field({
   invalid,
   describedBy,
   desktopAutoFocus = false,
+  required,
   ...input
-}: { label: string; invalid?: boolean; describedBy?: string; desktopAutoFocus?: boolean } & React.ComponentProps<"input">) {
+}: { label: string; invalid?: boolean; describedBy?: string; desktopAutoFocus?: boolean } & Omit<React.ComponentProps<"input">, "pattern" | "minLength">) {
   const id = useId();
   const focusRef = useDesktopFocus(desktopAutoFocus);
+  // Forms set noValidate (Day 7b: no browser validation bubbles): `required` is announced only; the server action checks
+  // every field with Zod and its error shows in the form's FormMessage, with aria-invalid on the field.
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input ref={focusRef} id={id} aria-invalid={invalid || undefined} aria-describedby={describedBy} {...input} />
+      <Input ref={focusRef} id={id} aria-required={required || undefined} aria-invalid={invalid || undefined} aria-describedby={describedBy} {...input} />
     </div>
   );
 }
@@ -70,7 +73,6 @@ function CodeField({ invalid, describedBy, label }: { invalid?: boolean; describ
       required
       inputMode="numeric"
       autoComplete="one-time-code"
-      pattern="[0-9 ]{6,7}"
       maxLength={7}
       // The only input on the screen and the next thing to do, so it takes focus on phones too.
       autoFocus
@@ -91,7 +93,7 @@ export function LoginForm() {
   const msg = useId();
   const formRef = useFocusOnError(state?.error, state);
   return (
-    <form ref={formRef} action={action} className="flex flex-col gap-4">
+    <form noValidate ref={formRef} action={action} className="flex flex-col gap-4">
       <Field
         label={t("email")}
         name="email"
@@ -142,7 +144,7 @@ export function ForgotPasswordForm() {
     );
   }
   return (
-    <form ref={formRef} action={action} className="flex flex-col gap-4">
+    <form noValidate ref={formRef} action={action} className="flex flex-col gap-4">
       <Field
         label={t("email")}
         name="email"
@@ -181,7 +183,7 @@ export function ConfirmLinkForm({ tokenHash, type }: { tokenHash: string; type: 
   const [state, action, pending] = useActionState<FormState, FormData>(confirmEmailLink, undefined);
   const msg = useId();
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form noValidate action={action} className="flex flex-col gap-4">
       <input type="hidden" name="token_hash" value={tokenHash} />
       <input type="hidden" name="type" value={type} />
       <FormMessage id={msg} tone="error">
@@ -205,7 +207,7 @@ export function SetPasswordForm({ email }: { email: string }) {
   const msg = useId();
   const formRef = useFocusOnError(state?.error, state);
   return (
-    <form ref={formRef} action={action} className="flex flex-col gap-4">
+    <form noValidate ref={formRef} action={action} className="flex flex-col gap-4">
       {/* Lets password managers save the new password against the right account. */}
       <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
       <Field
@@ -213,7 +215,6 @@ export function SetPasswordForm({ email }: { email: string }) {
         name="password"
         type="password"
         required
-        minLength={12}
         maxLength={72}
         autoComplete="new-password"
         invalid={!!state?.error}
@@ -225,7 +226,6 @@ export function SetPasswordForm({ email }: { email: string }) {
         name="confirm"
         type="password"
         required
-        minLength={12}
         maxLength={72}
         autoComplete="new-password"
         invalid={!!state?.error}
@@ -248,7 +248,7 @@ export function VerifyTotpForm({ next }: { next: string }) {
   const msg = useId();
   const formRef = useFocusOnError(state?.error, state);
   return (
-    <form ref={formRef} action={action} className="flex flex-col gap-4">
+    <form noValidate ref={formRef} action={action} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
       <CodeField label={t("code")} invalid={!!state?.error} describedBy={msg} />
       <FormMessage id={msg} tone="error">
@@ -264,7 +264,7 @@ export function VerifyTotpForm({ next }: { next: string }) {
 export function SignOutButton() {
   const t = useTranslations("Auth");
   return (
-    <form action={signOut} className="self-center">
+    <form noValidate action={signOut} className="self-center">
       <Button type="submit" variant="link" className="text-sm">
         {t("notYou")}
       </Button>
@@ -283,7 +283,7 @@ export function TotpSetup() {
 
   if (!enroll?.factorId) {
     return (
-      <form action={startAction} className="flex flex-col gap-4">
+      <form noValidate action={startAction} className="flex flex-col gap-4">
         <FormMessage id={msg} tone="error">
           {errorText(enroll?.error)}
         </FormMessage>
@@ -326,7 +326,7 @@ export function TotpSetup() {
           </span>
         </div>
       </div>
-      <form ref={formRef} action={verifyAction} className="flex flex-col gap-4">
+      <form noValidate ref={formRef} action={verifyAction} className="flex flex-col gap-4">
         <input type="hidden" name="factorId" value={enroll.factorId} />
         <CodeField label={t("enterStep")} invalid={!!state?.error} describedBy={msg} />
         <FormMessage id={msg} tone="error">

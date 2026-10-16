@@ -64,7 +64,7 @@ export function ItemSheet({
         className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain sm:w-[min(480px,calc(100%-32px))]")}
       >
         {item ? (
-          <form
+          <form noValidate
             className="flex flex-col gap-5 p-5 sm:p-6"
             onSubmit={(e) => {
               e.preventDefault();
@@ -195,7 +195,7 @@ export function ReviewSheet({
       }}
     >
       <DialogContent aria-describedby={`${id}-desc`} className={cn(phoneSheet, "max-h-[calc(100dvh-24px)] overflow-y-auto overscroll-contain sm:w-[min(560px,calc(100%-32px))]")}>
-        <form
+        <form noValidate
           className="flex flex-col gap-5 p-5 sm:p-6"
           onSubmit={(e) => {
             e.preventDefault();

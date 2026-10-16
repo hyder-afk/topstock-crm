@@ -513,7 +513,13 @@ export function QueueWorkspace({
           ) : null}
           <p className="max-w-[65ch] text-muted-foreground">{t("intro")}</p>
           {scopes.length > 1 ? (
-            <div role="group" aria-label={t("scopeLabel")} className="flex max-w-full flex-wrap gap-0.5 self-start rounded-md bg-muted p-1">
+            // Phones: one row of three, the long middle label wrapping inside its segment (French "Les miens + sans
+            // responsable" broke the row into two uneven lines; Day 7c).
+            <div
+              role="group"
+              aria-label={t("scopeLabel")}
+              className="flex max-w-full flex-wrap gap-0.5 self-start rounded-md bg-muted p-1 max-sm:grid max-sm:w-full max-sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+            >
               {scopes.map((sc) => (
                 <button
                   key={sc}
@@ -521,7 +527,7 @@ export function QueueWorkspace({
                   aria-pressed={settings.scope === sc}
                   onClick={() => setSettings((cur) => ({ ...cur, scope: sc }))}
                   className={cn(
-                    "min-h-11 shrink-0 rounded-[10px] px-3.5 text-sm whitespace-nowrap transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+                    "min-h-11 shrink-0 rounded-[10px] px-3.5 text-sm whitespace-nowrap transition-[background-color,color,transform] duration-150 active:scale-[0.97] max-sm:py-1 max-sm:leading-tight max-sm:text-balance max-sm:whitespace-normal sm:min-h-9",
                     settings.scope === sc ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                   )}
                 >

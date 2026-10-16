@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import { useFormatter, useTranslations } from "next-intl";
-import { Search } from "lucide-react";
+import { SearchInput } from "@/components/ui/search-input";
 import type { ShareItem } from "@/lib/share/schema";
 import { cn } from "@/lib/utils";
 
@@ -46,23 +46,16 @@ export function ShareList({
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex min-w-0 flex-col gap-3">
-        <label className="relative block">
-          <span className="sr-only">{t("searchLabel")}</span>
-          <Search aria-hidden="true" strokeWidth={1.75} className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            name="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={`${t("search")}…`}
-            autoComplete="off"
-            spellCheck={false}
-            enterKeyHint="search"
-            className="min-h-11 w-full rounded-md border border-border bg-card pr-3 pl-9 text-base text-foreground"
-          />
-        </label>
+        <SearchInput
+          name="search"
+          label={t("searchLabel")}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={`${t("search")}…`}
+          className="bg-card"
+        />
         {categories.length >= 2 ? (
-          <div role="radiogroup" aria-label={t("categories")} className="flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
+          <div role="radiogroup" aria-label={t("categories")} className="edge-fade flex snap-x gap-2 overflow-x-auto overscroll-x-contain pb-1">
             {[null, ...categories].map((c) => (
               <button
                 key={c ?? "*"}

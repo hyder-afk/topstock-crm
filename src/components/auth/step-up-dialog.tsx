@@ -160,7 +160,7 @@ function StepUpDialog({
           onRestoreFocus();
         }}
       >
-        <form
+        <form noValidate
           className="flex flex-col gap-5 p-6"
           onSubmit={(event) => {
             event.preventDefault();

@@ -2,9 +2,9 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Search, X } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { Kbd } from "@/components/ui/kbd";
+import { SearchInput } from "@/components/ui/search-input";
 import { UnitToggle, setDisplayUnit } from "@/components/inventory/bits";
 import { STOCK_FILTERS, STOCK_SORTS, type StockFilter, type StockFilters } from "@/lib/inventory/filters";
 import { pieces as fmtPieces } from "@/lib/inventory/format";
@@ -75,39 +75,26 @@ export function StockToolbar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-[1_1_220px]">
+        {/* Below 1024 px the search has the row to itself, so its placeholder ("name, category or P-0042") shows whole
+            (Day 7c: cut at 768 in French). */}
+        <div className="relative min-w-0 flex-[1_1_220px] max-lg:basis-full">
           <label htmlFor={`${id}-q`} className="sr-only">
             {t("search")}
           </label>
-          <Search aria-hidden="true" strokeWidth={1.75} className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
+          <SearchInput
             ref={inputRef}
             id={`${id}-q`}
-            type="search"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              // The clear button and Escape empty the box: the list follows at once, not after the debounce.
+              if (e.target.value === "") onChange({ ...filters, q: undefined });
+            }}
             maxLength={100}
             placeholder={t("searchPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-            className="min-h-11 w-full rounded-md border border-border bg-card pr-16 pl-9 text-base text-foreground placeholder:text-muted-foreground sm:min-h-10 [&::-webkit-search-cancel-button]:hidden"
+            className={cn("bg-card sm:min-h-10", !text && "lg:pr-10")}
           />
-          {text ? (
-            <button
-              type="button"
-              aria-label={t("clearSearch")}
-              onClick={() => {
-                setText("");
-                onChange({ ...filters, q: undefined });
-                inputRef.current?.focus();
-              }}
-              className="absolute top-1/2 right-1 grid size-11 -translate-y-1/2 place-items-center rounded-md text-muted-foreground hover:text-foreground sm:size-9"
-            >
-              <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
-            </button>
-          ) : (
-            <Kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 lg:inline-grid">/</Kbd>
-          )}
+          {text ? null : <Kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 lg:inline-grid">/</Kbd>}
         </div>
         {summary && summary.categories.length > 0 ? (
           <div className="w-full min-w-0 sm:w-40 xl:w-52">
@@ -151,7 +138,7 @@ export function StockToolbar({
       <div
         role="group"
         aria-label={t("filters")}
-        className="-mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
+        className="edge-fade -mx-4 flex snap-x gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0 [&::-webkit-scrollbar]:hidden"
       >
         {chips.map((f) => (
           <button

@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { AuthError } from "@supabase/supabase-js";
-import { gatePath, getGate, safeNext } from "@/lib/auth";
+import { gatePath, getGate, requireSession, safeNext } from "@/lib/auth";
+import { recordAuthEvent } from "@/lib/auth-events";
 import { createClient } from "@/lib/supabase/server";
 
 // Every action validates its input with Zod and answers with a short code; the screens turn codes into EN/FR text.
@@ -52,6 +53,20 @@ export async function signIn(_prev: FormState, formData: FormData): Promise<Form
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut({ scope: "local" });
+  redirect("/login");
+}
+
+export type SignOutEverywhereResult = { error: "unavailable" | "rateLimited" } | undefined;
+
+// "Sign out of all devices" (Gate 1 item 25): ends every session of this person (scope "global": the auth server
+// revokes all their refresh tokens), then this browser's cookies go too. Only for a fully signed-in (aal2) person,
+// checked on the server; no fresh code, because it only takes access away and is what someone does when a device is
+// lost (Master Plan section 8 lists step-up for adjustments, imports, exports, deletes and role changes). On failure
+// the person stays signed in here and sees a short message; nothing raw reaches the browser.
+export async function signOutEverywhere(): Promise<SignOutEverywhereResult> {
+  const { supabase } = await requireSession();
+  const { error } = await supabase.auth.signOut({ scope: "global" });
+  if (error) return { error: isRateLimited(error) ? "rateLimited" : "unavailable" };
   redirect("/login");
 }
 
@@ -149,6 +164,8 @@ export async function verifyTotpEnrollment(_prev: FormState, formData: FormData)
 
   const { error } = await supabase.auth.mfa.challengeAndVerify(parsed.data);
   if (error) return { error: isRateLimited(error) ? "rateLimited" : "codeWrong" };
+  // The first sign-in finishes here (password, then the new authenticator): one "signed in" row.
+  await recordAuthEvent(supabase, "sign_in");
   redirect("/");
 }
 
@@ -168,5 +185,7 @@ export async function verifyTotp(_prev: FormState, formData: FormData): Promise<
 
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: parsed.data });
   if (error) return { error: isRateLimited(error) ? "rateLimited" : "codeWrong" };
+  // A sign-in is complete once the code is accepted (every account has an authenticator): one "signed in" row.
+  await recordAuthEvent(supabase, "sign_in");
   redirect(next);
 }

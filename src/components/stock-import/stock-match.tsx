@@ -25,7 +25,6 @@ import {
   type StockTarget,
 } from "@/lib/stock-import";
 import { useModKey } from "@/lib/use-platform";
-import { cn } from "@/lib/utils";
 
 export type StockChoices = {
   mapping: StockTarget[];
@@ -293,7 +292,7 @@ function ColumnRow({
             </span>
           ) : null}
         </div>
-        <p className={cn("min-w-0 truncate text-sm text-muted-foreground")} title={examples.join(" · ")} translate="no">
+        <p className="min-w-0 text-sm text-muted-foreground wrap-anywhere" translate="no">
           {examples.length ? examples.join(" · ") : t("emptyColumn")}
         </p>
       </div>

@@ -18,6 +18,8 @@ export type LostReason = (typeof lostReasons)[number];
 export const fulfilments = ["from_stock", "direct_from_source"] as const;
 export type Fulfilment = (typeof fulfilments)[number];
 export const DEAL_UNDO_SECONDS = 120;
+/** The creator's no-code Delete window (deals_delete's second branch): an untouched deal, under 120 s old. */
+export const DEAL_FREE_DELETE_SECONDS = 120;
 export const DEAL_TOAST_SECONDS = 10;
 export const STALL_DAYS = { lead: 7, qualified: 14, negotiations: 21 } as const;
 /** The Won column and the Lost line cover the last 30 days (D19). */
@@ -118,6 +120,11 @@ export type DealDetail = DealCard & {
   undo: { history_id: number; to_stage: StageKey; until: string } | null;
   history: DealHistoryRow[];
   activities: { id: string; type: string; outcome: string | null; user_first_name: string | null; created_at: string }[];
+  /** A confirmed sale or an active hold names the deal: the database refuses reopening it (when won) and deleting it. */
+  stock_held: boolean;
+  /** The end of the creator's no-code Delete window (created_at + 120 s) when that is the caller's only way to delete;
+   * null for an admin (no time limit) and for anyone not offered Delete. */
+  delete_until: string | null;
 };
 
 /** What move_deal answers (D5: a conflict is a result, not an error). */
@@ -274,4 +281,24 @@ export function dealPath(history: DealHistoryRow[], now: number): { stage: Stage
     const end = i + 1 < rows.length ? Date.parse(rows[i + 1].created_at) : now;
     return { stage: h.to_stage, days: Math.max(0, Math.floor((end - Date.parse(h.created_at)) / DAY)), current: i === rows.length - 1 };
   });
+}
+
+/**
+ * Whether Delete is offered right now (Day 7: the database refuses the rest, and still decides). Not when stock records
+ * hold the deal; otherwise the card's can_delete, and only until `until` (the creator's 120 s window; null = no limit,
+ * an admin). `held` is undefined when the deal's details are not loaded: the card alone cannot tell, so Delete stays.
+ */
+export function deleteOffered(o: { can_delete: boolean; held?: boolean; until: number | null }, now: number): boolean {
+  return o.can_delete && o.held !== true && (o.until === null || now < o.until);
+}
+
+/** The end of the creator's window for a card, as the board sees it: null for an admin, created_at + 120 s otherwise. */
+export function freeDeleteUntil(card: Pick<DealCard, "created_at">, isAdmin: boolean): number | null {
+  return isAdmin ? null : Date.parse(card.created_at) + DEAL_FREE_DELETE_SECONDS * 1000;
+}
+
+/** Whether Reopen is offered: a closed deal one may edit, unless it is won and stock records hold it (the lost-to-open
+ * path is never blocked). `held` undefined: not known yet, so Reopen stays. */
+export function reopenOffered(o: Pick<DealCard, "status" | "can_edit"> & { held?: boolean }): boolean {
+  return o.can_edit && o.status !== "open" && !(o.status === "won" && o.held === true);
 }

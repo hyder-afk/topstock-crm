@@ -779,10 +779,17 @@ begin
   if private.deal_closing_blocked(e1) is not null then
     raise exception 'FAIL: a deal with no stock record is blocked';
   end if;
+  if (public.get_deal(e1) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held with no stock record';
+  end if;
   s1 := public.record_sale(lead, 'from_stock', jsonb_build_array(pg_temp.l('SA P4', 1)), p_deal => e1);
   -- An undecided deal with a warehouse sale is not blocked; its Win choosing Warehouse fits the sale.
   if private.deal_closing_blocked(e1) is not null then
     raise exception 'FAIL: an undecided deal is blocked before its first shipping choice';
+  end if;
+  -- ...but its delete is (the block_deal_delete_on_stock trigger), so the sheet already leaves Delete out (Day 7).
+  if not (public.get_deal(e1) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held for an undecided deal with a sale';
   end if;
   update public.deals set stage_id = private.stage_id('won'), value = 100, fulfilment = 'from_stock' where id = e1;
   if (select status from public.deals where id = e1) <> 'won' then
@@ -790,6 +797,9 @@ begin
   end if;
   if private.deal_closing_blocked(e1) is distinct from 'sales' then
     raise exception 'FAIL: the seam answers % for a won deal with a sale', private.deal_closing_blocked(e1);
+  end if;
+  if not (public.get_deal(e1) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held for a won deal with a sale';
   end if;
   -- Undo of the win (own reverse move inside 120 s), then a reopen elsewhere with a fresh code.
   perform pg_temp.expect_error(format('update public.deals set stage_id = private.stage_id(%L) where id = %L', 'lead', e1), '42501', 'blocked_sales');
@@ -803,6 +813,9 @@ begin
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000c1', 'aal2', 30);
   if private.deal_closing_blocked(e1) is not null then
     raise exception 'FAIL: the seam answers another organisation';
+  end if;
+  if private.deal_held_by_stock(e1) is not null or public.get_deal(e1) is not null then
+    raise exception 'FAIL: deal_held_by_stock or get_deal answers another organisation';
   end if;
   -- Delete, by an admin with a fresh code: delete_deal and a direct DELETE.
   perform pg_temp.as_user('00000000-0000-0000-0000-00000000000a', 'aal2', 30);
@@ -819,6 +832,9 @@ begin
   perform public.undo_sale((s2 ->> 'order_id')::uuid);
   if private.deal_closing_blocked(e1) is not null or private.deal_closing_blocked(e2) is not null then
     raise exception 'FAIL: a cancelled sale still blocks';
+  end if;
+  if (public.get_deal(e1) ->> 'stock_held')::boolean or (public.get_deal(e2) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held after the sales were cancelled';
   end if;
   update public.deals set stage_id = private.stage_id('qualified') where id = e1;
   update public.deals set fulfilment = 'direct_from_source' where id = e2;
@@ -847,6 +863,9 @@ begin
   end if;
   perform pg_temp.expect_error($q$update public.deals set fulfilment = 'direct_from_source' where id = '5d000000-0000-0000-0000-0000000000e8'$q$,
                                '42501', 'blocked_sales');
+  if not (public.get_deal('5d000000-0000-0000-0000-0000000000e8') ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held must see the manager''s sale the rep cannot';
+  end if;
 end $$;
 -- deal_delete_by_maintenance_unlinks_sale: with no signed-in user the delete goes through and the confirmed sale loses
 -- the link and nothing else (the sale guard lets the foreign key's set null through, at trigger depth 2 only: the same
@@ -883,6 +902,9 @@ begin
   if private.deal_closing_blocked(e3) is distinct from 'reservation' then
     raise exception 'FAIL: the seam answers % for a deal with a hold', private.deal_closing_blocked(e3);
   end if;
+  if not (public.get_deal(e3) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held for a deal with a hold';
+  end if;
   perform pg_temp.expect_error(format('update public.deals set fulfilment = %L where id = %L', 'direct_from_source', e3), '42501', 'blocked_reservation');
   perform pg_temp.expect_error(format('update public.deals set fulfilment = null where id = %L', e3), '42501', 'blocked_reservation');
   -- The first choice of an undecided deal with a hold: Supplier Stock is blocked (a patch and a Win), Warehouse fits.
@@ -908,6 +930,9 @@ begin
   perform public.post_stock_movement(pg_temp.pid('SA P4'), 'release', p_reservation => h3);
   if private.deal_closing_blocked(e3) is not null then
     raise exception 'FAIL: a released hold still blocks';
+  end if;
+  if (public.get_deal(e3) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal.stock_held after the hold was released';
   end if;
   update public.deals set stage_id = private.stage_id('negotiations') where id = e3;
   update public.deals set fulfilment = 'direct_from_source' where id = e3;

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { apiSession } from "@/lib/auth";
+import { listRateLimited } from "@/lib/rate-limit";
 import { importError, type ImportIssue } from "@/lib/import-server";
 
 // GET /api/imports/<id>/issues?after=<row>: up to 1,000 rows the check did not mark plainly ready (rejected, repeated,
@@ -9,6 +10,8 @@ import { importError, type ImportIssue } from "@/lib/import-server";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await apiSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const limited = listRateLimited(session.claims.sub);
+  if (limited) return limited;
   const { id } = await params;
   const parsed = z
     .object({ id: z.uuid(), after: z.coerce.number().int().min(0).max(50001).default(0) })
