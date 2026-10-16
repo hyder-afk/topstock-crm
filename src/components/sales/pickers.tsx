@@ -53,6 +53,9 @@ function Combobox<T>({
   // (it never picks a row of an older search).
   const [optionsFor, setOptionsFor] = useState<string | null>(null);
   const pendingPick = useRef(false);
+  // The same, as of the latest answer: a key handled before React re-renders with that answer must see it, or an Enter
+  // in that gap would wait for results that already came (it was lost in WebKit, PR #18).
+  const loaded = useRef<{ text: string | null; options: Option<T>[] }>({ text: null, options: [] });
   const textNow = useRef(value);
   const blurTimer = useRef<number | null>(null);
   useEffect(
@@ -77,6 +80,7 @@ function Combobox<T>({
     loadNow(query)
       .then((o) => {
         if (n === seq.current) {
+          loaded.current = { text: query, options: o };
           setOptions(o);
           setOptionsFor(query);
           setActive(0);
@@ -88,6 +92,7 @@ function Combobox<T>({
       })
       .catch(() => {
         if (n === seq.current) {
+          loaded.current = { text: query, options: [] };
           setOptions([]);
           setOptionsFor(query);
         }
@@ -141,8 +146,12 @@ function Combobox<T>({
               setActive((a) => Math.max(a - 1, 0));
             } else if (e.key === "Enter" && open) {
               e.preventDefault();
-              if (fresh && options?.[active]) pick(options[active]);
-              else if (!fresh) pendingPick.current = true;
+              const now = loaded.current;
+              if (now.text === textNow.current) {
+                // Before the re-render the highlighted row is the first (each answer resets it to 0).
+                const row = now.options[fresh ? active : 0];
+                if (row) pick(row);
+              } else pendingPick.current = true;
             } else if (e.key === "Escape" && open) {
               e.stopPropagation();
               setOpen(false);
