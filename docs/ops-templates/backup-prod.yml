@@ -7,8 +7,9 @@
 # in topstock-crm).
 #
 # What is in the dump: the schemas public and private (all CRM data), auth (accounts, so a real recovery keeps
-# everyone's sign-in) and supabase_migrations (which migrations were applied). Not in it: files in Supabase Storage
-# (none in Release 1) and Supabase's own managed schemas, which Supabase recreates.
+# everyone's sign-in) and supabase_migrations (which migrations were applied). Not in it: the lead files in Supabase
+# Storage (bucket lead-files, since Day 4; no database backup holds their bytes, see restore-production.md) and
+# Supabase's own managed schemas, which Supabase recreates.
 # Next to the encrypted file the artifact holds row-counts.txt: table names and row counts only (no data), used by
 # the restore test to prove the backup is complete.
 #
