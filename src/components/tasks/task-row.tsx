@@ -6,6 +6,9 @@ import { useFormatter, useTranslations } from "next-intl";
 import { motion, useIsPresent, useReducedMotion } from "motion/react";
 import { Building2, Check, Ellipsis } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Select } from "@/components/ui/select";
+import { TimePicker } from "@/components/ui/time-picker";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { kindIcon } from "@/components/tasks/quick-add";
 import { personName, type TeamMember } from "@/lib/leads";
@@ -182,7 +185,6 @@ export const TaskRow = memo(function TaskRow({
           </div>
           {showAssignee ? (
             <span
-              title={personName({ first_name: task.assignee_first_name, last_name: task.assignee_last_name })}
               className="mt-2.5 grid size-8 shrink-0 place-items-center rounded-full bg-muted font-mono text-[11px] text-muted-foreground sm:mt-2"
             >
               <span className="sr-only">{t("assignee", { name: personName({ first_name: task.assignee_first_name, last_name: task.assignee_last_name }) })}</span>
@@ -260,7 +262,7 @@ function EditForm({
   };
 
   return (
-    <form
+    <form noValidate
       aria-label={t("editLabel")}
       className="flex min-w-0 flex-1 flex-col gap-3 py-2"
       onSubmit={(e) => {
@@ -268,7 +270,9 @@ function EditForm({
         void save();
       }}
       onKeyDown={(e) => {
-        if (e.key === "Escape") {
+        // A picker's popover inside the form closes on Escape first (Radix prevents the default); only a free Escape
+        // closes the editor.
+        if (e.key === "Escape" && !e.defaultPrevented) {
           e.preventDefault();
           e.stopPropagation();
           onClose();
@@ -290,44 +294,34 @@ function EditForm({
         />
       </label>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{t("quickAdd.date")}</span>
-          <input
-            type="date"
-            name="due_date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground sm:min-h-9"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{task.kind === "meeting" ? t("quickAdd.timeRequired") : t("quickAdd.time")}</span>
-          <input
-            type="time"
+        <div className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${id}-date`} className="text-muted-foreground">{t("quickAdd.date")}</label>
+          <DatePicker id={`${id}-date`} name="due_date" value={date} onValueChange={setDate} typed />
+        </div>
+        <div className="flex flex-col gap-1 text-sm">
+          <label htmlFor={`${id}-time`} className="text-muted-foreground">{task.kind === "meeting" ? t("quickAdd.timeRequired") : t("quickAdd.time")}</label>
+          <TimePicker
+            id={`${id}-time`}
             name="due_time"
             value={time}
             disabled={!date}
+            required={task.kind === "meeting"}
             aria-invalid={meetingNeedsTime || undefined}
-            onChange={(e) => setTime(e.target.value)}
-            className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground aria-invalid:border-status-red disabled:opacity-60 sm:min-h-9"
+            aria-describedby={meetingNeedsTime ? `${id}-why` : undefined}
+            onValueChange={setTime}
           />
-        </label>
+        </div>
         {canAssign && team.length > 0 ? (
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">{t("editAssignee")}</span>
-            <select
-              name="assignee"
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-              className="min-h-11 rounded-md border border-border bg-background px-3 text-sm text-foreground sm:min-h-9"
-            >
+          <div className="flex flex-col gap-1 text-sm">
+            <label htmlFor={`${id}-assignee`} className="text-muted-foreground">{t("editAssignee")}</label>
+            <Select id={`${id}-assignee`} name="assignee" value={assignee} onValueChange={setAssignee}>
               {team.map((m) => (
                 <option key={m.id} value={m.id}>
                   {personName(m) || tLeads("noName")}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </div>
         ) : null}
       </div>
       <p id={`${id}-why`} className={cn("text-sm text-status-red", !meetingNeedsTime && "sr-only")}>

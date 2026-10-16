@@ -244,7 +244,7 @@ export function TeamList({
           }}
         >
           {shown ? (
-            <form
+            <form noValidate
               className="flex flex-col gap-5 p-6"
               onSubmit={(event) => {
                 event.preventDefault();

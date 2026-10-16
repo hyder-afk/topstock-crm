@@ -46,6 +46,7 @@ const namespaces = [
   "Share",
   "ShareLinks",
   "ShareText",
+  "Pickers",
   // Day 7a: More (sign out of all devices).
   "More",
 ];

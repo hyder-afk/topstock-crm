@@ -362,8 +362,8 @@ export function TasksWorkspace({
         <div className="flex items-baseline gap-3">
           <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
           {counts ? (
-            // The number of tasks due today or overdue, said in words to assistive tech (and on hover).
-            <span title={t("dueCount", { count: counts.today + counts.overdue })} className="font-mono text-base text-muted-foreground">
+            // The number of tasks due today or overdue, said in words to assistive tech.
+            <span className="font-mono text-base text-muted-foreground">
               <span aria-hidden="true">{format.number(counts.today + counts.overdue)}</span>
               <span className="sr-only">{t("dueCount", { count: counts.today + counts.overdue })}</span>
             </span>

@@ -116,7 +116,7 @@ export default async function MorePage() {
       </section>
 
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
-        <form action={signOut}>
+        <form noValidate action={signOut}>
           <Button type="submit" variant="quiet">
             {t("signOut")}
           </Button>

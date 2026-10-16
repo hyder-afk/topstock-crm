@@ -33,6 +33,9 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Day 7b: no native pickers or popups (raw <select>, date/time/search inputs, title= tooltips, <summary>,
+      # confirm/alert/prompt, forms without noValidate). Also covered by tests/unit/native-controls.spec.ts.
+      - run: npm run check:native
       # Pure import rules in Node (playwright.unit.config.ts): no browser, no server.
       - run: npm run test:unit
       - run: npm audit --omit=dev --audit-level=high

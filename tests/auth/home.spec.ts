@@ -494,7 +494,9 @@ test("win_rate_hidden_under_5 and recent_activity_has_no_note_text and low_stock
   await expect(page.locator("body")).not.toContainText("SECRET-NOTE");
   const api = await (await page.request.get("/api/home?scope=team")).text();
   expect(api).not.toContain("SECRET-NOTE");
-  await expect(recent.locator("time").first()).toHaveAttribute("title", /\d/);
+  // Day 7b: the full date and time is screen-reader text inside <time> (no title= tooltip any more).
+  await expect(recent.locator("time").first().locator(".sr-only")).toHaveText(/\(.*\d.*\)/);
+  await expect(recent.locator("time").first()).not.toHaveAttribute("title", /./);
   await expectInstalledLowStock(page);
   expect(errors).toEqual([]);
   await context.close();

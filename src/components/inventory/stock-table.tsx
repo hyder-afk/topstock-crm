@@ -205,8 +205,11 @@ export function StockTable({
               </a>
             );
             const whCell = (
-              <span className="flex min-w-0 flex-col items-end gap-1" title={t("onHandHeld", { onHand: fmtPieces(locale, r.wh_on_hand), held: fmtPieces(locale, r.wh_reserved) })}>
-                <span className="font-mono">{qty(r.wh_available, r.pieces_per_carton, unit)}</span>
+              <span className="flex min-w-0 flex-col items-end gap-1">
+                <span className="font-mono">
+                  {qty(r.wh_available, r.pieces_per_carton, unit)}
+                  <span className="sr-only"> ({t("onHandHeld", { onHand: fmtPieces(locale, r.wh_on_hand), held: fmtPieces(locale, r.wh_reserved) })})</span>
+                </span>
                 {fill !== null ? (
                   <span aria-hidden="true" className="block h-1 w-20 overflow-hidden rounded-full bg-muted">
                     <span

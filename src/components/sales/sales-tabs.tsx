@@ -327,7 +327,7 @@ function CancelSaleDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className={cn(phoneSheet, "sm:max-w-md")}>
-        <form
+        <form noValidate
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();

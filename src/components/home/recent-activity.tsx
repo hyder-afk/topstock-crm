@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { CardError, HomeCard, RowSkeletons } from "@/components/home/home-card";
-import type { RecentRow } from "@/lib/home";
+import { RECENT_SHOWN, type RecentRow } from "@/lib/home";
 import { formatMoney } from "@/lib/money";
 
 // Recent activity (Day 5 design 7.10, home_recent_activity): the latest entries and deal changes, newest first: "Kais ·
 // Call · Interested · Maison Verdane · 10 min ago" or "Henri won Maison Verdane · €12,400". The time is relative, with
-// the exact time in its title. A row opens the lead. The feed never carries an entry's text or a lost note (the
+// the exact time as screen-reader text (Day 7b: no title= tooltip). A row opens the lead. The skeleton draws the
+// RECENT_SHOWN rows the card holds. The feed never carries an entry's text or a lost note (the
 // database's return type has no such column).
 
 // Starts from when the server answered (the same instant on the server and in the browser, so the relative times
@@ -61,7 +62,7 @@ export function RecentActivity({
   return (
     <HomeCard labelId="home-recent" title={title} className="col-span-12 lg:col-span-7" busy={loading}>
       {loading ? (
-        <RowSkeletons count={4} />
+        <RowSkeletons count={RECENT_SHOWN} />
       ) : !recent ? (
         <CardError onRetry={onRetry} />
       ) : recent.length === 0 ? (
@@ -75,12 +76,9 @@ export function RecentActivity({
                 <span className="line-clamp-2 min-w-0 flex-1 text-sm md:line-clamp-1">
                   <Line row={row} />
                 </span>
-                <time
-                  dateTime={row.at}
-                  title={format.dateTime(at, { dateStyle: "medium", timeStyle: "short" })}
-                  className="shrink-0 text-xs text-muted-foreground"
-                >
+                <time dateTime={row.at} className="shrink-0 text-xs text-muted-foreground">
                   {format.relativeTime(at, now)}
+                  <span className="sr-only"> ({format.dateTime(at, { dateStyle: "medium", timeStyle: "short" })})</span>
                 </time>
               </>
             );

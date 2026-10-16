@@ -578,6 +578,7 @@
       "d30": "In 30 days",
       "d90": "In 90 days",
       "pick": "Pick a date",
+      "needDate": "Pick a date from tomorrow up to two years ahead.",
       "cancel": "Cancel",
       "confirm": "Set Cool off"
     },
@@ -2085,7 +2086,6 @@
     "toolbar": {
       "search": "Search products",
       "searchPlaceholder": "Search name, category or P-0042…",
-      "clearSearch": "Clear search",
       "category": "Category",
       "allCategories": "All categories",
       "sort": "Sort",
@@ -2832,5 +2832,31 @@
     "perPiece": "{price}/pc",
     "priceOnRequest": "price on request",
     "more": "… and more items."
+  },
+  "Pickers": {
+    "choose": "Choose…",
+    "search": "Search…",
+    "loading": "Loading…",
+    "noMatch": "No match",
+    "chosen": "chosen",
+    "chooseDate": "Choose a date",
+    "changeDate": "Change the date, now {date}",
+    "noDate": "No date chosen",
+    "chooseDates": "Choose dates",
+    "rangeValue": "{from} to {to}",
+    "rangeFromOnly": "From {from}",
+    "pickEnd": "Now choose the end date.",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "clear": "Clear",
+    "dayLetters": "dd",
+    "monthLetters": "mm",
+    "yearLetters": "yyyy",
+    "chooseTime": "Choose a time",
+    "times": "Times",
+    "time": "Time",
+    "timePattern24": "hh:mm",
+    "timePattern12": "h:mm am",
+    "clearSearch": "Clear search"
   }
 }

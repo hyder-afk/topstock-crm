@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { clearStockHistory, createUser, fullSession, setRole, sql } from "./helpers";
+import { choose, clearStockHistory, createUser, fullSession, setRole, sql } from "./helpers";
 
 // Import speed in the browser at Release 1 size (design 6E): a 30,000-row made-up file, on a CPU slowed down 4 times
 // (an older laptop). Records how long reading, matching, checking and importing take, the longest the page stays busy
@@ -63,7 +63,9 @@ test("a 30,000-row file at 4x CPU slow-down: reading, matching, checking, import
     await expect(page.getByRole("heading", { name: "Match your columns" })).toBeVisible({ timeout: 120_000 });
     const read = Date.now() - t0;
     const readTasks = await takeTasks();
-    for (const select of await page.locator('select[aria-invalid="true"]').all()) await select.selectOption("cold");
+    // Day 7b: the app's own Select (a combobox button), picked like a person does; each choice clears its aria-invalid.
+    const open = page.locator('[role="combobox"][aria-invalid="true"]');
+    for (let left = await open.count(); left > 0; left = await open.count()) await choose(open.first(), "cold");
     const t1 = Date.now();
     await page.getByRole("button", { name: /^Check file/ }).click();
     await expect(page.getByRole("heading", { name: "Check results" })).toBeVisible({ timeout: 300_000 });

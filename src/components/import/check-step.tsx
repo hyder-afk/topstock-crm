@@ -473,7 +473,7 @@ function IssueList({ issues, names }: { issues: ImportIssue[]; names: Map<number
                 style={{ transform: `translateY(${item.start}px)` }}
               >
                 <span className="font-mono">{issue.row_no}</span>
-                <span className="truncate max-sm:hidden" title={name || undefined}>
+                <span className="min-w-0 wrap-anywhere max-sm:hidden">
                   {names ? name || t("noName") : t("chooseFileForNames")}
                 </span>
                 <span className="flex items-start gap-2">

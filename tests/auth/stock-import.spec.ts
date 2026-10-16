@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { decodeBytes, parseCsvText } from "@/lib/import";
-import { ageStepUp, appReady, createUser, fullSession, isCancelledPrefetch, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { ageStepUp, appReady, createUser, expectChosen, fullSession, isCancelledPrefetch, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // The stock sheet import (Day 6c, design 11.5): the fake 40-row sheet matched with zero clicks, French numbers, the
 // check's tiles and REVENTE warnings, the problems file (formula-guarded), the import; a re-import that keeps a
@@ -130,7 +130,7 @@ test("import_stock_40_zero_click_match, stock_problems_file_formula_guarded, sto
   await expect(page.getByRole("heading", { name: "Match the columns" })).toBeFocused();
   // Zero clicks: all nine columns matched, French numbers read from the file, every STATUS spelling known.
   await expect(page.getByText("Matched", { exact: true })).toHaveCount(9);
-  await expect(page.getByLabel("Number style")).toHaveValue("fr");
+  await expectChosen(page.getByLabel("Number style"), "fr");
   await expect(page.getByText(/^Numbers look like .+ → .+/)).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "rows ready" })).toHaveText(/32 rows ready · 7 can’t be imported/);
   // The code is 700 s old: "Confirm it's you" before anything is sent.
@@ -255,7 +255,7 @@ test("cp1252_variant, parens_only_headers, stock_import_en_file", async ({ brows
   await expect(page.getByRole("heading", { name: "Match the columns" })).toBeVisible();
   await expect(page.getByText(/read as Western European/)).toBeVisible();
   await expect(page.getByText("Matched", { exact: true })).toHaveCount(9);
-  await expect(page.getByLabel("Number style")).toHaveValue("fr");
+  await expectChosen(page.getByLabel("Number style"), "fr");
   await page.getByRole("button", { name: "Choose another file" }).click();
   // Parentheses only: min and max read inside them.
   const parens = await tagged("stock-parens-only.csv");
@@ -266,7 +266,7 @@ test("cp1252_variant, parens_only_headers, stock_import_en_file", async ({ brows
   // English headers and numbers.
   const en = await tagged("stock-en-headers.csv");
   await page.locator('input[type="file"]').setInputFiles(en.file);
-  await expect(page.getByLabel("Number style")).toHaveValue("en");
+  await expectChosen(page.getByLabel("Number style"), "en");
   await expect(page.getByText("Matched", { exact: true })).toHaveCount(9);
   await page.getByRole("button", { name: /^Check\b/ }).click();
   await page.waitForTimeout(300);

@@ -97,8 +97,9 @@ export function ImportHistory({
                 const here = running.has(item.id);
                 return (
                   <li key={item.id} className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0">
-                    <p className="font-bold wrap-anywhere" title={item.filename}>
-                      {middleTruncate(item.filename)}
+                    <p className="font-bold wrap-anywhere">
+                      <span className="sr-only">{item.filename}</span>
+                      <span aria-hidden="true">{middleTruncate(item.filename)}</span>
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {t("when", { date: format.dateTime(new Date(item.created_at), { dateStyle: "medium", timeStyle: "short" }), who })}

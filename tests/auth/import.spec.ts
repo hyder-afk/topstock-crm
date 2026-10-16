@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Papa from "papaparse";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, clearStockHistory, createUser, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { ageStepUp, appReady, choose as chooseOption, clearStockHistory, createUser, expectChosen, fullSession, nextWindow, setRole, settled, sql, totp, trackRequests } from "./helpers";
 
 // Lead import (Day 3b): an admin imports the fake sample files end to end (choose, match, check, import, undo), the
 // problems file, a check that fails part way (thrown away, choices kept), a paused import resumed, a checked import
@@ -180,23 +180,23 @@ test("the 500-row sample: two status words chosen, results match expected.json, 
   // Two status words have no obvious meaning: the check waits for a choice.
   await expect(checkButton(page)).toBeDisabled();
   await expect(page.getByText("2 status words still need a choice")).toBeVisible();
-  await page.getByLabel("Status for “Hot lead”").selectOption("warm");
-  await page.getByLabel("Status for “Prospect”").selectOption("cold");
+  await chooseOption(page.getByLabel("Status for “Hot lead”"), "warm");
+  await chooseOption(page.getByLabel("Status for “Prospect”"), "cold");
   // Live counts from the rows cleaned in this browser (repeats are found by the check), in a status line that also
   // describes the Check button.
   await expect(page.getByRole("status").filter({ hasText: "450 rows ready to check · 50 need fixing" })).toBeVisible();
   await expect(checkButton(page)).toHaveAccessibleDescription("450 rows ready to check · 50 need fixing");
   // "Former Rep" is not in the team (comes in unassigned); "Atlantis" is not a country (left blank).
   await expect(page.getByText("We matched 3 of 4 owner names to your team.", { exact: false })).toBeVisible();
-  await expect(page.getByLabel("Owner for “Former Rep”")).toHaveValue("");
-  await expect(page.getByLabel("Country for “Atlantis”")).toHaveValue("");
-  await expect(page.getByLabel("Date order")).toHaveValue("dmy");
+  await expectChosen(page.getByLabel("Owner for “Former Rep”"), "");
+  await expectChosen(page.getByLabel("Country for “Atlantis”"), "");
+  await expectChosen(page.getByLabel("Date order"), "dmy");
   // The example under the menu is its description and follows the choice.
   await expect(page.getByLabel("Date order")).toHaveAccessibleDescription("So 01/09/2023 is September 1, 2023.");
-  await page.getByLabel("Date order").selectOption("mdy");
+  await chooseOption(page.getByLabel("Date order"), "mdy");
   await expect(page.getByLabel("Date order")).toHaveAccessibleDescription("So 01/09/2023 is January 9, 2023.");
-  await page.getByLabel("Date order").selectOption("dmy");
-  await expect(page.getByLabel("Time zone")).toHaveValue("Europe/Paris");
+  await chooseOption(page.getByLabel("Date order"), "dmy");
+  await expectChosen(page.getByLabel("Time zone"), "Europe/Paris");
   await checkButton(page).click();
 
   await expect(page.getByRole("heading", { name: "Check results" })).toBeVisible();
@@ -270,12 +270,12 @@ test("a check that fails part way is thrown away, and every choice on Match stay
   const errors = watchErrors(page);
   await openImport(page);
   await choose(page, "leads-500-fake.csv");
-  await page.getByLabel("Status for “Hot lead”").selectOption("warm");
-  await page.getByLabel("Status for “Prospect”").selectOption("cold");
-  await page.getByLabel("Empty status").selectOption("warm");
-  await page.getByLabel("Owner for “Former Rep”").selectOption({ label: "Henri Test" });
-  await page.getByLabel("Date order").selectOption("mdy");
-  await page.getByLabel("Time zone").selectOption("Europe/London");
+  await chooseOption(page.getByLabel("Status for “Hot lead”"), "warm");
+  await chooseOption(page.getByLabel("Status for “Prospect”"), "cold");
+  await chooseOption(page.getByLabel("Empty status"), "warm");
+  await chooseOption(page.getByLabel("Owner for “Former Rep”"), { label: "Henri Test" });
+  await chooseOption(page.getByLabel("Date order"), "mdy");
+  await chooseOption(page.getByLabel("Time zone"), "Europe/London");
   // The connection drops once the import is created: the rows (and their 3 retries) never arrive.
   let calls = 0;
   await page.route("**/leads/import", async (route) => {
@@ -291,12 +291,12 @@ test("a check that fails part way is thrown away, and every choice on Match stay
   await expect(page.locator("main").getByRole("alert")).toContainText("Connection lost.", { timeout: 15_000 });
   // Back on Match, focus on its heading, with every choice as it was.
   await expect(page.getByRole("heading", { name: "Match your columns" })).toBeFocused();
-  await expect(page.getByLabel("Status for “Hot lead”")).toHaveValue("warm");
-  await expect(page.getByLabel("Status for “Prospect”")).toHaveValue("cold");
-  await expect(page.getByLabel("Empty status")).toHaveValue("warm");
-  await expect(page.getByLabel("Owner for “Former Rep”")).not.toHaveValue("");
-  await expect(page.getByLabel("Date order")).toHaveValue("mdy");
-  await expect(page.getByLabel("Time zone")).toHaveValue("Europe/London");
+  await expectChosen(page.getByLabel("Status for “Hot lead”"), "warm");
+  await expectChosen(page.getByLabel("Status for “Prospect”"), "cold");
+  await expectChosen(page.getByLabel("Empty status"), "warm");
+  await expect(page.getByLabel("Owner for “Former Rep”")).not.toHaveAttribute("data-value", "");
+  await expectChosen(page.getByLabel("Date order"), "mdy");
+  await expectChosen(page.getByLabel("Time zone"), "Europe/London");
   await expect(checkButton(page)).toBeEnabled();
   // The half-sent import was thrown away, so trying again starts a fresh one (and never fills the 3 open slots).
   await expect
@@ -318,7 +318,7 @@ test("the rows-not-imported file goes back in as is: nothing new, the same rows 
   // "Row" and "Problem" are not lead fields; the original columns match as before.
   await expect(page.getByText("Matched", { exact: true })).toHaveCount(8);
   for (const select of await page.getByLabel(/^Status for/).all()) {
-    if ((await select.inputValue()) === "") await select.selectOption("cold");
+    if ((await select.getAttribute("data-value")) === "") await chooseOption(select, "cold");
   }
   await checkButton(page).click();
   await expect(page.getByRole("heading", { name: "Check results" })).toBeVisible();
@@ -374,8 +374,8 @@ test("a French Windows-1252 file with ; and its own headers: owner column matche
   await expect(page.getByText("We read this file as Western European text.", { exact: false })).toBeVisible();
   // Accents decoded correctly in the examples.
   await expect(page.getByText("Pâtisserie Hélène & Fils", { exact: false })).toBeVisible();
-  await expect(page.getByLabel("Chargé de compte")).toHaveValue("ignore");
-  await page.getByLabel("Chargé de compte").selectOption("owner");
+  await expectChosen(page.getByLabel("Chargé de compte"), "ignore");
+  await chooseOption(page.getByLabel("Chargé de compte"), "owner");
   await expect(page.getByText("We matched 3 of 3 owner names to your team.", { exact: false })).toBeVisible();
   await page.locator("main h1").click();
   await page.keyboard.press("Control+Enter");

@@ -2,6 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { Handshake } from "lucide-react";
+import { Select } from "@/components/ui/select";
 import type { LeadDetail } from "@/lib/leads";
 import { formatMoney } from "@/lib/money";
 
@@ -49,12 +50,12 @@ export function ComposerDealChip({
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("aboutLabel")}>
       {deals.length > 1 ? (
-        <select
+        <Select
           name="about_deal"
           aria-label={t("aboutChoose")}
           value={value ?? ""}
-          onChange={(e) => onChange(e.target.value || null)}
-          className="min-h-11 max-w-full rounded-md border border-border bg-background px-2 text-sm text-foreground sm:min-h-9"
+          onValueChange={(v) => onChange(v || null)}
+          className="w-auto max-w-full text-sm sm:min-h-9"
         >
           <option value="">{t("aboutNone")}</option>
           {deals.map((d) => (
@@ -62,7 +63,7 @@ export function ComposerDealChip({
               {t("about", { deal: label(d) })}
             </option>
           ))}
-        </select>
+        </Select>
       ) : chosen ? (
         <span className="inline-flex min-h-9 max-w-full items-center gap-1 rounded-md bg-muted pl-2.5 text-sm">
           <span className="truncate">{t("about", { deal: label(chosen) })}</span>

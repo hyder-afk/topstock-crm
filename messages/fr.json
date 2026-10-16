@@ -578,6 +578,7 @@
       "d30": "Dans 30 jours",
       "d90": "Dans 90 jours",
       "pick": "Choisir une date",
+      "needDate": "Choisissez une date entre demain et dans deux ans.",
       "cancel": "Annuler",
       "confirm": "Mettre en pause"
     },
@@ -2085,7 +2086,6 @@
     "toolbar": {
       "search": "Rechercher des produits",
       "searchPlaceholder": "Rechercher un nom, une catégorie ou P-0042…",
-      "clearSearch": "Effacer la recherche",
       "category": "Catégorie",
       "allCategories": "Toutes les catégories",
       "sort": "Tri",
@@ -2832,5 +2832,31 @@
     "perPiece": "{price}/pc",
     "priceOnRequest": "prix sur demande",
     "more": "… et d’autres articles."
+  },
+  "Pickers": {
+    "choose": "Choisir…",
+    "search": "Rechercher…",
+    "loading": "Chargement…",
+    "noMatch": "Aucun résultat",
+    "chosen": "choisi",
+    "chooseDate": "Choisir une date",
+    "changeDate": "Changer la date, actuellement le {date}",
+    "noDate": "Aucune date choisie",
+    "chooseDates": "Choisir des dates",
+    "rangeValue": "Du {from} au {to}",
+    "rangeFromOnly": "À partir du {from}",
+    "pickEnd": "Choisissez maintenant la date de fin.",
+    "previousMonth": "Mois précédent",
+    "nextMonth": "Mois suivant",
+    "clear": "Effacer",
+    "dayLetters": "jj",
+    "monthLetters": "mm",
+    "yearLetters": "aaaa",
+    "chooseTime": "Choisir une heure",
+    "times": "Heures",
+    "time": "Heure",
+    "timePattern24": "hh:mm",
+    "timePattern12": "h:mm am",
+    "clearSearch": "Effacer la recherche"
   }
 }

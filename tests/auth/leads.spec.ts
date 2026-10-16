@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, seedLeads, setRole, sql } from "./helpers";
+import { appReady, choose, createUser, fullSession, seedLeads, setRole, sql } from "./helpers";
 
 // Leads (Day 3a): the list pages and filters on the server, the preview shows contacts, leads and contacts can be
 // added and edited, status and owner changes undo, saved views, phone layout, and an owner-only rule for reps.
@@ -152,12 +152,12 @@ test.describe("desktop", () => {
     await dialog.getByRole("button", { name: "Save lead" }).click();
     await expect(dialog.getByText("Enter the company name.")).toBeVisible();
     await dialog.getByLabel("Company name").fill("Atelier Quintane");
-    await dialog.getByLabel("Lead status").selectOption("warm");
-    await dialog.getByLabel("Owner").selectOption({ label: "Malo Perrin" });
+    await choose(dialog.getByLabel("Lead status"), "warm");
+    await choose(dialog.getByLabel("Owner"), { label: "Malo Perrin" });
     await dialog.getByLabel("Phone").fill("+33 6 00 00 99 01");
     await dialog.getByLabel("Email").fill("bonjour@quintane.example.com");
     await dialog.getByLabel("City").fill("Nantes");
-    await dialog.getByLabel("Country").selectOption("FR");
+    await choose(dialog.getByLabel("Country"), "FR");
     await dialog.getByRole("button", { name: "Save lead" }).click();
     await expect(dialog).toBeHidden();
     await expect(preview(page).getByRole("heading", { level: 2 })).toHaveText("Atelier Quintane");
