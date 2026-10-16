@@ -83,6 +83,9 @@ export function StockTable({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => rowHeight,
     overscan: 8,
+    // Measure on the next frame: the scroll box's ResizeObserver resizing the list in the same frame makes Safari report
+    // "ResizeObserver loop completed with undelivered notifications" (as the timeline did; WebKit CI, PR #19).
+    useAnimationFrameWithResizeObserver: true,
     scrollMargin: layout === "narrow" ? 0 : headerHeight,
     scrollPaddingStart: layout === "narrow" ? 0 : headerHeight,
   });

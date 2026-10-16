@@ -24,6 +24,8 @@ test("the share branch: share CSP without the Supabase origin, surface and local
   expect(csp).toContain("default-src 'none'");
   expect(csp).toContain("connect-src 'self'");
   expect(csp).toContain("frame-ancestors 'none'");
+  // The root layout's manifest link: refused under default-src 'none' without this (WebKit CI, PR #19).
+  expect(csp).toContain("manifest-src 'self'");
   expect(csp).not.toContain("supabase.co");
   expect(forwarded(res, "x-topstock-surface")).toBe("share");
   expect(forwarded(res, "x-topstock-locale")).toBe("fr");

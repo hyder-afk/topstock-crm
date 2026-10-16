@@ -17,6 +17,8 @@ function shareContentSecurityPolicy(nonce: string, https: boolean) {
     "img-src 'self' data:",
     "font-src 'self'",
     `connect-src 'self'${isDev ? " ws:" : ""}`,
+    // The root layout links the web app manifest on every page (Day 7c); without this the browser refuses it here.
+    "manifest-src 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
