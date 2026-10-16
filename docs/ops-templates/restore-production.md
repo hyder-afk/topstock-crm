@@ -61,9 +61,10 @@ Our backup (`backup-prod.yml`) holds the schemas `public`, `private`, `auth` (ac
   project" when it happens: it needs the new project made in account B, the migrations run by migrate-prod against
   it, the data loaded, then Vercel's two production variables pointed at the new project. Claude writes the steps;
   you run them.
-- **C2. Load it back into topstock-prod.** Same commands as `restore-into-dev.md` steps 1 to 8, with the
-  **production** pooler host and user (`postgres.<prod-ref>`) and the production database password, plus the
-  `auth` schema. This overwrites production's data; take step 1.3's fresh backup first.
+- **C2. Load it back into topstock-prod.** Only if C1 is not possible. Ask Claude for the exact production steps
+  at the time, as for C1, and run them as written. **Do not adapt `restore-into-dev.md`**: its separate "empty the
+  tables" command, its dev project reference and its CRM-only scope (no `auth` schema) make it unsafe against
+  production. C2 overwrites production's data; take step 1.3's fresh backup first.
 
 **Role `share_reader` first (Day 6, spike S1).** A restore that recreates the schema (not `--data-only`) writes
 `ALTER FUNCTION ... OWNER TO share_reader` for `share_view` and `share_request`. If that role does not exist in the
@@ -91,26 +92,39 @@ database made by our migrations already has the role.) `share_reader` has no pas
    no new error.
 4. **Files (Storage), see below**: open three files from leads, one recent and two older.
 5. Run **sweep-lead-files once by hand as a dry run** (Run workflow, leave the confirm box empty) and read "found":
-   that is how many stored files have no file entry after the restore. **Do not switch the sweeper back on** while
-   that number holds files you want to keep; tell Claude only the number.
+   the files Storage still lists that have no CRM entry after the restore. What it means depends on the part (see
+   "Storage" below): after **A or B** it is the usual small number of stray uploads (files uploaded after the restore
+   point are not in it: they are stranded, see below); after **C2** it also counts every file uploaded after the
+   restore point, which the sweeper would delete; after **C1** it is 0 until the files are copied to the new project.
+   **Do not switch the sweeper back on** until Claude and you agree on that number; tell Claude only the number.
 6. Tell Henri and Kais they can work again, and what (if anything) they need to re-enter.
 7. Tell Claude: "Production restored to <date and time>, part A/B/C, checks 1 to 5 done", plus any step that failed
    (in words). Never send the backup, a key, a password, a connection string or a screenshot of data.
 
-## Storage: the caveat (all parts)
+## Storage: the caveat (by part)
 
-Lead files (PDFs, images, spreadsheets) live in Supabase **Storage** (bucket `lead-files`), outside the database.
-No database backup holds them: Supabase's daily backups and PITR hold only Storage's *list* of objects, and our own
-backup holds neither the files nor that list (only the CRM's `files` entries). A restore therefore brings the
-database back in time, **but the files stay as they are now**:
+Lead files (PDFs, images, spreadsheets) live in Supabase **Storage** (bucket `lead-files`). Their bytes are outside
+the database; the database holds two lists of them: Storage's own list (`storage.objects`, what the Storage API and
+the sweeper read) and the CRM's `files` entries. No backup holds the bytes, so **no restore brings a deleted file
+back**, and what happens to files uploaded after the restore point depends on the part. **Keep the sweeper off
+(step 1.2) in every part** until step 2.5's number is understood.
 
-- **A file deleted after the restore point is gone for good.** The restored CRM still lists it; opening it shows
-  "This file can’t be opened". Nothing can bring its bytes back.
-- **A file uploaded after the restore point is still stored, but the CRM no longer lists it** (its entry was
-  created after the restore point). To the orphan sweeper it looks exactly like stray bytes, and after 24 hours an
-  enabled sweeper would **delete it**. That is why step 1.2 turns the sweeper off and step 2.5 counts these files
-  before it goes back on. Ask Claude how to re-attach or download them before switching the sweeper on.
-- The storage quota counts these files until they are re-attached or removed.
+**A and B (Supabase daily backup or PITR).** These restore the whole database, Storage's list included, so both
+lists go back in time together:
+- A file **deleted** after the restore point is listed again by both, but its bytes are gone: opening it shows
+  "This file can’t be opened".
+- A file **uploaded** after the restore point keeps its bytes in Storage, but neither list has it any more. It is
+  **stranded**: the Storage API cannot list or open it, the sweeper cannot see it (so it is not swept), and it still
+  uses storage space. Getting it back needs Supabase support; tell Claude the date range if those files matter.
+
+**C (our own nightly backup).** `backup-prod` has no `storage` schema, so only the CRM's list goes back in time;
+Storage's list stays as it is now:
+- A file **deleted** after the restore point has a CRM entry again but no bytes: "This file can’t be opened".
+- A file **uploaded** after the restore point is still in Storage but has no CRM entry, so it looks exactly like stray
+  bytes: an enabled sweeper would **delete it** after 24 hours. Step 2.5 counts these files; ask Claude how to
+  re-attach or download them before the sweeper goes back on.
+- After **C1** (a new project) the new project's bucket starts empty: the files must be copied over from the old
+  project as part of Claude's steps, and until then every file shows "This file can’t be opened".
 
 There is no separate backup of Storage today. If lead files become important enough, ask Claude for a "Storage
 copy" workflow (a nightly copy of the bucket to a second place); it is not part of Release 1.
