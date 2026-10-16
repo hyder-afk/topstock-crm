@@ -71,7 +71,8 @@ async function open(browser: Browser, o: { width?: number; locale?: string; redu
 async function gotoBoard(page: Page, query = "") {
   await settled(page);
   await page.goto(`/pipeline${query}`);
-  await expect(page.getByRole("region", { name: /Pipeline board|Tableau du pipeline/ })).toBeVisible();
+  // includeHidden: with ?deal= the sheet can open first, and its dialog marks the board aria-hidden (CI, PR #18).
+  await expect(page.getByRole("region", { name: /Pipeline board|Tableau du pipeline/, includeHidden: true })).toBeVisible();
   await appReady(page);
 }
 
@@ -300,6 +301,27 @@ test("reopen_won_asks_code, delete_deal_asks_for_code", async ({ browser }) => {
   expect(sql(`select count(*) from public.deals where id = '${del}'`)).toBe("1");
   expect(errors).toEqual([]);
   await context.close();
+});
+
+// Day 6 fills in Day 5's seam (deal_closing_blocked): a confirmed sale naming a deal blocks changing how it ships. The
+// sheet's shipping switch answers with the mapped words (blocked_sales -> Errors.blocked), and nothing changes. The sale is
+// a made-up row written as this admin (the sale guard needs a signed-in user); the deal is deleted afterwards with no
+// signed-in user (maintenance: the sale keeps its row and loses the link).
+test("shipping_change_blocked_by_sale_says_why", async ({ browser }) => {
+  const deal = makeDeal({ title: `Held ${run}`, fulfilment: "from_stock" });
+  sql(`select set_config('request.jwt.claims', json_build_object('sub', '${admin}', 'role', 'authenticated')::text, true);
+       insert into private.orders (company_id, deal_id, fulfilment)
+       select d.company_id, d.id, 'from_stock' from public.deals d where d.id = '${deal}'`);
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page, `?deal=${deal}`);
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("radio", { name: "Supplier Stock" }).click();
+  await expect(toast(page)).toHaveText("Stock records hold this deal. Sort them out first.");
+  await expect(sheet.getByRole("radio", { name: "Warehouse inventory" })).toHaveAttribute("aria-checked", "true");
+  expect(sql(`select fulfilment from public.deals where id = '${deal}'`)).toBe("from_stock");
+  expect(errors).toEqual([]);
+  await context.close();
+  sql(`delete from public.deals where id = '${deal}'`);
 });
 
 // A rep's own pages: Show more and See all won ask the database for the rep's own deals. They used to send the board's

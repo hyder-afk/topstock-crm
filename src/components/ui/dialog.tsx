@@ -1,6 +1,8 @@
 "use client";
 
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { focusPageIfLost } from "@/lib/focus";
 import { cn } from "@/lib/utils";
 
 // shadcn-style dialog on TopStock tokens. A floating layer: shadow allowed, solid card (DESIGN.md), opacity + scale
@@ -15,7 +17,19 @@ export const DialogClose = DialogPrimitive.Close;
 export const phoneSheet =
   "phone-sheet max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-[24px] max-sm:pb-[env(safe-area-inset-bottom)]";
 
-export function DialogContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+// Rendered first inside the content: its first render happens when the dialog opens, before any autoFocus inside it
+// moves the focus, so it sees the element that opened the dialog.
+function RememberOpener({ onOpener }: { onOpener: (el: HTMLElement | null) => void }) {
+  const [opener] = useState(() => (typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null)));
+  useLayoutEffect(() => onOpener(opener), [opener, onOpener]);
+  return null;
+}
+
+export function DialogContent({ className, children, onCloseAutoFocus, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+  const opener = useRef<HTMLElement | null>(null);
+  const remember = useCallback((el: HTMLElement | null) => {
+    opener.current = el;
+  }, []);
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="dialog-overlay fixed inset-0 z-50 bg-[rgb(14_14_16/0.4)]" />
@@ -27,7 +41,14 @@ export function DialogContent({ className, children, ...props }: React.Component
           className,
         )}
         {...props}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          // Radix returns the focus to a Trigger; without one, to the opener, else the page heading (never <body>).
+          const el = opener.current;
+          requestAnimationFrame(() => focusPageIfLost(el));
+        }}
       >
+        <RememberOpener onOpener={remember} />
         {children}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>

@@ -19,9 +19,10 @@ export default defineConfig({
     // Safari's engine for the shell, the leads screen and the import (dock drag, keyboard, command menu, table,
     // preview, file reading and the problems file download, the lead page with its call panel, Day 4c's work queue
     // (three people at once too) and Tasks page, the Files tab with its uploads (Day 4d), Day 5b's pipeline board and
-    // lead page deals, Day 5c's Home, and the Team screen; Master Plan: "Test in Safari and Chrome").
+    // lead page deals, Day 5c's Home, the Team screen, and Day 6's inventory, stock sheet import, sales and client stock
+    // link; Master Plan: "Test in Safari and Chrome").
     // CI installs WebKit; locally run `--project chromium` when only Chromium is available.
-    { name: "webkit", testMatch: /(shell|leads|import|lead-page|queue|queue-multi|tasks|files|pipeline|lead-deals|home|team)\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
+    { name: "webkit", testMatch: /(shell|leads|import|lead-page|queue|queue-multi|tasks|files|pipeline|lead-deals|home|team|inventory|sales|share)\.spec\.ts/, use: { ...devices["Desktop Safari"] } },
   ],
   webServer: { command: "npm run start", url: "http://localhost:3100/login", reuseExistingServer: true, timeout: 60_000 },
 });

@@ -1,17 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { createContext, useContext, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { CircleAlert, Headset, Keyboard, Languages, LogOut, Monitor, Moon, Plus, Search, Sun, Upload, type LucideIcon } from "lucide-react";
+import { CircleAlert, Eye, Hand, Headset, History, Inbox, Keyboard, Languages, LogOut, Monitor, Moon, Plus, Receipt, Search, Settings, Share2, Sun, Upload, type LucideIcon } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { setLocale } from "@/app/actions";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Kbd } from "@/components/ui/kbd";
 import { sections } from "@/lib/nav";
 import { goKeys, queueGoKey } from "@/lib/shortcuts";
+
+// While a search is typed the items are one list, best match first, without the group headings: cmdk 1.1.1 sorts the
+// items inside a group but never reorders the groups (its group lookup compares the group's id with the heading text), so
+// a weak match in an early group ("dark" in "hold days" under Actions) came before the exact one under Appearance and
+// Enter ran it. Without groups cmdk sorts the whole list by score.
+const SearchingContext = createContext(false);
 
 // The command menu (Cmd/Ctrl+K): jump to a section, switch appearance or language, show shortcuts, sign out.
 // Searching leads joins it when leads exist (Day 3).
@@ -64,85 +70,137 @@ export function CommandPalette({
               className="h-14 min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none"
             />
           </div>
-          <Command.List className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain p-2">
-            <Command.Empty className="px-3 py-6 text-center text-muted-foreground">{t("empty")}</Command.Empty>
+          <SearchingContext.Provider value={search.trim() !== ""}>
+            <Command.List className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain p-2">
+              <Command.Empty className="px-3 py-6 text-center text-muted-foreground">{t("empty")}</Command.Empty>
 
-            <Group heading={t("goTo")}>
-              {sections.map((s) => (
-                <Item
-                  key={s.id}
-                  value={`go ${s.id} ${nav(s.id)}`}
-                  icon={s.icon}
-                  label={nav(s.id)}
-                  keys={["G", goKeys[s.id].toUpperCase()]}
-                  onSelect={() => run(() => router.push(s.href))}
-                />
-              ))}
-            </Group>
-
-            {/* Day 5b (design 7.7): open a deal from anywhere; jump to the stalled deals. */}
-            <Group heading={t("deals")}>
-              <Item value="new deal open deal pipeline affaire" icon={Plus} label={t("newDeal")} onSelect={() => run(() => router.push("/pipeline?new=1"))} />
-              <Item value="stalled deals pipeline bloquées" icon={CircleAlert} label={t("showStalled")} onSelect={() => run(() => router.push("/pipeline?stalled=1"))} />
-            </Group>
-
-            <Group heading={t("actions")}>
-              <Item
-                value="start work queue call next"
-                icon={Headset}
-                label={t("startQueue")}
-                keys={["G", queueGoKey.toUpperCase()]}
-                onSelect={() => run(() => router.push("/leads/queue"))}
-              />
-              {isAdmin ? (
-                <Item
-                  value="import leads csv spreadsheet importer prospects"
-                  icon={Upload}
-                  label={t("importLeads")}
-                  onSelect={() => run(() => router.push("/leads/import"))}
-                />
-              ) : null}
-            </Group>
-
-            <Group heading={t("appearance")}>
-              <Item value="theme light" icon={Sun} label={t("themeLight")} onSelect={() => run(() => setTheme("light"))} />
-              <Item value="theme dark" icon={Moon} label={t("themeDark")} onSelect={() => run(() => setTheme("dark"))} />
-              <Item value="theme system" icon={Monitor} label={t("themeSystem")} onSelect={() => run(() => setTheme("system"))} />
-            </Group>
-
-            <Group heading={t("language")}>
-              {(["en", "fr"] as const)
-                .filter((l) => l !== locale)
-                .map((l) => (
+              <Group heading={t("goTo")}>
+                {sections.map((s) => (
                   <Item
-                    key={l}
-                    value={`language ${l}`}
-                    icon={Languages}
-                    // Each language is named in itself, so it can be found from either interface language.
-                    label={l === "en" ? "English" : "Français"}
-                    lang={l}
-                    onSelect={() =>
-                      run(() =>
-                        startTransition(async () => {
-                          await setLocale(l);
-                          router.refresh();
-                        }),
-                      )
-                    }
+                    key={s.id}
+                    value={`go ${s.id} ${nav(s.id)}`}
+                    icon={s.icon}
+                    label={nav(s.id)}
+                    keys={["G", goKeys[s.id].toUpperCase()]}
+                    onSelect={() => run(() => router.push(s.href))}
                   />
                 ))}
-            </Group>
+              </Group>
 
-            <Group heading={t("help")}>
-              <Item value="shortcuts keyboard help" icon={Keyboard} label={t("shortcuts")} keys={["?"]} onSelect={() => run(onShowShortcuts)} />
-              <Item
-                value="sign out logout"
-                icon={LogOut}
-                label={t("signOut")}
-                onSelect={() => run(() => startTransition(() => signOut()))}
-              />
-            </Group>
-          </Command.List>
+              {/* Day 5b (design 7.7): open a deal from anywhere; jump to the stalled deals. */}
+              <Group heading={t("deals")}>
+                <Item value="new deal open deal pipeline affaire" icon={Plus} label={t("newDeal")} onSelect={() => run(() => router.push("/pipeline?new=1"))} />
+                <Item value="stalled deals pipeline bloquées" icon={CircleAlert} label={t("showStalled")} onSelect={() => run(() => router.push("/pipeline?stalled=1"))} />
+              </Group>
+
+              <Group heading={t("actions")}>
+                <Item
+                  value="start work queue call next"
+                  icon={Headset}
+                  label={t("startQueue")}
+                  keys={["G", queueGoKey.toUpperCase()]}
+                  onSelect={() => run(() => router.push("/leads/queue"))}
+                />
+                <Item
+                  value="stock movements inventory log history mouvements"
+                  icon={History}
+                  label={t("stockMovements")}
+                  onSelect={() => run(() => router.push("/inventory?tab=movements"))}
+                />
+                <Item
+                  value="record sale sell order vente enregistrer vendre"
+                  icon={Receipt}
+                  label={t("recordSale")}
+                  onSelect={() => run(() => router.push("/inventory?tab=sales&record=1"))}
+                />
+                <Item
+                  value="hold stock reserve for a lead reserver du stock"
+                  icon={Hand}
+                  label={t("holdStock")}
+                  onSelect={() => run(() => router.push("/inventory?tab=stock&hold=1"))}
+                />
+                <Item
+                  value="share stock with client link whatsapp partager le stock lien client"
+                  icon={Share2}
+                  label={t("shareStock")}
+                  onSelect={() => run(() => router.push("/inventory?tab=stock&share=1"))}
+                />
+                <Item
+                  value="stock requests client wants demandes de stock"
+                  icon={Inbox}
+                  label={t("stockRequests")}
+                  onSelect={() => run(() => router.push("/inventory?tab=requests"))}
+                />
+                <Item
+                  value="what clients see client view share link stock page ce que voient les clients lien client"
+                  icon={Eye}
+                  label={t("clientView")}
+                  onSelect={() => run(() => router.push("/inventory/client-view"))}
+                />
+                {isAdmin ? (
+                  <>
+                    <Item
+                      value="import leads csv spreadsheet importer prospects"
+                      icon={Upload}
+                      label={t("importLeads")}
+                      onSelect={() => run(() => router.push("/leads/import"))}
+                    />
+                    <Item
+                      value="import stock sheet csv inventory feuille de stock importer"
+                      icon={Upload}
+                      label={t("importStock")}
+                      onSelect={() => run(() => router.push("/inventory/import"))}
+                    />
+                    <Item
+                      value="inventory settings warehouse hold days restock reglages stock"
+                      icon={Settings}
+                      label={t("inventorySettings")}
+                      onSelect={() => run(() => router.push("/inventory/settings"))}
+                    />
+                  </>
+                ) : null}
+              </Group>
+
+              <Group heading={t("appearance")}>
+                <Item value="theme light" icon={Sun} label={t("themeLight")} onSelect={() => run(() => setTheme("light"))} />
+                <Item value="theme dark" icon={Moon} label={t("themeDark")} onSelect={() => run(() => setTheme("dark"))} />
+                <Item value="theme system" icon={Monitor} label={t("themeSystem")} onSelect={() => run(() => setTheme("system"))} />
+              </Group>
+
+              <Group heading={t("language")}>
+                {(["en", "fr"] as const)
+                  .filter((l) => l !== locale)
+                  .map((l) => (
+                    <Item
+                      key={l}
+                      value={`language ${l}`}
+                      icon={Languages}
+                      // Each language is named in itself, so it can be found from either interface language.
+                      label={l === "en" ? "English" : "Français"}
+                      lang={l}
+                      onSelect={() =>
+                        run(() =>
+                          startTransition(async () => {
+                            await setLocale(l);
+                            router.refresh();
+                          }),
+                        )
+                      }
+                    />
+                  ))}
+              </Group>
+
+              <Group heading={t("help")}>
+                <Item value="shortcuts keyboard help" icon={Keyboard} label={t("shortcuts")} keys={["?"]} onSelect={() => run(onShowShortcuts)} />
+                <Item
+                  value="sign out logout"
+                  icon={LogOut}
+                  label={t("signOut")}
+                  onSelect={() => run(() => startTransition(() => signOut()))}
+                />
+              </Group>
+            </Command.List>
+          </SearchingContext.Provider>
         </Command>
       </DialogContent>
     </Dialog>
@@ -150,6 +208,8 @@ export function CommandPalette({
 }
 
 function Group({ heading, children }: { heading: string; children: React.ReactNode }) {
+  const searching = useContext(SearchingContext);
+  if (searching) return <>{children}</>;
   return (
     <Command.Group
       heading={heading}

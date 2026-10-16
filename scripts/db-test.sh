@@ -3,6 +3,9 @@
 # No keys; the only network call fetches the pinned advisor rules (scripts/db-advisors.sh).
 # CI runs the same migrations and tests against the real Supabase Postgres image.
 set -euo pipefail
+# The app's day is the Paris day ((now() at time zone 'Europe/Paris')::date), so the tests' current_date must be too:
+# with the session on UTC, checks at a day limit (a hold up to 90 days out) flipped between 22:00 and 24:00 UTC.
+export PGTZ=Europe/Paris
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
 WORK="$(mktemp -d -p /tmp)"
@@ -33,4 +36,13 @@ bash "$ROOT/supabase/tests/deal_concurrency.sh" "host=$WORK port=54329 user=post
 $PSQL -f "$ROOT/supabase/tests/deal_links_attack.sql"
 $PSQL -f "$ROOT/supabase/tests/home_attack.sql"
 bash "$ROOT/supabase/tests/team_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/stock_attack.sql"
+bash "$ROOT/supabase/tests/stock_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/inventory_attack.sql"
+$PSQL -f "$ROOT/supabase/tests/stock_import_attack.sql"
+bash "$ROOT/supabase/tests/stock_import_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/sales_attack.sql"
+bash "$ROOT/supabase/tests/sales_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
+$PSQL -f "$ROOT/supabase/tests/share_attack.sql"
+bash "$ROOT/supabase/tests/share_concurrency.sh" "host=$WORK port=54329 user=postgres dbname=postgres"
 bash "$ROOT/scripts/db-advisors.sh" -h "$WORK" -p 54329 -U postgres -d postgres

@@ -3,10 +3,15 @@
 # and query plans of the list and count functions as a signed-in rep (supabase/tests/perf_leads.sql), then 300k
 # activities and 15k tasks with the Day 4 timeline, lead page, outcome, queue and task timings
 # (supabase/tests/perf_day4.sql), then 10k deals with the Day 5 board, list, write and deal sheet timings
-# (supabase/tests/perf_day5.sql) and 3 sessions x 100 stage changes on 20 deals (deal_concurrency.sh p10), then the lead
-# import at 30k and 50k rows as an admin, with those activities and tasks in place (supabase/tests/perf_import.sql), then
-# three queue sessions at once (supabase/tests/perf_queue_concurrency.sh), then the Day 4d upload functions with 5,000
-# stored files (supabase/tests/perf_files.sql, P11). Local only.
+# (supabase/tests/perf_day5.sql) and 3 sessions x 100 stage changes on 20 deals (deal_concurrency.sh p10). Day 6a adds the
+# stock engine timings (supabase/tests/perf_stock.sql: 5,000 products, 200,000 ledger rows, 5,000 holds) before the
+# import, so the import's undo runs with holds in place; Day 6b the inventory reads (supabase/tests/perf_inventory.sql,
+# I1 to I4) right after the stock seed; Day 6d the sales and lead stock timings (supabase/tests/perf_sales.sql, I6 and
+# I8) after those; Day 6e the client link timings and answer size (supabase/tests/perf_share.sql, I9 to I11) after them.
+# Then the lead import at 30k and 50k rows as an admin, with those activities, tasks, deals and holds in place
+# (supabase/tests/perf_import.sql), three queue sessions at once (supabase/tests/perf_queue_concurrency.sh), the Day 4d
+# upload functions with 5,000 stored files (supabase/tests/perf_files.sql, P11) and the stock concurrency timings
+# (stock_concurrency.sh perf) at the end. Local only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
@@ -26,6 +31,11 @@ $PSQL -f "$ROOT/supabase/tests/perf_leads.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_day4.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_day5.sql" 2>&1
 bash "$ROOT/supabase/tests/deal_concurrency.sh" "host=$WORK port=54327 user=postgres dbname=postgres" p10 2>&1
+$PSQL -f "$ROOT/supabase/tests/perf_stock.sql" 2>&1
+$PSQL -f "$ROOT/supabase/tests/perf_inventory.sql" 2>&1
+$PSQL -f "$ROOT/supabase/tests/perf_sales.sql" 2>&1
+$PSQL -f "$ROOT/supabase/tests/perf_share.sql" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_import.sql" 2>&1
 bash "$ROOT/supabase/tests/perf_queue_concurrency.sh" "host=$WORK port=54327 user=postgres dbname=postgres" 2>&1
 $PSQL -f "$ROOT/supabase/tests/perf_files.sql" 2>&1
+bash "$ROOT/supabase/tests/stock_concurrency.sh" "host=$WORK port=54327 user=postgres dbname=postgres" perf 2>&1

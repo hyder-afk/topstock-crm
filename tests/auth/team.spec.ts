@@ -230,6 +230,11 @@ test("demoting_yourself: with another admin, you become a manager and land on Mo
   await expect(page).toHaveURL(/\/more$/);
   await expect(page.getByRole("heading", { name: "Your name" })).toBeVisible();
   // The role button that had the focus is gone with the Team page: the focus lands on More's title, never on <body>.
+  // The same check as toBeFocused on More's title, but a failure names what held the focus instead (CI on PR #18 failed
+  // here twice while every local run passed).
+  await expect
+    .poll(() => page.evaluate(() => { const a = document.activeElement; return a?.id === "more-title" ? "more-title" : (a?.outerHTML.slice(0, 160) ?? "null"); }))
+    .toBe("more-title");
   await expect(page.getByRole("heading", { level: 1, name: "More" })).toBeFocused();
   await expect(page.getByRole("link", { name: /^Team/ })).toHaveCount(0);
   expect(roleOf(adminEmail)).toBe("manager");

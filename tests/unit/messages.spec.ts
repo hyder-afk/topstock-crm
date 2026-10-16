@@ -38,6 +38,14 @@ const namespaces = [
   "Files",
   // Day 5c: the Home dashboard.
   "Home",
+  // Day 6: inventory, the stock sheet import, sales and the client stock link.
+  "Inventory",
+  "InventorySettings",
+  "StockImport",
+  "Sales",
+  "Share",
+  "ShareLinks",
+  "ShareText",
 ];
 
 function entries(node: unknown, prefix = ""): [string, string][] {

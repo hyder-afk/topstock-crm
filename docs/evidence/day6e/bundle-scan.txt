@@ -1,0 +1,41 @@
+# Client page bundle scan (Day 6e, design threat P15 and 11.6), build of the 6e head, next start on a local port
+
+Scripts loaded by /s/fr (from the HTML):
+/_next/static/chunks/0cz1d0mv5g_q7.js
+/_next/static/chunks/0k28mw0za-7nv.js
+/_next/static/chunks/0kgt4x09yfmfv.js
+/_next/static/chunks/1_z3y9tgz22sn.js
+/_next/static/chunks/1bvhuho7qqb1-.js
+/_next/static/chunks/2c8-muxkiufky.js
+/_next/static/chunks/2kvhr19zcjt6f.js
+/_next/static/chunks/3_1kpbd8aih6c.js
+/_next/static/chunks/3jebwlwosr95k.js
+/_next/static/chunks/3l3fnv0-7dhr0.js
+/_next/static/chunks/3zu1eycyvc3c1.js
+/_next/static/chunks/turbopack-3-ry682tkyiqk.js
+
+Sizes (bytes raw / gzip):
+  all scripts of /s/fr:                  687244 / 212621
+  shared with /login (framework, root):   610067 / 188967
+  /s/fr's own chunks:                    77177 / 23654   (budget: framework baseline + 40 KB gzip)
+
+Strings searched in every /s/fr script (count of files containing each):
+  supabase: 0
+  @supabase: 0
+  /rest/v1: 0
+  /auth/v1: 0
+  apikey: 0
+  price_min: 0
+  cost_per_piece: 0
+  product_costs: 0
+  ZodError: 0
+  service_role: 0
+
+Strings searched in the /s/fr HTML (count of matches):
+  supabase: 0
+  price_min: 0
+  Pipeline: 0
+  Prospects: 0
+  Record sale: 0
+  Supplier Stock: 0
+  tss_: 0

@@ -11,6 +11,13 @@ const securityHeaders = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 
+const shareHeaders = [
+  { key: "Referrer-Policy", value: "no-referrer" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  { key: "Cache-Control", value: "no-store" },
+];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
@@ -28,7 +35,14 @@ const nextConfig: NextConfig = {
       // Day 4d: opening a file answers with a 60-second Storage link in a redirect; that link must never be sent on as a
       // referrer (the last matching rule wins over the site-wide value above).
       { source: "/api/files/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }] },
+      // The client stock link (design 8.6): the last matching entry wins, so these replace the Referrer-Policy above.
+      ...["/s/:path*", "/s", "/api/share/:path*"].map((source) => ({ source, headers: shareHeaders })),
     ];
+  },
+  // Browsers still ask for /favicon.ico now and then (Chromium did after a same-page Cmd+K navigation): the app icon
+  // answers instead of a 404 in the console. Applied before the proxy.
+  async redirects() {
+    return [{ source: "/favicon.ico", destination: "/icon.svg", permanent: true }];
   },
 };
 

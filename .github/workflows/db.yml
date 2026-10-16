@@ -3,7 +3,9 @@
 # hardening attack test and its two-session test, the lead page attack and concurrency tests, the work queue attack and
 # concurrency tests, the files attack and concurrency tests (with the real storage schema: storage-api runs from Day 4d),
 # the deals attack test and its two- and three-session test (Day 5a), the deal links test (Day 5b), the Home figures
-# test (Day 5c), the role-change concurrency test (Team screen), the Supabase advisors (splinter) and lint the SQL
+# test (Day 5c), the role-change concurrency test (Team screen), the stock engine attack test and its concurrency test
+# (Day 6a), the inventory reads attack test (Day 6b), the stock sheet import attack and concurrency tests (Day 6c), the
+# sales tests (Day 6d), the client stock link tests (Day 6e), the Supabase advisors (splinter) and lint the SQL
 # functions. On pull requests, first check that every migration the PR adds sorts after main's newest (Day 5 D35:
 # deploy-dev-db pushes without --include-all).
 name: db
@@ -15,6 +17,10 @@ on:
     paths: ["supabase/**"]
 permissions:
   contents: read
+env:
+  # Test sessions on the app's day (Europe/Paris): current_date in the tests must match the guards' Paris date, or day-limit
+  # checks flip between 22:00 and 24:00 UTC (PR #18).
+  PGTZ: Europe/Paris
 # One run per PR: a new commit cancels the run for the older one (only the newest commit counts for merging, and it
 # always gets the full suite). Pushes to main are never cancelled.
 concurrency:
@@ -96,6 +102,24 @@ jobs:
         run: bash scripts/ci-report.sh "Day 5c Home figures attack tests (scope, zones, exact figures, no entry text)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/home_attack.sql
       - name: Role changes under concurrency (two sessions, Team screen)
         run: bash scripts/ci-report.sh "Role changes under concurrency (two sessions, Team screen)" bash supabase/tests/team_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Stock engine attack test (Day 6a)
+        run: bash scripts/ci-report.sh "Stock engine attack test (Day 6a)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/stock_attack.sql
+      - name: Stock engine under concurrency (2 to 20 sessions, Day 6a)
+        run: bash scripts/ci-report.sh "Stock engine under concurrency (2 to 20 sessions, Day 6a)" bash supabase/tests/stock_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Inventory reads attack test (Day 6b)
+        run: bash scripts/ci-report.sh "Inventory reads attack test (Day 6b)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/inventory_attack.sql
+      - name: Stock sheet import attack test (Day 6c)
+        run: bash scripts/ci-report.sh "Stock sheet import attack test (Day 6c)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/stock_import_attack.sql
+      - name: Stock sheet import under concurrency (Day 6c)
+        run: bash scripts/ci-report.sh "Stock sheet import under concurrency (Day 6c)" bash supabase/tests/stock_import_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Sales, holds and requests attack tests (Day 6d)
+        run: bash scripts/ci-report.sh "Sales, holds and requests attack tests (Day 6d)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/sales_attack.sql
+      - name: Sales under concurrency (Day 6d)
+        run: bash scripts/ci-report.sh "Sales under concurrency (Day 6d)" bash supabase/tests/sales_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      - name: Client stock link attack tests (Day 6e)
+        run: bash scripts/ci-report.sh "Client stock link attack tests (Day 6e)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/share_attack.sql
+      - name: Client stock link under concurrency (Day 6e)
+        run: bash scripts/ci-report.sh "Client stock link under concurrency (Day 6e)" bash supabase/tests/share_concurrency.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Supabase security and performance advisors (fail on ERROR)
         run: bash scripts/db-advisors.sh "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
       - name: Lint SQL functions

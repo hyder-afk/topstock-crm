@@ -1,0 +1,237 @@
+{
+  "file": "stock-40-fake.csv",
+  "generator": "scripts/make-fake-stock.mjs --seed 20261018",
+  "header": [
+    "CATÉGORIE",
+    "PRIX PAR PCS MAX (SELLING PRICE IN EURO MAX)",
+    "PRIX PAR PCS (SELLING PRICE IN EURO MIN)",
+    "QUANTITÉ",
+    "QTY PAR CARTON",
+    "PP",
+    "REVENTE MIN",
+    "REVENTE MAX",
+    "STATUS"
+  ],
+  "delimiter": ";",
+  "encoding": "utf-8",
+  "number_style": "fr",
+  "row_count": 39,
+  "last_row_no": 41,
+  "blank_row_nos": [
+    32
+  ],
+  "browser": {
+    "rejected": 7,
+    "warnings": {
+      "cost_kept_sold_out": 1,
+      "resale_max_mismatch": 2,
+      "resale_min_mismatch": 1,
+      "cost_missing": 1,
+      "cost_above_price": 1,
+      "loose_pieces": 1
+    }
+  },
+  "check_on_empty_catalogue": {
+    "products_new": 28,
+    "products_update": 0,
+    "products_moved": 0,
+    "rejected": 7,
+    "repeated": 2,
+    "products_unchanged": 0
+  },
+  "names": {
+    "formula": "=HYPERLINK(\"http://example.invalid\")",
+    "html": "<img src=x onerror=alert(1)>",
+    "bidi_stripped": "Étiquette cadeau"
+  },
+  "rows": {
+    "2": {
+      "fixes": []
+    },
+    "3": {
+      "fixes": []
+    },
+    "4": {
+      "fixes": []
+    },
+    "5": {
+      "fixes": []
+    },
+    "6": {
+      "fixes": []
+    },
+    "7": {
+      "fixes": [
+        "cost_kept_sold_out"
+      ]
+    },
+    "8": {
+      "fixes": [
+        "resale_max_mismatch"
+      ]
+    },
+    "9": {
+      "fixes": [
+        "resale_min_mismatch"
+      ]
+    },
+    "10": {
+      "fixes": [
+        "resale_max_mismatch"
+      ]
+    },
+    "11": {
+      "fixes": [
+        "cost_missing"
+      ]
+    },
+    "12": {
+      "fixes": [
+        "cost_above_price"
+      ]
+    },
+    "13": {
+      "fixes": [
+        "loose_pieces"
+      ]
+    },
+    "14": {
+      "fixes": []
+    },
+    "15": {
+      "fixes": []
+    },
+    "16": {
+      "fixes": []
+    },
+    "17": {
+      "fixes": []
+    },
+    "18": {
+      "fixes": []
+    },
+    "19": {
+      "fixes": []
+    },
+    "20": {
+      "fixes": []
+    },
+    "21": {
+      "fixes": []
+    },
+    "22": {
+      "fixes": []
+    },
+    "23": {
+      "fixes": []
+    },
+    "24": {
+      "fixes": []
+    },
+    "25": {
+      "fixes": []
+    },
+    "26": {
+      "fixes": []
+    },
+    "27": {
+      "fixes": []
+    },
+    "28": {
+      "fixes": []
+    },
+    "29": {
+      "fixes": []
+    },
+    "30": {
+      "fixes": []
+    },
+    "31": {
+      "fixes": [],
+      "db_warnings": [
+        "prices_differ"
+      ]
+    },
+    "33": {
+      "fixes": [],
+      "repeated_of": 17
+    },
+    "34": {
+      "fixes": [],
+      "repeated_of": 22
+    },
+    "35": {
+      "problems": [
+        "price_order"
+      ]
+    },
+    "36": {
+      "problems": [
+        "quantity_invalid"
+      ]
+    },
+    "37": {
+      "problems": [
+        "quantity_negative"
+      ]
+    },
+    "38": {
+      "problems": [
+        "quantity_not_whole"
+      ]
+    },
+    "39": {
+      "problems": [
+        "carton_invalid"
+      ]
+    },
+    "40": {
+      "problems": [
+        "name_missing"
+      ]
+    },
+    "41": {
+      "problems": [
+        "excel_error"
+      ]
+    }
+  },
+  "reimport": {
+    "file": "stock-reimport-fake.csv",
+    "rows": {
+      "2": {
+        "change": "quantity"
+      },
+      "3": {
+        "change": "quantity"
+      },
+      "4": {
+        "change": "quantity"
+      },
+      "5": {
+        "change": "quantity"
+      },
+      "6": {
+        "change": "price"
+      },
+      "7": {
+        "change": "price"
+      },
+      "8": {
+        "change": "arrived"
+      },
+      "9": {
+        "change": "new"
+      },
+      "10": {
+        "change": "new"
+      },
+      "11": {
+        "change": "unchanged"
+      },
+      "12": {
+        "change": "sold_in_crm"
+      }
+    }
+  }
+}

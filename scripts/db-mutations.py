@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Local only: proves the database tests catch each protection being removed (Day 3b design section 6A, Day 4 design
-section 8.3).
+section 8.3, Day 6 design section 11.3).
 
 For each mutation below, one or more migrations are changed in place, scripts/db-test.sh runs (migrations, the RLS,
-import, activity and outcome attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
+import, activity, outcome and stock attack tests, the two-session tests, advisors), and the migrations are restored. A mutation is
 "caught" when the run fails. Never run it in a checkout someone else is reading: use a separate copy (git worktree).
-Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|all] [numbers...]  (about 60 s
-per mutation; default: all sets, numbers apply within one set). Writes one Markdown table per set to stdout, then a count
-line per set; exits 1 when a row does not behave as listed. --anchors [--set ...] only checks that every edit applies (its
-text is found exactly once where it is aimed), without running anything. A protection with two layers is also removed
-together with its second layer (one
+Usage: python3 scripts/db-mutations.py [--set day3b|day4a|day4b|day4c|day4d|day5a|day5b|day5c|team|day6a|day6c|day6d|day6e|day6|all]
+[numbers...]  (about 60 s per mutation, 90 s once the Day 6 stock tests run; default: all sets, numbers apply within one
+set). Writes one Markdown table per set to stdout, then a count line per set; exits 1 when a row does not behave as
+listed. --anchors [--set ...] only checks that every edit applies (its text is found exactly once where it is aimed) and
+lands in the live definition of its function (no later migration redefines it without the same edit), without running
+anything. A protection with two layers is also removed together with its second layer (one
 mutation each way). A row marked SURVIVES is such a layer that no test can see on its own, because the other layer stops
 the same thing: it must stay NOT CAUGHT, and the row removing both layers must be caught.
 An edit is (old, new) on the set's own migration, or (path, old, new) on another one. A mutation edits the definition
@@ -25,8 +26,13 @@ functions too). Day 5b recreates log_activity and get_lead (from Day 4c), undo_a
 private.queue_card (Day 4c) and the activities insert policy (Day 4a), so every earlier mutation aimed inside those now
 edits the Day 5b copy. Day 4d redefines none of those, so no Day 4d row moves. Day 5c (the Home figures) only adds
 functions, so no earlier row moves.
+Day 6a, 6c, 6d and 6e redefine more of them (the "untouched" rule, rebased on Day 4d's; the batch guard; the task
+guard, rebased on Day 5a's; the stock guard, apply step and nightly job; the request and settings guards): an edit whose
+text sits in such a later redefinition is made there too, automatically (REDEFINERS, mirrored_edits), so it reaches the
+live definition.
 """
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -41,6 +47,18 @@ MIG_5A = ROOT / "supabase/migrations/20261015090000_deals_pipeline.sql"
 MIG_5B = ROOT / "supabase/migrations/20261015120000_deal_links.sql"
 MIG_5C = ROOT / "supabase/migrations/20261015150000_home_dashboard.sql"
 MIG_TEAM = ROOT / "supabase/migrations/20261015200000_role_change_lock.sql"
+MIG_6A = ROOT / "supabase/migrations/20261016090000_stock_engine.sql"
+MIG_6C = ROOT / "supabase/migrations/20261018090000_stock_import.sql"
+MIG_6D = ROOT / "supabase/migrations/20261019090000_sales_requests.sql"
+MIG_6E = ROOT / "supabase/migrations/20261020090000_client_share.sql"
+MIG_6F = ROOT / "supabase/migrations/20261020100000_deal_stock_blocks.sql"
+# Later migrations that redefine (create or replace) a function an earlier set mutates: Day 6a redefines the lead import
+# "untouched" rule (Day 4d's); Day 6c redefines the batch guard (Day 3b) and the stock guard, apply step and nightly job (Day 6a);
+# Day 6d redefines the stock guard and apply step again, the untouched rule and the task guard (Day 5a's); Day 6e the
+# request guards (6d), the settings guard (6a), the settings read (6b) and the untouched rule again. Day 6's
+# deal_stock_blocks migration redefines Day 6d's sale guard (order_guard: one branch added first, the rest verbatim).
+# An edit whose text sits in such a redefinition is made there too (see mirrored_edits), so it reaches the live definition.
+REDEFINERS = [MIG_6A, MIG_6C, MIG_6D, MIG_6E, MIG_6F]
 
 
 class Region:
@@ -153,7 +171,8 @@ MUTATIONS_3B = [
     ("Batch guard trigger dropped",
      [("create trigger import_batch_guard before insert or update on public.import_batches\n  for each row execute function private.import_batch_guard();", "")]),
     ("One import at a time: index not unique",
-     [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
+     [("create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx"),
+      (MIG_6C, "create unique index import_batches_one_writer_idx", "create index import_batches_one_writer_idx")]),
     ("Undo: leads with an activity count as untouched",
      [(MIG_4D, "     and not exists (select 1 from public.activities a where a.company_id = c.id)\n", "")]),
     ("Undo: leads with a contact count as untouched",
@@ -1672,10 +1691,582 @@ MUTATIONS_TEAM = [
 ]
 
 
+
+MUTATIONS_6A = [
+    # Design section 11.3, 6a mutations 1 to 16 (tagged [design N]; a protection with two layers also gets one row per
+    # layer, marked SURVIVES where the other layer stops the same thing; the row removing both is caught).
+    ("No FOR UPDATE on the levels (two people take the last pieces) [design 1]",
+     [("   order by l.location_id\n     for update;\n  select * into strict lvl", "   order by l.location_id;\n  select * into strict lvl")]),
+    ("No held-above-on-hand rule in the apply step and no CHECK backstop (both layers) [design 2]",
+     [("  if lvl.reserved + d_res > lvl.on_hand + d_on then\n    raise exception 'stock is held'", "  if false then\n    raise exception 'stock is held'"),
+      ("  primary key (product_id, location_id),\n  check (reserved <= on_hand)\n);", "  primary key (product_id, location_id)\n);")]),
+    ("No held-above-on-hand rule in the apply step (the CHECK fires instead of a constant error) [design 2]",
+     [("  if lvl.reserved + d_res > lvl.on_hand + d_on then\n    raise exception 'stock is held'", "  if false then\n    raise exception 'stock is held'")]),
+    ("No reserved <= on_hand CHECK on the levels (backstop behind the apply step) [design 2]",
+     [("  primary key (product_id, location_id),\n  check (reserved <= on_hand)\n);", "  primary key (product_id, location_id)\n);")], SURVIVES),
+    ("UPDATE on stock_levels granted to authenticated [design 3]",
+     [("grant select on public.stock_levels, private.stock_reservations, private.stock_hold_uses to authenticated;\n",
+       "grant select on public.stock_levels, private.stock_reservations, private.stock_hold_uses to authenticated;\ngrant update on public.stock_levels to authenticated;\n")]),
+    ("No append-only trigger on the ledger [design 4]",
+     [("create trigger stock_movement_immutable before update or delete on private.stock_movements\n  for each row execute function private.stock_movement_immutable();\ncreate trigger stock_movement_immutable_truncate before truncate on private.stock_movements\n  for each statement execute function private.stock_movement_immutable();\n", "")]),
+    ("No fresh code for corrections (adjust, count, receive) [design 5]",
+     [("        raise exception 'only managers and admins correct stock' using errcode = '42501', hint = 'forbidden';\n      end if;\n      if not private.has_recent_aal2(600) then\n        raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';\n      end if;\n",
+       "        raise exception 'only managers and admins correct stock' using errcode = '42501', hint = 'forbidden';\n      end if;\n")]),
+    ("No lead-editor check for a hold [design 6]",
+     [("    if not trusted and not exists (\n         select 1 from public.companies c\n          where c.id = new.company_id and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n      raise exception 'you cannot hold stock for this lead'",
+       "    if false and not exists (\n         select 1 from public.companies c\n          where c.id = new.company_id and ((select private.is_manager_or_admin()) or c.owner_id = caller)) then\n      raise exception 'you cannot hold stock for this lead'")]),
+    ("No deal-on-this-lead check, guard and apply step (both layers) [design 7]",
+     [("      if not found or d.company_id is null or d.company_id <> new.company_id then\n        raise", "      if not found then\n        raise"),
+      ("    if not found or d.company_id is null or d.company_id <> new.company_id then\n      raise", "    if not found then\n      raise")]),
+    ("No deal-on-this-lead check in the guard (the apply step checks it again) [design 7]",
+     [("      if not found or d.company_id is null or d.company_id <> new.company_id then\n        raise", "      if not found then\n        raise")], SURVIVES),
+    ("No deal-on-this-lead check in the apply step (the guard checks it first) [design 7]",
+     [("    if not found or d.company_id is null or d.company_id <> new.company_id then\n      raise", "    if not found then\n      raise")], SURVIVES),
+    ("Levels locked in the opposite order [design 8]",
+     [("   order by l.location_id\n     for update;", "   order by l.location_id desc\n     for update;")]),
+    ("Arrived moves unheld pieces first [design 9]",
+     [("      d_res := -least(q, lvl.reserved);", "      d_res := -greatest(0, q - (lvl.on_hand - lvl.reserved));")]),
+    ("The RPC does not end due holds before it writes [design 10]",
+     [("    perform private.expire_due_holds(p_product);\n", ""),
+      ("    perform private.expire_due_holds(p_product, v_loc);\n    insert into private.stock_movements (group_id, product_id, location_id, kind, target_on_hand", "    insert into private.stock_movements (group_id, product_id, location_id, kind, target_on_hand"),
+      ("    perform private.expire_due_holds(p_product, v_loc, p_deal);\n", ""),
+      ("      perform private.expire_due_holds(p_product, v_loc);\n    end if;", "      null;\n    end if;")]),
+    ("The guard trusts any current_user [design 11]",
+     [("  trusted constant boolean := current_user = 'postgres';", "  trusted constant boolean := true;")]),
+    ("No FOR SHARE on the product in the apply step (archive racing a receipt) [design 12]",
+     [("from public.products p where p.id = new.product_id for share;", "from public.products p where p.id = new.product_id;")]),
+    ("crm_moved worked out from ledger ids instead of under the lock [design 13]",
+     [("         crm_moved = case when d_on = 0 then l.crm_moved else not is_import end,",
+       "         crm_moved = new.id > coalesce((select max(m.id) from private.stock_movements m where m.product_id = new.product_id\n                                         and m.location_id = new.location_id and m.import_batch_id is not null), 0),")]),
+    ("The count's change worked out in the RPC (before the lock) [design 14]",
+     [("    insert into private.stock_movements (group_id, product_id, location_id, kind, target_on_hand, reason, note)\n    values (v_group, p_product, v_loc, 'count', p_target, v_reason, v_note)\n    returning id into v_id;",
+       "    insert into private.stock_movements (group_id, product_id, location_id, kind, qty, reason, note)\n    select v_group, p_product, v_loc, case when x.d > 0 then 'adjust_in' else 'adjust_out' end, abs(x.d), v_reason, v_note\n      from (select p_target - coalesce((select s.on_hand from public.stock_levels s where s.product_id = p_product\n                                          and s.location_id = v_loc), 0) as d) x\n     where x.d <> 0\n    returning id into v_id;")]),
+    ("Rate guard at 10,000 a minute [design 15]",
+     [("                                             limit 120) recent) >= 120 then", "                                             limit 10000) recent) >= 10000 then")]),
+    ("No audit row for ledger rows [design 16]",
+     [("create trigger audit_inventory_row after insert on private.stock_movements\n  for each row execute function private.audit_inventory_row();\n", "")]),
+    ("The ledger's audit row copies the whole row (the note's text included) [design 16]",
+     [("  if tg_table_name = 'stock_movements' then\n    diff := jsonb_build_object(", "  if false then\n    diff := jsonb_build_object(")]),
+    # Protections the builder added or named beyond the design's list.
+    ("A transfer_out with no transfer_in is accepted (no deferred pairing check)",
+     [("create constraint trigger stock_movements_transfer_paired after insert on private.stock_movements\n  deferrable initially deferred\n  for each row when (new.kind = 'transfer_out') execute function private.stock_transfer_paired();\n", "")]),
+    ("A transfer_in may reuse a departure that already arrived (guard and unique index, both layers)",
+     [("            and m.user_id is not distinct from new.user_id\n            and not exists (select 1 from private.stock_movements x where x.pair_id = m.id)) then",
+       "            and m.user_id is not distinct from new.user_id) then"),
+      ("create unique index movements_pair_once_idx on private.stock_movements (pair_id) where pair_id is not null;", "")]),
+    ("No not-paired-yet check in the guard (the unique index refuses with 23505 instead of a constant error)",
+     [("            and m.user_id is not distinct from new.user_id\n            and not exists (select 1 from private.stock_movements x where x.pair_id = m.id)) then",
+       "            and m.user_id is not distinct from new.user_id) then")]),
+    ("No unique index on pair_id (backstop behind the guard)",
+     [("create unique index movements_pair_once_idx on private.stock_movements (pair_id) where pair_id is not null;", "")], SURVIVES),
+    ("Arrived takes no product lock before the levels (deadlock with a movement holding the product's share lock)",
+     [("    perform 1 from public.products p where p.id = p_product for no key update;\n    if not found then\n      raise exception 'product not found' using errcode = 'P0002';\n    end if;\n", "")]),
+    ("A hold for a deal does not lock the deal in the apply step (a hold inserted straight into the ledger keeps its lost deal's hold)",
+     [("into d from public.deals dl where dl.id = new.deal_id for share;", "into d from public.deals dl where dl.id = new.deal_id;")]),
+    ("Archive with stock left",
+     [("      if exists (select 1 from public.stock_levels l\n                  where l.product_id = new.id and (l.on_hand <> 0 or l.reserved <> 0)) then",
+       "      if false and exists (select 1 from public.stock_levels l\n                  where l.product_id = new.id and (l.on_hand <> 0 or l.reserved <> 0)) then")]),
+    ("Archive without a fresh code in the product guard (a direct update)",
+     [("    if old.archived_at is null and new.archived_at is not null then\n      if not private.has_recent_aal2(600) then",
+       "    if old.archived_at is null and new.archived_at is not null then\n      if false then")]),
+    ("A manager restores an archived product (product guard)",
+     [("    elsif old.archived_at is not null and new.archived_at is null then\n      if not private.is_admin() then",
+       "    elsif old.archived_at is not null and new.archived_at is null then\n      if false then")]),
+    ("No archived-product check in the guard (the apply step checks it again under the lock)",
+     [("  if v_archived is not null and new.kind not in ('release', 'expire') then", "  if false then")], SURVIVES),
+    ("No archived-product check under the lock (archive racing a receipt)",
+     [("  if not v_active and new.kind not in ('release', 'expire') then", "  if false then")]),
+    ("No same-organisation check on the place in the guard (the places policy hides other organisations' places)",
+     [("from public.locations l where l.id = new.location_id and l.org_id = v_org;", "from public.locations l where l.id = new.location_id;")],
+     SURVIVES),
+    ("A transfer_out may leave from the warehouse",
+     [("  if not found or (new.kind = 'transfer_out' and v_place <> 'transit')\n", "  if not found or (false and v_place <> 'transit')\n")]),
+    ("Anyone may release a hold",
+     [("      if h.created_by <> caller and not exists (", "      if false and not exists (")]),
+    ("No end-date check for a hold in the guard (a direct insert)",
+     [("    if new.hold_until is null or new.hold_until not between v_today and v_today + 90 then", "    if false then")]),
+    ("No note pre-check in the guard (the CHECK would put the note in the error)",
+     [("     or new.note ~ '[\\u0001-\\u001F\\u007F-\\u009F\\u200B-\\u200F\\u202A-\\u202E\\u2066-\\u2069\\uFEFF]' then\n    raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';\n  end if;\n  if new.kind <> 'transfer_in' then",
+       "     or false then\n    raise exception 'the note is too long or has characters that are not allowed' using errcode = '22023', hint = 'note';\n  end if;\n  if new.kind <> 'transfer_in' then"),
+      ("  if char_length(new.note) > (case when new.kind = 'reserve' then 300 else 500 end)\n", "  if false\n")]),
+    ("No product name pre-check (the CHECK would put the name in the error)",
+     [("    raise exception 'a product name needs 1 to 200 characters with a letter or a digit, without control characters'\n      using errcode = '22023', hint = 'product_name';\n  end if;",
+       "    null;\n  end if;")]),
+    ("No name_taken pre-check (the unique index answers instead)",
+     [("     and exists (select 1 from public.products p\n                  where p.org_id = new.org_id and p.name_key = private.product_name_key(new.name) and p.id <> new.id) then",
+       "     and false then")]),
+    ("A retry with the same request id posts again",
+     [("    if v_new is null then\n      select r.kind, r.result into v_prev_kind, v_result from private.movement_requests r",
+       "    if false then\n      select r.kind, r.result into v_prev_kind, v_result from private.movement_requests r")]),
+    ("Request ids readable by everyone",
+     [("  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));", "  using (true) with check (user_id = (select auth.uid()));")]),
+    ("Levels readable across organisations",
+     [("create policy stock_levels_select on public.stock_levels for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy stock_levels_select on public.stock_levels for select to authenticated\n  using (true);")]),
+    ("Reps may create products (policy)",
+     [("  with check (org_id = (select private.current_org_id()) and (select private.is_manager_or_admin()));\ncreate policy products_update",
+       "  with check (org_id = (select private.current_org_id()));\ncreate policy products_update")]),
+    ("Reps see costs (policy)",
+     [("create policy product_costs_rw on private.product_costs for all to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_manager_or_admin()))",
+       "create policy product_costs_rw on private.product_costs for all to authenticated\n  using (org_id = (select private.current_org_id()))")]),
+    # 6e replaces this policy (managers reach the row to switch sharing off) and moves the admin-only rule for the
+    # other settings into its guard: the row also removes that live check (found dead at the Day 5 merge re-run).
+    ("Managers change the settings (policy)",
+     [("create policy inventory_settings_update on private.inventory_settings for update to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()))",
+       "create policy inventory_settings_update on private.inventory_settings for update to authenticated\n  using (org_id = (select private.current_org_id()))"),
+      (MIG_6E, "  if (new.hold_days is distinct from old.hold_days or new.alert_assignee_id is distinct from old.alert_assignee_id)\n     and not private.is_admin() then",
+       "  if (new.hold_days is distinct from old.hold_days or new.alert_assignee_id is distinct from old.alert_assignee_id)\n     and false then")]),
+    ("The alert assignee may be outside the organisation",
+     [("     and not exists (select 1 from public.profiles p where p.id = new.alert_assignee_id and p.org_id = new.org_id) then",
+       "     and false then")]),
+    ("Import undo does not count holds (it would try to delete a lead with stock history)",
+     [("     and not exists (select 1 from private.stock_reservations r where r.company_id = c.id)\n", "")]),
+    ("Holds deleted with their lead (on delete cascade)",
+     [("references public.companies (id) on delete restrict,   -- a lead with holds is kept", "references public.companies (id) on delete cascade,")]),
+    ("A lost deal keeps its holds (trigger dropped)",
+     [("create trigger release_deal_holds_lost after update on public.deals\n  for each row when (new.status = 'lost' and old.status is distinct from 'lost')\n  execute function private.release_deal_holds();\n", "")]),
+    ("A deleted deal keeps its holds (trigger dropped)",
+     [("create trigger release_deal_holds_deleted before delete on public.deals\n  for each row execute function private.release_deal_holds();\n", "")]),
+    ("The page-load sweep is not throttled",
+     [("   where s.org_id = v_org and (s.last_sweep_at is null or s.last_sweep_at <= now() - interval '1 minute');", "   where s.org_id = v_org;")]),
+    ("No not-enough-stock rule in the apply step (the CHECK fires instead of a constant error)",
+     [("  if lvl.on_hand + d_on < 0 then\n    raise exception 'not enough stock'", "  if false then\n    raise exception 'not enough stock'")]),
+    ("The public RPCs keep PUBLIC execute (anon could call them)",
+     [("    execute format('revoke all on function %s from public, anon', f);\n    execute format('grant execute on function %s to authenticated', f);\n  end loop;\nend;\n$$;\n",
+       "    execute format('grant execute on function %s to authenticated', f);\n  end loop;\nend;\n$$;\n")]),
+    ("The nightly job opens a task every run",
+     [("      if v_assignee is not null and not exists (\n           select 1 from public.tasks t", "      if v_assignee is not null and (true or exists (\n           select 1 from public.tasks t"),
+      ("              and (t.created_at at time zone 'Europe/Paris')::date = (now() at time zone 'Europe/Paris')::date) then",
+       "              and (t.created_at at time zone 'Europe/Paris')::date = (now() at time zone 'Europe/Paris')::date)) then")]),
+    ("A settings change of the sweep time alone is audited",
+     [("     where n.value is distinct from o.value and n.key not in ('updated_at', 'last_sweep_at');", "     where n.value is distinct from o.value and n.key not in ('updated_at');")]),
+    ("Anyone signed in runs the stock check",
+     [("  if not private.is_admin() then\n    raise exception 'only admins run the stock check'", "  if false then\n    raise exception 'only admins run the stock check'")]),
+    ("The product's creator comes from the client",
+     [("  if tg_op = 'INSERT' then\n    new.created_by := caller;\n    new.archived_at := null;", "  if tg_op = 'INSERT' then\n    new.archived_at := null;")]),
+    ("Managers rename places (policy)",
+     [("create policy locations_update on public.locations for update to authenticated\n  using (org_id = (select private.current_org_id()) and (select private.is_admin()))",
+       "create policy locations_update on public.locations for update to authenticated\n  using (org_id = (select private.current_org_id()))")]),
+    ("Reps correct stock (no manager check for receive, adjust and count in the guard)",
+     [("      if not private.is_manager_or_admin() then\n        raise exception 'only managers and admins correct stock'",
+       "      if false then\n        raise exception 'only managers and admins correct stock'")]),
+    ("A person may post an expire row",
+     [("    if new.kind = 'expire' then\n      raise exception 'only the system ends holds'", "    if false then\n      raise exception 'only the system ends holds'")]),
+    ("No two-factor policy on the levels, ledger, holds, hold uses and request ids",
+     [("                           'private.stock_hold_uses', 'private.movement_requests'] loop\n    execute format('alter table %s enable row level security', t);\n    execute format('create policy require_mfa on %s as restrictive to authenticated using ((select private.has_aal2())) with check ((select private.has_aal2()))', t);\n",
+       "                           'private.stock_hold_uses', 'private.movement_requests'] loop\n    execute format('alter table %s enable row level security', t);\n")]),
+    ("A place of another organisation is accepted (no same-organisation check and places readable by everyone, both layers)",
+     [("from public.locations l where l.id = new.location_id and l.org_id = v_org;", "from public.locations l where l.id = new.location_id;"),
+      ("create policy locations_select on public.locations for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy locations_select on public.locations for select to authenticated\n  using (true);")]),
+    ("Places readable across organisations (policy)",
+     [("create policy locations_select on public.locations for select to authenticated\n  using (org_id = (select private.current_org_id()));",
+       "create policy locations_select on public.locations for select to authenticated\n  using (true);")]),
+    # Verifier findings on the first build (11 Oct).
+    ("The RPC does not lock a hold's deal before its expiry rows (deadlock with a deal lost at the same moment)",
+     [("    perform 1 from public.deals d where d.id = p_deal and d.org_id = v_org for share;\n", "    null;\n")]),
+    ("The deal-lost release fires only on an UPDATE naming status (a status set by a BEFORE trigger keeps the holds)",
+     [("create trigger release_deal_holds_lost after update on public.deals\n", "create trigger release_deal_holds_lost after update of status on public.deals\n")]),
+    ("The rate guard counts the system's deal-lost release rows",
+     [("                                               and (m.kind <> 'release' or m.reason = 'manual')\n", "")]),
+    ("stock_integrity_rows honours any caller's organisation argument",
+     [("    select case when current_user = 'postgres' then p_org else (select private.current_org_id()) end as id),", "    select p_org as id),")]),
+    # Verifier finding on round 1 (11 Oct).
+    ("The deal-lost release reads the holds before locking their products (Arrived moving them meanwhile: the lost deal keeps them)",
+     [("  perform 1 from public.products p\n   where p.id in (select r.product_id from private.stock_reservations r where r.deal_id = v_deal and r.status = 'active')\n   order by p.id\n     for share;\n", "")]),
+]
+
+
+MUTATIONS_6C = [
+    # Design section 11.3, 6c mutations 17 to 25 (tagged [design N]). 26 (REVENTE mismatch rejects instead of warning)
+    # lives in the browser rules (src/lib/stock-import/rules.ts): the unit tests carry it, not this script.
+    ("The commit applies the delta seen at the check instead of the sheet's target [design 17]",
+     [("        v_d := g.sheet_wh - (lw.on_hand + v_t);\n", "        v_d := g.sheet_wh - (g.wh_at_check + v_t);\n"),
+      ("        v_d := g.sheet_tr - (lt.on_hand - v_t);\n", "        v_d := g.sheet_tr - (g.tr_at_check - v_t);\n")]),
+    ("The commit does not re-read moved in the CRM under the lock (uses the check's value) [design 18]",
+     [("    if (lw.crm_moved or lt.crm_moved) and not g.use_sheet then\n", "    if g.moved_at_check and not g.use_sheet then\n")]),
+    ("A place the sheet leaves out keeps its stock instead of going to 0 [design 19]",
+     [("coalesce(m.q_wh, 0) as sheet_wh, coalesce(m.q_tr, 0) as sheet_tr,",
+       "coalesce(m.q_wh, m.wh_on) as sheet_wh, coalesce(m.q_tr, m.tr_on) as sheet_tr,")]),
+    ("The undo plan ignores last_onhand_batch_id (reverses stock moved or re-imported since) [design 20]",
+     [("      if lv.last_onhand_batch_id is distinct from p_batch then\n        v_qty := case",
+       "      if false then\n        v_qty := case")]),
+    ("The undo deletes the products the import created instead of archiving them [design 21]",
+     [("      update public.products pr set archived_at = now() where pr.id = c.product_id and pr.archived_at is null;\n",
+       "      delete from public.products pr where pr.id = c.product_id;\n")]),
+    ("The batch guard keeps the stock working rows when an import closes [design 22]",
+     [("    delete from private.stock_import_staging s where s.batch_id = n.id;\n", "    null;\n")]),
+    ("No stock marker check in the batch guard (a lead RPC or a direct PATCH moves a stock batch) [design 23]",
+     [("  if nullif(current_setting('topstock.stock_batch_op', true), '') is distinct from n.id::text then\n    raise exception",
+       "  if false then\n    raise exception")]),
+    ("One writer per organisation again instead of per organisation and kind [design 24]",
+     [("create unique index import_batches_one_writer_idx on public.import_batches (org_id, kind)",
+       "create unique index import_batches_one_writer_idx on public.import_batches (org_id)")]),
+    ("The lock helper lets any admin lock a committing import (no uploader check) [design 25]",
+     [("  if not ((b.status = 'committing' and b.uploaded_by = (select auth.uid()))\n",
+       "  if not ((b.status = 'committing')\n")]),
+]
+
+
+MUTATIONS_6D = [
+    # Design section 11.3, 6d mutations 27 to 36 (tagged [design N]); two-layer protections also get one row per layer.
+    ("A sale ignores other clients' holds (no held-above-on-hand rule for ship; the CHECK fires instead) [design 27]",
+     [("  if lvl.reserved + d_res > lvl.on_hand + d_on then\n    raise exception 'stock is held'",
+       "  if new.kind <> 'ship' and lvl.reserved + d_res > lvl.on_hand + d_on then\n    raise exception 'stock is held'")]),
+    ("A sale may use any lead's holds (not only its own lead's) [design 27]",
+     [("                  and r.company_id = new.company_id and (r.deal_id is null or r.deal_id = new.deal_id)\n",
+       "                  and (r.deal_id is null or r.deal_id = new.deal_id)\n")]),
+    ("Reps sell below the minimum price (record_sale and the line guard, both layers) [design 28]",
+     [("    if not private.is_manager_or_admin() then\n      raise exception 'only managers and admins sell below the minimum price'",
+       "    if false then\n      raise exception 'only managers and admins sell below the minimum price'"),
+      ("      if not private.is_manager_or_admin() then\n        raise exception 'only managers and admins sell below the minimum price'",
+       "      if false then\n        raise exception 'only managers and admins sell below the minimum price'")]),
+    ("Reps sell below the minimum price in record_sale (the line guard refuses the same line) [design 28]",
+     [("    if not private.is_manager_or_admin() then\n      raise exception 'only managers and admins sell below the minimum price'",
+       "    if false then\n      raise exception 'only managers and admins sell below the minimum price'")]),
+    ("Reps write a line below the minimum price (the line guard; the table path) [design 28]",
+     [("      if not private.is_manager_or_admin() then\n        raise exception 'only managers and admins sell below the minimum price'",
+       "      if false then\n        raise exception 'only managers and admins sell below the minimum price'")]),
+    ("The deal-lost trigger is dropped (a lost deal keeps its holds) [design 29]",
+     [(MIG_6A, "create trigger release_deal_holds_lost after update on public.deals\n  for each row when (new.status = 'lost' and old.status is distinct from 'lost')\n  execute function private.release_deal_holds();\n",
+       "")]),
+    ("The import undo misses sales (a lead with a sale counts as untouched) [design 30]",
+     [("     and not exists (select 1 from private.orders o where o.company_id = c.id)\n", "")]),
+    ("A stock sheet opens Restock tasks [design 31]",
+     [("  if new.kind in ('import_in', 'import_out', 'undo_in', 'undo_out', 'expire') or v_after >= v_before then",
+       "  if new.kind in ('expire') or v_after >= v_before then")]),
+    ("System tasks keep the caller's claims (the rep becomes the creator) [design 32]",
+     [("  perform set_config('request.jwt.claims', '', true);\n  perform set_config('request.jwt.claim.sub', '', true);\n  insert into public.tasks",
+       "  insert into public.tasks")]),
+    ("System tasks do not put the caller's claims back [design 33]",
+     [("  perform set_config('request.jwt.claims', coalesce(v_claims, ''), true);\n  perform set_config('request.jwt.claim.sub', coalesce(v_sub, ''), true);\n  return v_id;",
+       "  return v_id;")]),
+    ("A sale line may ship twice (no unique ship index) [design 34]",
+     [("create unique index movements_ship_once_idx", "create index movements_ship_once_idx")]),
+    ("Undo after 120 s without a code (record_sale's check and the order guard, both layers) [design 35]",
+     [("o.created_at <= now() - interval '120 seconds'", "o.created_at <= now() - interval '3600 seconds'"),
+      ("old.created_at > now() - interval '120 seconds' and new.cancel_reason = 'undo'",
+       "old.created_at > now() - interval '3600 seconds' and new.cancel_reason = 'undo'")]),
+    ("Undo window in undo_sale only (the order guard still refuses: forbidden instead of undo_window) [design 35]",
+     [("o.created_at <= now() - interval '120 seconds'", "o.created_at <= now() - interval '3600 seconds'")]),
+    ("Undo window in the order guard only (a direct cancel by the creator after 120 s) [design 35]",
+     [("old.created_at > now() - interval '120 seconds' and new.cancel_reason = 'undo'",
+       "old.created_at > now() - interval '3600 seconds' and new.cancel_reason = 'undo'")]),
+    ("task_guard without the new links in its cascade exception [design 36]",
+     [("       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',\n                            'source_product_id', 'source_request_id']\n",
+       "       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id']\n")], SURVIVES),
+    ("task_guard lets a client change a system link (the column grant refuses it first: two layers)",
+     [("    if not changed <@ array['assignee_id', 'cancelled_at', 'completed_by', 'contact_id', 'done_at', 'due_at',\n                            'due_date', 'title'] then\n      raise exception 'this part of a task cannot change'",
+       "    if not changed <@ array['assignee_id', 'cancelled_at', 'completed_by', 'contact_id', 'done_at', 'due_at',\n                            'due_date', 'title', 'source_product_id', 'source_request_id'] then\n      raise exception 'this part of a task cannot change'")], SURVIVES),
+    ("A sale line may be added to someone else's (or an earlier) sale",
+     [("  if not found or o.created_by is distinct from caller or o.created_at <> now() or o.status <> 'confirmed' then\n    raise exception 'lines are added with their sale only'",
+       "  if not found then\n    raise exception 'lines are added with their sale only'")]),
+    ("A ship row needs no sale recorded now by the caller",
+     [("      if trusted or sl.status <> 'confirmed' or sl.created_by is distinct from caller or sl.created_at <> now() then",
+       "      if trusted or sl.status <> 'confirmed' then")]),
+    ("record_sale does not lock the lead (a non-editor may sell)",
+     [("  select c.country into v_lead_country from public.companies c where c.id = p_company for update;",
+       "  select c.country into v_lead_country from public.companies c where c.id = p_company;")]),
+    ("Undo does not put back the holds a sale used",
+     [("              where ol.order_id = p_order and m.kind = 'ship' and r.hold_until >= v_today\n",
+       "              where ol.order_id = p_order and m.kind = 'ship' and false\n")]),
+    ("The audit keeps a request's note",
+     [("  hidden constant text[] := array['note', 'requester_name', 'idempotency_key'];",
+       "  hidden constant text[] := array['requester_name', 'idempotency_key'];")]),
+    ("A hold's whole row is writable by its editor (no extend guard)",
+     [("create trigger reservation_extend_guard before update on private.stock_reservations\n  for each row execute function private.reservation_extend_guard();\n", ""),
+      ("grant update (hold_until) on private.stock_reservations to authenticated;", "grant update (hold_until, remaining) on private.stock_reservations to authenticated;")]),
+]
+
+
+MUTATIONS_6E = [
+    ("share_reader may read the minimum price [design 37]",
+     [("grant select (id, org_id, number, name, category, pieces_per_carton, price_max, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;",
+       "grant select (id, org_id, number, name, category, pieces_per_carton, price_max, price_min, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;")]),
+    ("share_items sends the minimum price in place of the max (and share_reader may read it) [design 38]",
+     [("    from (select p.id, p.number, p.name, p.category, p.price_max, p.pieces_per_carton as ppc,",
+       "    from (select p.id, p.number, p.name, p.category, p.price_min as price_max, p.pieces_per_carton as ppc,"),
+      ("grant select (id, org_id, number, name, category, pieces_per_carton, price_max, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;",
+       "grant select (id, org_id, number, name, category, pieces_per_carton, price_max, price_min, transit_eta, share_visible, archived_at)\n  on public.products to share_reader;")]),
+    ("share_view compares the plain token instead of its hash [design 39]",
+     [("    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null and l.expires_at > now();\n  if not found then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  perform set_config('topstock.share_link', v_link.id::text, true);\n  perform set_config('topstock.share_org', v_link.org_id::text, true);\n  select s.sharing_enabled into v_on from private.inventory_settings s where s.org_id = v_link.org_id;\n  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view')",
+       "    from private.share_links l\n   where l.token_hash = convert_to(p_token, 'UTF8') and l.revoked_at is null and l.expires_at > now();\n  if not found then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  perform set_config('topstock.share_link', v_link.id::text, true);\n  perform set_config('topstock.share_org', v_link.org_id::text, true);\n  select s.sharing_enabled into v_on from private.inventory_settings s where s.org_id = v_link.org_id;\n  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view')")]),
+    ("share_view works for a revoked link [design 40]",
+     [("  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null and l.expires_at > now();",
+       "  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.expires_at > now();")]),
+    ("share_view works for an expired link [design 40]",
+     [("  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null and l.expires_at > now();",
+       "  select l.id, l.org_id, l.language, l.show_in_transit, l.allow_requests, l.signature into v_link\n    from private.share_links l\n   where l.token_hash = sha256(convert_to(p_token, 'UTF8')) and l.revoked_at is null;")]),
+    ("share_view ignores the kill switch [design 40]",
+     [("  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view') then",
+       "  if false then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not private.share_take(v_link.id, 'view') then")]),
+    ("share_request ignores the kill switch [design 40]",
+     [("  if v_on is not true then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not v_link.allow_requests then",
+       "  if false then\n    return '{\"status\":\"inactive\"}'::jsonb;\n  end if;\n  if not v_link.allow_requests then")]),
+    ("share_view without its rate limit [design 41]",
+     [("  if not private.share_take(v_link.id, 'view') then", "  if false then")]),
+    ("share_request without its rate limits [design 41]",
+     [("  if not private.share_take(v_link.id, 'request') or not private.share_take(v_link.org_id, 'request') then",
+       "  if false then")]),
+    ("share_take writes a count when it refuses [design 42]",
+     [("                     or (r.span = 'd' and r.bucket = b_d and r.n >= lim_d))) then\n    return false;",
+       "                     or (r.span = 'd' and r.bucket = b_d and r.n >= lim_d))) then\n    update private.share_rate r set n = r.n + 1 where r.scope_id = p_scope and r.kind = p_kind;\n    return false;")]),
+    ("share_items lists sold-out products [design 43]",
+     [("           where p.org_id = p_org and p.archived_at is null and p.share_visible\n             and (coalesce(w.on_hand - w.reserved, 0) > 0\n                  or (p_with_transit and coalesce(t.on_hand - t.reserved, 0) > 0))\n",
+       "           where p.org_id = p_org and p.archived_at is null and p.share_visible\n")]),
+    ("share_items cuts at 2,000 before the in-stock filter [design 44]",
+     [("           where p.org_id = p_org and p.archived_at is null and p.share_visible\n             and (coalesce(w.on_hand - w.reserved, 0) > 0\n                  or (p_with_transit and coalesce(t.on_hand - t.reserved, 0) > 0))\n",
+       "           where p.org_id = p_org and p.archived_at is null and p.share_visible\n"),
+      ("           limit 2000) i\n$$;", "           limit 2000) i\n   where i.wh > 0 or i.tr > 0\n$$;")]),
+    ("authenticated may call the two anon functions [design 45]",
+     [("grant execute on function public.share_view(text, text), public.share_request(text, jsonb) to anon;",
+       "grant execute on function public.share_view(text, text), public.share_request(text, jsonb) to anon, authenticated;")]),
+    ("share_view made STABLE (a GET could call it) [design 46]",
+     [("create function public.share_view(p_token text, p_known_version text default null) returns jsonb\nlanguage plpgsql volatile security definer",
+       "create function public.share_view(p_token text, p_known_version text default null) returns jsonb\nlanguage plpgsql stable security definer")]),
+    ("The link guard keeps a token_hash the client sent [design 47]",
+     [("    new.token_hash := sha256(convert_to(v_token, 'UTF8'));\n    new.token_hint := right(v_token, 4);",
+       "    new.token_hash := coalesce(new.token_hash, sha256(convert_to(v_token, 'UTF8')));\n    new.token_hint := coalesce(new.token_hint, right(v_token, 4));")]),
+    ("authenticated may insert token_hash (the guard still replaces it)",
+     [("      insert (company_id, label, language, show_in_transit, allow_requests, expires_at),\n      update (label, language, show_in_transit, allow_requests, expires_at, revoked_at)\n  on private.share_links to authenticated;",
+       "      insert (company_id, label, language, show_in_transit, allow_requests, expires_at, token_hash),\n      update (label, language, show_in_transit, allow_requests, expires_at, revoked_at)\n  on private.share_links to authenticated;")]),
+    ("A link without a fresh code",
+     [("  if tg_op = 'INSERT' then\n    if not private.has_recent_aal2(600) then\n      raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';\n    end if;\n    v_token",
+       "  if tg_op = 'INSERT' then\n    v_token"),
+      ("  if not private.has_recent_aal2(600) then\n    raise exception 'enter a fresh two-factor code' using errcode = '42501', hint = 'step_up';\n  end if;\n  if not exists (select 1 from public.companies c where c.id = p_company) then",
+       "  if not exists (select 1 from public.companies c where c.id = p_company) then")]),
+    ("A revoked link may be brought back",
+     [("  if old.revoked_at is not null then\n    raise exception 'this link is revoked' using errcode = '22023', hint = 'revoked';\n  end if;\n", "")]),
+    ("A rep may make a link for any lead (insert policy without the editor check)",
+     [("  and exists (select 1 from public.companies c\n               where c.id = share_links.company_id and c.org_id = share_links.org_id\n                 and ((select private.is_manager_or_admin()) or c.owner_id = (select auth.uid()))));",
+       "  and exists (select 1 from public.companies c\n               where c.id = share_links.company_id and c.org_id = share_links.org_id));")]),
+    ("No cap on active links a lead",
+     [("       where l.company_id = new.company_id and l.revoked_at is null and l.expires_at > now()) > 3",
+       "       where l.company_id = new.company_id and l.revoked_at is null and l.expires_at > now()) > 300")]),
+    ("A manager may switch sharing on (guard)",
+     [("    if new.sharing_enabled and not (private.is_admin() and private.has_recent_aal2(600)) then",
+       "    if new.sharing_enabled and not (private.is_manager_or_admin() and private.has_recent_aal2(600)) then")]),
+    ("share_reader's links policy without the token hash (any link readable)",
+     [("create policy share_links_reader on private.share_links for select to share_reader\n  using (token_hash = (select private.share_token_hash()));",
+       "create policy share_links_reader on private.share_links for select to share_reader\n  using (true);")]),
+    ("share_reader reads every organisation's products (policy without the org)",
+     [("create policy products_reader on public.products for select to share_reader\n  using (org_id = (select private.share_org()));",
+       "create policy products_reader on public.products for select to share_reader\n  using (true);")]),
+    ("A client request is not checked against the visible products",
+     [("                   where p.org_id = v_link.org_id and p.number = (e ->> 'product_number')::integer\n                     and p.archived_at is null and p.share_visible\n                     and (coalesce(w.on_hand - w.reserved, 0) > 0\n                          or (v_link.show_in_transit and coalesce(t.on_hand - t.reserved, 0) > 0)))) then",
+       "                   where p.org_id = v_link.org_id and p.number = (e ->> 'product_number')::integer)) then"),
+      ("    if not found or (current_user = 'share_reader' and (p.archived_at is not null or not p.share_visible)) then",
+       "    if not found then")]),
+    ("A client request retried with the same key is written twice",
+     [("  if exists (select 1 from private.stock_requests r where r.share_link_id = v_link.id and r.idempotency_key = v_key) then\n    return jsonb_build_object('status', 'received', 'signature', v_link.signature);\n  end if;\n", ""),
+      ("create unique index stock_requests_idem_idx on private.stock_requests (share_link_id, idempotency_key)\n  where share_link_id is not null;", "")]),
+    ("No limit on new requests a link",
+     [("  if v_n >= 10 then\n    return '{\"status\":\"too_many_open\"}'::jsonb;", "  if v_n >= 1000 then\n    return '{\"status\":\"too_many_open\"}'::jsonb;")]),
+    ("The audit keeps the token hash",
+     [("  hidden constant text[] := array['token_hash', 'open_count', 'last_opened_at', 'request_count', 'last_request_at',\n                                  'updated_at'];",
+       "  hidden constant text[] := array['open_count', 'last_opened_at', 'request_count', 'last_request_at',\n                                  'updated_at'];")]),
+    ("A client request opens no task",
+     [("  perform private.insert_system_task(new.org_id, v_assignee, 'request', null, new.company_id, null, new.id);\n", "")]),
+    ("The import undo misses client links (a lead with a link counts as untouched)",
+     [("     and not exists (select 1 from private.share_links s where s.company_id = c.id)\n", "")]),
+    ("The link caps count without the organisation's lock (two creates at once pass the cap)",
+     [("  perform pg_advisory_xact_lock(hashtextextended('topstock.share_link_caps:' || new.org_id::text, 0));\n", "")]),
+    ("The link caps run on a new link only (Extend brings an expired link back past the cap)",
+     [("create trigger share_link_caps after insert or update of expires_at on private.share_links",
+       "create trigger share_link_caps after insert on private.share_links")]),
+]
+
+
+# Day 6: stock records hold a deal (20261020100000_deal_stock_blocks.sql: Day 5's seam deal_closing_blocked filled in,
+# the first shipping choice checked, the delete block, the sale kind guard, the sale guard's deal-delete branch). Tests:
+# sales_attack.sql 11d, stock_attack.sql (deal delete and holds), deals_attack.sql catalog, sales_concurrency.sh case 8.
+DEAL_STOCK_RECORDS = Region(MIG_6F, "create function private.deal_stock_records(")
+DEAL_CLOSING_BLOCKED = Region(MIG_6F, "create or replace function private.deal_closing_blocked(")
+ORDER_GUARD_6F = Region(MIG_6F, "create or replace function private.order_guard(")
+MUTATIONS_6F = [
+    ("Seam: a confirmed sale does not hold the deal",
+     [(DEAL_STOCK_RECORDS, "and o.status = 'confirmed') then 'sales'", "and false) then 'sales'")]),
+    ("Seam: a cancelled sale still holds the deal",
+     [(DEAL_STOCK_RECORDS, " and o.status = 'confirmed') then 'sales'", ") then 'sales'")]),
+    ("Seam: an active hold does not hold the deal",
+     [(DEAL_STOCK_RECORDS, "and r.status = 'active') then 'reservation'", "and false) then 'reservation'")]),
+    ("Seam: a released hold still holds the deal",
+     [(DEAL_STOCK_RECORDS, " and r.status = 'active') then 'reservation'", ") then 'reservation'")]),
+    ("Seam: answers null always (Day 5's stub back)",
+     [(DEAL_CLOSING_BLOCKED, "  select case when d.status = 'open' and d.fulfilment is null then null\n              else private.deal_stock_records(d.id) end",
+       "  select null::text")]),
+    ("Seam: no exception for an undecided deal (its first shipping choice is blocked even when it fits)",
+     [(DEAL_CLOSING_BLOCKED, "when d.status = 'open' and d.fulfilment is null then null", "when false then null")]),
+    ("Seam: the exception covers every open deal (a decided open deal's shipping change is not checked)",
+     [(DEAL_CLOSING_BLOCKED, "when d.status = 'open' and d.fulfilment is null then null", "when d.status = 'open' then null")]),
+    ("Seam: runs as the caller (SECURITY INVOKER: records the caller cannot see are missed)",
+     [(DEAL_CLOSING_BLOCKED, "language sql stable security definer set search_path = '' as $$", "language sql stable security invoker set search_path = '' as $$")]),
+    ("Seam: answers a caller of another organisation",
+     [(DEAL_CLOSING_BLOCKED, "\n     and ((select auth.uid()) is null or d.org_id = (select private.current_org_id()))", "")]),
+    ("Seam: callable by anon",
+     [("grant execute on function private.deal_closing_blocked(uuid) to authenticated;",
+       "grant execute on function private.deal_closing_blocked(uuid) to authenticated, anon;")]),
+    ("The record helper callable by signed-in people",
+     [("  private.deal_delete_stock_block(), private.order_deal_fit() from public, anon, authenticated;\n",
+       "  private.deal_delete_stock_block(), private.order_deal_fit() from public, anon, authenticated;\n"
+       "grant execute on function private.deal_stock_records(uuid) to authenticated;\n")]),
+    ("First shipping choice not checked (trigger dropped)",
+     [("create trigger fit_deal_fulfilment_to_stock after update on public.deals\n  for each row when (old.fulfilment is null and new.fulfilment is not null)\n  execute function private.deal_fulfilment_fits_stock();\n", "")]),
+    ("First shipping choice: a confirmed sale of the other kind ignored",
+     [("                and o.fulfilment <> new.fulfilment) then", "                and false) then")]),
+    ("First shipping choice: Supplier Stock with an active hold allowed",
+     [("  if new.fulfilment = 'direct_from_source' and exists (", "  if false and exists (")]),
+    ("Delete: no BEFORE DELETE block (trigger dropped; a direct DELETE goes through)",
+     [("create trigger block_deal_delete_on_stock before delete on public.deals\n  for each row execute function private.deal_delete_stock_block();\n", "")]),
+    ("Delete: the block lets signed-in sessions through",
+     [("  if (select auth.uid()) is null then\n    return old;  -- maintenance", "  if true then\n    return old;  -- maintenance")]),
+    ("Delete: maintenance deletes blocked too (the release trigger never runs for them)",
+     [("  if (select auth.uid()) is null then\n    return old;  -- maintenance", "  if false then\n    return old;  -- maintenance")]),
+    ("Sale kind guard dropped (trigger)",
+     [("create trigger order_guard_deal_fit before insert on private.orders\n  for each row execute function private.order_deal_fit();\n", "")]),
+    ("Sale kind guard: kinds not compared",
+     [("  if v_fulfilment is not null and v_fulfilment <> new.fulfilment then", "  if false then")]),
+    ("Sale kind guard: the deal not locked (a concurrent shipping change and sale both pass)",
+     [("   where d.id = new.deal_id and d.org_id = new.org_id\n     for share;", "   where d.id = new.deal_id and d.org_id = new.org_id;")]),
+    ("Sale guard: a deal delete's set null refused again (the deal-delete branch dropped)",
+     [(ORDER_GUARD_6F, "  if tg_op = 'UPDATE' and pg_trigger_depth() > 1 and old.deal_id is not null and new.deal_id is null\n",
+       "  if false and pg_trigger_depth() > 1 and old.deal_id is not null and new.deal_id is null\n")]),
+    ("Sale guard: the deal-delete branch at any depth (a straight update of deal_id passes)",
+     [(ORDER_GUARD_6F, "  if tg_op = 'UPDATE' and pg_trigger_depth() > 1 and old.deal_id", "  if tg_op = 'UPDATE' and old.deal_id")]),
+]
+
+
+# The merge of Day 5 into Day 6 (15 Oct 2026). Two functions earlier sets mutate are redefined by Day 6 with text that
+# differs from the earlier copy, so the automatic mirror (same text in the later body) cannot reach them, and --anchors
+# reported those rows DEAD: Day 6d's task_guard (Day 5a's body plus source_product_id and source_request_id) and Day 6d's
+# stock_alerts (the real body that replaces Day 5c's stub). Each such row also gets the same protection removed from the
+# live Day 6d body; the earlier edit is kept (it still applies, to the dead copy).
+TASK_GUARD_6D = Region(MIG_6D, "create or replace function private.task_guard()")
+STOCK_ALERTS_6D = Region(MIG_6D, "create or replace function public.stock_alerts()")
+TG6_LIST = ("       and changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',\n"
+            "                            'source_product_id', 'source_request_id']\n")
+TG6_LINKS = ("\n       and (new.assignee_id is null or new.assignee_id is not distinct from old.assignee_id)"
+             "\n       and (new.contact_id is null or new.contact_id is not distinct from old.contact_id)"
+             "\n       and (new.created_by is null or new.created_by is not distinct from old.created_by)"
+             "\n       and (new.deal_id is null or new.deal_id is not distinct from old.deal_id)"
+             "\n       and (new.source_activity_id is null or new.source_activity_id is not distinct from old.source_activity_id)"
+             "\n       and (new.source_product_id is null or new.source_product_id is not distinct from old.source_product_id)"
+             "\n       and (new.source_request_id is null or new.source_request_id is not distinct from old.source_request_id) then")
+ALSO_IN_6D = {
+    ("day4a", "Task guard: link-emptying exception without created_by (the design's list: a person delete fails)"):
+        [(TASK_GUARD_6D, "changed <@ array['assignee_id', 'contact_id', 'created_by', 'deal_id', 'source_activity_id',\n",
+          "changed <@ array['assignee_id', 'contact_id', 'deal_id', 'source_activity_id',\n")],
+    ("day4a", "Task guard: link-emptying exception lets a link move to another record (depth 2)"):
+        [(TASK_GUARD_6D, TG6_LINKS, " then")],
+    ("day4a", "Task guard: link-emptying exception lets any column change (depth 2)"):
+        [(TASK_GUARD_6D, "    if pg_trigger_depth() > 1\n" + TG6_LIST, "    if pg_trigger_depth() > 1\n")],
+    ("day5a", "Task guard: deal_id not in the link-emptying exception"):
+        [(TASK_GUARD_6D, "'created_by', 'deal_id', 'source_activity_id',\n", "'created_by', 'source_activity_id',\n")],
+    ("day5c", "stock_alerts stub callable by anon"):
+        [(MIG_6D, "  end loop;\nend;\n$$;\nrevoke all on function private.order_guard()",
+          "  end loop;\nend;\n$$;\ngrant execute on function public.stock_alerts() to anon;\nrevoke all on function private.order_guard()")],
+    ("day5c", "stock_alerts stub without the two-factor check (an aal1 session gets an answer)"):
+        [(STOCK_ALERTS_6D, "  if (select auth.uid()) is null or not private.has_aal2() then\n",
+          "  if (select auth.uid()) is null then\n")],
+    ("day5c", "stock_alerts stub runs as its owner (SECURITY DEFINER)"):
+        [(STOCK_ALERTS_6D, "language plpgsql stable security invoker set search_path = '' as $$",
+          "language plpgsql stable security definer set search_path = '' as $$")],
+    ("day5c", "stock_alerts answers Day 6's keys plus an extra one (a purchase cost)"):
+        [(STOCK_ALERTS_6D, "      'sample', (select", "      'cost_per_piece', 4.1,\n      'sample', (select")],
+    ("day5c", "stock_alerts answers an empty object"):
+        [(STOCK_ALERTS_6D, "  return (\n    with s as (", "  return '{}'::jsonb;\n  return (\n    with s as (")],
+}
+for (_set, _rows) in (("day4a", MUTATIONS_4A), ("day5a", MUTATIONS_5A), ("day5c", MUTATIONS_5C)):
+    for _n, (_title, _edits, *_flags) in enumerate(_rows):
+        if (_set, _title) in ALSO_IN_6D:
+            _rows[_n] = (_title, list(_edits) + ALSO_IN_6D.pop((_set, _title)), *_flags)
+assert not ALSO_IN_6D, f"rows not found: {list(ALSO_IN_6D)}"
+
+
 SETS = {"day3b": (MIG_3B, MUTATIONS_3B), "day4a": (MIG_4A, MUTATIONS_4A), "day4b": (MIG_4B, MUTATIONS_4B),
         "day4c": (MIG_4C, MUTATIONS_4C), "day4d": (MIG_4D, MUTATIONS_4D), "day5a": (MIG_5A, MUTATIONS_5A),
         "day5b": (MIG_5B, MUTATIONS_5B), "day5c": (MIG_5C, MUTATIONS_5C),
-        "team": (MIG_TEAM, MUTATIONS_TEAM)}
+        "team": (MIG_TEAM, MUTATIONS_TEAM),
+        "day6a": (MIG_6A, MUTATIONS_6A), "day6c": (MIG_6C, MUTATIONS_6C),
+        "day6d": (MIG_6D, MUTATIONS_6D), "day6e": (MIG_6E, MUTATIONS_6E), "day6": (MIG_6F, MUTATIONS_6F)}
+
+
+FUNCTION_HEAD = re.compile(r"create (?:or replace )?function ([a-z_]+\.[a-z_0-9]+)\(")
+
+
+def enclosing_function(text: str, at: int):
+    """The function whose body holds position `at` (its header before it, its closing $$; after it), or None."""
+    heads = [m for m in FUNCTION_HEAD.finditer(text, 0, at)]
+    if not heads:
+        return None
+    head = heads[-1]
+    body = re.compile(r"\bas\s+(\$[a-z_]*\$)").search(text, head.end())
+    if body is None:
+        return None
+    end = text.find(body.group(1), body.end())  # the closing dollar quote (a nested $f$ body ends at its own tag)
+    return head.group(1) if end == -1 or end > at else None
+
+
+def redefinitions(text: str) -> list:
+    """The bodies of the functions a migration creates or replaces (header to the closing $$;)."""
+    bodies, at = [], text.find("create or replace function")
+    while at != -1:
+        end = text.find("\n$$;", at)
+        bodies.append(text[at:end])
+        at = text.find("create or replace function", end)
+    return bodies
+
+
+def _path(target):
+    return target.path if isinstance(target, Region) else target
+
+
+def mirrored_edits(target, old: str, new: str) -> list:
+    """The same edit in every later Day 6 migration that redefines the function the edit is aimed inside (the edit made
+    in that function's later body, found exactly once there). An edit outside any function is not mirrored; neither is
+    text that only happens to appear in another function of a later migration (merge of Day 5, 15 Oct 2026: the old
+    rule mirrored any body holding the text, and a Day 5a row's generic header line matched three 6c functions)."""
+    path = target.path if isinstance(target, Region) else target
+    text = path.read_text()
+    lo = 0
+    if isinstance(target, Region) and target.bounds(text):
+        lo = target.bounds(text)[0]
+    at = text.find(old, lo)
+    fn = enclosing_function(text, at) if at >= 0 else None
+    if fn is None:
+        return []
+    out = []
+    for later in REDEFINERS:
+        if later.name <= path.name:
+            continue
+        region = Region(later, f"create or replace function {fn}(")
+        b = region.bounds(later.read_text())
+        if b and old in later.read_text()[b[0]:b[1]]:
+            out.append((region, old, new))
+    return out
+
+
+def dead_edits(expanded: list) -> list:
+    """Edits aimed at a function that a later migration redefines without an edit in that later body (the row would
+    change a dead definition and could pass for the wrong reason). One line per such edit."""
+    migrations = sorted((ROOT / "supabase/migrations").glob("*.sql"))
+    where = []
+    for target, old, _ in expanded:
+        path = target.path if isinstance(target, Region) else target
+        text = path.read_text()
+        lo = target.bounds(text)[0] if isinstance(target, Region) and target.bounds(text) else 0
+        at = text.find(old, lo)
+        where.append((path, enclosing_function(text, at) if at >= 0 else None))
+    aimed = set(where)
+    out = []
+    for path, fn in where:
+        if fn is None:
+            continue
+        later = [m for m in migrations if m.name > path.name
+                 and re.search(r"create or replace function " + re.escape(fn) + r"\(", m.read_text())]
+        if later and (later[-1], fn) not in aimed:
+            out.append(f"{fn} is redefined in {later[-1].name} without an edit there")
+    return out
 
 
 def run_set(name: str, only: set) -> int:
@@ -1689,8 +2280,13 @@ def run_set(name: str, only: set) -> int:
             continue
         files = {}
         applied = True
+        expanded = []
         for edit in edits:
             target, old, new = edit if len(edit) == 3 else (default, *edit)
+            expanded.append((target, old, new))
+            given = {(_path(e[0]) if len(e) == 3 else default, e[-2]) for e in edits}
+            expanded += [m for m in mirrored_edits(target, old, new) if (m[0].path, m[1]) not in given]
+        for target, old, new in expanded:
             path = target.path if isinstance(target, Region) else target
             files.setdefault(path, path.read_text())
             text = files[path]
@@ -1714,8 +2310,13 @@ def run_set(name: str, only: set) -> int:
         if not applied:
             continue
         if ANCHORS_ONLY:
-            print(f"| {i} | {title} | anchor found | |")
-            counts["caught"] += 1
+            dead = dead_edits(expanded)
+            if dead:
+                print(f"| {i} | {title} | DEAD ({'; '.join(dead)}) | |")
+                counts["unexpected"] += 1
+            else:
+                print(f"| {i} | {title} | anchor found | |")
+                counts["caught"] += 1
             continue
         originals = {path: path.read_text() for path in files}
         try:
