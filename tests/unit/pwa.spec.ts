@@ -118,3 +118,26 @@ test("viewport-fit=cover and the safe-area padding are in place; no service work
     expect(read(f).toString(), f).not.toMatch(/serviceWorker|navigator\.serviceWorker|beforeinstallprompt/);
   }
 });
+
+test("safe areas hold while a dialog is open, and full-height pages do not scroll by the top inset", () => {
+  const css = read("src/app/globals.css").toString();
+  // Radix's scroll lock rewrites the body's padding while a dialog is open; the safe-area padding is kept.
+  const at = css.indexOf("body[data-scroll-locked] {");
+  expect(at, "body[data-scroll-locked] rule").toBeGreaterThan(-1);
+  const locked = css.slice(at, css.indexOf("}", at));
+  for (const side of ["top", "right", "left"]) {
+    expect(locked).toContain(`padding-${side}: env(safe-area-inset-${side}, 0px) !important`);
+  }
+  expect(css).toContain("min-height: calc(100dvh - env(safe-area-inset-top, 0px));");
+  // The page wrappers inside the padded body use 100dvh less the top inset; only the body itself is min-h-dvh.
+  for (const f of ["src/app/(app)/layout.tsx", "src/app/(auth)/layout.tsx", "src/app/(share)/layout.tsx", "src/app/error.tsx"]) {
+    const src = read(f).toString();
+    expect(src, f).toContain("min-h-safe-screen");
+    expect(src, f).not.toContain("min-h-dvh");
+  }
+  // The deal sheet (a full-width bottom sheet below 1024 px) clears the status bar and, in landscape, the notch side.
+  const sheet = read("src/components/pipeline/deal-sheet.tsx").toString();
+  for (const c of ["max-h-[calc(100dvh-max(12px,env(safe-area-inset-top,0px)))]", "pl-[env(safe-area-inset-left,0px)]", "pr-[env(safe-area-inset-right,0px)]"]) {
+    expect(sheet).toContain(c);
+  }
+});

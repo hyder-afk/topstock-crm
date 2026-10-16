@@ -6,6 +6,12 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* A full-height page inside the body's top safe-area padding: 100dvh less that inset, so a short page does not scroll
+   by the inset (min-h-dvh plus the padding did). The body itself stays min-h-dvh (border-box: the padding is inside). */
+@utility min-h-safe-screen {
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+}
+
 @theme inline {
   --font-sans: var(--font-outfit), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-dm-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -92,6 +98,13 @@
     padding-top: env(safe-area-inset-top, 0px);
     padding-right: env(safe-area-inset-right, 0px);
     padding-left: env(safe-area-inset-left, 0px);
+  }
+  /* While a dialog is open, Radix's scroll lock (react-remove-scroll-bar) rewrites the body's padding from its margins
+     (0), which dropped the safe-area padding and moved the page behind the sheet by the inset. Kept here. */
+  body[data-scroll-locked] {
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-right: env(safe-area-inset-right, 0px) !important;
+    padding-left: env(safe-area-inset-left, 0px) !important;
   }
   h1,
   h2,

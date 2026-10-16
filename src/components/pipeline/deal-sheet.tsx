@@ -83,7 +83,9 @@ export function DealSheet({
           aria-describedby={undefined}
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
-            "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-12px)] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pb-[env(safe-area-inset-bottom)]",
+            // Below 1024 px a bottom sheet the width of the screen: clear of the status bar (top inset) and, in landscape, of
+            // the notch side (side insets); the bottom inset as before.
+            "deal-sheet top-auto bottom-0 flex max-h-[calc(100dvh-max(12px,env(safe-area-inset-top,0px)))] w-full flex-col overflow-hidden rounded-b-none rounded-t-[24px] pr-[env(safe-area-inset-right,0px)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left,0px)]",
             "lg:inset-y-3 lg:right-3 lg:left-auto lg:mx-0 lg:max-h-none lg:w-[440px] lg:rounded-[24px]",
           )}
         >
