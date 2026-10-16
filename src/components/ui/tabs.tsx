@@ -15,10 +15,15 @@ export type TabItem<T extends string> = { id: T; label: React.ReactNode };
 export const tabId = (base: string, id: string) => `${base}-tab-${id}`;
 export const panelId = (base: string, id: string) => `${base}-panel-${id}`;
 
+/** The width of the `edge-fade` utility's fade (globals.css): an edge fades only while more tabs lie past it. */
+const EDGE_FADE = 24;
+
 /**
- * Scrolls a sideways tab strip (only the strip, never the page) so the tab is whole on screen. The strip snaps each tab
- * to its start (`snap-mandatory`), so any other scroll position is snapped again by the browser and can leave the tab
- * cut: the strip goes to the first tab start from which this tab shows whole, measured in fractional pixels.
+ * Scrolls a sideways tab strip (only the strip, never the page) so the tab is whole on screen and clear of the edge
+ * fades (Day 7c: a tab left inside a fade looked dimmed; the first and last tab need no room, as no fade shows at the
+ * strip's ends). The strip snaps each tab to its start (`snap-mandatory`), so any other scroll position is snapped
+ * again by the browser: forwards, the strip goes to the first tab start from which this tab shows whole with room for
+ * the end fade; backwards, to the last tab start that leaves room for the start fade. Fractional pixels.
  */
 function revealTab(el: HTMLElement) {
   const strip = el.parentElement;
@@ -28,16 +33,17 @@ function revealTab(el: HTMLElement) {
   const left = at(el);
   const right = left + el.getBoundingClientRect().width;
   const view = strip.clientWidth;
-  if (left >= strip.scrollLeft - 0.5 && right <= strip.scrollLeft + view + 0.5) return;
+  const needLeft = left - (el === strip.firstElementChild ? 0 : EDGE_FADE);
+  const needRight = right + (el === strip.lastElementChild ? 0 : EDGE_FADE);
+  if (needLeft >= strip.scrollLeft - 0.5 && needRight <= strip.scrollLeft + view + 0.5) return;
+  const starts = Array.from(strip.children, at);
   let target = left;
-  if (left > strip.scrollLeft) {
-    for (const b of Array.from(strip.children)) {
-      const start = at(b);
-      if (start + view >= right) {
-        target = Math.min(start, left);
-        break;
-      }
-    }
+  if (needRight > strip.scrollLeft + view + 0.5) {
+    const start = starts.find((s) => s + view >= needRight);
+    if (start !== undefined) target = Math.min(start, left);
+  } else {
+    const before = starts.filter((s) => s <= needLeft + 0.5);
+    if (before.length) target = before[before.length - 1];
   }
   strip.scrollLeft = target;
 }
