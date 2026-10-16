@@ -146,6 +146,8 @@ declare
     ['private.order_line_cost_snapshot()', 'postgres', 'false'],
     ['private.seed_org_inventory(uuid)', 'postgres', 'false'],
     ['private.seed_org_inventory_trigger()', 'postgres', 'false'],
+    -- the daily security digest (section 8 item 43, 16 Oct 2026): counts only, executable by security_digest_reader only
+    ['private.security_digest(timestamp with time zone)', 'postgres', 'false'],
     -- client share link (Day 6e): the two public functions run as share_reader (no bypass, own policies)
     ['private.share_link_caps()', 'postgres', 'false'],
     ['public.share_request(text,jsonb)', 'share_reader', 'false'],

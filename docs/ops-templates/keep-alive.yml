@@ -18,7 +18,8 @@
 name: keep-alive
 on:
   schedule:
-    - cron: "41 7 * * *" # every day at 07:41 UTC; for every 3 days instead use "41 7 */3 * *"
+    - cron: "41 7 * * *" # every day at 07:41 UTC. Keep it daily: security-digest turns red when this workflow has
+                         # not finished a run in the last 26 hours (docs/ops-templates/security-digest.md)
   workflow_dispatch:
 permissions: {}
 jobs:

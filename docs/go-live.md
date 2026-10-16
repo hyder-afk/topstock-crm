@@ -1,7 +1,8 @@
 # Day 8 go-live: Haider's checklist
 
 Written 12 Oct 2026 by the builder. Brought up to date on 16 Oct 2026 with main (commit c8ac42a: all of Day 6 and
-Day 7, Gate 1 code part passed) and with Haider's decisions of 16 Oct 2026. Master Plan section 9 Day 8, section 8
+Day 7, Gate 1 code part passed) and with Haider's decisions of 16 Oct 2026; part I3.3 (the daily security digest)
+written the same day. Master Plan section 9 Day 8, section 8
 rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-alive"); Cloud Workflow sections 4 to
 7; docs/day0-setup.md ("Later visits"); docs/evidence/day7d/section8-checklist.md (the items marked "Day 8").
 
@@ -17,9 +18,10 @@ rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-a
 | 5 | **Later:** inviting Henri and Kais, "when everything is ready" | K (deferred) |
 
 **So, in two sessions:** **now** decisions 1 and 9, parts A, B, C, D (and optionally G1 with G2 step 1), I3.1 and
-I3.2; **from 31 Oct** parts E, F, the rest of G, then H, I and I2 (next section explains why). **Not now:** parts J
-and K. Before either of them, Claude comes back with hosting options, free ones first, with what each costs and
-changes (decision 4), the daily security digest (part I3) and, for part K, the email sender question (decision 2).
+I3.2; **from 31 Oct** parts E, F, the rest of G, then H, I, I2 and I3.3 (next section explains why). **Not now:**
+parts J and K. Before either of them: Claude comes back with hosting options, free ones first, with what each costs
+and changes (decision 4); the daily security digest is running (part I3.3); and, for part K, the email sender question
+is answered (decision 2).
 
 ### GitHub Actions minutes (until 31 Oct)
 
@@ -35,24 +37,26 @@ working.
 - optionally G1 and G2 step 1 (the key pair and the `AGE_PUBLIC_KEY` secret);
 - I3.1 and I3.2.
 
-Meanwhile Claude does the `jwt_expiry` PR (if you say yes to decision 9), the security digest template (I3.3) and the
-hosting options (decision 4).
+Meanwhile Claude does the `jwt_expiry` PR (if you say yes to decision 9) and the hosting options (decision 4). The
+security digest template (I3.3) is written (16 Oct 2026) and comes to you as its own PR; once merged, its migration is
+part of the SHA Claude confirms on 31 Oct.
 
 **From 31 Oct**, after you check github.com > your avatar > **Settings** > **Billing** (the page may be called
 "Billing and plans" or "Billing and licensing") that the Actions minutes are back:
 - first ask Claude **"Go-live part A again: confirm the SHA"**, and use that new SHA in E and I2 (main will have
   moved on since today);
 - part E, then part F straight after. **Never F before E**: F1 would point the live address at an empty database;
-- G2 step 2 and G3, then H, then I, then I2 (its dry-run week starts then).
+- G2 step 2 and G3, then H, then I, then I2 (its dry-run week starts then), then I3.3 (the security digest).
 
-**Do not paste** backup-prod, keep-alive or sweep-lead-files into topstock-ops before 31 Oct: their schedules would
-fail and email you every night.
+**Do not paste** backup-prod, keep-alive, sweep-lead-files or security-digest into topstock-ops before 31 Oct: their
+schedules would fail and email you every night.
 
 **Paying for extra minutes now** is your choice. Recommended: **wait**. Waiting is free, and no real data is at risk
 (production holds nothing yet).
 
-**After the reset**, topstock-ops needs about 150 to 200 minutes a month. GitHub rounds each job up to a whole
-minute: backup about 3 a night, keep-alive 1 a day, sweeper 1 a day, plus a few minutes for each migrate-prod run.
+**After the reset**, topstock-ops needs about 180 to 230 minutes a month. GitHub rounds each job up to a whole
+minute: backup about 3 a night, keep-alive 1 a day, sweeper 1 a day, security digest 1 a day (about 30 a month), plus
+a few minutes for each migrate-prod run.
 That stays well inside the 2000 **only while topstock-crm stays public**. If topstock-crm ever goes private again,
 its CI eats the same pool and the backups stop, so tell Claude before changing that.
 
@@ -66,7 +70,7 @@ from account B, lead or stock rows, the CSV or stock files, or screenshots that 
 
 **Have ready:** your password manager, your phone with the authenticator app, a private browser window for account
 B (the ops@ login), your Mac's Terminal (parts F5, G and H), and two sessions: about 1.5 hours now (A, B, C, D,
-I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2).
+I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2, I3.3).
 
 ---
 
@@ -137,8 +141,9 @@ Why: production must get only reviewed code that passed the security gate.
    - CI green on `main`, and the **go-live commit SHA** (40 characters) you will deploy in part E: main **c8ac42a or
      later**, and Claude confirms it is **the newest commit on main** at that moment (F2 redeploys production from
      main, so the database in E must match it), with every migration on main up to
-     `20261022130000_share_take_paris_day`, and `deploy-dev-db` green on it (dev has the same migrations). The same
-     SHA serves as `SWEEPER_SHA` in part I2;
+     `20261022130000_share_take_paris_day` (on 31 Oct also `20261023090000_security_digest`, which part I3.3 needs,
+     once its PR is merged), and `deploy-dev-db` green on it (dev has the same migrations). The same SHA serves as
+     `SWEEPER_SHA` in part I2;
    - that topstock-crm's Actions logs, which anyone can read since the repository went public (16 Oct 2026), touch
      only dev and print no secret;
    - where the lead import page and the stock sheet import page are (for part J, later), and that **More > Team** is
@@ -410,7 +415,8 @@ Then:
 3. Click the run that appears and wait (about 3 to 5 minutes).
 
 **What you should see:** a green tick. The run summary lists the commit, the migration files (21 at c8ac42a, from
-`20261009180000_core_schema` to `20261022130000_share_take_paris_day`; a later commit may list more) and five lines:
+`20261009180000_core_schema` to `20261022130000_share_take_paris_day`; a later commit lists more, for example 22 up to
+`20261023090000_security_digest`) and five lines:
 sign-ups closed: yes; REST API exposes only public: yes; migrations recorded; row level security on for all
 tables, each with a policy; advisors: no ERROR.
 If it is red, open the red step: its message says what to fix (usually a part D setting). Nothing is applied when
@@ -653,28 +659,47 @@ Check each list and remove anyone who should not be there (there should be nobod
 
 **What you should see:** Dependabot alerts shown as enabled.
 
-### I3.3 Security monitoring (item 43): not ready yet
-The daily security digest (a topstock-ops workflow that reads failed sign-ins, role changes, deletes and imports
-each day and turns red, so GitHub emails you, when something looks wrong) was planned in Day 7c but **is not on main
-yet**. Until it exists, what you have is: GitHub emails you when backup-prod, keep-alive or sweep-lead-files fails,
-and account B's **Logs** pages. **Claude builds the digest template as its own reviewed step before part J**; you
-paste it into topstock-ops then. Nothing to do now.
+**Done when (I3.1 and I3.2, now):** the five lists hold only you and Dependabot alerts are on. Tell Claude "Part I3.1
+and I3.2 done" (plus anyone you removed, by role only, for example "one old Vercel member"). I3.3 follows on 31 Oct.
 
-**Done when:** the five lists hold only you and Dependabot alerts are on. Tell Claude "Part I3 done" (plus anyone
-you removed, by role only, for example "one old Vercel member").
+### I3.3 Daily security digest (item 43): from 31 Oct, after I2
+Why: once a day, a small job in topstock-ops counts security events in production (sign-ins whose code was never
+finished, password-reset emails, new accounts, accounts without two-factor, role changes, removed accounts, deletes,
+file opens, imports, the client sharing switch) and checks that backup-prod, keep-alive and sweep-lead-files worked.
+When something is over its limit, the run turns **red and GitHub emails you**; otherwise it stays green and quiet. It
+only reads, gets counts only (no names, emails or IP addresses), and needs **no new secret**. What it checks, the
+limits and what to do when it is red: **docs/ops-templates/security-digest.md**.
+
+**From 31 Oct only**, after part I2 (GitHub Actions minutes, see the top), and only if part E ran at a commit that has
+the migration `20261023090000_security_digest` (Claude says so in "Go-live part A again"). If E ran without it, tell
+Claude: the fix is one more migrate-prod run at a newer SHA.
+
+1. **Email setting:** github.com > your avatar > **Settings** > **Notifications** > **Actions** (it may sit under
+   **System**): notifications on, **Email** ticked. "Only notify for failed workflows" may be ticked too. Check that the
+   email address at the top of the page is one you read.
+2. **Paste the workflow:** `docs/ops-templates/security-digest.yml` from topstock-crm into topstock-ops as
+   `.github/workflows/security-digest.yml` (as in C6). You must be the one who commits it: GitHub emails about a
+   scheduled run the person who last changed its schedule line.
+3. **Run it once by hand:** **Actions** > **security-digest** > **Run workflow** > **Run workflow**.
+
+**What you should see:** a green tick (under a minute). The summary says "security-digest: green, nothing over its
+limit", lists the counts, and shows backup-prod, keep-alive and sweep-lead-files as "success" and less than 26 hours
+old. If it is red, the summary says why; the runbook's "When it is red" table says what each line means (for example
+"Could not read the security counts": the migration is not in production yet, tell Claude).
+**Done when:** the manual run is green. It then runs every day at 09:13 UTC by itself. Tell Claude "Part I3.3 done".
 
 **Where Gate 1 stands.** Done: the code part (16 Oct). Now: production settings (D) and access checked (I3.1,
 I3.2). **Waiting for 31 Oct** (GitHub Actions minutes): the database in production and its checks (E, F5), backups
-(G), the restore test (H), keep-alive (I) and the sweeper's dry runs (I2). **Still open as well, so Gate 1 is not
-fully passed:** the hosting decision (decision 4) and the security digest (I3.3). Real data (part J) waits for all
-of these, and for your "when everything is ready".
+(G), the restore test (H), keep-alive (I), the sweeper's dry runs (I2) and the security digest (I3.3; its template
+is written, waiting for its PR to merge). **Still open as well, so Gate 1 is not fully passed:** the hosting decision
+(decision 4). Real data (part J) waits for all of these, and for your "when everything is ready".
 
 ---
 
 ## Part J. Real data: the 30,000 leads and the stock sheets (DEFERRED)
 
 **Deferred** (your decision of 16 Oct 2026: "not right now when everything is ready"). **Do not start this part.**
-Before it: the hosting answer (decision 4), the security digest (part I3.3), Gate 1 fully passed, and Claude's
+Before it: the hosting answer (decision 4), the security digest running green (part I3.3), Gate 1 fully passed, and Claude's
 "part J ready" with a fresh go-ahead from you. The steps below stay as written for that day.
 
 Why: the files go from your computer straight into the app. They never go to Claude, GitHub or any cloud session.
@@ -752,9 +777,9 @@ If it says "You are the last admin", you tried to change your own role: leave yo
 - Never send: passwords, keys (including the publishable key), tokens, the backup private key, connection strings,
   the production project reference or anything else from account B, lead or stock rows, the files, screenshots that
   show data, IP addresses from the Firewall page.
-- After the first session, Claude logs which parts are done; after the 31 Oct session (parts E to I2), Claude logs
+- After the first session, Claude logs which parts are done; after the 31 Oct session (parts E to I3.3), Claude logs
   "go-live parts A to I3 done" in docs/log.md and lists what stays open: hosting (decision 4, Claude's hosting
-  options, free ones first, before parts J and K), the security digest (I3.3), parts J and K (deferred), the
+  options, free ones first, before parts J and K), the security digest (I3.3) if it is not green yet, parts J and K (deferred), the
   email sender (decision 2), backup storage (decision 6), later restore tests (decision 7), `jwt_expiry` if still
   open (decision 9), the sweeper's switch-on after its dry-run week (I2 step 7), the Firewall rule's switch from Log
   to 429 (B3), and switching the client stock link on in production (off until you decide, after Gate 1).
@@ -767,9 +792,9 @@ If it says "You are the last admin", you tried to change your own role: leave yo
 | Secret | Used by | Part |
 |---|---|---|
 | `TOPSTOCK_CRM_READ_TOKEN` | migrate-prod, sweep-lead-files (checkout of topstock-crm, read-only) | C |
-| `PROD_PROJECT_REF` | migrate-prod, backup-prod, keep-alive, sweep-lead-files | C |
-| `PROD_DB_PASSWORD` | migrate-prod, backup-prod | C |
-| `PROD_DB_POOLER_HOST` | migrate-prod, backup-prod (the session pooler host cannot be worked out from the region, so it is copied) | C |
+| `PROD_PROJECT_REF` | migrate-prod, backup-prod, keep-alive, sweep-lead-files, security-digest | C |
+| `PROD_DB_PASSWORD` | migrate-prod, backup-prod, security-digest (read-only transaction, reader role) | C |
+| `PROD_DB_POOLER_HOST` | migrate-prod, backup-prod, security-digest (the session pooler host cannot be worked out from the region, so it is copied) | C |
 | `PROD_PUBLISHABLE_KEY` | migrate-prod (sign-ups and exposed-schema checks), keep-alive | C |
 | `AGE_PUBLIC_KEY` | backup-prod | G |
 | `PROD_SWEEPER_KEY` | sweep-lead-files only: the dedicated Supabase secret key named `sweeper` (account B), revocable on its own | I2 |
@@ -796,7 +821,11 @@ publishable key). Hosting stays on Vercel Hobby until decision 4 is answered.
   removes them only once `SWEEP_APPLY` is `yes` (or a manual run typed SWEEP); caps, sanity check, pinned commit.
   It calls the three service-role functions of migration `20261022090000_orphan_sweeper` (`lead_file_orphans`,
   `lead_file_sweep_stats`, `record_file_sweep`). Runbook: `docs/ops-templates/sweep-lead-files.md`.
-- Not written yet: the daily security digest (part I3.3), before part J.
+- `docs/ops-templates/security-digest.yml`: daily and by hand; checks that backup-prod, keep-alive and
+  sweep-lead-files succeeded in the last 26 hours (GitHub API, its own token with `actions: read`), then reads
+  `private.security_digest` (migration `20261023090000_security_digest`) in a read-only transaction as the role
+  `security_digest_reader`: counts only. Red, so GitHub emails, when a count is over its limit. No new secret, no
+  third-party action, about 1 minute a day. Runbook: `docs/ops-templates/security-digest.md`.
 
 ### Section 8 items with a Day 8 step (`docs/evidence/day7d/section8-checklist.md`)
 | Item | What | Where in this kit |
@@ -809,12 +838,18 @@ publishable key). Hosting stays on Vercel Hobby until decision 4 is answered.
 | 29 | Environments separate: a preview opened signed out | B2 |
 | 30 | No default accounts in production | F3 |
 | 35 | Logs restricted | I3.1 |
-| 43 | Security monitoring | I3.3 (digest not written yet) |
+| 43 | Security monitoring | I3.3 (template written 16 Oct 2026; pasted from 31 Oct) |
 | 44 | Backups and restore | G, H, I (and restore-production.md) |
 | 46 | Security headers on the production address | F5 check 2 |
 | Gate 1 | Hosting decision | decision 4 (open) |
 
 ### Pages checked (Context7, 16 Oct 2026)
+- For part I3.3 (security digest): Supabase guides (`/websites/supabase_guides`) Auth Audit Logs (what is logged; the
+  database copy in `auth.audit_log_entries` only when "write to the database" is on) and Auth Hooks (password and MFA
+  verification attempt hooks on Teams and Enterprise only); Supabase Auth source (`/supabase/auth`: `token.go` and
+  `mfa.go` return on a wrong password or code before writing an audit entry); GitHub REST (`/websites/github_en_rest`:
+  list workflow runs for a workflow, `status=completed`, Actions read) and GitHub Docs (`/github/docs`: notifications
+  for scheduled workflows go to the person who last changed the cron line).
 - Vercel documentation (`/websites/vercel`): fair-use guidelines, "Commercial usage" (Hobby teams are restricted to
   non-commercial personal use; commercial means a deployment used for the financial gain of anyone involved in any
   part of its production); Vercel WAF usage and pricing (Firewall features on all plans are free, including custom

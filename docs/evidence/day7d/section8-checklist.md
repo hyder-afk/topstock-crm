@@ -81,7 +81,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | 39 | Prompt injection | no AI in Release 1 | N/A |
 | 40 | No production access for AI | `.mcp.json` unchanged since 105fe44: dev project only, `read_only=true`; the MCP answered as `supabase_read_only_user` on `swhkafqlmfhvgpsgdqjp` | done |
 | 42 | Audit log | append-only triggers (imports, roles, deletes, file access, stock); sign-in rows (`day7a.spec.ts`, `day7a_attack.sql` B1) | done |
-| 43 | Security monitoring | daily digest template (`docs/ops-templates/`, Day 7c) | Day 8 (Haider pastes it into `topstock-ops`) |
+| 43 | Security monitoring | daily digest: `docs/ops-templates/security-digest.yml` and `.md`, migration `20261023090000_security_digest.sql`, `supabase/tests/digest_attack.sql` (planned for Day 7c but not written then; written 16 Oct 2026 on branch `digest`) | Day 8 (Haider pastes it into `topstock-ops` from 31 Oct, go-live I3.3) |
 | 44 | Backups and restore | templates and runbook (`share_reader` first, Day 7c) | Day 8 (backup, restore test, keep-alive) |
 | 50 | Reviewed code | per-day `/security-review` records; the builder's manual pass over the whole release (`security-review.md`, a supplement); advisor before every merge | done: `/security-review` by the main session on 942ab62, 0 HIGH or MEDIUM ([`security-review-command.md`](security-review-command.md)) |
 
