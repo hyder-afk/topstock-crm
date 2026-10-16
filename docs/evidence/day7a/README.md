@@ -116,8 +116,14 @@ either way; the auth-cookies scan still finds the proxy passing the shared optio
 - **E2E** `tests/auth/day7a.spec.ts` (Chromium): a sign-in writes exactly one `sign_in` row and the password step none;
   cookie flags with and without `x-forwarded-proto: https`; 300 list requests pass, the 301st and the other list APIs
   answer 429 with the generic code, another person still gets 200; Sign out of all devices (Cancel keeps the sessions;
-  confirm deletes every `auth.sessions` row of the person, clears this browser's cookies, the second browser lands on
-  `/login` and its API answers 401; no console error); French button and sheet.
+  confirm deletes every `auth.sessions` row of the person, clears this browser's cookies, the second browser's refresh
+  token is refused (400 `refresh_token_not_found`) in every environment; then, from its access token's JWT header: where
+  getClaims asks the auth server (HS256, the local stack) it lands on `/login` and its API answers 401; with asymmetric
+  signing keys (the Supabase CLI stack in CI, hosted Supabase) it keeps access until the token expires, within 3600 s,
+  as R2 says, and the test asserts exactly that; no console error); French button and sheet. (PR #19 CI fix, 16 Oct
+  2026: the earlier version expected `/login` everywhere and failed on CI's asymmetric keys. The decision rule, the
+  same as @supabase/auth-js getClaims, and the cookie reader, plain, `base64-` or chunked, are unit-tested in
+  `tests/unit/auth-cookie.spec.ts`.)
 
 ## Checks after the merge (15 Oct 2026, on the merged branch with the fixes below)
 
@@ -186,7 +192,7 @@ No native picker or popup in anything new.
 | # | Residual | Why it stays | Later option |
 |---|---|---|---|
 | R1 | Direct PostgREST reads are limited only by RLS and `max_rows` (1000 per request). The in-app limit (300 a minute per person, per instance, reset by a cold start) covers the 19 search and list routes only (Day 7a's five, the lead page's list tabs, the lead import's issues and Day 6's nine; the GET routes left out are listed in "Merge with Day 6"); a stolen session reads `rest/v1/companies` directly | Deviation from Master Plan section 8 item 28 / `private.rate_hits`: **accepted by Haider, 15 Oct 2026**. Every person in Release 1 may read every lead (Haider's "3 yes"), so a full session already sees them all | Two-factor sign-in (in place); Vercel Firewall rule (Day 8); later an RPC-only read path (revoke direct SELECT) |
-| R2 | After "Sign out of all devices", another device's current access token stays valid until it expires: `jwt_expiry` 3600 s, `getClaims` verifies an asymmetric token locally and PostgREST does not check that the session still exists, so up to 1 hour of reads and writes. Refresh tokens die at once, so nothing lasts past that hour. The sheet says so ("Other devices lose access within an hour at most.") | Supabase's design; a shorter expiry means more refreshes | Day 8: a shorter production `jwt_expiry` (for example 900 s), **Haider's call** |
+| R2 | After "Sign out of all devices", another device's current access token stays valid until it expires: `jwt_expiry` 3600 s, `getClaims` verifies an asymmetric token locally and PostgREST does not check that the session still exists, so up to 1 hour of reads and writes. Refresh tokens die at once, so nothing lasts past that hour. The sheet says so ("Other devices lose access within an hour at most.") `day7a.spec.ts` asserts this behaviour where the token is asymmetric (CI) and the immediate sign-out where it is HS256 (local stack), and the dead refresh token in both | Supabase's design; a shorter expiry means more refreshes | Day 8: a shorter production `jwt_expiry` (for example 900 s), **Haider's call** |
 | R3 | A signed-in person can write up to 30 fake `sign_in` rows an hour about themselves (only about themselves, no details, own organisation) | They are the person the row is about; the flood guard caps the noise; admins see actor and time | None planned |
 | 3 (existing) | Auth cookies are readable by scripts (the Files tab's browser client) | CSP is the control | Revisit if the Files tab moves server-side |
 

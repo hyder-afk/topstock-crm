@@ -1,12 +1,15 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
-import { createUser, fullSession, nextWindow, sql, totp } from "./helpers";
+import { claimsAskAuthServer, jwtPayload, sessionFromCookies } from "./auth-cookie";
+import { createUser, fullSession, nextWindow, sql, totp, tryRefresh } from "./helpers";
 
 // Day 7a (Gate 1 security fixes; docs/evidence/day7a/README.md), against the throwaway local stack:
 // - a sign-in writes exactly one "sign_in" audit row (no IP, no details); the password step alone writes none;
 // - the auth cookies carry Secure on HTTPS (x-forwarded-proto, as Vercel sends it), SameSite=Lax, Path=/;
 // - the search and list APIs answer 429 with a generic code after 300 requests a minute from one person, and only
 //   for that person;
-// - "Sign out of all devices" on More (confirmation sheet, Cancel keeps the session) ends the other browser's session.
+// - "Sign out of all devices" on More (confirmation sheet, Cancel keeps the session) ends the other browser's session:
+//   its refresh token dies at once everywhere; its access token too where getClaims asks the auth server (HS256),
+//   otherwise when it expires, within the hour (README R2).
 const password = "Day7a-Local-Pass!";
 type State = Awaited<ReturnType<BrowserContext["storageState"]>>;
 let auditState: State;
@@ -125,13 +128,27 @@ test("Sign out of all devices ends the session in the other browser too", async 
   await page.waitForURL(/\/login$/);
   expect(sessions()).toBe(0);
   expect((await laptop.cookies()).filter((c) => /^sb-.+-auth-token/.test(c.name))).toEqual([]);
-  // The other browser still holds its cookie, but the session behind it is gone: the next page asks for a sign-in,
-  // and its APIs answer 401. (Local stack: HS256, so getClaims asks the auth server. On hosted Supabase with asymmetric
-  // keys the access token verifies locally and PostgREST does not check the session, so up to 1 hour: README R2.)
+  // The other browser still holds its cookie, but the session behind it is gone. In every environment its refresh
+  // token is dead at once: it can never get a new access token.
+  const held = sessionFromCookies(await phone.cookies());
+  expect(await tryRefresh(held.refresh_token)).toEqual({ status: 400, code: "refresh_token_not_found", refreshed: false });
   const other = await phone.newPage();
   await other.goto("/");
-  await expect(other).toHaveURL(/\/login$/);
-  expect((await phone.request.get("/api/leads")).status()).toBe(401);
+  if (claimsAskAuthServer(held.access_token)) {
+    // HS256 (the local stack): getClaims asks the auth server, so the next page asks for a sign-in at once and its APIs
+    // answer 401.
+    await expect(other).toHaveURL(/\/login$/);
+    expect((await phone.request.get("/api/leads")).status()).toBe(401);
+  } else {
+    // Asymmetric signing keys (the Supabase CLI stack in CI, hosted Supabase): the access token verifies locally and
+    // PostgREST does not check that the session exists, so the other browser keeps access until that token expires,
+    // which is within the hour the sheet promises (README R2). After that it cannot refresh (checked above).
+    await expect(other).toHaveURL((url) => url.pathname === "/");
+    expect((await phone.request.get("/api/leads")).status()).toBe(200);
+    const { exp } = jwtPayload(held.access_token);
+    expect(typeof exp).toBe("number");
+    expect(exp! - Date.now() / 1000).toBeLessThanOrEqual(3600);
+  }
   expect(errors).toEqual([]);
   await laptop.close();
   await phone.close();
