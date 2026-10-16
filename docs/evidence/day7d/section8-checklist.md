@@ -103,7 +103,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | Supabase Security Advisor clean | dev: 0 ERROR; WARN `set_user_role` (accepted Day 1) and leaked password protection (accepted, question 4, log line 356); local splinter on all 20 migrations: 0 ERROR | done; re-read on dev after the Day 6 and 7 deploys |
 | CSP and headers | item 46 | done |
 | Backup and restore tested, keep-alive running | templates ready | Day 8 |
-| Hosting decision | Vercel Pro before go-live (6 Oct) | Day 8 |
+| Hosting decision | Haider, 16 Oct 2026: "Stay on vercel for now" (Vercel Hobby, no Pro; replaces 6 Oct "Vercel Pro before go-live"; fair-use risk accepted); options in `docs/evidence/day8/hosting-options.md` | decided (go-live decision 4) |
 
 **Count:** 54 numbered items plus F1 to F5 = 59 rows. **52 done** (2, 4, 8, 29, 30 and 46 also get a production
 check on Day 8; 25 and 47 carry an accepted residual; 50 with `/security-review` on 942ab62; 38 passed in CI on 942ddd7), **0 pending**, **1 residual** as its status (28: R1, log line 366, with the Firewall rule on Day 8), **3 Day 8 only**
