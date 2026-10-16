@@ -38,6 +38,19 @@ test("every app page sends a signed-out visitor to sign-in", async ({ page }) =>
   }
 });
 
+// Gate 1 item 2 (Day 7d): no repository or environment file is served. Signed out, the wall sends every such path to
+// sign-in; tests/auth/gate1.spec.ts checks the 404 a signed-in person gets.
+const REPO_FILES = ["/.env", "/.env.local", "/.env.production", "/.env.example", "/.git/config", "/package.json", "/next.config.ts", "/supabase/config.toml", "/.mcp.json"];
+test("no repository or environment file is served (/.env and the like)", async ({ request }) => {
+  for (const path of REPO_FILES) {
+    const res = await request.get(path, { maxRedirects: 0 });
+    expect([307, 404], path).toContain(res.status());
+    if (res.status() === 307) expect(res.headers()["location"], path).toBe("/login");
+    const body = await res.text();
+    expect(body, path).not.toMatch(/SUPABASE|ANON_KEY|SERVICE_ROLE|\[core\]|"dependencies"|project_ref/);
+  }
+});
+
 test("security headers are present, also on the sign-in redirect", async ({ request }) => {
   for (const res of [await request.get("/login"), await request.get("/", { maxRedirects: 0 })]) {
     const h = res.headers();
