@@ -58,7 +58,12 @@ async function open(browser: Browser, state: typeof adminState, o: { width?: num
     timezoneId: "Europe/Paris",
     acceptDownloads: true,
   });
-  if (o.locale) await context.addCookies([{ name: "locale", value: o.locale, url: "http://localhost:3100" }]);
+  if (o.locale) {
+    // The app's address from the Playwright config (PLAYWRIGHT_BASE_URL, else port 3100), as share.spec reads it.
+    const base = test.info().project.use.baseURL;
+    if (!base) throw new Error("baseURL is not set (playwright.auth.config.ts)");
+    await context.addCookies([{ name: "locale", value: o.locale, url: new URL(base).origin }]);
+  }
   const page = await context.newPage();
   trackRequests(page);
   const errors: string[] = [];

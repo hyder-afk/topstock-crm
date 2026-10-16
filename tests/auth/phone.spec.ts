@@ -328,7 +328,9 @@ async function fitProblems(page: Page, scope = "body"): Promise<{ problems: Prob
       // A disabled control lets taps through (pointer-events), so only its box is measured.
       if (el.matches(":disabled, [aria-disabled='true']")) {
         const box = el.getBoundingClientRect();
-        if (box.width < 44 || box.height < 44) problems.push({ what: "tap target under 44 px", target: name(el), size: `${box.width.toFixed(1)}x${box.height.toFixed(1)}, disabled` });
+        // Compared at 2 decimals: a 44 px box can measure 43.9999 px (sub-pixel rounding).
+        const px = (v: number) => Math.round(v * 100) / 100;
+        if (px(box.width) < 44 || px(box.height) < 44) problems.push({ what: "tap target under 44 px", target: name(el), size: `${box.width.toFixed(1)}x${box.height.toFixed(1)}, disabled` });
         continue;
       }
       el.scrollIntoView({ block: "center", inline: "center" });
