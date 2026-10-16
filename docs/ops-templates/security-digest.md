@@ -133,7 +133,7 @@ Open the run (the link in GitHub's email), read the red lines in the summary, an
 | Password accepted, code never finished | Someone typed a right password and then did not finish the 6-digit code: the stronger sign | Ask Henri and Kais whether they had trouble signing in (or closed the page at the code step). If nobody did: that password is known to someone else. Have that person change it (Forgot password), and look at account B > Logs > Auth the same day. Tell Claude the counts |
 | Most sign-ins through the app by one person / Most sign-ins by one account | One account signed in an unusual number of times (the second line also counts sign-ins that skip the app) | Ask the team. If nobody knows: tell Claude the count (Claude gives you the read-only query above). If it was not that person, or only the second line is high (someone signing in without the app): change their password, press **Sign out of all devices**, tell Claude |
 | Password-reset emails sent | A reset email went out | If you or a teammate asked for it, nothing. If not: someone typed that address on the Forgot password page. The link only reaches the real inbox, so it is safe, but mention it to the person |
-| New accounts | An account was created | If it was you (part K), nothing. If not: account B > **Authentication** > **Users**, delete it, and tell Claude right away (sign-ups should be closed, part D1) |
+| New accounts | An account was created | If it was you (part K), nothing. If not: account B > **Authentication** > **Users**, delete it, and tell Claude right away (sign-ups should be closed, part D1). If it stays red **every day** with no new account in the list: an account was written straight into the database, outside Supabase Auth (it has no creation time, so it always counts as new). Tell Claude right away |
 | Accounts without a working authenticator app | Someone has no two-factor | Right after part K this is expected until they finish set-up. Otherwise tell Claude |
 | Authenticator apps added | A two-factor app was added to an account | Expected when someone sets up a new phone. If nobody did: treat the account as taken over (password change, Sign out of all devices, tell Claude) |
 | Role changes / Accounts removed | Admin rights or accounts changed | If it was you, nothing. If not: More > Team shows the roles now; tell Claude right away |
@@ -199,7 +199,12 @@ Nothing to switch off: the digest only reads. A restore that recreates the schem
   `auth.sessions` (`aal`; `user_id` for the most sessions by one account, which Supabase Auth writes for any sign-in),
   `auth.mfa_challenges` (`verified_at`: any challenge, sign-in or step-up), `auth.mfa_factors` (`status`), `auth.users`
   (`created_at`, `recovery_sent_at`, `deleted_at`), `public.profiles` (`role`). Settle time 15 minutes for sessions and
-  challenges.
+  challenges. `auth.users.created_at` and `auth.sessions.created_at` are nullable with no default on the real image
+  (dev's information_schema); Supabase Auth always fills them (`User.CreatedAt` and `Session.CreatedAt` are plain
+  `time.Time` in `/supabase/auth`, set on create, and dev has no NULL). A NULL therefore means a row written by hand in
+  SQL, and the digest counts it as inside the window (new account, sign-in started, no code finished after the settle
+  time): it turns red rather than hiding. `digest_attack.sql` A checks these columns' nullability and defaults on
+  whatever image it runs on, so the local shim cannot drift from the real one again.
 - **Failed sign-ins, verified 16 Oct 2026:** Supabase Auth (`/supabase/auth`, Context7: `internal/api/token.go`
   ResourceOwnerPasswordGrant returns `invalid_credentials` before `NewAuditLogEntry`; `internal/api/mfa.go`
   verifyTOTPFactor returns `mfa_verification_failed` before it) writes no audit entry for a wrong password or code.

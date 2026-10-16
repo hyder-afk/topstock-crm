@@ -110,19 +110,24 @@ begin
            group by l.action, l.actor_id) x;
 
   -- Supabase Auth's own tables (enums compared as text).
-  select (select count(*) from auth.sessions x where x.created_at >= p_since) as sessions_started,
+  -- auth.users.created_at and auth.sessions.created_at are nullable with no default. Supabase Auth always fills them,
+  -- so a NULL means a row written by hand in SQL, outside Supabase Auth: it is counted as inside the window (and past
+  -- the settle time), so it turns the digest red instead of hiding.
+  select (select count(*) from auth.sessions x
+           where x.created_at is null or x.created_at >= p_since) as sessions_started,
          -- Sessions are written by Supabase Auth itself, so a script that signs in without the app counts here too
          -- (the audit log's sign_in row is written only by the app's server action).
          (select coalesce(max(x.n), 0) from (select count(*) as n from auth.sessions y
-                                              where y.created_at >= p_since group by y.user_id) x) as sessions_most,
+                                              where y.created_at is null or y.created_at >= p_since
+                                              group by y.user_id) x) as sessions_most,
          (select count(*) from auth.sessions x
-           where x.created_at >= p_since and x.created_at < now() - settle
+           where (x.created_at is null or (x.created_at >= p_since and x.created_at < now() - settle))
              and coalesce(x.aal::text, 'aal1') = 'aal1') as password_no_code,
          (select count(*) from auth.mfa_challenges c
            where c.created_at >= p_since and c.created_at < now() - settle and c.verified_at is null) as code_unfinished,
          (select count(*) from auth.users u where u.recovery_sent_at >= p_since) as reset_emails,
          (select count(*) from auth.users u where u.deleted_at is null) as users,
-         (select count(*) from auth.users u where u.created_at >= p_since) as users_new,
+         (select count(*) from auth.users u where u.created_at is null or u.created_at >= p_since) as users_new,
          (select count(*) from auth.users u
            where u.deleted_at is null
              and not exists (select 1 from auth.mfa_factors f

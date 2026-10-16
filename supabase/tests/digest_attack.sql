@@ -191,6 +191,27 @@ begin
       where m.roleid = r.oid and mr.rolname <> 'postgres'), 0::bigint);
 end $$;
 
+-- The Supabase Auth columns the digest reads, as on the real image (dev's information_schema, 16 Oct 2026): no
+-- default anywhere (Supabase Auth fills them), created_at nullable on users and sessions, NOT NULL on the two MFA tables.
+-- In CI this reads the real image; locally it keeps supabase/tests/shim.sql honest (a default there once hid a test that
+-- left created_at empty: CI run on 523837a).
+do $$
+declare
+  r record;
+begin
+  for r in select * from (values
+      ('users', 'created_at', 'YES'), ('users', 'recovery_sent_at', 'YES'), ('users', 'deleted_at', 'YES'),
+      ('users', 'raw_user_meta_data', 'YES'), ('sessions', 'created_at', 'YES'), ('sessions', 'aal', 'YES'),
+      ('mfa_factors', 'created_at', 'NO'), ('mfa_factors', 'status', 'NO'), ('mfa_challenges', 'created_at', 'NO'),
+      ('mfa_challenges', 'verified_at', 'YES')) as w (tbl, col, nullable) loop
+    if not exists (select 1 from information_schema.columns c
+                    where c.table_schema = 'auth' and c.table_name = r.tbl and c.column_name = r.col
+                      and c.is_nullable = r.nullable and c.column_default is null) then
+      raise exception 'FAIL: auth.%.% is not as on the real image (nullable %, no default)', r.tbl, r.col, r.nullable;
+    end if;
+  end loop;
+end $$;
+
 -- Live calls: anon, a signed-in admin with a fresh code and service_role are refused (42501).
 do $$
 declare
@@ -289,6 +310,7 @@ declare
   u2 constant uuid := 'd1000000-0000-4000-8000-000000000002';   -- new, no verified authenticator, asks for a reset
   u3 constant uuid := 'd1000000-0000-4000-8000-000000000003';   -- new, then deleted (its profile goes with it)
   u4 constant uuid := 'd1000000-0000-4000-8000-000000000004';   -- soft-deleted by Supabase Auth
+  u5 constant uuid := 'd1000000-0000-4000-8000-000000000005';   -- written by hand in SQL: no creation time
   busy constant uuid := 'd1000000-0000-4000-8000-0000000000bb'; -- the busiest person (audit rows only)
   other constant uuid := 'd1000000-0000-4000-8000-0000000000cc';
   f1 constant uuid := 'd2000000-0000-4000-8000-000000000001';
@@ -307,11 +329,17 @@ begin
   max_opens := (before ->> 'data.file_opens_most_by_one_person')::bigint;
   max_sessions := (before ->> 'signin.sessions_most_by_one_user')::bigint;
 
-  -- Accounts (the profile trigger gives each a profile in the first organisation, as a rep).
-  insert into auth.users (id, email, raw_user_meta_data) values
-    (u1, 'digest-u1@test.invalid', '{"first_name":"Dee"}'),
-    (u2, 'digest-u2@test.invalid', '{"first_name":"Eli"}'),
-    (u3, 'digest-u3@test.invalid', '{"first_name":"Fay"}');
+  -- Accounts (the profile trigger gives each a profile in the first organisation, as a rep). Every time the digest
+  -- reads is set here: on the real image auth.users.created_at has no default (Supabase Auth fills it), and the shim
+  -- copies that.
+  insert into auth.users (id, email, raw_user_meta_data, created_at, updated_at) values
+    (u1, 'digest-u1@test.invalid', '{"first_name":"Dee"}', now() - interval '3 hours', now() - interval '3 hours'),
+    (u2, 'digest-u2@test.invalid', '{"first_name":"Eli"}', now() - interval '3 hours', now() - interval '3 hours'),
+    (u3, 'digest-u3@test.invalid', '{"first_name":"Fay"}', now() - interval '3 hours', now() - interval '3 hours');
+  -- An account Supabase Auth did not create (no creation time): counted as new, so it turns the digest red.
+  insert into auth.users (id, email, raw_user_meta_data) values (u5, 'digest-u5@test.invalid', '{"first_name":"Hal"}');
+  perform pg_temp.eq('u5 creation time (none, as Supabase Auth leaves an unset column)',
+    (select u.created_at from auth.users u where u.id = u5), null::timestamptz);
   insert into auth.users (id, email, raw_user_meta_data, created_at, deleted_at)
   values (u4, 'digest-u4@test.invalid', '{"first_name":"Gus"}', now() - interval '40 days', now() - interval '2 days');
   update auth.users set recovery_sent_at = now() - interval '2 hours' where id = u2;
@@ -328,6 +356,8 @@ begin
     ('d5000000-0000-4000-8000-000000000003', u1, now() - interval '20 minutes', null),
     ('d5000000-0000-4000-8000-000000000004', u1, now() - interval '5 minutes', 'aal1'),
     ('d5000000-0000-4000-8000-000000000005', u1, now() - interval '26 hours', 'aal1');
+  -- A session written by hand (no creation time, password level only): counted as started and as no code finished.
+  insert into auth.sessions (id, user_id, created_at, aal) values ('d5000000-0000-4000-8000-000000000006', u5, null, 'aal1');
   -- u2 signs in more often than anyone (finished sign-ins, as a script calling Supabase Auth directly would: no audit
   -- row): five more than the busiest account so far, so more than u1's four too.
   for i in 1 .. max_sessions + 5 loop
@@ -397,15 +427,15 @@ begin
   perform pg_temp.moved('signin.people', after, before, 2);
   perform pg_temp.eq('signin.most_by_one_person', (after ->> 'signin.most_by_one_person')::bigint, max_sign_ins + 5);
   perform pg_temp.moved('signin.step_up_codes', after, before, 2);
-  perform pg_temp.moved('signin.passwords_accepted', after, before, 4 + max_sessions + 5);
+  perform pg_temp.moved('signin.passwords_accepted', after, before, 4 + max_sessions + 5 + 1);   -- + u5's
   perform pg_temp.eq('signin.sessions_most_by_one_user',
     (after ->> 'signin.sessions_most_by_one_user')::bigint, max_sessions + 5);
-  perform pg_temp.moved('signin.password_ok_no_code', after, before, 2);
+  perform pg_temp.moved('signin.password_ok_no_code', after, before, 3);   -- two of u1's and u5's
   perform pg_temp.moved('signin.codes_not_finished', after, before, 1);
   perform pg_temp.moved('signin.reset_emails', after, before, 1);
-  perform pg_temp.moved('accounts.users', after, before, 2);                  -- u1 and u2 (u3 deleted, u4 soft-deleted)
-  perform pg_temp.moved('accounts.new', after, before, 2);                    -- u1, u2 (u3 is gone; u4 is 40 days old)
-  perform pg_temp.moved('accounts.without_two_factor', after, before, 1);     -- u2 (its factor is unverified)
+  perform pg_temp.moved('accounts.users', after, before, 3);                  -- u1, u2, u5 (u3 deleted, u4 soft-deleted)
+  perform pg_temp.moved('accounts.new', after, before, 3);                    -- u1, u2, u5 (u3 is gone; u4 is 40 days old)
+  perform pg_temp.moved('accounts.without_two_factor', after, before, 2);     -- u2 (its factor is unverified), u5
   perform pg_temp.moved('accounts.authenticators_added', after, before, 1);   -- f1 (u2's is a month old)
   perform pg_temp.moved('accounts.admins', after, before, 0);
   perform pg_temp.moved('accounts.role_changes', after, before, 1);
