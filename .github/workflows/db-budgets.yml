@@ -2,6 +2,10 @@
 # once on a GitHub runner instead of loading fake test data into the dev project. Started by hand only
 # (Actions > db-budgets > Run workflow); never on a push or a PR, so it costs runner minutes only when asked.
 # PREPARED, RUNS WHEN CI BILLING IS BACK (GitHub Actions is blocked by billing on 16 Oct 2026).
+# workflow_dispatch runs only once this file is on the default branch (GitHub docs, "Manually running a workflow"):
+# start it after the PR merges, or with `gh workflow run db-budgets --ref <branch>` once main has the file.
+# ubuntu-24.04 ships PostgreSQL 16 (actions/runner-images toolset-2404.json) with its service disabled by default; this
+# job never starts that service, it runs its own throwaway cluster (initdb) as the scripts do locally.
 # What it does: a throwaway PostgreSQL 16 on the runner (the image ships it), the local auth shim and every migration,
 # then scripts/db-perf.sh (30k leads, 300k activities, 15k tasks, 10k deals, the stock engine with 5,000 products and
 # 200,000 ledger rows, inventory, sales, share, the 30k and 50k lead imports, the queue, files and stock concurrency

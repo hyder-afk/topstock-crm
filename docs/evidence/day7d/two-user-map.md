@@ -57,6 +57,10 @@ Each break was applied to the throwaway stack or build, the test run, then rever
 | `/api/deals/[id]` answers the database's error text | step 5 bad input | caught ("invalid input syntax for type uuid" matched the no-database-text rule) |
 | The lead heading renders the name as HTML (`dangerouslySetInnerHTML`) | step 5 script | caught (the name is no longer shown as text; the nonce CSP is the layer that also stops the inline handler) |
 
+Step 3's RPC sweep has met only the local stand-in, never real PostgREST: there an overloaded function name called
+with null arguments may answer 300 (`PGRST203`, ambiguous) instead of 401, which the test would count as a failure
+until the sweep names the overload (README condition (c)).
+
 The first versions of step 3 passed every break vacuously: an empty RPC body only reaches "no such function" (404), and
 the local stand-in answers 400 to `limit=`; both were fixed (all arguments passed as null, no `limit`, any 400 "LOCAL"
 answer now fails the test) before the results above.
@@ -65,7 +69,8 @@ answer now fails the test) before the results above.
 
 16 Oct 2026, code `day7d-local` at ef2b74c (the final test code; later commits change only the harness, this script's
 journey handling and evidence), throwaway stack: PostgreSQL 16 on 54650, Supabase Auth on 9988, gateway on 54651,
-`next start` on 4100, Chromium 141; `db-test.sh` on 54669. Log: `/tmp/day7d-builder/gate1-run.log` (not committed).
+`next start` on 4100, Chromium 141; `db-test.sh` on 54669. Trimmed output (every test line and every suite's pass line):
+[`gate1-run-output.md`](gate1-run-output.md).
 
 | Part | Result |
 |---|---|

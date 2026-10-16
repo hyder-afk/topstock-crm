@@ -12,10 +12,11 @@ passes on Day 8.
 - **The two-user attack test passes, all 8 steps, in one run** (`scripts/gate1-run.sh`: every SQL attack suite, the new
   `tests/auth/gate1.spec.ts` and the existing specs it maps to). Step 7's login and reset limits are Supabase's own and
   can only be seen on the hosted service (Day 1 residual 2, Firewall rule on Day 8).
-- **Security review of all of Release 1: no HIGH or MEDIUM finding.** Four test gaps closed with new checks.
+- **Manual security pass over all of Release 1 (a supplement): no HIGH or MEDIUM finding.** Four test gaps closed with
+  new checks. **`/security-review`: pending, run by the main session on the final head**; not counted as done.
 - **No secret in the whole git history** (gitleaks, 678 commits); **0 vulnerabilities** in what ships (`npm audit`).
-- **Section 8: 51 of 59 items done in code**, 1 accepted residual (rate limits, R1), 3 wait for Day 8, 1 runs in CI
-  when billing is back (`npm audit signatures`), 3 not applicable. Nothing is open in code.
+- **Section 8: 50 of 59 items done**, 1 pending in the main session (`/security-review`, item 50), 1 accepted residual
+  (rate limits, R1), 3 wait for Day 8, 1 runs in CI when billing is back (`npm audit signatures`), 3 not applicable.
 - **Dev project**: fake data only, the lead checks return 0, 14 MB used; advisors 0 ERROR. Dev still has only main's
   migrations (up to Team), so these are read again after the Day 6 and Day 7 PRs deploy.
 - **Database budgets on a GitHub runner**: workflow prepared (`db-budgets`), runs when CI billing is back.
@@ -25,9 +26,9 @@ passes on Day 8.
 | # | Deliverable | Where | Result |
 |---|---|---|---|
 | 1 | Two-user attack test, steps 1 to 8, one Playwright plus SQL run, step-to-test map | `two-user-map.md`; `tests/auth/gate1.spec.ts`; `supabase/tests/gate1_attack.sql`; `scripts/gate1-run.sh` | all 8 steps pass (step 7 login/reset: hosted only); 8 planted breaks against the new browser/API tests: 7 caught, 1 refused by a second database layer (as it should be); `gate1_attack.sql` 15 of 15 |
-| 2 | `/security-review` method over all of Release 1, by hand | `security-review.md` | 0 HIGH, 0 MEDIUM at confidence 8+; 4 test gaps closed; 3 informational notes |
+| 2 | `/security-review` over all of Release 1 | `security-review.md` | **pending: the main session runs `/security-review` on the final head.** The builder's manual pass, a supplement: 0 HIGH, 0 MEDIUM at confidence 8+; 4 test gaps closed; 3 informational notes |
 | 3 | Full-history gitleaks; `npm audit --omit=dev`; `npm audit signatures` | `gitleaks.md` | no leaks (678 commits); 0 vulnerabilities; signatures blocked by this session's network policy, added to CI |
-| 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 51 done, 1 residual, 3 Day 8, 1 CI, 3 N/A |
+| 4 | Master Plan section 8 A to F checklist | `section8-checklist.md` | 50 done, 1 pending (`/security-review`), 1 residual, 3 Day 8, 1 CI, 3 N/A |
 | 5 | Day 5a mutation rows 64 to 73 re-run | `mutations.md` | 10 of 10 caught; row 58 back to its documented NOT CAUGHT (the fixture fix) |
 | 6 | Dev data checks (item 15), size query (item 16), dev advisors | `dev-checks.sql`, `dev-checks.md` | 0 wrong (one check read by hand: the read-only role cannot run private functions); 14 MB; Security 0 ERROR, 2 accepted WARN; Performance 0 ERROR/WARN |
 | 7 | Spike S5 from Vercel's docs; Day 1 residuals; leaked-password WARN | `spike-s5.md`; sections below | answered; restated; recorded as accepted |
@@ -88,7 +89,7 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
 
 1. **CI when billing is back**: the PR's full CI (WebKit, storage-api e2e, real PostgREST checks in `gate1.spec.ts`
    steps 2, 3 and 8, `db.yml` with `gate1_attack.sql` on the real Supabase image, `npm audit signatures`,
-   `check-build.mjs`, Semgrep), then one manual run of `db-budgets` (question 11) and the Release 1 speed baseline from
+   `check-build.mjs`, Semgrep), then one manual run of `db-budgets` (question 11; `workflow_dispatch` needs the workflow on the default branch, so after the PR merges) and the Release 1 speed baseline from
    its log (question 14).
 2. **Dev after the Day 6 and Day 7 PRs deploy**: re-run `dev-checks.sql` (read-only MCP) and both dev advisors; expect
    the WARNs `share_view`/`share_request` (Day 6e, accepted) to join.
@@ -100,8 +101,34 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
 5. **Day 8 (ops part, Haider)**: preview opened signed out of Vercel; member lists (item 35); production auth settings,
    Storage S3 keys, Vercel settings; backup, restore test, keep-alive (items 43, 44); Vercel Pro and the Firewall rule
    (spike S5); the `x-forwarded-host` check on the preview; `jwt_expiry` (R2); Dependabot alerts on.
-6. **Advisor**: this step has not been through the `advisor` subagent yet (the main session runs it before the
+6. **`/security-review`** on the final head (main session; condition (d)). **Advisor**: round 1 CHANGES NEEDED on
+   f4e5cff, fixed (section "Advisor round 1"); the next round is the main session's (it runs the subagent before the
    REPORT).
+
+## Context7 (documentation checked)
+
+Consulted during the build and, for the first four rows, again on 16 Oct during advisor round 1 (they were used before
+without being named):
+
+| Library or service | Context7 ID | Used for |
+|---|---|---|
+| TypeScript compiler API (5.9.3 installed) | `/microsoft/typescript` ("Using the Compiler API"; `createSourceFile(fileName, text, target, setParentNodes, scriptKind)`) | `tests/unit/route-inventory.spec.ts`: parse each file, walk `sourceFile.statements`, read `export`/`default` modifiers, `getText(sourceFile)` |
+| Playwright (1.64.0 installed) | `/websites/playwright_dev` (`APIRequestContext`, `apiRequest.newContext({ baseURL, maxRedirects })`, `fetch`, `APIResponse.status()/headers()`) | `gate1.spec.ts` step 5 (`context.request.fetch(path, { method, headers, data, maxRedirects: 0 })`) and item 45 (`playwright.request.newContext({ baseURL })` for the signed-out requests) |
+| npm CLI | `/npm/cli` (`npm audit signatures`: verifies registry signatures and provenance attestations of installed packages; needs a recent npm) | the `ci.yml` step after `npm ci`; why it cannot run here (Sigstore's TUF host is refused by this session's proxy) |
+| GitHub Actions and runner images | `/websites/github_en_actions` (`workflow_dispatch`: runs only from the default branch's copy of the workflow, write access needed); `/actions/runner-images` (Ubuntu 24.04 toolset: PostgreSQL 16, service disabled by default) | `.github/workflows/db-budgets.yml` (its header now says both) |
+| Vercel | `/websites/vercel` (request headers, runtime logs, WAF pricing) | spike S5 (`spike-s5.md`) |
+
+## Advisor round 1 (CHANGES NEEDED on f4e5cff), fixed
+
+| # | Advisor item | Fix | Commit |
+|---|---|---|---|
+| 1 | The route inventory's Zod regex accepted `JSON.parse`, `parseInt`, `parseFloat`; its planted-break test did not run the real rules | Stricter regex; the rules became functions of a path and text, run by the tests over `src/app` and by six planted-break tests on in-memory fixtures (each with a correct twin); the old regex fails the `JSON.parse` case; evidence `route-inventory.md` | bbe5eec |
+| 2 | The manual pass is not `/security-review` | `security-review.md` and this README call it a supplement; `/security-review` is pending (main session, final head) and is condition (d); checklist item 50 is "pending" | this round |
+| 3 | The HAIDER DECIDES condition was too loose; the "7c did not touch security paths" line was wrong | Conditions (a) to (d) named below, with the PGRST203 note; the proxy's `/manifest.webmanifest` change recorded and reviewed; the recommendation's claim narrowed to what was shown | this round |
+| 4 | The one run's output was not in the evidence | `gate1-run-output.md` (test lines and pass lines, no environment values), linked from `two-user-map.md` | this round |
+| 5 | Context7 not named for four libraries | the section above | this round |
+| 6 | `gate1_attack.sql` G2 accepted `aal2` in a comment | the whole normalised body is compared, with INVOKER, STABLE and search_path; 2 more planted breaks (17 of 17 caught) | 13fe35e |
+| 7 | Re-merge Day 7c's final head, re-run `gate1-run.sh` and unit, commit the refreshed run output | waiting for the coordinator's head | later |
 
 ## Merge with Day 7c
 
@@ -126,16 +153,28 @@ Checks after the merge (f27987e):
 | `python3 scripts/db-mutations.py --anchors` | 672 rows in 16 sets apply, none dead |
 | gitleaks on the final head | all refs, 701 commits: no leaks; this branch's 35 commits (`287430b..HEAD`): no leaks |
 | `npm audit --omit=dev` | 0 vulnerabilities |
-| Not re-run after the merge | `gate1.spec.ts` and the one run (Day 7c changed screens and the PWA, not the security paths; the local stack's database has not got Day 7c's migration). The PR's CI runs both on the merged code |
+| Not re-run after this first merge | `gate1.spec.ts` and the one run. Day 7c changed screens and the PWA, **and one security path: `src/proxy.ts` `publicPaths` gains `/manifest.webmanifest`** (served signed out; `src/app/manifest.ts` returns the app's name, colours and icon paths only, no data; reviewed in `security-review.md`). The local stack's database has not got Day 7c's sweeper migration. Both are re-run on the re-merge with Day 7c's final head (coordinator item 7) |
 
 ## Recommendation
 
-Pass the code part. Every step of the two-user attack test passes, the whole-release review found nothing at HIGH or
-MEDIUM, history and dependencies are clean, and every section 8 item that code can prove is proven by a test that was
-shown to fail when its protection is removed. What remains is not code: CI when billing is back (WebKit, storage-api,
-real PostgREST, `npm audit signatures`, the budgets run), the dev re-read after the Day 6 and 7 deploys, and the Day 8
-ops part. The advisor reviews this step first.
+Pass the code part, under the conditions below. Every step of the two-user attack test passes locally, the manual
+security pass found nothing at HIGH or MEDIUM, history and dependencies are clean, and every check written for Gate 1
+(`gate1_attack.sql`, the route inventory, the bundle scan, `gate1.spec.ts`) was shown to fail on a planted break of the
+protection it guards; the per-day checks it relies on were shown so in their own days' mutation runs (the Day 5a rows
+re-run here). What remains is not code, but it is part of the gate.
 
-HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes**, on the condition that the PR's CI is green when billing
-is back; the ops part (backup, restore test, keep-alive, Vercel Pro, production settings) passes on Day 8 before any
-real data.
+HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four conditions hold:**
+
+- **(a) Day 7c's final head is merged** into this branch, and `scripts/gate1-run.sh` on the merged tree, or the CI
+  `auth-journey` and `db` jobs on it, are green.
+- **(b) Dev re-read after the Day 6 and Day 7 deploys**: `dev-checks.sql` (read-only) and both dev advisors show
+  0 ERROR and only the accepted WARNs (`set_user_role`, leaked password protection, and Day 6e's `share_view` and
+  `share_request`).
+- **(c) CI green on**: `npm audit signatures`, `check-build.mjs`, WebKit, the storage-api e2e and the real-PostgREST
+  branches of `gate1.spec.ts` (table POST and DELETE, the private-schema header). Note: step 3's RPC sweep (every
+  public function called as anon with all its arguments set to null) has only met the local stand-in, never real
+  PostgREST; there an overloaded name may answer 300 (`PGRST203`, ambiguous call) instead of 401, which the test
+  counts as a failure until the sweep names the overload.
+- **(d) `/security-review`** run by the main session on the final head with no HIGH or MEDIUM finding left open.
+
+The ops part (backup, restore test, keep-alive, Vercel Pro, production settings) passes on Day 8 before any real data.

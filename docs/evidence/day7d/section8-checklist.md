@@ -83,7 +83,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | 42 | Audit log | append-only triggers (imports, roles, deletes, file access, stock); sign-in rows (`day7a.spec.ts`, `day7a_attack.sql` B1) | done |
 | 43 | Security monitoring | daily digest template (`docs/ops-templates/`, Day 7c) | Day 8 (Haider pastes it into `topstock-ops`) |
 | 44 | Backups and restore | templates and runbook (`share_reader` first, Day 7c) | Day 8 (backup, restore test, keep-alive) |
-| 50 | Reviewed code | per-day `/security-review` records; this whole-release review (`security-review.md`); advisor before every merge | done |
+| 50 | Reviewed code | per-day `/security-review` records; the builder's manual pass over the whole release (`security-review.md`, a supplement); advisor before every merge | **pending**: `/security-review` on the final head, run by the main session |
 
 ## F. Inventory controls
 
@@ -105,7 +105,7 @@ are re-read after the Day 6 and Day 7 PRs deploy.
 | Backup and restore tested, keep-alive running | templates ready | Day 8 |
 | Hosting decision | Vercel Pro before go-live (6 Oct) | Day 8 |
 
-**Count:** 54 numbered items plus F1 to F5 = 59 rows. **51 done** (2, 4, 8, 29, 30 and 46 also get a production
-check on Day 8; 25 and 47 carry an accepted residual), **1 residual** as its status (28: R1, log line 366, with the
-Firewall rule on Day 8), **3 Day 8 only** (35, 43, 44), **1 prepared for CI** (38: `npm audit signatures`),
-**3 N/A** (31, 39, 54). Nothing is open in code.
+**Count:** 54 numbered items plus F1 to F5 = 59 rows. **50 done** (2, 4, 8, 29, 30 and 46 also get a production
+check on Day 8; 25 and 47 carry an accepted residual), **1 pending in the main session** (50: `/security-review` on the
+final head), **1 residual** as its status (28: R1, log line 366, with the Firewall rule on Day 8), **3 Day 8 only**
+(35, 43, 44), **1 prepared for CI** (38: `npm audit signatures`), **3 N/A** (31, 39, 54).
