@@ -975,6 +975,11 @@ begin
   deal := pg_temp.open(lead, 'Mistake');
   if (select lead_status from public.companies where id = lead) <> 'warm' then raise exception 'FAIL: open made the lead warm'; end if;
   if not (public.get_deal(deal) ->> 'can_delete')::boolean then raise exception 'FAIL: get_deal.can_delete in the creator''s window'; end if;
+  -- get_deal.delete_until (Day 7): the end of the creator's window, so the sheet can drop Delete when it passes.
+  if (public.get_deal(deal) ->> 'delete_until')::timestamptz
+     is distinct from (select created_at + interval '120 seconds' from public.deals where id = deal) then
+    raise exception 'FAIL: get_deal.delete_until for the creator: %', public.get_deal(deal) ->> 'delete_until';
+  end if;
   perform public.delete_deal(deal);
   perform pg_temp.su();
   if exists (select 1 from public.deals where id = deal) or (select lead_status from public.companies where id = lead) <> 'cold'
@@ -1018,11 +1023,15 @@ begin
      or (select can_delete from public.list_stage_deals('qualified', 'team') where id = deal) then
     raise exception 'FAIL: a manager is offered Delete';
   end if;
-  -- An admin is offered Delete without a fresh code (the code is asked on use).
+  -- An admin is offered Delete without a fresh code (the code is asked on use), with no time limit (delete_until null).
   perform pg_temp.act(admin, 'aal2', 700);
   if not (public.get_deal(deal) ->> 'can_delete')::boolean
      or not (select can_delete from public.list_stage_deals('qualified', 'team') where id = deal) then
     raise exception 'FAIL: an admin is not offered Delete';
+  end if;
+  if public.get_deal(deal) -> 'delete_until' <> 'null'::jsonb or (public.get_deal(deal) ->> 'stock_held')::boolean then
+    raise exception 'FAIL: get_deal for an admin: delete_until %, stock_held %', public.get_deal(deal) -> 'delete_until',
+      public.get_deal(deal) -> 'stock_held';
   end if;
   -- deal_delete_stale_code_denied (an admin with a code from 700 s ago)
   perform pg_temp.act(admin, 'aal2', 700);

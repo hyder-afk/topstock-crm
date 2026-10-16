@@ -20,6 +20,7 @@ import {
   DEAL_TITLE_MAX,
   UNSAFE_TITLE,
   dealPath,
+  deleteOffered,
   elapsedDays,
   fulfilments,
   reopenStage,
@@ -40,7 +41,9 @@ import { cn } from "@/lib/utils";
 // value (inline edits), the stage stepper (the main way to move on a phone), the status line, the expected close (chips),
 // the contact, how it ships, the owner (managers and admins), the path with undo pairs folded, the history, the last
 // entries linked to the deal (never their text), and a ⋯ menu (copy link, delete). Closed deals are read-only ("Reopen
-// to change the value"). An edit that meets a colleague's change asks Keep yours / Use theirs.
+// to change the value"). An edit that meets a colleague's change asks Keep yours / Use theirs. Day 7: what the database
+// would refuse is left out (it still refuses it): Reopen on a won deal that stock records hold (with the reason in its
+// place), Delete while stock records hold the deal, and the creator's Delete once its 120 s are over.
 export type SheetFlows = {
   openWin: (card: DealCard) => void;
   openLose: (card: DealCard) => void;
@@ -101,6 +104,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
   const tStage = useTranslations("Stages");
   const tPipe = useTranslations("Pipeline");
   const tHint = useTranslations("Errors.hint");
+  const tErr = useTranslations("Errors");
   const tF = useTranslations("Fulfilment");
   const tReason = useTranslations("LostReasons");
   const format = useFormatter();
@@ -169,6 +173,8 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
   const open = deal.status === "open";
   const editable = deal.can_edit && open;
+  // Reopening a won deal is refused while stock records hold it (private.deal_guard); a lost deal always reopens.
+  const reopenHeld = deal.status === "won" && deal.stock_held === true;
   const ownerName = personName(deal.owner) || null;
   const undo = deal.undo && Date.parse(deal.undo.until) > now ? deal.undo : null;
   const days = elapsedDays(deal.stage_entered_at, now);
@@ -178,7 +184,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
     if (!deal.can_edit) return;
     if (stage === "won") return flows.openWin(deal);
     if (stage === "lost") return flows.openLose(deal);
-    if (!open) return flows.openReopen(deal, stage);
+    if (!open) return reopenHeld ? undefined : flows.openReopen(deal, stage);
     void flows.actions.move(deal, stage);
   };
 
@@ -222,7 +228,7 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
 
         <section aria-label={t("sheet.stage")} className="flex flex-col gap-2">
           <h3 className="text-sm font-bold text-muted-foreground">{t("sheet.stage")}</h3>
-          <StageStepper card={deal} disabled={!deal.can_edit} onPick={pick} onLose={() => flows.openLose(deal)} />
+          <StageStepper card={deal} disabled={!deal.can_edit || reopenHeld} onPick={pick} onLose={() => flows.openLose(deal)} />
           <p className="text-sm text-muted-foreground">
             {open
               ? `${t("daysInStage", { count: days })}${deal.is_stalled && deal.stall_days ? ` · ${t("stalledHint", { quiet: deal.quiet_days ?? days, limit: deal.stall_days, stage: tStage(deal.stage) })}` : ""}`
@@ -230,7 +236,11 @@ function SheetBody({ dealId, onClose, flows, team, canAssign }: { dealId: string
                 ? t("sheet.closedOn", { date: format.dateTime(new Date(deal.closed_at), { day: "numeric", month: "short", year: "numeric" }) })
                 : null}
           </p>
-          {!open && deal.can_edit ? (
+          {!open && deal.can_edit && reopenHeld ? (
+            <p data-reopen-held className="text-sm text-muted-foreground">
+              {tErr("blocked")}
+            </p>
+          ) : !open && deal.can_edit ? (
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm text-muted-foreground">{t("sheet.reopenToEdit")}</p>
               <Button variant="quiet" className="min-h-11 sm:min-h-9" onClick={() => flows.openReopen(deal, reopenStage(deal.history))}>
@@ -644,13 +654,23 @@ function SheetMenu({ deal, flows, onDeleted }: { deal: DealDetail; flows: SheetF
           <Copy aria-hidden="true" strokeWidth={1.75} className="size-4 text-muted-foreground" />
           {t("menu.copyLink")}
         </DropdownMenuItem>
-        {deal.can_delete ? (
-          <DropdownMenuItem className="text-status-red" onSelect={() => flows.openDelete(deal, (ok) => ok && onDeleted())}>
-            <Trash2 aria-hidden="true" strokeWidth={1.75} className="size-4" />
-            {t("menu.delete")}
-          </DropdownMenuItem>
-        ) : null}
+        <SheetDeleteItem deal={deal} flows={flows} onDeleted={onDeleted} />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// Drawn each time the menu opens (Radix mounts the content then), so "now" is the moment it opened: the creator's Delete
+// is gone once its 120 s window is over, as the database would refuse it by then.
+function SheetDeleteItem({ deal, flows, onDeleted }: { deal: DealDetail; flows: SheetFlows; onDeleted: () => void }) {
+  const t = useTranslations("Deals");
+  const [now] = useState(() => Date.now());
+  const until = deal.delete_until ? Date.parse(deal.delete_until) : null;
+  if (!deleteOffered({ can_delete: deal.can_delete, held: deal.stock_held, until }, now)) return null;
+  return (
+    <DropdownMenuItem className="text-status-red" onSelect={() => flows.openDelete(deal, (ok) => ok && onDeleted())}>
+      <Trash2 aria-hidden="true" strokeWidth={1.75} className="size-4" />
+      {t("menu.delete")}
+    </DropdownMenuItem>
   );
 }

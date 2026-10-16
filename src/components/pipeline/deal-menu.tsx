@@ -22,16 +22,18 @@ import { openStageKeys, type DealCard, type OpenStageKey } from "@/lib/deals";
 // The card menu (Day 5 design 7.2), the same items in the right-click menu and the ⋯ menu: Move to ▸ (1 to 3), Mark
 // won… (4), Mark lost… (5), Reopen… (closed deals), Edit value (E), Open lead (O), Copy link, Undo last move (U, 2
 // minutes), Delete… (a fresh code). Every item shows its key. Items a person may not use are left out (read-only card).
+// Reopen and Delete are null when they are not offered (Day 7: lib/deals reopenOffered and deleteOffered, which also leave
+// them out while stock records hold the deal, as far as the board knows, and Delete after the creator's 120 s).
 export type DealMenuActions = {
   move: (to: OpenStageKey) => void;
   win: () => void;
   lose: () => void;
-  reopen: () => void;
+  reopen: (() => void) | null;
   editValue: () => void;
   openLead: () => void;
   copyLink: () => void;
   undo: (() => void) | null;
-  remove: () => void;
+  remove: (() => void) | null;
 };
 
 const parts = {
@@ -84,7 +86,7 @@ export function DealMenuItems({ card, kind, actions }: { card: DealCard; kind: k
           </Item>
         </>
       ) : null}
-      {card.can_edit && !open ? (
+      {actions.reopen ? (
         <Item onSelect={actions.reopen}>
           <RotateCcw aria-hidden="true" strokeWidth={1.75} className={icon} />
           {t("reopen")}
@@ -114,7 +116,7 @@ export function DealMenuItems({ card, kind, actions }: { card: DealCard; kind: k
           {keyHint("U")}
         </Item>
       ) : null}
-      {card.can_delete ? (
+      {actions.remove ? (
         <>
           <Separator />
           <Item onSelect={actions.remove} className="text-status-red">

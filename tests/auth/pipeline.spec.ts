@@ -303,14 +303,18 @@ test("reopen_won_asks_code, delete_deal_asks_for_code", async ({ browser }) => {
 });
 
 // Day 6 fills in Day 5's seam (deal_closing_blocked): a confirmed sale naming a deal blocks changing how it ships. The
-// sheet's shipping switch answers with the mapped words (blocked_sales -> Errors.blocked), and nothing changes. The sale is
-// a made-up row written as this admin (the sale guard needs a signed-in user); the deal is deleted afterwards with no
+// sheet's shipping switch answers with the mapped words (blocked_sales -> Errors.blocked), and nothing changes. Since Day 7
+// the sheet's ⋯ menu leaves Delete out for that deal (get_deal.stock_held; the database still refuses it). The sale is a
+// made-up row written as this admin (the sale guard needs a signed-in user); the deal is deleted afterwards with no
 // signed-in user (maintenance: the sale keeps its row and loses the link).
-test("shipping_change_blocked_by_sale_says_why", async ({ browser }) => {
-  const deal = makeDeal({ title: `Held ${run}`, fulfilment: "from_stock" });
+const saleFor = (deal: string) =>
   sql(`select set_config('request.jwt.claims', json_build_object('sub', '${admin}', 'role', 'authenticated')::text, true);
        insert into private.orders (company_id, deal_id, fulfilment)
        select d.company_id, d.id, 'from_stock' from public.deals d where d.id = '${deal}'`);
+
+test("shipping_change_blocked_by_sale_says_why", async ({ browser }) => {
+  const deal = makeDeal({ title: `Held ${run}`, fulfilment: "from_stock" });
+  saleFor(deal);
   const { context, page, errors } = await open(browser);
   await gotoBoard(page, `?deal=${deal}`);
   const sheet = page.getByRole("dialog");
@@ -318,9 +322,89 @@ test("shipping_change_blocked_by_sale_says_why", async ({ browser }) => {
   await expect(toast(page)).toHaveText("Stock records hold this deal. Sort them out first.");
   await expect(sheet.getByRole("radio", { name: "Warehouse inventory" })).toHaveAttribute("aria-checked", "true");
   expect(sql(`select fulfilment from public.deals where id = '${deal}'`)).toBe("from_stock");
+  // An admin is offered Delete on any other deal (delete_not_offered_to_manager); here the sale holds it.
+  await sheet.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   expect(errors).toEqual([]);
   await context.close();
   sql(`delete from public.deals where id = '${deal}'`);
+});
+
+// Day 7 (Day 5 design line 1070): a won deal that stock records hold is not offered Reopen or Delete. The sheet says why
+// where the Reopen button was and its stepper is off; the ⋯ menu has no Delete; the board's card menu (reading the details
+// the sheet loaded) has neither, and the Delete key does nothing. The database refuses both anyway (sales_attack.sql).
+test("won_deal_held_by_stock_hides_reopen_and_delete", async ({ browser }) => {
+  const deal = makeDeal({ stage: "won", title: `Held won ${run}`, value: "900" });
+  saleFor(deal);
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page, `?deal=${deal}`);
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator("[data-reopen-held]")).toHaveText("Stock records hold this deal. Sort them out first.");
+  await expect(sheet.getByRole("button", { name: "Reopen…" })).toHaveCount(0);
+  const steps = sheet.getByRole("radiogroup", { name: "Move this deal" }).getByRole("radio");
+  await expect(steps).toHaveCount(4);
+  for (const step of await steps.all()) await expect(step).toBeDisabled();
+  await sheet.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await sheet.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await mainOf(page, deal).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Reopen…" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await mainOf(page, deal).focus();
+  await page.keyboard.press("Delete");
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("dialog", { name: "Delete this deal?" })).toHaveCount(0);
+  expect(sql(`select status from public.deals where id = '${deal}'`)).toBe("won");
+  expect(errors).toEqual([]);
+  await context.close();
+  sql(`delete from public.deals where id = '${deal}'`);
+});
+
+// Day 7: the creator's own deal deletes without a code for 120 s (deals_delete); after that Delete is left out where it
+// was offered, even on a sheet and a board that were loaded inside the window (get_deal.delete_until, the card's
+// created_at). The person is a rep here, so no admin branch applies.
+test("creator_delete_hidden_after_120s", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const madeAt = Date.now() - 90_000;
+  const del = makeDeal({ title: `Window ${run}`, createdHoursAgo: 90 / 3600 });
+  setRole(adminEmail, "rep");
+  try {
+    const { context, page, errors } = await open(browser);
+    await gotoBoard(page, `?deal=${del}`);
+    const sheet = page.getByRole("dialog");
+    await sheet.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Delete…" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Past the window (2 s of margin), with nothing loaded again.
+    await page.waitForTimeout(Math.max(0, madeAt + 122_000 - Date.now()));
+    await sheet.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await sheet.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await mainOf(page, del).click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Copy link" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Delete…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await mainOf(page, del).focus();
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(300);
+    await expect(page.getByRole("dialog", { name: "Delete this deal?" })).toHaveCount(0);
+    expect(sql(`select count(*) from public.deals where id = '${del}'`)).toBe("1");
+    expect(errors).toEqual([]);
+    await context.close();
+  } finally {
+    setRole(adminEmail, "admin");
+    sql(`delete from public.deals where id = '${del}'`);
+  }
 });
 
 // A rep's own pages: Show more and See all won ask the database for the rep's own deals. They used to send the board's

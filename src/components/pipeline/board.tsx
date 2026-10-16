@@ -41,17 +41,21 @@ import { lastUndoableMove, useBoard } from "@/components/pipeline/use-pipeline";
 import {
   BOARD_PAGE,
   boardColumns,
+  deleteOffered,
+  freeDeleteUntil,
+  reopenOffered,
   type Board,
   type BoardColumnKey,
   type Cursor,
   type DealCard,
+  type DealDetail,
   type OpenStageKey,
   type SortOrder,
 } from "@/lib/deals";
 import type { TeamMember } from "@/lib/leads";
 import { formatMoney } from "@/lib/money";
 import { appendPage, applyMove, cardsOf, findCard, sortLoaded } from "@/lib/pipeline-cache";
-import { boardKey } from "@/lib/prefetch";
+import { boardKey, dealKey } from "@/lib/prefetch";
 import { isTyping } from "@/lib/shortcuts";
 import { useKeepFocus } from "@/lib/use-keep-focus";
 import { cn } from "@/lib/utils";
@@ -365,15 +369,20 @@ function Pipeline({
     [openDelete, focusAfterLeaving],
   );
 
+  // Built when a menu opens (and on the Delete key). Whether stock records hold the deal is known only once its details
+  // are loaded (the sheet's get_deal, cached); until then Reopen and Delete stay and the database answers if it refuses.
+  const isAdmin = me.role === "admin";
   const menuFor = useCallback(
     (card: DealCard): DealMenuActions => {
       const last = lastUndoableMove();
+      const held = qc.getQueryData<DealDetail | null>(dealKey(card.id))?.stock_held;
+      const canRemove = deleteOffered({ can_delete: card.can_delete, held, until: freeDeleteUntil(card, isAdmin) }, Date.now());
       return {
         move: (to) => moveCard(card, to, rectOf(card.id), true),
         win: () => askWin(card, null),
         lose: () => askLose(card, null),
         // Reopen goes back to the stage the deal was closed from (design 7.6); focus follows the card.
-        reopen: () => void reopenFromHistory(card, () => setFocusRequest({ id: card.id, token: tokens.current + 1 })),
+        reopen: reopenOffered({ ...card, held }) ? () => void reopenFromHistory(card, () => setFocusRequest({ id: card.id, token: tokens.current + 1 })) : null,
         editValue: () => {
           openSheet(card.id);
           requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-deal-value]")?.focus()));
@@ -381,10 +390,10 @@ function Pipeline({
         openLead: () => router.push(`/leads/${card.company_id}`),
         copyLink: () => void navigator.clipboard?.writeText(`${window.location.origin}/pipeline?deal=${card.id}`),
         undo: last && last.id === card.id ? () => void actions.undo(last) : null,
-        remove: () => askDelete(card),
+        remove: canRemove ? () => askDelete(card) : null,
       };
     },
-    [moveCard, askWin, askLose, reopenFromHistory, openSheet, router, actions, askDelete],
+    [moveCard, askWin, askLose, reopenFromHistory, openSheet, router, actions, askDelete, qc, isAdmin],
   );
 
   const handlers = useMemo<BoardHandlers>(
@@ -417,13 +426,13 @@ function Pipeline({
           case "undo":
             return void actions.undo();
           case "delete":
-            return card.can_delete ? askDelete(card) : undefined;
+            return menuFor(card).remove?.();
           default:
             return;
         }
       },
     }),
-    [menuFor, askWin, askLose, moveCard, openSheet, router, actions, askDelete, qc, key],
+    [menuFor, askWin, askLose, moveCard, openSheet, router, actions, qc, key],
   );
   // The cards read one handlers object that never changes (each call goes to this render's handlers), so a move, a
   // focus change or a drag over a column does not re-render every memoised card through the context (day5-perf).

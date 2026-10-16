@@ -7,10 +7,10 @@ import { MoreHorizontal, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card } from "@/components/lead/lead-cards";
-import { elapsedDays, type DealCard, type StageKey } from "@/lib/deals";
+import { elapsedDays, reopenOffered, type DealCard, type DealDetail, type StageKey } from "@/lib/deals";
 import { personName, type LeadDetail } from "@/lib/leads";
 import { formatMoney } from "@/lib/money";
-import { fetchLeadDealsClient, leadDealsKey } from "@/lib/prefetch";
+import { dealKey, fetchDealClient, fetchLeadDealsClient, leadDealsKey } from "@/lib/prefetch";
 import { cardTitle, retryKeepingFocus } from "@/lib/focus";
 import { cn } from "@/lib/utils";
 
@@ -131,6 +131,9 @@ function DealRow({ deal, onOpenDeal, onReopen }: { deal: DealCard; onOpenDeal: (
   const locale = useLocale();
   const format = useFormatter();
   const [now] = useState(() => Date.now());
+  // The deal's details when the sheet has loaded them (read from the cache, never fetched here): a won deal that stock
+  // records hold cannot be reopened, so its row has no menu (Day 7; the database still refuses it).
+  const detail = useQuery<DealDetail | null>({ queryKey: dealKey(deal.id), queryFn: () => fetchDealClient(deal.id), enabled: false }).data;
   const date = (iso: string) => format.dateTime(new Date(iso), { day: "numeric", month: "short" });
   const owner = personName({ first_name: deal.owner_first_name, last_name: deal.owner_last_name });
   let line: string;
@@ -162,7 +165,7 @@ function DealRow({ deal, onOpenDeal, onReopen }: { deal: DealCard; onOpenDeal: (
           {owner ? <span>{owner}</span> : null}
         </span>
       </button>
-      {deal.status !== "open" && deal.can_edit ? (
+      {reopenOffered({ ...deal, held: detail?.stock_held }) ? (
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label={t("rowMenu")}
