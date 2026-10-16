@@ -435,3 +435,4 @@
 | 2026-10-16 | Haider | (3) Confirms the builder's decision: the browser's "Leave site?" prompt stays while a lead import is sending (the one native popup kept; check:native allowlist unchanged) |
 | 2026-10-16 | Haider | (4) Confirms the builder's decision: the share link's hour and day limits count in the Paris day (migration 20261022130000_share_take_paris_day) |
 | 2026-10-16 | Haider | (5) Confirms the builder's decision: the phone call panel stays non-modal (no focus trap); the page scrolls clear of it instead (phone_call_panel_tab). Plan row 7c's "call sheet focus trap" is replaced by this |
+| 2026-10-16 | Haider | Ran `select * from private.call_zone_matches_map();` as owner in the dev SQL editor: **0 rows** (dev data check for security item 15; the read-only role could not call it). Matches the builder's hand reading in docs/evidence/day7d/dev-checks.md |
