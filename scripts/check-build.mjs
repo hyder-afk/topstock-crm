@@ -3,7 +3,8 @@
 //   node scripts/check-build.mjs [.next]
 // Fails when the browser bundle (.next/static) holds:
 //   - a source map (*.map) or a sourceMappingURL comment (item 36: no original code in production);
-//   - the words service_role or sb_secret_, or a postgres:// / postgresql:// connection string (item 1);
+//   - the word service_role, an sb_secret_ key (the prefix followed by key characters; supabase-js itself carries the
+//     bare prefix as a string to tell key kinds apart), or a postgres:// / postgresql:// connection string (item 1);
 //   - a JWT whose payload names any role other than anon (item 14: only the public anon key may ship); a JWT that
 //     cannot be read also fails.
 // It prints counts and file names only, never a matched value.
@@ -42,7 +43,7 @@ for (const file of files) {
   const text = readFileSync(file, "utf8");
   if (/sourceMappingURL=/.test(text)) problems.push(`${name}: sourceMappingURL comment`);
   if (/service_role/.test(text)) problems.push(`${name}: the word service_role`);
-  if (/sb_secret_/.test(text)) problems.push(`${name}: an sb_secret_ key prefix`);
+  if (/sb_secret_[A-Za-z0-9_-]{16,}/.test(text)) problems.push(`${name}: an sb_secret_ key`);
   if (/postgres(?:ql)?:\/\//.test(text)) problems.push(`${name}: a postgres connection string`);
   for (const m of text.matchAll(JWT)) {
     let role = null;
