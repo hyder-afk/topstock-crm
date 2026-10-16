@@ -19,6 +19,8 @@ for (const f of files) {
     if (ro.length !== rn.length) throw new Error(`${f}: regex count differs`);
     ro.forEach((lit, k) => {
       if (lit === rn[k]) return;
+      // The patterns are regex literals read from this repo's own git diff (never outside input); a one-off local check.
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
       const mk = (s) => { const j = s.lastIndexOf("/"); return new RegExp(s.slice(1, j), s.slice(j + 1).replace("g", "")); };
       const a = mk(lit), b = mk(rn[k]); let diffs = 0, hits = 0;
       for (let cp = 0; cp <= 0x10ffff; cp++) {
