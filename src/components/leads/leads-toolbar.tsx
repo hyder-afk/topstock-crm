@@ -337,11 +337,12 @@ function FilterChips({ filters, onChange, team }: { filters: LeadFilters; onChan
         <li key={c.key}>
           <span className="inline-flex min-h-8 items-center gap-1 rounded-sm bg-muted py-0.5 pr-1 pl-3 text-xs">
             {c.label}
+            {/* 28 px to look at, 44 px to tap: the ::before reaches 8 px past each edge. */}
             <button
               type="button"
               onClick={c.remove}
               aria-label={tF("remove", { name: c.label })}
-              className="grid size-7 place-items-center rounded-sm text-muted-foreground hover:text-foreground active:scale-[0.97]"
+              className="relative grid size-7 place-items-center rounded-sm text-muted-foreground before:absolute before:-inset-2 hover:text-foreground active:scale-[0.97]"
             >
               <X aria-hidden="true" strokeWidth={1.75} className="size-3.5" />
             </button>

@@ -751,6 +751,7 @@ export function QueueWorkspace({
             <DialogDescription className="sr-only">{current?.name}</DialogDescription>
             <textarea
               name="queue_note_sheet"
+              aria-label={t("noteSheet")}
               autoComplete="off"
               value={note}
               onChange={(e) => current && setNotes((m) => ({ ...m, [current.id]: e.target.value }))}
