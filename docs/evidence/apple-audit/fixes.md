@@ -87,7 +87,7 @@ Advisor round 1 follow-up runs (Chromium 1194, fresh `next build` of the round-1
 - `day7b.spec` 21 / 21 (11 screenshot-only tests skipped by design), `share` 12 / 12, `sales` 12 / 12, `inventory` 11 / 11.
 
 Security tooling:
-- gitleaks 8.28.0: `gitleaks git --log-opts="origin/main..HEAD"`: 24 commits scanned, **no leaks found**;
+- gitleaks 8.28.0: `gitleaks git --log-opts="origin/main..HEAD"`: 24 commits scanned, **no leaks found**; re-run after round 1 (head facbc9d, 29 commits): **no leaks found**; unit tests 785 passed;
   `gitleaks dir docs/evidence/apple-audit src`: **no leaks found**.
 - npm audit and Semgrep: left to CI. This step changes no dependency (`package.json` and `package-lock.json` untouched),
   so npm audit cannot differ from main; Semgrep runs on the PR.
