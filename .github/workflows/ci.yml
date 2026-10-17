@@ -66,15 +66,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The whole suite with the evidence screenshots runs on Chromium, split by file into two halves that run side
-          # by side (Day 5 + Team took one Chromium job past 45 minutes; same tests, about half the wait).
+          # The whole suite with the evidence screenshots runs on Chromium, split by file into thirds that run side by
+          # side (Day 5 + Team took one Chromium job past 45 minutes; split in two then. Analytics v1 took the first half
+          # past 45 minutes again on PR #28: 42 minutes of tests plus setup; split in three).
           - browser: chromium
-            shard: 1/2
+            shard: 1/3
             part: "1"
             timeout: 45
           - browser: chromium
-            shard: 2/2
+            shard: 2/3
             part: "2"
+            timeout: 45
+          - browser: chromium
+            shard: 3/3
+            part: "3"
             timeout: 45
           # Safari's engine runs its own subset, also in two halves since Day 6 (one WebKit job hit 45 minutes on PR #18).
           - browser: webkit
