@@ -4,7 +4,10 @@
 -- history rows, and 10,000 sales with 30,000 lines over 200 days (recorded by a6).
 --  Cases: each of the seven functions for 30, 90 and 365 days (the range ends on Paris today), as admin 0a (perf_day5;
 --         the team) and for one person: rep b4 for activity, call times, pipeline, speed and coverage (his own figures,
---         as himself), admin 0a picking a6 for sales (the person who recorded every sale). List quality: 20 imported
+--         as himself), admin 0a picking a6 for sales (the person who recorded every sale), and (P3, P1 condition C1)
+--         sales as a rep for himself: b4 (who recorded none) and a6 made a rep for the case (rolled back), so the rep's
+--         path through private.orders row level security (recorded by me, or on a lead I own) is timed over every
+--         sale. List quality: 20 imported
 --         batches over the 30,015 leads (made inside a transaction rolled back at the end, so perf_import.sql meets the
 --         database as before), team and one person.
 --  Method: 5 runs to warm the caches, then the average of 5 timed runs, in milliseconds, with the design's local budget
@@ -85,6 +88,10 @@ begin
         ms := pg_temp.time_case(f || ' ' || days || 'd person (admin picks a6)',
                                 'select public.' || f || '(' || span || ', ' || quote_literal(seller) || ')',
                                 case days when 30 then b30 when 90 then b90 else b365 end);
+        if days = 90 then worst90 := greatest(worst90, ms); elsif days = 365 then worst365 := greatest(worst365, ms); end if;
+        perform pg_temp.as_perf(rep);
+        ms := pg_temp.time_case(f || ' ' || days || 'd own (rep b4, no sales)', 'select public.' || f || '(' || span || ')',
+                                case days when 30 then b30 when 90 then b90 else b365 end);
       else
         perform pg_temp.as_perf(rep);
         ms := pg_temp.time_case(f || ' ' || days || 'd own (rep b4)', 'select public.' || f || '(' || span || ')',
@@ -103,6 +110,29 @@ begin
     case when worst365 * 3 >= 1500 then '  OVER' else '' end;
 end $$;
 reset role;
+
+\echo '=== Sales as a rep for himself: a6 (every sale) made a rep for this case (rolled back) ==='
+begin;
+set local session_replication_role = replica;  -- the role change without the set_user_role guard; undone below
+update public.profiles set role = 'rep' where id = current_setting('perf.seller')::uuid;
+set local session_replication_role = origin;
+set local role authenticated;
+do $$
+declare
+  today constant date := (now() at time zone 'Europe/Paris')::date;
+  days integer;
+  ms numeric;
+begin
+  perform pg_temp.as_perf(current_setting('perf.seller'));
+  if (select private.is_manager_or_admin()) then raise exception 'FAIL: a6 should be a rep in this case'; end if;
+  foreach days in array array[30, 90, 365] loop
+    ms := pg_temp.time_case('analytics_sales ' || days || 'd own (rep a6, every sale)',
+                            'select public.analytics_sales(' || quote_literal(today - (days - 1)) || ', ' || quote_literal(today) || ')',
+                            case days when 30 then 30 when 90 then 80 else 200 end);
+  end loop;
+  raise notice 'rep a6 sales over 365 days: %', (public.analytics_sales(today - 364, today) -> 'totals' ->> 'sales');
+end $$;
+rollback;
 
 \echo '=== List quality: 20 imported batches over the 30,015 leads (rolled back) ==='
 begin;
