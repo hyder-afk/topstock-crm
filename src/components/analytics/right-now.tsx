@@ -73,7 +73,7 @@ function Tile({
         </span>
         {control}
       </div>
-      <span className={cn(KPI_SUB_CLASS, "mt-auto line-clamp-2")} data-coverage-sub="">
+      <span className={cn(KPI_SUB_CLASS, "mt-auto")} data-coverage-sub="">
         {value === 0 ? t("caughtUp") : sub}
       </span>
       {href ? (

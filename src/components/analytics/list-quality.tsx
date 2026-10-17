@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { AnalyticsCard, BlockError, Bone, EmptyLine, blockView } from "@/components/analytics/card";
 import { DataTable } from "@/components/analytics/chart-frame";
 import type { AnalyticsData } from "@/lib/analytics/fetch";
-import { batchHref, batchRows, formatCount, formatParisDate, formatPercent, type BatchRow, type BatchShare } from "@/lib/analytics/view";
+import { NO_FIGURE, batchHref, batchRows, formatCount, formatParisDate, formatPercent, type BatchRow, type BatchShare } from "@/lib/analytics/view";
 
 // List quality per import (design 1.5, 4.1, 4.2, Q11): admins only (import batches are admin-only under row level
 // security, and the database refuses everyone else). The newest imports, newest first: file · imported · leads · contacted
@@ -20,7 +20,7 @@ export function ListQualityCard({ data, loading, busy, onRetry }: { data: Analyt
   const view = blockView(data?.batches ?? undefined, loading);
   const owner = data?.rep ?? null;
   const share = (s: BatchShare) =>
-    s.share === null ? "—" : <span className="whitespace-nowrap">{t("share", { rate: formatPercent(s.share, locale), count: formatCount(s.count, locale) })}</span>;
+    s.share === null ? NO_FIGURE : <span className="whitespace-nowrap">{t("share", { rate: formatPercent(s.share, locale), count: formatCount(s.count, locale) })}</span>;
   const file = (r: BatchRow) => (
     <Link
       href={batchHref(r.id, owner)}

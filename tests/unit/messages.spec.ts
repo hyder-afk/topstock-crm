@@ -283,15 +283,13 @@ test.describe("the whole French file (Day 7c)", () => {
     "Sales.sheet.total",
     "Sales.list.lineTotal",
     "Sales.sheet.minMax",
-    // Analytics P2: the brand name WhatsApp, bare placeholders ({count}, "{day} {hour}", "{count} ({share})") and the
-    // dash for "no figure".
+    // Analytics P2: the brand name WhatsApp and bare placeholders ({count}, "{day} {hour}", "{count} ({share})").
     "Analytics.calls.whatsapp",
     "Analytics.calls.table.whatsapp",
     "Analytics.team.whatsapp",
     "Analytics.calls.miniTotal",
     "Analytics.lost.tooltip",
     "Analytics.heat.slot",
-    "Analytics.team.none",
     // Analytics P3: the bare placeholder "{rate} ({count})" of list quality.
     "Analytics.listQuality.share",
     // Units and codes kept in both languages.

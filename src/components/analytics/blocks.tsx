@@ -9,6 +9,7 @@ import type { BarRow, TooltipBody } from "@/components/analytics/charts";
 import type { ActivityPart, PipelinePart, SalesPart, SpeedPart } from "@/lib/analytics/parts";
 import type { Bucket } from "@/lib/analytics/params";
 import {
+  NO_FIGURE,
   activityEmpty,
   bucketDate,
   bucketDay,
@@ -58,7 +59,7 @@ function useBucketName(bucket: Bucket) {
 }
 
 function percentOrDash(x: number | null, locale: string) {
-  return x === null ? "—" : formatPercent(x, locale);
+  return x === null ? NO_FIGURE : formatPercent(x, locale);
 }
 
 export function ChartSkeleton({ legend = false, minis = false, bars }: { legend?: boolean; minis?: boolean; bars?: number }) {
@@ -107,7 +108,7 @@ export function CallsCard({ part, loading, busy, onRetry, bucket }: BlockProps<A
         ? tc("caption", {
             calls: totals.calls,
             rate: percentOrDash(ratio(totals.reached, totals.calls), locale),
-            day: top ? name(top.start, top.partial) : "—",
+            day: top ? name(top.start, top.partial) : NO_FIGURE,
             count: top?.calls ?? 0,
           })
         : tc("captionNoCalls", { emails: totals.emails, whatsapp: totals.whatsapp, meetings: totals.meetings });
@@ -532,7 +533,7 @@ export function RevenueCard({ part, loading, busy, onRetry, bucket }: BlockProps
     body = (
       <ChartFrame
         heading={tr("title")}
-        caption={tr("caption", { revenue: money(revenue), sales: s.totals.sales, bucket: top ? name(top.start, top.partial) : "—", best: top ? money(top.revenue) : "—" })}
+        caption={tr("caption", { revenue: money(revenue), sales: s.totals.sales, bucket: top ? name(top.start, top.partial) : NO_FIGURE, best: top ? money(top.revenue) : NO_FIGURE })}
         footer={
           <div className="flex flex-col gap-1 text-[13px] text-muted-foreground">
             <p>

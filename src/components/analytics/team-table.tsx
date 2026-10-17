@@ -4,7 +4,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { AnalyticsCard, BlockError, Bone, EmptyLine } from "@/components/analytics/card";
 import { DataTable } from "@/components/analytics/chart-frame";
 import type { AnalyticsData } from "@/lib/analytics/fetch";
-import { formatCount, formatPercent, teamRows, type TeamRow } from "@/lib/analytics/view";
+import { NO_FIGURE, formatCount, formatPercent, teamRows, type TeamRow } from "@/lib/analytics/view";
 import { formatMoney } from "@/lib/money";
 
 // The Team block (design 4.3, Q8): managers and admins, team view only. More than seven measures across people, so the
@@ -16,7 +16,7 @@ export function TeamCard({ data, loading, busy, onRetry }: { data: AnalyticsData
   const t = useTranslations("Analytics.team");
   const ta = useTranslations("Analytics");
   const locale = useLocale();
-  const pct = (x: number | null) => (x === null ? t("none") : formatPercent(x, locale));
+  const pct = (x: number | null) => (x === null ? NO_FIGURE : formatPercent(x, locale));
   const num = (n: number) => formatCount(n, locale);
 
   let body: React.ReactNode;

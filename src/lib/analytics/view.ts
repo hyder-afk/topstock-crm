@@ -60,6 +60,9 @@ export function customRangeOk(from: string, to: string, today: string): boolean 
 // Numbers, money, durations, dates
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** What every Analytics view shows where a figure cannot exist yet (no calls, too few deals, an emptied import). */
+export const NO_FIGURE = "—";
+
 /** a / b, or null when there is nothing to divide by. */
 export function ratio(a: number, b: number): number | null {
   return b > 0 ? a / b : null;

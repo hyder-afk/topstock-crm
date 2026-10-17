@@ -6,7 +6,7 @@ import { CountUp } from "@/components/home/count-up";
 import { KPI_CARD_CLASS, KPI_LABEL_CLASS, KPI_SUB_CLASS } from "@/components/home/kpi-card";
 import { BlockError, Bone, blockView } from "@/components/analytics/card";
 import type { AnalyticsData } from "@/lib/analytics/fetch";
-import { formatCount, formatDays, formatPercent, formatTileMoney, ratio } from "@/lib/analytics/view";
+import { NO_FIGURE, formatCount, formatDays, formatPercent, formatTileMoney, ratio } from "@/lib/analytics/view";
 import { cn } from "@/lib/utils";
 
 // The six "This period" tiles (design 1.8, 4.1): Calls, Connect rate, Won, Win rate, Median cycle, Revenue. Home's tile
@@ -60,7 +60,7 @@ export function KpiTiles({ data, loading, onRetry }: { data: AnalyticsData | und
       <Tile
         key="connect"
         label={t("connect.label")}
-        number={rate === null ? "—" : <CountUp value={Math.round(rate * 100)} format={pct} />}
+        number={rate === null ? NO_FIGURE : <CountUp value={Math.round(rate * 100)} format={pct} />}
         muted={rate === null}
         sub={rate === null ? t("connect.none") : t("connect.sub", { reached: c.reached, calls: c.calls })}
       />,
@@ -78,14 +78,14 @@ export function KpiTiles({ data, loading, onRetry }: { data: AnalyticsData | und
       <Tile
         key="winRate"
         label={t("winRate.label")}
-        number={winRate === null ? "—" : <CountUp value={Math.round(winRate * 100)} format={pct} />}
+        number={winRate === null ? NO_FIGURE : <CountUp value={Math.round(winRate * 100)} format={pct} />}
         muted={winRate === null}
         sub={winRate === null ? t("winRate.notEnough") : t("winRate.sub", { won: p.win_rate.won, lost: p.win_rate.lost })}
       />,
       <Tile
         key="cycle"
         label={t("cycle.label")}
-        number={cycle === null ? "—" : <CountUp value={Math.round(cycle * 10)} format={days} />}
+        number={cycle === null ? NO_FIGURE : <CountUp value={Math.round(cycle * 10)} format={days} />}
         muted={cycle === null}
         sub={cycle === null ? t("cycle.notEnough") : t("cycle.sub", { count: p.cycle.n })}
       />,
