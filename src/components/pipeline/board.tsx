@@ -654,6 +654,7 @@ function Pipeline({
           }}
           onNewDeal={() => setOpenNew(true)}
           status={status}
+          failed={!board && query.isError}
         />
 
         {/* A scope, owner or order not read before: the columns' skeleton while it loads, the board's error with Retry

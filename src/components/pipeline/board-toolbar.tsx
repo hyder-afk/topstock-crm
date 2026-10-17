@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 // chips (Team view); "Stalled only" with its count; the sort menu (Value and Close date sort the loaded cards only); and
 // New deal, the one red button on the page. Two rows at 768; at 390 the owner chips scroll in their own row and New
 // deal is full width. While a scope, owner or order not read before loads, the totals and the stalled count are not known
-// yet (null): a quiet block stands in for them and the controls stay where they are (board.tsx).
+// yet (null): a quiet block stands in for them (pulsing while the read is on its way, still once it has failed) and
+// the controls stay where they are (board.tsx).
 export function BoardToolbar({
   total,
   canTeam,
@@ -30,6 +31,7 @@ export function BoardToolbar({
   onOrder,
   onNewDeal,
   status,
+  failed = false,
 }: {
   total: { count: number; value: string } | null;
   canTeam: boolean;
@@ -45,6 +47,7 @@ export function BoardToolbar({
   onOrder: (o: SortOrder) => void;
   onNewDeal: () => void;
   status: React.ReactNode;
+  failed?: boolean;
 }) {
   const t = useTranslations("Pipeline");
   const locale = useLocale();
@@ -64,7 +67,7 @@ export function BoardToolbar({
               {t("totals", { count: total.count, value: formatMoney(total.value, locale) })}
             </span>
           ) : (
-            <span aria-hidden="true" className="h-7 w-32 self-center rounded-sm bg-muted motion-safe:animate-pulse" />
+            <span aria-hidden="true" className={cn("h-7 w-32 self-center rounded-sm bg-muted", !failed && "motion-safe:animate-pulse")} />
           )}
         </div>
         <Button variant="brand" onClick={onNewDeal} className="max-sm:w-full">
@@ -111,7 +114,7 @@ export function BoardToolbar({
           {stalledOnly ? <Check aria-hidden="true" strokeWidth={2} className="size-4" /> : <span aria-hidden="true" className="size-1.5 rounded-full bg-status-amber" />}
           {t("stalledOnly")}
           {stalledCount === null ? (
-            <span aria-hidden="true" className="h-3 w-4 rounded-sm bg-current opacity-20 motion-safe:animate-pulse" />
+            <span aria-hidden="true" className={cn("h-3 w-4 rounded-sm bg-current opacity-20", !failed && "motion-safe:animate-pulse")} />
           ) : (
             <span className="font-mono text-xs tabular-nums opacity-80">{format.number(stalledCount)}</span>
           )}
