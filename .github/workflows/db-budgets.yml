@@ -11,6 +11,8 @@
 # 200,000 ledger rows, inventory, sales, share, the 30k and 50k lead imports, the queue, files and stock concurrency
 # timings), then the 5,000-row stock sheet import (supabase/tests/perf_stock_import.sql). Fake data made on the runner
 # only; no secret, no Supabase project, nothing leaves the runner but the log artifact. Never production.
+# The run summary is a budget table (scripts/db-budget-table.mjs: label | measured | budget | OK/MISS, plus any line
+# that mentions a budget but could not be read); the last step fails the job when a budget is missed.
 name: db-budgets
 on:
   workflow_dispatch:
@@ -54,15 +56,20 @@ jobs:
             $PSQL -f supabase/tests/perf_stock_import.sql
             su postgres -c "$BIN/pg_ctl -D $WORK/data -m immediate stop" >/dev/null
           ' 2>&1 | tee "$RUNNER_TEMP/stock-import-perf.log"
-      - name: Summary (budget lines)
+      - name: Summary (budget table)
+        # scripts/db-budget-table.mjs: one row per budget (label | measured | budget | OK/MISS) and every line that
+        # mentions a budget but could not be read. Written even when a step above failed; never fails itself.
         if: always()
         run: |
+          set +e
+          node scripts/db-budget-table.mjs "$RUNNER_TEMP/db-perf.log" "$RUNNER_TEMP/stock-import-perf.log" \
+            > "$RUNNER_TEMP/budget-table.md"
+          echo "Budget table exit code: $?"
           {
             echo "## Database budgets on $(lsb_release -ds), $(nproc) cores"
-            echo '```'
-            grep -hiE "budget|timing|p95|p50| ms|sizes:" "$RUNNER_TEMP/db-perf.log" "$RUNNER_TEMP/stock-import-perf.log" | head -400 || true
-            echo '```'
+            cat "$RUNNER_TEMP/budget-table.md"
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -70,4 +77,8 @@ jobs:
           path: |
             ${{ runner.temp }}/db-perf.log
             ${{ runner.temp }}/stock-import-perf.log
+            ${{ runner.temp }}/budget-table.md
           retention-days: 30
+      - name: Fail on a missed budget
+        # Exit 1: a measure over its budget or an "OVER BUDGET" line; exit 2: a log missing or no budget line found.
+        run: node scripts/db-budget-table.mjs "$RUNNER_TEMP/db-perf.log" "$RUNNER_TEMP/stock-import-perf.log" > /dev/null
