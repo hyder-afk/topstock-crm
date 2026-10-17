@@ -20,8 +20,8 @@ passes on Day 8.
 - **Dev project**: fake data only, the lead checks return 0; advisors 0 ERROR. (Before PR #19: 14 MB, main's migrations
   up to Team. Now, re-read after the Day 6 and 7 deploy: all migrations, 16.6 MB, only the accepted WARNs; see
   [`dev-checks.md`](dev-checks.md), last section.)
-- **Database budgets on a GitHub runner**: workflow prepared (`db-budgets`); the one manual run is still open (it needs
-  the workflow on main, which it now is). Not a Gate 1 condition.
+- **Database budgets on a GitHub runner**: workflow `db-budgets` ran green on run 38983135615 but could not fail on a
+  miss; the budget table and fail-on-miss came after (`docs/evidence/db-budgets.md`). Not a Gate 1 condition.
 
 ## Deliverables
 
@@ -34,7 +34,7 @@ passes on Day 8.
 | 5 | Day 5a mutation rows 64 to 73 re-run | `mutations.md` | 10 of 10 caught; row 58 back to its documented NOT CAUGHT (the fixture fix) |
 | 6 | Dev data checks (item 15), size query (item 16), dev advisors | `dev-checks.sql`, `dev-checks.md` | 0 wrong (one check read by hand: the read-only role cannot run private functions); 14 MB; Security 0 ERROR, 2 accepted WARN; Performance 0 ERROR/WARN (before PR #19; now: 16.6 MB, Security 0 ERROR and 4 accepted WARN, Performance INFO only, `dev-checks.md` last section) |
 | 7 | Spike S5 from Vercel's docs; Day 1 residuals; leaked-password WARN | `spike-s5.md`; sections below | answered; restated; recorded as accepted |
-| 8 | Database budgets on a GitHub runner | `.github/workflows/db-budgets.yml` | prepared, runs when CI billing is back (manual start only) |
+| 8 | Database budgets on a GitHub runner | `.github/workflows/db-budgets.yml` | ran green on run 38983135615 but could not fail on a miss; budget table and fail-on-miss added on `db-budgets-table` (`docs/evidence/db-budgets.md`); next manual run pending Haider (manual start only) |
 | 9 | This README, log rows | here, `docs/log.md` | |
 
 ## What changed in code (commits on `day7d-local`)
