@@ -6,7 +6,7 @@
 # test (Day 5c), the role-change concurrency test (Team screen), the stock engine attack test and its concurrency test
 # (Day 6a), the inventory reads attack test (Day 6b), the stock sheet import attack and concurrency tests (Day 6c), the
 # sales tests (Day 6d), the client stock link tests (Day 6e), the Day 7a attack test, the Day 7c orphan sweeper test,
-# the security digest test (section 8 item 43), the Gate 1 catalog checks (Day 7d), the Supabase advisors (splinter)
+# the security digest test (section 8 item 43), the Analytics v1 attack test (P1), the Gate 1 catalog checks (Day 7d), the Supabase advisors (splinter)
 # and lint the SQL functions. On pull requests, first check that every migration the PR adds sorts after main's newest
 # (Day 5 D35: deploy-dev-db pushes without --include-all).
 name: db
@@ -128,6 +128,8 @@ jobs:
         run: bash scripts/ci-report.sh "Day 7c orphan sweeper attack tests (service-role only, candidates, counts-only audit row)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/sweeper_attack.sql
       - name: Security digest attack tests (section 8 item 43; reader role only, counts only, read-only call)
         run: bash scripts/ci-report.sh "Security digest attack tests (section 8 item 43)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/digest_attack.sql
+      - name: Analytics attack tests (Analytics v1 P1; scope, exact figures, Paris days and clock changes, no text)
+        run: bash scripts/ci-report.sh "Analytics attack tests (Analytics v1 P1)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/analytics_attack.sql
       - name: Gate 1 catalog checks (Day 7d; RLS and two-factor policy on every table, reviewed DEFINER list, no PUBLIC execute, dynamic SQL)
         run: bash scripts/ci-report.sh "Gate 1 catalog checks (Day 7d)" psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -X -q -v ON_ERROR_STOP=1 -f supabase/tests/gate1_attack.sql
       - name: Supabase security and performance advisors (fail on ERROR)
