@@ -301,10 +301,13 @@ test.describe("desktop", () => {
         w.__gone = [];
         new MutationObserver((list) => {
           for (const m of list) {
-            for (const n of m.addedNodes)
-              if (n instanceof HTMLElement && n.matches("[data-toast-leaving]")) w.__gone.push({ text: n.textContent ?? "", added: performance.now(), removed: null });
-            for (const n of m.removedNodes)
-              if (n instanceof HTMLElement && n.matches("[data-toast-leaving]")) w.__gone.forEach((g) => (g.removed ??= performance.now()));
+            // The leaving copy comes and goes with its own wrapper: look inside each node too.
+            const leaving = (n: Node) => (n instanceof HTMLElement ? (n.matches("[data-toast-leaving]") ? n : n.querySelector("[data-toast-leaving]")) : null);
+            for (const n of m.addedNodes) {
+              const el = leaving(n);
+              if (el) w.__gone.push({ text: el.textContent ?? "", added: performance.now(), removed: null });
+            }
+            for (const n of m.removedNodes) if (leaving(n)) w.__gone.forEach((g) => (g.removed ??= performance.now()));
           }
         }).observe(document.body, { childList: true, subtree: true });
       });

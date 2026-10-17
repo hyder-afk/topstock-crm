@@ -302,7 +302,11 @@ test("call_panel_pull_moves_the_whole_panel; past the threshold it asks, then a 
   await expect(panel(page)).toContainText("Calling Halles Tirées");
   await page.waitForTimeout(700); // the entrance settles
   const heading = panel(page).getByRole("heading").first();
-  const box = async () => (await panel(page).boundingBox())!;
+  // The panel's bottom edge: it is anchored at the bottom, and its height changes with its content ("Call not logged.").
+  const box = async () => {
+    const b = (await panel(page).boundingBox())!;
+    return { ...b, y: b.y + b.height };
+  };
   const rest = await box();
   // Pulls the header down by dy in slow, even steps (no flick), then holds or lets go.
   const pull = async (dy: number, release: boolean) => {
@@ -323,7 +327,7 @@ test("call_panel_pull_moves_the_whole_panel; past the threshold it asks, then a 
   const held = await box();
   const headingHeld = (await heading.boundingBox())!;
   expect(held.y - rest.y, "the panel follows the finger").toBeGreaterThan(30);
-  expect(headingHeld.y - held.y, "the header moves with the panel, not over it").toBeLessThan(40);
+  expect(headingHeld.y - (held.y - held.height), "the header moves with the panel, not over it").toBeLessThan(40);
   await page.mouse.up();
   await expect.poll(async () => Math.abs((await box()).y - rest.y), { message: "springs back home" }).toBeLessThan(1);
   await expect(panel(page)).toContainText("Calling Halles Tirées");
@@ -331,19 +335,20 @@ test("call_panel_pull_moves_the_whole_panel; past the threshold it asks, then a 
   await pull(240, true);
   await expect(panel(page)).toContainText("Call not logged.");
   await expect.poll(async () => Math.abs((await box()).y - rest.y)).toBeLessThan(1);
-  // Again: the panel carries on down, still opaque, out of view, then goes.
+  // Again, recording every frame from the release: the panel carries on down, still opaque, out of view, then goes.
+  await pull(240, false);
   await page.evaluate(() => {
     const w = window as unknown as { __throw: { top: number; opacity: number }[] };
     w.__throw = [];
-    const until = performance.now() + 1500;
+    const until = performance.now() + 2000;
     const tick = () => {
       const el = document.querySelector<HTMLElement>("[data-call-panel]");
       if (el) w.__throw.push({ top: el.getBoundingClientRect().top, opacity: Number(getComputedStyle(el).opacity) });
-      if (performance.now() < until) requestAnimationFrame(tick);
+      if (el && performance.now() < until) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   });
-  await pull(240, true);
+  await page.mouse.up();
   await expect(panel(page)).toHaveCount(0);
   await page.waitForTimeout(400);
   const frames = await page.evaluate(() => (window as unknown as { __throw: { top: number; opacity: number }[] }).__throw);
