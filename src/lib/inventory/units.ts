@@ -23,19 +23,50 @@ export function pallets(pieces: number, piecesPerCarton: number, cartonsPerPalle
   return Math.round((pieces / piecesPerCarton / cartonsPerPallet) * 10) / 10;
 }
 
-/** Reads a whole number typed by a person ("1 200", "1200", "1.200" in French): digits only after spaces go. */
+/**
+ * Reads a whole number typed by a person ("1 200", "1200", "1.200" or "1,200"): a dot, comma or apostrophe only as a
+ * thousands separator, so each one is followed by exactly three digits. "1.5" or "12,50" is refused (null), never read
+ * as 15 or 1250 (bugs audit L4).
+ */
 export function parseWhole(text: string): number | null {
-  const cleaned = text.replace(/[\s   '.,]/g, "");
-  if (!/^\d{1,9}$/.test(cleaned)) return null;
-  return Number(cleaned);
+  const cleaned = text.replace(/[\s\u00a0\u202f]/g, "");
+  if (!/^\d+$/.test(cleaned) && !/^\d{1,3}([.,'])\d{3}(?:\1\d{3})*$/.test(cleaned)) return null;
+  const digits = cleaned.replace(/[.,']/g, "");
+  if (!/^\d{1,9}$/.test(digits)) return null;
+  return Number(digits);
 }
 
-/** Reads a price per piece typed by a person: "2,50", "2.50", "€2.50", "2,5 €"; at most 4 decimals. */
-export function parsePrice(text: string): number | null {
-  const cleaned = text.replace(/[\s  €]|EUR/gi, "").replace(",", ".");
-  if (!/^\d{1,7}(\.\d{1,4})?$/.test(cleaned)) return null;
-  const n = Number(cleaned);
+/**
+ * Reads a price per piece typed by a person: "2,50", "2.50", "€2.50", "2,5 €", "1 250"; at most 4 decimals. One
+ * separator followed by 1, 2 or 4 digits is the decimal point whatever the language. Followed by exactly 3 digits it
+ * is ambiguous ("1,250": €1,250 in English, €1.25 in French), so it reads as decimals only with the language's own
+ * decimal mark (the dot in English, the comma in French) and is refused (null) otherwise, never silently misread (bugs
+ * audit L4). Thousands with the language's grouping and decimal marks ("1,250.50", "1.250,50") are read too.
+ */
+export function parsePrice(text: string, locale: string): number | null {
+  const fr = locale.toLowerCase().startsWith("fr");
+  const [dec, grp] = fr ? [",", "."] : [".", ","];
+  const cleaned = text.replace(/[\s\u00a0\u202f€]|EUR/gi, "");
+  let plain: string | null = null;
+  const one = /^(\d+)([.,])(\d{1,4})$/.exec(cleaned);
+  if (/^\d+$/.test(cleaned)) plain = cleaned;
+  else if (one) plain = one[3].length === 3 && one[2] === grp ? null : `${one[1]}.${one[3]}`;
+  else {
+    const g = grp === "." ? "\\." : ",";
+    const d = dec === "." ? "\\." : ",";
+    const grouped = new RegExp(`^(\\d{1,3}(?:${g}\\d{3})+)(?:${d}(\\d{1,4}))?$`).exec(cleaned);
+    if (grouped) plain = grouped[1].split(grp).join("") + (grouped[2] ? `.${grouped[2]}` : "");
+  }
+  if (plain === null || !/^\d{1,7}(\.\d{1,4})?$/.test(plain)) return null;
+  const n = Number(plain);
   return n <= 1_000_000 ? n : null;
+}
+
+/** A stored price as the person's language writes it, for a field parsePrice reads back: 2.125 is "2,125" in French. */
+export function priceInput(n: number | null | undefined, locale: string): string {
+  if (n === null || n === undefined) return "";
+  const text = String(Number(n));
+  return locale.toLowerCase().startsWith("fr") ? text.replace(".", ",") : text;
 }
 
 /** The availability bar's fill (design 10.1): available pieces against 3 × the reorder point, 0 to 1. */
