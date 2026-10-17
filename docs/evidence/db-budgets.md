@@ -167,4 +167,4 @@ Not measurements, skipped: 40 PLAN header lines.
 | Workflow steps simulated locally (`RUNNER_TEMP`, `GITHUB_STEP_SUMMARY` set) | summary step exit 0 with the table written; fail step exit 1; with the stock log removed the summary names it and the fail step still fails |
 | Semgrep `p/github-actions` + `p/javascript` on the workflow and the script | no findings (run by the advisor; the registry is blocked by this session's proxy, so the builder could not rerun it) |
 | gitleaks | not installed here; runs in CI |
-| /security-review | see PR |
+| /security-review | Branch diff against origin/main: no findings at confidence 8+. Checked: the only `${{ runner.temp }}` interpolation sits outside `run:` blocks; the trigger stays `workflow_dispatch`; `permissions: contents: read` and both SHA pins are unchanged; no secrets; the script imports only `node:fs` and `node:path`, reads only the paths it is given and writes to stdout; log text reaches the summary through `cat` only, with table cells escaped |
