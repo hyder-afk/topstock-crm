@@ -911,3 +911,42 @@ test("scope_not_read_before_shows_skeleton_then_error_with_retry (the board neve
   expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
   await context.close();
 });
+
+test("failed_move_rolls_back_its_own_card_only: another deal moved meanwhile stays where it went (bugs audit M5)", async ({ browser }) => {
+  const failing = makeDeal({ title: `Fails ${run}` });
+  const other = makeDeal({ title: `Lands ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  // The first deal's move is held, then cut. Next.js sends server actions one at a time, so the second deal's move goes
+  // out only once the first has failed; it is slowed down here, so the board can be read while it is on its way.
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route((url) => url.pathname === "/pipeline", async (route) => {
+    const r = route.request();
+    if (r.method() !== "POST" || !r.headers()["next-action"]) return route.continue();
+    if (r.postData()?.includes(failing)) {
+      await held;
+      return route.abort("failed");
+    }
+    if (r.postData()?.includes(other)) await new Promise((done) => setTimeout(done, 4000));
+    return route.continue();
+  });
+  await mainOf(page, failing).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(column(page, "qualified").locator(`[data-deal-card="${failing}"]`)).toBeVisible();
+  await mainOf(page, other).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(column(page, "qualified").locator(`[data-deal-card="${other}"]`)).toBeVisible();
+  release();
+  await expect(toast(page)).toContainText("Couldn’t move the deal");
+  // Only the failed deal goes back. The other one stays in Qualified while its own move is on its way (the snapshot of
+  // the whole board, taken before the first move, put it back in Lead until its answer came).
+  await expect(column(page, "lead").locator(`[data-deal-card="${failing}"]`)).toBeVisible();
+  await expect(column(page, "lead").locator(`[data-deal-card="${other}"]`)).toHaveCount(0, { timeout: 1000 });
+  await expect(column(page, "qualified").locator(`[data-deal-card="${other}"]`)).toBeVisible({ timeout: 1000 });
+  await expect.poll(() => stageOf(other), { timeout: 15_000 }).toBe("qualified");
+  await expect(column(page, "qualified").locator(`[data-deal-card="${other}"]`)).toBeVisible();
+  expect(stageOf(failing)).toBe("lead");
+  expect(errors.filter((e) => !/ERR_FAILED|Failed to fetch|Failed to load resource/.test(e))).toEqual([]);
+  await context.close();
+});

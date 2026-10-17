@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import {
   removeTask,
+  restoreTask,
   tasksKey,
   type TaskPageWithCounts,
 } from "@/components/tasks/use-tasks";
@@ -71,5 +72,23 @@ test("a list read in flight does not bring back a task removed meanwhile", async
   await new Promise((r) => setTimeout(r, 150));
   expect(shown(client)).toEqual(["C"]);
   stop();
+  client.clear();
+});
+
+// Bugs audit M5: A and B ticked one after the other (B is off the lists while its action waits behind A's), then A's
+// fails. Only A comes back, at its place; putting back the whole lists from A's snapshot brought B back on its old tab.
+test("a failed tick puts back its own task only, where it was", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(tasksKey("mine", "today"), { pages: [page(["A", "B", "C"])], pageParams: [null] });
+  client.setQueryData(tasksKey("mine", "done"), { pages: [page(["D"])], pageParams: [null] });
+  const snapA = await removeTask(client, "A");
+  await removeTask(client, "B");
+  expect(shown(client)).toEqual(["C"]);
+  restoreTask(client, snapA, "A");
+  expect(shown(client)).toEqual(["A", "C"]);
+  // Already back (a refetch brought it): not added twice; a list that never held it is left alone.
+  restoreTask(client, snapA, "A");
+  expect(shown(client)).toEqual(["A", "C"]);
+  expect(client.getQueryData<InfiniteData<TaskPageWithCounts>>(tasksKey("mine", "done"))?.pages[0].rows.map((r) => r.id)).toEqual(["D"]);
   client.clear();
 });

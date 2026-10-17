@@ -10,7 +10,7 @@ import { useStepUp } from "@/components/auth/step-up-dialog";
 import { useClientNow } from "@/components/lead/local-time";
 import { QuickAdd, type QuickTask } from "@/components/tasks/quick-add";
 import { TaskRow, type RowActions } from "@/components/tasks/task-row";
-import { insertTask, prefetchTasks, refreshTasks, removeTask, restoreLists, useTaskList, type TaskPageWithCounts } from "@/components/tasks/use-tasks";
+import { insertTask, prefetchTasks, refreshTasks, removeTask, restoreTask, useTaskList, type TaskPageWithCounts } from "@/components/tasks/use-tasks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { TabList, TabPanel } from "@/components/ui/tabs";
@@ -119,7 +119,7 @@ export function TasksWorkspace({
           const snapshot = await removeTask(queryClient, task.id);
           const res = await call(setTaskDone({ id: task.id, on }));
           if (!res.ok) {
-            restoreLists(queryClient, snapshot);
+            restoreTask(queryClient, snapshot, task.id);
             failed();
             fail(res);
             return;
@@ -141,7 +141,7 @@ export function TasksWorkspace({
           const snapshot = await removeTask(queryClient, task.id);
           const res = await call(setTaskCancelled({ id: task.id, on: true }));
           if (!res.ok) {
-            restoreLists(queryClient, snapshot);
+            restoreTask(queryClient, snapshot, task.id);
             fail(res);
             return;
           }
