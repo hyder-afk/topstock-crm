@@ -29,7 +29,7 @@ function Chips<T extends string>({ label, value, options, onChange }: { label: s
           aria-checked={value === o.id}
           onClick={() => onChange(o.id)}
           className={cn(
-            "min-h-11 shrink-0 snap-start rounded-full px-4 text-sm whitespace-nowrap transition-[background-color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+            "min-h-11 shrink-0 snap-start rounded-full px-4 text-sm whitespace-nowrap transition-[background-color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
             value === o.id ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
           )}
         >

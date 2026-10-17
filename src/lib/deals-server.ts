@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BOARD_PAGE, type Board, type BoardSummary, type Cursor, type DealCard, type DealDetail, type StageKey } from "@/lib/deals";
+import { BOARD_PAGE, type Board, type BoardOrder, type BoardSummary, type Cursor, type DealCard, type DealDetail, type StageKey } from "@/lib/deals";
 
 // The deal reads shared by the pipeline page (first paint, server-rendered as a promise: design D32) and the GET routes
 // (design 4.5). Each answers the database's rows, "invalid" when the database refused the request itself (a bad cursor,
@@ -13,9 +13,12 @@ function failure(error: { code?: string | null } | null): ReadFailure {
   return null;
 }
 
-/** The board's first paint in one call (pipeline_board): a rep asking for the team silently gets their own deals. */
-export async function fetchBoard(supabase: SupabaseClient, scope: "team" | "mine", owner: string | null): Promise<Board | ReadFailure> {
-  const { data, error } = await supabase.rpc("pipeline_board", { p_scope: scope, p_owner: owner, p_per_stage: BOARD_PAGE });
+/**
+ * The board's first paint in one call (pipeline_board): a rep asking for the team silently gets their own deals. "oldest"
+ * starts each open column with the deals longest in their stage.
+ */
+export async function fetchBoard(supabase: SupabaseClient, scope: "team" | "mine", owner: string | null, order: BoardOrder = "recent"): Promise<Board | ReadFailure> {
+  const { data, error } = await supabase.rpc("pipeline_board", { p_scope: scope, p_owner: owner, p_per_stage: BOARD_PAGE, p_order: order });
   if (error) return failure(error);
   return data as Board;
 }

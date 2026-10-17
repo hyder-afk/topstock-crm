@@ -408,6 +408,46 @@ test("failed_toggle_reverts: a toggle that cannot be sent puts the row back with
   await context.close();
 });
 
+test("failed_tick_puts_back_its_own_row_only: a task ticked meanwhile stays off the list (bugs audit M5)", async ({ browser }) => {
+  sql(`update public.tasks set cancelled_at = now() where assignee_id = '${userId(adminEmail)}' and done_at is null and cancelled_at is null`);
+  const held = makeTask(adminEmail, "Held tick task", { date: todayIn("Europe/Paris") });
+  const second = makeTask(adminEmail, "Second tick task", { date: todayIn("Europe/Paris") });
+  makeTask(adminEmail, "Third tick task", { date: todayIn("Europe/Paris") });
+  const { context, page } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openTasks(page);
+  // The first tick is held, then cut. Next.js sends server actions one at a time, so the second tick goes out only once
+  // the first has failed; it is slowed down here, so the list can be read while it is on its way.
+  let release = () => {};
+  const hold = new Promise<void>((r) => (release = r));
+  const onTasks = (u: URL) => u.pathname.startsWith("/tasks");
+  await page.route(onTasks, async (route: Route) => {
+    const r = route.request();
+    if (r.method() !== "POST" || !r.headers()["next-action"]) return route.continue();
+    if (r.postData()?.includes(held)) {
+      await hold;
+      return route.abort();
+    }
+    if (r.postData()?.includes(second)) await new Promise((done) => setTimeout(done, 4000));
+    return route.continue();
+  });
+  await page.getByRole("checkbox", { name: "Mark “Held tick task” done" }).click();
+  await expect(row(page, "Held tick task")).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Mark “Second tick task” done" }).click();
+  await expect(row(page, "Second tick task")).toHaveCount(0);
+  release();
+  await expect(toast(page)).toContainText(/connection|try again|Couldn’t/i);
+  // Only the failed task comes back; the second stays off (the first tick's snapshot of every list brought it back
+  // until its own answer came).
+  await expect(row(page, "Held tick task")).toBeVisible();
+  await expect(row(page, "Second tick task")).toHaveCount(0, { timeout: 1000 });
+  await expect(row(page, "Third tick task")).toBeVisible();
+  await expect.poll(() => sql(`select done_at is not null from public.tasks where id = '${second}'`), { timeout: 15_000 }).toBe("t");
+  await expect(row(page, "Second tick task")).toHaveCount(0);
+  expect(sql(`select done_at is null from public.tasks where id = '${held}'`)).toBe("t");
+  await page.unroute(onTasks);
+  await context.close();
+});
+
 test("enter_on_task_without_lead: Enter on a task's check never ticks it (X or Space do)", async ({ browser }) => {
   sql(`update public.tasks set cancelled_at = now() where assignee_id = '${userId(adminEmail)}' and done_at is null and cancelled_at is null`);
   makeTask(adminEmail, "Renew the warehouse insurance", { date: todayIn("Europe/Paris") });

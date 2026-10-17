@@ -222,7 +222,8 @@ export function LeadsWorkspace({
       <StatePanel title={t("emptyTitle")} text={isAdmin ? t("emptyBody") : t("emptyBodyRep")} icon>
         <div className="flex flex-wrap gap-3">
           {isAdmin ? (
-            <Link href="/leads/import" className={buttonVariants()}>
+            // The header's Add is this screen's one red primary action, so the empty state's Import is the secondary.
+            <Link href="/leads/import" className={buttonVariants({ variant: "quiet" })}>
               <Upload aria-hidden="true" strokeWidth={2} className="size-4" />
               {t("importFromSheet")}
             </Link>

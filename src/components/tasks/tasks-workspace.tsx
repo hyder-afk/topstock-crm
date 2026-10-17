@@ -10,7 +10,7 @@ import { useStepUp } from "@/components/auth/step-up-dialog";
 import { useClientNow } from "@/components/lead/local-time";
 import { QuickAdd, type QuickTask } from "@/components/tasks/quick-add";
 import { TaskRow, type RowActions } from "@/components/tasks/task-row";
-import { insertTask, prefetchTasks, refreshTasks, removeTask, restoreLists, useTaskList, type TaskPageWithCounts } from "@/components/tasks/use-tasks";
+import { insertTask, prefetchTasks, refreshTasks, removeTask, restoreTask, useTaskList, type TaskPageWithCounts } from "@/components/tasks/use-tasks";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, phoneSheet } from "@/components/ui/dialog";
 import { TabList, TabPanel } from "@/components/ui/tabs";
@@ -119,7 +119,7 @@ export function TasksWorkspace({
           const snapshot = await removeTask(queryClient, task.id);
           const res = await call(setTaskDone({ id: task.id, on }));
           if (!res.ok) {
-            restoreLists(queryClient, snapshot);
+            restoreTask(queryClient, snapshot, task.id);
             failed();
             fail(res);
             return;
@@ -141,7 +141,7 @@ export function TasksWorkspace({
           const snapshot = await removeTask(queryClient, task.id);
           const res = await call(setTaskCancelled({ id: task.id, on: true }));
           if (!res.ok) {
-            restoreLists(queryClient, snapshot);
+            restoreTask(queryClient, snapshot, task.id);
             fail(res);
             return;
           }
@@ -379,7 +379,7 @@ export function TasksWorkspace({
                 onClick={() => setScope(s)}
                 onPointerEnter={() => prefetchTasks(queryClient, s, tab)}
                 className={cn(
-                  "min-h-11 rounded-[10px] px-3.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+                  "min-h-11 rounded-[10px] px-3.5 text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
                   scope === s ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                 )}
               >

@@ -36,7 +36,7 @@ function Chips<T extends string>({ label, options, value, onChange, word }: { la
             aria-checked={value === o}
             onClick={() => onChange(o)}
             className={cn(
-              "min-h-11 rounded-md border px-3 text-sm transition-[color,background-color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+              "min-h-11 rounded-md border px-3 text-sm transition-[color,background-color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
               value === o ? "border-foreground bg-foreground text-background" : "border-border bg-background text-foreground hover:bg-muted",
             )}
           >

@@ -19,6 +19,7 @@ import type { ActionFailure, ActionResult } from "@/lib/db-errors";
 import {
   DEAL_TOAST_SECONDS,
   type Board,
+  type BoardOrder,
   type DealCard,
   type DealDetail,
   type Fulfilment,
@@ -32,23 +33,24 @@ import {
   type UpdateResult,
 } from "@/lib/deals";
 import { formatMoney } from "@/lib/money";
-import { applyMove, findCard, removeCard, replaceCard, restoreFromLost } from "@/lib/pipeline-cache";
+import { applyMove, findCard, removeCard, replaceCard, restoreFromLost, rollbackCard } from "@/lib/pipeline-cache";
 import { boardKey, dealKey, fetchBoardClient, leadDealsKey } from "@/lib/prefetch";
 import { clearLastMove, lastUndoableMove, setLastMove, type LastMove } from "@/lib/last-move";
 
-// The pipeline's data and writes (Day 5 design 7.5). The board lives in the query cache under boardKey(scope, owner):
+// The pipeline's data and writes (Day 5 design 7.5). The board lives in the query cache under boardKey(scope, owner, order):
 // seeded from the server's promise, refetched on focus and every 30 s while the tab is visible. Every stage change is a
 // MutationObserver with scope "deal-<id>" (spike S12: TanStack runs one scope's mutations in series, other deals in
 // parallel), so quick keys on one card queue up; each mutationFn reads the deal's latest version when it runs. The move
-// shows at once (applyMove); a failure puts the snapshot back and drops the moves queued behind it on that deal (TanStack
-// does not cancel them: S12); a conflict (a result, D5) puts the card where it really is and says who moved it.
+// shows at once (applyMove); a failure puts that deal back as the snapshot had it and drops the moves queued behind it on
+// that deal (TanStack does not cancel them: S12); a conflict (a result, D5) puts the card where it really is and says who
+// moved it.
 
-export type ScopeOwner = { scope: "team" | "mine"; owner: string | null };
+export type ScopeOwner = { scope: "team" | "mine"; owner: string | null; order: BoardOrder };
 
 export function useBoard(key: ScopeOwner, initial: Board | undefined, extraPages: boolean) {
   return useQuery({
-    queryKey: boardKey(key.scope, key.owner),
-    queryFn: () => fetchBoardClient(key.scope, key.owner),
+    queryKey: boardKey(key.scope, key.owner, key.order),
+    queryFn: () => fetchBoardClient(key.scope, key.owner, key.order),
     initialData: initial,
     // The server's first paint is fresh for the usual 30 s; then focus and the 30 s timer refresh it. Once "Show more"
     // pages are loaded, the timer stops (a refetch would drop them); focus still refreshes.
@@ -91,10 +93,19 @@ function snapshot(qc: QueryClient, card: DealCard): Snapshot {
   };
 }
 
-function restore(qc: QueryClient, card: DealCard, snap: Snapshot) {
-  for (const [key, data] of snap.board) qc.setQueryData(key, data);
+/**
+ * A failed change puts back this deal only, as the snapshot had it; other deals keep what was done since (a move on deal
+ * B made while A's was on its way stays where it went: Next.js sends B's only after A's failed, so its answer comes
+ * later). `lostReason`: the failed change was a loss.
+ */
+function restore(qc: QueryClient, card: DealCard, snap: Snapshot, lostReason?: LostReason) {
+  for (const [key, before] of snap.board) {
+    const now = qc.getQueryData<Board>(key);
+    if (before && now) qc.setQueryData<Board>(key, rollbackCard(now, before, card.id, lostReason));
+  }
   qc.setQueryData(dealKey(card.id), snap.deal);
-  qc.setQueryData(leadDealsKey(card.company_id), snap.leadDeals);
+  const was = snap.leadDeals?.find((c) => c.id === card.id);
+  qc.setQueryData<DealCard[]>(leadDealsKey(card.company_id), (old) => (old && was ? old.map((c) => (c.id === card.id ? was : c)) : (old ?? snap.leadDeals)));
 }
 
 /** The server's card everywhere the deal shows (every board key, the deal sheet, the lead's Deals tab). */
@@ -312,7 +323,7 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
         onError: (e, _v, s) => {
           if (e instanceof Superseded) return; // an earlier move on this deal failed: its rollback covers this one too
           generation.set(id, (generation.get(id) ?? 0) + 1);
-          if (s) restore(qc, card, s);
+          if (s) restore(qc, card, s, ch.kind === "lose" ? ch.reason : undefined);
           const failure: ActionFailure = isFailure(e) ? e : { ok: false, error: "unavailable" };
           toast.show(failure.error === "unavailable" ? tPipe("moveFailed") : errorText(failure));
         },
@@ -337,7 +348,9 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
     async (card: DealCard, fields: UpdateField[], values: { title?: string | null; value?: string | null; expectedClose?: string | null; fulfilment?: Fulfilment | null; contactId?: string | null; ownerId?: string | null }): Promise<UpdateResult | null> => {
       let res: ActionResult<UpdateResult>;
       try {
-        res = await updateDeal({ id: card.id, version: versions.get(card.id) ?? card.version, fields, ...values });
+        // The newer of this tab's last answer and the card on screen: a colleague's edit read since (the sheet, a
+        // refetch) is newer than the version a move of ours left in the map, which would be a false conflict.
+        res = await updateDeal({ id: card.id, version: Math.max(versions.get(card.id) ?? 0, card.version), fields, ...values });
       } catch {
         res = { ok: false, error: "unavailable" };
       }

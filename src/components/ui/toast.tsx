@@ -17,7 +17,10 @@ export const useToast = () => useContext(ToastContext);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const t = useTranslations("Common");
   const [toast, setToast] = useState<Toast | null>(null);
-  const [paused, setPaused] = useState(false);
+  // The toast the pointer or the focus is on (its timer waits). Kept by id: pressing Undo or Dismiss removes the box
+  // under the pointer, so no mouseleave or blur ever comes, and a plain flag stayed on and froze every later toast.
+  const [pausedId, setPausedId] = useState<number | null>(null);
+  const paused = toast !== null && pausedId === toast.id;
   const seq = useRef(0);
   // Where the focus was before it entered the toast: an action pressed from the keyboard unmounts the toast with its
   // focused button, so the focus goes back there instead of to the top of the page.
@@ -39,14 +42,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <div
       key={toast.id}
       data-toast=""
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      onMouseEnter={() => setPausedId(toast.id)}
+      onMouseLeave={() => setPausedId(null)}
       onFocus={(e) => {
-        setPaused(true);
+        setPausedId(toast.id);
         const from = e.relatedTarget;
         if (from instanceof HTMLElement && !e.currentTarget.contains(from)) returnTo.current = from;
       }}
-      onBlur={() => setPaused(false)}
+      onBlur={() => setPausedId(null)}
       className="animate-page pointer-events-auto flex max-w-[min(560px,100%)] items-center gap-2 rounded-lg bg-primary py-2 pr-2 pl-4 text-sm text-primary-foreground shadow-[0_12px_32px_rgb(14_14_16/0.24)]"
     >
       <span className="min-w-0 flex-1">{toast.message}</span>
@@ -70,7 +73,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         type="button"
         aria-label={t("dismiss")}
         onClick={() => setToast(null)}
-        className="grid size-11 place-items-center rounded-md opacity-80 transition-[opacity,transform] duration-150 hover:opacity-100 active:scale-[0.97] sm:size-9"
+        className="grid size-11 place-items-center rounded-md opacity-80 transition-[opacity,transform,scale] duration-150 hover:opacity-100 active:scale-[0.97] sm:size-9"
       >
         <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
       </button>

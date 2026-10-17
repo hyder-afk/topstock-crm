@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { releaseClaims, renewClaims, startQueue, undoOutcome } from "@/app/(app)/leads/queue/actions";
-import { refreshLead } from "@/components/activity/use-activities";
+import { refreshDeals, refreshLead } from "@/components/activity/use-activities";
 import { fetchLead } from "@/components/leads/use-leads";
 import { refreshTasks } from "@/components/tasks/use-tasks";
 import type { CallOutcome, LoggedActivity } from "@/lib/activities";
@@ -318,6 +318,8 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
         refreshLead(queryClient, item.input.leadId);
         refreshTasks(queryClient, item.input.leadId);
         const logged = res.data.logged;
+        // An Interested or Book meeting call may have opened a deal (Day 5b): the board and the lead's Deals tab show it.
+        if (logged.deal || logged.deal_id) refreshDeals(queryClient, item.input.leadId);
         const toastable = !!(card && logged.undo_until);
         // The next card first (a lost card is said in the "Logged" toast, or on its own when there is none).
         const lost = res.data.claim ? take(res.data.claim, next?.keep ?? null, sentAt, session, toastable) : false;
@@ -435,6 +437,8 @@ export function useQueue(initial: Settings, onEvent: (e: QueueEvent) => void) {
       }
       refreshLead(queryClient, last.card.id);
       refreshTasks(queryClient, last.card.id);
+      // The deal the call opened went with it, or stayed (Day 5b).
+      if (res.data.undone.deal) refreshDeals(queryClient, last.card.id);
       if (res.data.claimed) {
         excludeRef.current = excludeRef.current.filter((id) => id !== last.card.id);
         // Undone from the start or empty screen: the queue runs again from this card (a session of its own).

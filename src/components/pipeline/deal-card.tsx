@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useContext, useId, useRef, useState } from "react";
+import { createContext, memo, useContext, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
 import { motion, useReducedMotion } from "motion/react";
@@ -10,11 +10,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/compon
 import { DealMenuItems, type DealMenuActions } from "@/components/pipeline/deal-menu";
 import { useShell } from "@/components/shell/keyboard-layer";
 import { cardKeyAction, type CardKeyAction } from "@/components/pipeline/use-board-keys";
-import { elapsedDays, nextStage, type DealCard as Card } from "@/lib/deals";
+import { closeDatePassed, elapsedDays, nextStage, type DealCard as Card } from "@/lib/deals";
 import { personName } from "@/lib/leads";
 import { formatMoney } from "@/lib/money";
 import { springs } from "@/lib/motion";
 import { isTyping } from "@/lib/shortcuts";
+import { browserZone } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 // One deal on the board (Day 5 design 7.2): li > article, 120 px at 1440 (the column's li carries the neighbours' layout animation; the article carries the settle,
@@ -32,6 +33,11 @@ export type BoardHandlers = {
   onFocusCard: (id: string) => void;
 };
 export const BoardHandlersContext = createContext<BoardHandlers | null>(null);
+
+// The viewer's zone for "today" (the server render and hydration use Paris, the team's zone; then the browser's).
+const noop = () => () => {};
+const viewerZone = () => browserZone() ?? "Europe/Paris";
+const parisZone = () => "Europe/Paris";
 
 function initials(first: string | null, last: string | null) {
   return `${(first ?? "").trim().charAt(0)}${(last ?? "").trim().charAt(0)}`.toUpperCase() || "·";
@@ -60,6 +66,7 @@ export const DealCardView = memo(function DealCardView({
   const format = useFormatter();
   const locale = useLocale();
   const shell = useShell();
+  const zone = useSyncExternalStore(noop, viewerZone, parisZone);
   const handlers = useContext(BoardHandlersContext);
   const [menuOpen, setMenuOpen] = useState(false);
   const domId = useId();
@@ -74,8 +81,7 @@ export const DealCardView = memo(function DealCardView({
   const owner = personName({ first_name: card.owner_first_name, last_name: card.owner_last_name });
   const days = elapsedDays(card.stage_entered_at, now);
   const next = card.can_edit ? nextStage(card.stage) : null;
-  const today = new Date(now).toISOString().slice(0, 10);
-  const closePassed = card.status === "open" && card.expected_close !== null && card.expected_close < today;
+  const closePassed = closeDatePassed(card, now, zone);
   const dateShort = (iso: string) => format.dateTime(new Date(iso), { day: "numeric", month: "short" });
   const closeDate = (d: string) => format.dateTime(new Date(`${d}T12:00:00Z`), { day: "numeric", month: "short", timeZone: "UTC" });
 

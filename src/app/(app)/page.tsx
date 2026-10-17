@@ -59,7 +59,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         <Suspense fallback={<HomeBodySkeleton />}>
           <HomeView initialDeal={deal.success ? deal.data : null} teamPromise={teamPromise} canAssign={canSwitch} stepUpSeconds={stepUpSecondsLeft(claims)} />
         </Suspense>
-        <p className="mt-6 text-sm text-muted-foreground" translate="no">
+        <p className="mt-6 text-sm text-muted-foreground" lang="en" translate="no">
           {t("tagline")}
         </p>
       </div>

@@ -5,7 +5,9 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import {
+  refreshTasks,
   removeTask,
+  restoreTask,
   tasksKey,
   type TaskPageWithCounts,
 } from "@/components/tasks/use-tasks";
@@ -71,5 +73,36 @@ test("a list read in flight does not bring back a task removed meanwhile", async
   await new Promise((r) => setTimeout(r, 150));
   expect(shown(client)).toEqual(["C"]);
   stop();
+  client.clear();
+});
+
+// Bugs audit M5: A and B ticked one after the other (B is off the lists while its action waits behind A's), then A's
+// fails. Only A comes back, at its place; putting back the whole lists from A's snapshot brought B back on its old tab.
+test("a failed tick puts back its own task only, where it was", async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(tasksKey("mine", "today"), { pages: [page(["A", "B", "C"])], pageParams: [null] });
+  client.setQueryData(tasksKey("mine", "done"), { pages: [page(["D"])], pageParams: [null] });
+  const snapA = await removeTask(client, "A");
+  await removeTask(client, "B");
+  expect(shown(client)).toEqual(["C"]);
+  restoreTask(client, snapA, "A");
+  expect(shown(client)).toEqual(["A", "C"]);
+  // Already back (a refetch brought it): not added twice; a list that never held it is left alone.
+  restoreTask(client, snapA, "A");
+  expect(shown(client)).toEqual(["A", "C"]);
+  expect(client.getQueryData<InfiniteData<TaskPageWithCounts>>(tasksKey("mine", "done"))?.pages[0].rows.map((r) => r.id)).toEqual(["D"]);
+  client.clear();
+});
+
+// Bugs audit L3: a task ticked on the Tasks page left Home's Today card stale (and the reverse, see today-card.tsx).
+test("refreshTasks reads Home again with the task lists", () => {
+  const client = new QueryClient();
+  client.setQueryData(["home", "mine"], { any: 1 });
+  client.setQueryData(tasksKey("mine", "today"), { pages: [page(["A"])], pageParams: [null] });
+  client.setQueryData(["lead-tasks", "L"], []);
+  refreshTasks(client, "L");
+  expect(client.getQueryState(["home", "mine"])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(tasksKey("mine", "today"))?.isInvalidated).toBe(true);
+  expect(client.getQueryState(["lead-tasks", "L"])?.isInvalidated).toBe(true);
   client.clear();
 });

@@ -85,7 +85,7 @@ export function SearchInput({ icon = true, wrapperClassName, label, className, v
           type="button"
           onClick={clear}
           aria-label={t("clearSearch")}
-          className="absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:right-1 sm:size-9"
+          className="absolute top-1/2 right-0 grid size-11 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:right-1 sm:size-9"
         >
           <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
         </button>

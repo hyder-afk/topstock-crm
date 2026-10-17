@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { QueryClient } from "@tanstack/react-query";
+import { refreshInventory } from "@/components/inventory/use-inventory";
 import { STOCK_HINTS, stockError } from "@/lib/inventory/errors";
 import { parseStockFilters, stockFiltersToParams, parseTab, movementParams } from "@/lib/inventory/filters";
 import { moneyTotal, pieces, priceRange, pricePerPiece } from "@/lib/inventory/format";
 import { correctionInput, newProductInput, productInput, receiveInput, decimals } from "@/lib/inventory/schemas";
 import { productRef, stockStatus, weekStart } from "@/lib/inventory/status";
-import { availabilityFill, packs, pallets, parsePrice, parseWhole, toPieces } from "@/lib/inventory/units";
+import { availabilityFill, packs, pallets, parsePrice, parseWhole, priceInput, toPieces } from "@/lib/inventory/units";
 
 // Day 6b pure rules (design 11.4: units, money, inventory status, the error contract, the filters in the URL and the
 // action schemas). Instants are plain dates, so different ICU time zone data cannot change them.
@@ -28,12 +30,47 @@ test.describe("units", () => {
     expect(parseWhole("1 200")).toBe(1200);
     expect(parseWhole("1.200")).toBe(1200);
     expect(parseWhole("12,5x")).toBeNull();
-    expect(parsePrice("2,50")).toBe(2.5);
-    expect(parsePrice("€2.50")).toBe(2.5);
-    expect(parsePrice("2,5 €")).toBe(2.5);
-    expect(parsePrice("0.12345")).toBeNull();
-    expect(parsePrice("-3")).toBeNull();
-    expect(parsePrice("2000000")).toBeNull();
+    for (const locale of ["en", "fr"]) {
+      expect(parsePrice("2,50", locale)).toBe(2.5);
+      expect(parsePrice("€2.50", locale)).toBe(2.5);
+      expect(parsePrice("2,5 €", locale)).toBe(2.5);
+      expect(parsePrice("0.12345", locale)).toBeNull();
+      expect(parsePrice("-3", locale)).toBeNull();
+      expect(parsePrice("2000000", locale)).toBeNull();
+    }
+  });
+  // Bugs audit L4: "1,250" typed in English was read as €1.25 (the comma always became the decimal point), and "1.5"
+  // in a whole-number field became 15. An ambiguous entry is now refused (the field shows its error), never misread.
+  test("ambiguous separators are refused, never misread (L4)", () => {
+    // One separator before exactly 3 digits: the language's decimal mark reads as decimals, its grouping mark is refused.
+    expect(parsePrice("1,250", "en")).toBeNull();
+    expect(parsePrice("1.250", "fr")).toBeNull();
+    expect(parsePrice("2.125", "en")).toBe(2.125);
+    expect(parsePrice("2,125", "fr")).toBe(2.125);
+    // 1, 2 or 4 digits after one separator can only be decimals, in either language.
+    expect(parsePrice("2.5", "fr")).toBe(2.5);
+    expect(parsePrice("0,1234", "en")).toBe(0.1234);
+    // Thousands written with the language's own marks; another language's grouping is refused.
+    expect(parsePrice("1,250.50", "en")).toBe(1250.5);
+    expect(parsePrice("1.250,50", "fr")).toBe(1250.5);
+    expect(parsePrice("1 250,50", "fr")).toBe(1250.5);
+    expect(parsePrice("1 250", "en")).toBe(1250);
+    expect(parsePrice("1.250,50", "en")).toBeNull();
+    expect(parsePrice("1,250.50", "fr")).toBeNull();
+    expect(parsePrice("1,2,3", "en")).toBeNull();
+    // Whole numbers: a separator only between groups of three.
+    expect(parseWhole("1,200")).toBe(1200);
+    expect(parseWhole("1.200.000")).toBe(1200000);
+    expect(parseWhole("1.5")).toBeNull();
+    expect(parseWhole("12,50")).toBeNull();
+    expect(parseWhole("1.200,000")).toBeNull();
+    expect(parseWhole(",200")).toBeNull();
+    // A stored price goes back into a field in the language's own form, so parsePrice reads it back unchanged.
+    for (const [n, locale] of [[2.125, "fr"], [2.125, "en"], [0.85, "fr"], [1250, "en"]] as const) {
+      expect(parsePrice(priceInput(n, locale), locale)).toBe(n);
+    }
+    expect(priceInput(2.125, "fr")).toBe("2,125");
+    expect(priceInput(null, "fr")).toBe("");
   });
   test("availability bar against 3 x the reorder point", () => {
     expect(availabilityFill(150, 50)).toBe(1);
@@ -152,4 +189,15 @@ test.describe("action schemas (strict, whitelisted)", () => {
     expect(receiveInput.safeParse({ productId: req, place: "transit", pieces: 10, reason: "received", note: null, requestId: req }).success).toBe(true);
     expect(receiveInput.safeParse({ productId: req, place: "transit", pieces: 10, reason: "count", note: null, requestId: req }).success).toBe(false);
   });
+});
+
+// Bugs audit L3: a stock change left Home's low-stock card stale for up to its stale time.
+test("refreshInventory reads Home again (its low-stock card)", () => {
+  const client = new QueryClient();
+  client.setQueryData(["home", "mine"], { any: 1 });
+  client.setQueryData(["stock", ""], { any: 1 });
+  refreshInventory(client, "p1");
+  expect(client.getQueryState(["home", "mine"])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(["stock", ""])?.isInvalidated).toBe(true);
+  client.clear();
 });

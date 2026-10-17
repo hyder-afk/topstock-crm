@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isoDate } from "@/lib/activities";
 import { isMoney } from "@/lib/money";
+import { localDate } from "@/lib/timezones";
 
 // Deals and the pipeline (Day 5 design sections 4.4, 5.5 and 5.6). The lists and limits below are the database's own
 // literals (migration 20261015090000_deals_pipeline.sql); tests/unit/day5-parity.spec.ts reads the migration and fails
@@ -34,6 +35,9 @@ export const BOARD_PAGE = 50;
 export const VIRTUALISE_FROM = 60;
 export const sortOrders = ["recent", "oldest", "value", "close"] as const;
 export type SortOrder = (typeof sortOrders)[number];
+/** The server's keyset order for a sort: "Value" and "Close date" re-sort the "Recently moved" cards (design D20). */
+export type BoardOrder = "recent" | "oldest";
+export const boardOrderOf = (order: SortOrder): BoardOrder => (order === "oldest" ? "oldest" : "recent");
 export const updateFields = ["title", "value", "expected_close", "fulfilment", "contact_id", "owner_id"] as const;
 export type UpdateField = (typeof updateFields)[number];
 
@@ -208,7 +212,7 @@ export const dealIdInput = z.strictObject({ id: uuid });
 
 // ---- Route queries (GET /api/pipeline/*, /api/deals/[id], /api/leads/[id]/deals) ------------------------------------
 export const scopeParam = z.enum(["team", "mine"]);
-export const boardParams = z.strictObject({ scope: scopeParam.optional(), owner: uuid.optional() });
+export const boardParams = z.strictObject({ scope: scopeParam.optional(), owner: uuid.optional(), order: z.enum(["recent", "oldest"]).optional() });
 export const stageParams = z
   .strictObject({
     stage: z.enum(stageKeys),
@@ -228,6 +232,15 @@ const DAY = 24 * HOUR;
 /** Whole days since `since` (elapsed time, no time zone: 7 × 24 h is 7 days on a clock-change week too). */
 export function elapsedDays(since: string, now: number): number {
   return Math.max(0, Math.floor((now - Date.parse(since)) / DAY));
+}
+
+/**
+ * An open deal whose expected close date is before today in `zone` (the viewer's day, as Home's attention card counts
+ * it in the profile's zone), never the UTC day: between midnight and 01:00/02:00 in Paris the UTC date is still
+ * yesterday's (bugs audit L2).
+ */
+export function closeDatePassed(card: Pick<DealCard, "status" | "expected_close">, now: number, zone: string): boolean {
+  return card.status === "open" && card.expected_close !== null && card.expected_close < localDate(zone, new Date(now));
 }
 
 /**
