@@ -213,7 +213,7 @@
     "everywhere": {
       "open": "Se déconnecter de tous les appareils",
       "title": "Se déconnecter de tous les appareils ?",
-      "body": "Vous serez déconnecté ici et sur tous vos autres téléphones, tablettes et ordinateurs. Les autres appareils perdent l’accès en une heure au plus. Pour vous reconnecter, il faudra votre mot de passe et un code de votre application d’authentification.",
+      "body": "Vous serez déconnecté ici et sur tous vos autres téléphones, tablettes et ordinateurs. Les autres appareils perdent l’accès en 15 minutes au plus. Pour vous reconnecter, il faudra votre mot de passe et un code de votre application d’authentification.",
       "cancel": "Annuler",
       "confirm": "Tout déconnecter",
       "unavailable": "Impossible de vous déconnecter de tous les appareils. Réessayez.",

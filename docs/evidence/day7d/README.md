@@ -4,7 +4,7 @@ Built by the builder on local branch `day7d-local` (worktree `/home/user/topstoc
 (main + Day 5 + Team + Day 6 + Day 7a + 7b + the seven 7f follow-ups), with `day7c-local` merged at the end (section
 "Merge with Day 7c"). Not pushed, no PR. Plan: `docs/evidence/day7/plan.md` step 7d (section 4 table), section 1 (the
 Gate 1 checklist), section 2 security items 7, 14, 15, 16 and 20, questions 1, 4 and 11. Haider's question 1 split
-Gate 1: this is the **code part**; the ops part (backup, restore test, keep-alive, Vercel Pro, production settings)
+Gate 1: this is the **code part**; the ops part (backup, restore test, keep-alive, hosting (decided 16 Oct 2026: Vercel Hobby, go-live decision 4), production settings)
 passes on Day 8.
 
 ## Summary for Haider
@@ -80,8 +80,8 @@ No product code changed: the review found nothing to fix in `src/` or the migrat
 | 4 | No recovery codes for a lost authenticator | unchanged | an admin removes the factor in the dashboard, the person sets up again | none planned for Release 1 |
 | 5 | Supabase's default e-mail reaches only the Supabase team | unchanged: reset is off on dev until custom SMTP (log line 68) | Haider's "next week" item | custom SMTP, then restore the templates and remove `scripts/strip-email-templates.py` |
 
-Day 7a residuals R1 (in-app rate limit, accepted log line 366), R2 (other devices up to 1 hour after Sign out of all
-devices; `jwt_expiry` decided on Day 8) and R3 (up to 30 own sign-in rows an hour) stand as recorded.
+Day 7a residuals R1 (in-app rate limit, accepted log line 366), R2 (other devices up to 15 minutes after Sign out of all
+devices since 16 Oct 2026: Haider chose `jwt_expiry` 900 s, decision 9; up to 1 hour before) and R3 (up to 30 own sign-in rows an hour) stand as recorded.
 
 ## Leaked-password protection WARN: accepted
 
@@ -105,8 +105,8 @@ account needs its authenticator. Revisit if the plan is upgraded (Pro gives the 
    workflow, so it goes with the next deploy change, with Haider; until then `deploy-dev-db` keeps reading back the
    settings it pushed.
 5. **Day 8 (ops part, Haider)**: preview opened signed out of Vercel; member lists (item 35); production auth settings,
-   Storage S3 keys, Vercel settings; backup, restore test, keep-alive (items 43, 44); Vercel Pro and the Firewall rule
-   (spike S5); the `x-forwarded-host` check on the preview; `jwt_expiry` (R2); Dependabot alerts on.
+   Storage S3 keys, Vercel settings; backup, restore test, keep-alive (items 43, 44); hosting (decided 16 Oct 2026: Vercel Hobby, go-live decision 4) and the Firewall rule
+   (spike S5); the `x-forwarded-host` check on the preview; `jwt_expiry` (R2; decided 16 Oct 2026: 900 s, set in production by Haider the same day); Dependabot alerts on.
 6. **`/security-review`**: done by the main session on 942ab62, 0 HIGH or MEDIUM; condition (d) met ([`security-review-command.md`](security-review-command.md)). **Advisor**: round 1 CHANGES NEEDED on
    f4e5cff, fixed (section "Advisor round 1"); the next round is the main session's (it runs the subagent before the
    REPORT).
@@ -195,4 +195,4 @@ HAIDER DECIDES: pass Gate 1 (code part)? **Recommended: yes, once all four condi
   counts as a failure until the sweep names the overload.
 - **(d) `/security-review`** run by the main session on the final head with no HIGH or MEDIUM finding left open: **done** on 942ab62 (0 HIGH or MEDIUM; e688f10 changed only a test and docs since), [`security-review-command.md`](security-review-command.md).
 
-The ops part (backup, restore test, keep-alive, Vercel Pro, production settings) passes on Day 8 before any real data.
+The ops part (backup, restore test, keep-alive, hosting (decided 16 Oct 2026: Vercel Hobby, go-live decision 4), production settings) passes on Day 8 before any real data.

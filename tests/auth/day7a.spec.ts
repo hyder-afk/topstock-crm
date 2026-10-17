@@ -9,7 +9,7 @@ import { createUser, fullSession, nextWindow, sql, totp, tryRefresh } from "./he
 //   for that person;
 // - "Sign out of all devices" on More (confirmation sheet, Cancel keeps the session) ends the other browser's session:
 //   its refresh token dies at once everywhere; its access token too where getClaims asks the auth server (HS256),
-//   otherwise when it expires, within the hour (README R2).
+//   otherwise when it expires, within 15 minutes (jwt_expiry 900, Haider's decision 9; README R2).
 const password = "Day7a-Local-Pass!";
 type State = Awaited<ReturnType<BrowserContext["storageState"]>>;
 let auditState: State;
@@ -117,7 +117,7 @@ test("Sign out of all devices ends the session in the other browser too", async 
   const sheet = page.getByRole("dialog", { name: "Sign out of all devices?" });
   await expect(sheet).toBeVisible();
   // The sheet is honest about timing: another device's access token stays valid until it expires (README R2).
-  await expect(sheet).toContainText("Other devices lose access within an hour at most.");
+  await expect(sheet).toContainText("Other devices lose access within 15 minutes at most.");
   await sheet.getByRole("button", { name: "Cancel" }).click();
   await expect(sheet).toBeHidden();
   const before = sessions();
@@ -142,12 +142,14 @@ test("Sign out of all devices ends the session in the other browser too", async 
   } else {
     // Asymmetric signing keys (the Supabase CLI stack in CI, hosted Supabase): the access token verifies locally and
     // PostgREST does not check that the session exists, so the other browser keeps access until that token expires,
-    // which is within the hour the sheet promises (README R2). After that it cannot refresh (checked above).
+    // which is within the 15 minutes the sheet promises (README R2). After that it cannot refresh (checked above).
     await expect(other).toHaveURL((url) => url.pathname === "/");
     expect((await phone.request.get("/api/leads")).status()).toBe(200);
     const { exp } = jwtPayload(held.access_token);
     expect(typeof exp).toBe("number");
-    expect(exp! - Date.now() / 1000).toBeLessThanOrEqual(3600);
+    // Between 10 and 15 minutes left: the token was issued for 900 s (a 3600 s token would fail the upper bound).
+    expect(exp! - Date.now() / 1000).toBeLessThanOrEqual(900);
+    expect(exp! - Date.now() / 1000).toBeGreaterThan(600);
   }
   expect(errors).toEqual([]);
   await laptop.close();
@@ -163,7 +165,7 @@ test("French: the More button and the sheet speak French", async ({ browser, bas
   const sheet = page.getByRole("dialog", { name: "Se déconnecter de tous les appareils ?" });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Tout déconnecter" })).toBeVisible();
-  await expect(sheet).toContainText("Les autres appareils perdent l’accès en une heure au plus.");
+  await expect(sheet).toContainText("Les autres appareils perdent l’accès en 15 minutes au plus.");
   await sheet.getByRole("button", { name: "Annuler" }).click();
   await context.close();
 });
