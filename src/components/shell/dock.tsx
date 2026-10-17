@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { animate, motion, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { project, springs } from "@/lib/motion";
+import { delayedPrefetch, prefetchAnalyticsDefault } from "@/components/analytics/use-analytics";
 import { prefetchHome } from "@/components/home/use-home";
 import { prefetchPipeline } from "@/lib/prefetch";
 import { sectionForPath, sections, type SectionId } from "@/lib/nav";
@@ -40,6 +41,9 @@ export function Dock() {
   const x = useMotionValue(0);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [preview, setPreview] = useState<SectionId | null>(null);
+  // Analytics (design 3.6): the default view only, and only once the pointer or focus has rested 150 ms on the link (its
+  // limiter allows 30 reads a minute, so passing over the dock must send nothing).
+  const warmAnalytics = useMemo(() => delayedPrefetch(() => prefetchAnalyticsDefault(queryClient)), [queryClient]);
 
   // Sections hidden at this width (Tasks and Analytics on phones) belong to More.
   const routeSection = sectionForPath(pathname);
@@ -160,6 +164,7 @@ export function Dock() {
                 // Day 5b (design D32): the pipeline's data goes into the cache on hover or focus, so the route renders at once.
                 onPointerEnter={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
                 onFocus={warm[s.id] ? () => warm[s.id]?.(queryClient) : undefined}
+                {...(s.id === "analytics" ? warmAnalytics : null)}
                 className={cn(
                   "group flex min-w-0 flex-col items-center justify-end gap-0.5 rounded-lg pb-2 text-[0.6875rem] tracking-[0.01em] transition-colors duration-150",
                   on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
