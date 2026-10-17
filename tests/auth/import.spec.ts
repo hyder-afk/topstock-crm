@@ -449,6 +449,44 @@ test("a checked import can be reviewed later (its file chosen again), and a paus
   await context.close();
 });
 
+// Apple audit #12: the drop zone stays highlighted while a dragged file crosses into the icon or text inside it, and
+// lets go only when the pointer leaves the zone itself. Drag events are dispatched in the page (a real file drag from
+// the desktop cannot be scripted).
+async function dropZoneHoldsAcrossChildren(page: Page) {
+  const zone = page.locator("main label.border-dashed");
+  const fire = (type: "dragover" | "dragleave", related: "child" | "outside" | null) =>
+    page.evaluate(
+      ([type, related]) => {
+        const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+        const label = input && document.querySelector<HTMLElement>(`label[for="${CSS.escape(input.id)}"]`);
+        if (!label) throw new Error("no drop zone");
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(new File(["a"], "a.csv", { type: "text/csv" }));
+        const relatedTarget = related === "child" ? label.querySelector("span") : related === "outside" ? document.body : null;
+        label.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer, relatedTarget }));
+      },
+      [type, related] as const,
+    );
+  const highlighted = /(^|\s)bg-muted(\s|$)/;
+  await fire("dragover", null);
+  await expect(zone).toHaveClass(highlighted);
+  await fire("dragleave", "child");
+  await page.waitForTimeout(150);
+  await expect(zone, "still highlighted over the zone's own icon and text").toHaveClass(highlighted);
+  await fire("dragleave", "outside");
+  await expect(zone).not.toHaveClass(highlighted);
+}
+
+test("the drop zone holds its highlight while a file is dragged over its icon and text (Apple audit #12)", async ({ browser }) => {
+  const context = await adminContext(browser);
+  const page = await context.newPage();
+  const errors = watchErrors(page);
+  await openImport(page);
+  await dropZoneHoldsAcrossChildren(page);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("files that are not CSV, or empty, are refused with a plain message", async ({ browser }) => {
   const context = await adminContext(browser);
   const page = await context.newPage();

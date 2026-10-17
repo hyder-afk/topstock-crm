@@ -73,7 +73,11 @@ export function StockChoose({
           event.preventDefault();
           setDragging(true);
         }}
-        onDragLeave={() => setDragging(false)}
+        // Only when the pointer leaves the zone itself, not when it crosses into the icon or text inside (Apple audit #12:
+        // the highlight held steady, as on the Files tab).
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        }}
         onDrop={(event) => {
           event.preventDefault();
           setDragging(false);
