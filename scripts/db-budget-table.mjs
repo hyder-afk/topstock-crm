@@ -4,7 +4,8 @@
 // states its budget, and prints a compact Markdown table: label | measured | budget | result. Lines that mention a
 // budget but cannot be read unambiguously are listed under the table, never dropped; plan headers and SQL text echoed
 // by auto_explain are counted. Exit code: 0 every budget met, 1 a measure over its budget or an "OVER BUDGET" line,
-// 2 a log missing or unreadable, or no budget line found at all (an empty table never passes).
+// 2 the check is incomplete: a log missing or unreadable, a log with no budget row (an empty table never passes), a
+// line that mentions a budget but could not be read, or fewer rows of a budget ID than REQUIRED lists.
 //
 // What is compared (the budgets of the design documents):
 //   label : 12.3 ms (budget 10 ms)                       the one value on the line
@@ -33,6 +34,26 @@ const PSQL_TIME = new RegExp(String.raw`^Time:\s+(${NUM})\s*ms\b`);
 const SECTION_ROW = new RegExp(String.raw`^(\S.*?)\s+:\s+(${NUM})\s*ms\s*$`);
 const OVER_BUDGET = /over budget/i;
 const MAX_LISTED = 100;
+const HEADER_REACH = 3; // a "=== ... (budget ...) ===" header applies only if a timing line follows within 3 lines
+
+/**
+ * Budget IDs every complete run must report, with the least number of judged rows each (counted over all the logs
+ * given; taken from the full local run of 17 Oct 2026, docs/evidence/db-budgets.md). P5 is the two "with a deal" lines
+ * (two values each); I5, I7 and I17 come from perf_stock.sql, which both blocks run. A perf script that adds a case
+ * needs nothing here; one that drops or renames a case must update this list.
+ */
+/** @type {Record<string, number>} */
+export const REQUIRED = {
+  P1: 2, P2: 6, P3: 1, P4: 5, P4b: 2, P5: 4, P6: 2, P7: 3, P8: 2, P11: 3,
+  I1: 11, I2: 1, I3: 1, I4: 3, I5: 6, I6: 3, I7: 2, I8: 1, I9: 3, I10: 1, I11: 1, I12: 1, I13: 2, I14: 1, I16: 2, I17: 2,
+};
+
+/** "P4b move_deal ..." -> "P4b"; the P5 lines ("..., with a deal, log_activity") -> "P5"; else null. */
+export function budgetId(label) {
+  const m = /^([PI]\d+[a-z]?) /.exec(label);
+  if (m) return m[1];
+  return /, with a deal, (log|undo)_activity$/.test(label) ? "P5" : null;
+}
 
 /** "1,500" -> 1500 */
 export function toNumber(text) {
@@ -133,7 +154,7 @@ export function parseLog(text, file = "log") {
   const noise = {};
   const overBudget = [];
   const lines = text.split(/\r?\n/);
-  /** @type {null | {budget: any, label: string, at: number, rows: number}} */
+  /** @type {null | {budget: any, label: string, at: number, rows: number, seen: number}} */
   let section = null; // "=== ... (budget 10 ms each) ===": applies to the "label : x ms" lines after it
   /** @type {null | {budget: any, label: string, at: number, times: number[], skipped: number}} */
   let timer = null; // "TIMING label (budget ...):": collects the psql "Time:" lines after it
@@ -210,7 +231,7 @@ export function parseLog(text, file = "log") {
         add(at, cleanLabel(r[1]), { name: "", value: toNumber(r[2]), unit: "ms" }, section.budget.values[0], section.budget.unit);
         continue;
       }
-      if (section.rows > 0) closeSection();
+      if (section.rows > 0 || ++section.seen >= HEADER_REACH) closeSection();
     }
 
     if (!mentionsBudget && !isBaseline) continue;
@@ -225,7 +246,7 @@ export function parseLog(text, file = "log") {
 
     // Headers: "=== ... (budget 10 ms each) ===" and "TIMING label (budget ...):".
     if (line.startsWith("===")) {
-      if (clauses.length === 1 && clauses[0]) section = { budget: clauses[0], label: line, at, rows: 0 };
+      if (clauses.length === 1 && clauses[0]) section = { budget: clauses[0], label: line, at, rows: 0, seen: 0 };
       else if (mentionsBudget) fail("header budget not readable");
       continue;
     }
@@ -284,8 +305,13 @@ function escapeCell(text) {
   return String(text).replace(/\|/g, "\\|").replace(/`/g, "'");
 }
 
-/** Merges several parsed logs and renders the Markdown report. */
-export function render(results, missing = []) {
+/**
+ * Merges several parsed logs and renders the Markdown report.
+ * @param {ReturnType<typeof parseLog>[]} results
+ * @param {string[]} [missing] logs that could not be read
+ * @param {Record<string, number>} [required] budget ID -> least number of judged rows (REQUIRED by default)
+ */
+export function render(results, missing = [], required = REQUIRED) {
   const rows = results.flatMap((r) => r.rows);
   const unreadable = results.flatMap((r) => r.unreadable);
   const overBudget = results.flatMap((r) => r.overBudget);
@@ -293,6 +319,15 @@ export function render(results, missing = []) {
   for (const r of results) for (const [k, n] of Object.entries(r.noise)) noise[k] = (noise[k] ?? 0) + n;
   const judged = rows.filter((r) => r.status !== "info");
   const misses = judged.filter((r) => r.status === "MISS");
+  const emptyLogs = results.filter((r) => !r.rows.some((row) => row.status !== "info")).map((r) => r.file);
+  const counts = {};
+  for (const r of judged) {
+    const id = budgetId(r.label);
+    if (id) counts[id] = (counts[id] ?? 0) + 1;
+  }
+  const short = Object.entries(required)
+    .filter(([id, n]) => (counts[id] ?? 0) < n)
+    .map(([id, n]) => `${id} (${counts[id] ?? 0} of ${n})`);
   const out = [];
   out.push(
     `**${judged.length} budgets checked: ${judged.length - misses.length} OK, ${misses.length} missed**` +
@@ -318,6 +353,14 @@ export function render(results, missing = []) {
     if (r.rows.length === 0) out.push("| (no budget line found) | | | |");
     out.push("");
   }
+  if (emptyLogs.length) {
+    out.push(`**Logs with no budget row (${emptyLogs.length}):** ${emptyLogs.map((m) => `\`${escapeCell(m)}\``).join(", ")}`);
+    out.push("");
+  }
+  if (short.length) {
+    out.push(`**Required budget IDs missing or short (${short.length}):** ${short.join(", ")}`);
+    out.push("");
+  }
   if (missing.length) {
     out.push(`**Logs missing or unreadable (${missing.length}):** ${missing.map((m) => `\`${escapeCell(m)}\``).join(", ")}`);
     out.push("");
@@ -338,8 +381,9 @@ export function render(results, missing = []) {
     out.push("");
     out.push(`Not measurements, skipped: ${noiseKinds.map(([k, n]) => `${n} ${k}`).join(", ")}.`);
   }
-  const code = misses.length || overBudget.length ? 1 : missing.length || judged.length === 0 ? 2 : 0;
-  return { markdown: `${out.join("\n")}\n`, code, rows, unreadable, misses, overBudget };
+  const incomplete = missing.length || emptyLogs.length || results.length === 0 || unreadable.length || short.length;
+  const code = misses.length || overBudget.length ? 1 : incomplete ? 2 : 0;
+  return { markdown: `${out.join("\n")}\n`, code, rows, unreadable, misses, overBudget, emptyLogs, short };
 }
 
 // Run as a script (not imported by the unit test). No import.meta: the unit test loads this file through Playwright's

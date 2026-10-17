@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { parseBudgetClause, parseLog, render, stripPrefix } from "../../scripts/db-budget-table.mjs";
+import { budgetId, parseBudgetClause, parseLog, render, REQUIRED, stripPrefix } from "../../scripts/db-budget-table.mjs";
 
 // Sample lines copied from a local run of scripts/db-perf.sh and the workflow's stock import block (fake data only),
 // one or more per output format of supabase/tests/perf_*.sql, perf_queue_concurrency.sh and stock_concurrency.sh perf.
@@ -11,6 +11,15 @@ import { parseBudgetClause, parseLog, render, stripPrefix } from "../../scripts/
 const P = (file: string, line: number) => `psql:/home/user/topstock-crm-budgets/supabase/tests/${file}:${line}: NOTICE:  `;
 const SCRIPT = path.join(__dirname, "../../scripts/db-budget-table.mjs");
 
+// One OK line per required row: a log a complete run could print (the P5 rows come two to a line).
+const completeLog = () =>
+  Object.entries(REQUIRED)
+    .flatMap(([id, n]) =>
+      id === "P5"
+        ? Array.from({ length: n / 2 }, (_, k) => `Lead ${k}, with a deal : log_activity 9.46 ms, undo_activity 6.55 ms (budget 15 / 18 ms)`)
+        : Array.from({ length: n }, (_, k) => `${id} case ${k} : 1.00 ms (budget 5 ms)`),
+    )
+    .join("\n");
 const rowsOf = (text: string) => parseLog(text, "t.log").rows.map((r) => [r.label, r.measured, r.budget, r.status]);
 
 test.describe("budget clause", () => {
@@ -272,9 +281,9 @@ test.describe("unreadable lines, noise and exit codes", () => {
     expect(both.markdown).toContain("#### db-perf.log");
     expect(both.markdown).toContain("#### stock-import-perf.log");
     expect(both.markdown).toContain("| P4 move_deal win | 10.65 ms | 10 ms | **MISS** |");
-    expect(render([ok]).code).toBe(0);
-    expect(render([ok], ["stock-import-perf.log"]).code).toBe(2);
-    expect(render([parseLog("nothing here", "empty.log")]).code).toBe(2);
+    expect(render([ok], [], {}).code).toBe(0);
+    expect(render([ok], ["stock-import-perf.log"], {}).code).toBe(2);
+    expect(render([parseLog("nothing here", "empty.log")], [], {}).code).toBe(2);
     expect(render([parseLog("a | b : 1 ms (budget 2 ms)", "t.log")]).markdown).toContain("| a \\| b | 1 ms | 2 ms | OK |");
   });
 
@@ -283,7 +292,7 @@ test.describe("unreadable lines, noise and exit codes", () => {
     try {
       const good = path.join(dir, "good.log");
       const bad = path.join(dir, "bad.log");
-      writeFileSync(good, `${P("perf_day5.sql", 263)}P6 list_lead_deals : 2.29 ms (budget 3 ms) 1 rows\n`);
+      writeFileSync(good, `${P("perf_day5.sql", 263)}P6 list_lead_deals : 2.29 ms (budget 3 ms) 1 rows\n${completeLog()}\n`);
       writeFileSync(bad, `${P("perf_day5.sql", 290)}P4 move_deal win : 10.65 ms (budget 10 ms)\n`);
       const run = (...files: string[]) => spawnSync(process.execPath, [SCRIPT, ...files], { encoding: "utf8" });
       const r0 = run(good);
@@ -298,5 +307,63 @@ test.describe("unreadable lines, noise and exit codes", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+test.describe("the check is complete or the run fails (exit 2)", () => {
+  test("a good db-perf log with an empty stock import log: exit 2, the empty log named", () => {
+    const report = render([parseLog(completeLog(), "db-perf.log"), parseLog("", "stock-import-perf.log")]);
+    expect(report.code).toBe(2);
+    expect(report.emptyLogs).toEqual(["stock-import-perf.log"]);
+    expect(report.markdown).toContain("**Logs with no budget row (1):** `stock-import-perf.log`");
+    expect(render([parseLog(completeLog(), "db-perf.log")]).code).toBe(0);
+  });
+
+  test("a line that mentions a budget but could not be read: exit 2 even when every row is OK", () => {
+    const report = render([parseLog(`${completeLog()}\nX something : 3 ms, 4 ms (budget 5 ms)`, "db-perf.log")]);
+    expect(report.unreadable).toHaveLength(1);
+    expect(report.code).toBe(2);
+  });
+
+  test("a missed budget still exits 1 when the check is also incomplete", () => {
+    expect(render([parseLog("P4 move_deal win : 10.65 ms (budget 10 ms)", "t.log")]).code).toBe(1);
+  });
+
+  test("required budget IDs: a missing or short ID exits 2 and is listed", () => {
+    const withoutI13 = completeLog()
+      .split("\n")
+      .filter((l) => !l.startsWith("I13 "))
+      .join("\n");
+    const truncatedI1 = completeLog().replace("I1 case 10 : 1.00 ms (budget 5 ms)\n", "");
+    const r1 = render([parseLog(withoutI13, "t.log")]);
+    expect(r1.code).toBe(2);
+    expect(r1.short).toEqual(["I13 (0 of 2)"]);
+    expect(r1.markdown).toContain("**Required budget IDs missing or short (1):** I13 (0 of 2)");
+    expect(render([parseLog(truncatedI1, "t.log")]).short).toEqual(["I1 (10 of 11)"]);
+  });
+
+  test("REQUIRED holds the IDs of the full local run; budgetId reads them from the labels", () => {
+    expect(Object.keys(REQUIRED).sort()).toEqual(
+      ["P1", "P2", "P3", "P4", "P4b", "P5", "P6", "P7", "P8", "P11", "I1", "I2", "I3", "I4", "I5", "I6", "I7", "I8", "I9",
+       "I10", "I11", "I12", "I13", "I14", "I16", "I17"].sort(),
+    );
+    expect(budgetId("P4b update_deal")).toBe("P4b");
+    expect(budgetId("I13 commit_stock_import chunks of 125, all 41 calls")).toBe("I13");
+    expect(budgetId("A typical lead, with a deal, undo_activity")).toBe("P5");
+    expect(budgetId("A typical lead, no deal, log_activity")).toBeNull();
+    expect(budgetId("list_sales page 1, all leads")).toBeNull();
+  });
+
+  test("a === header budget reaches only the next 3 lines, so it cannot leak to a later timing", () => {
+    const log = [
+      "=== P11 timings: milliseconds (budget 10 ms each) ===",
+      "set",
+      "RESET",
+      "SET",
+      "later case : 12.00 ms",
+    ].join("\n");
+    const parsed = parseLog(log, "t.log");
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.unreadable).toEqual([expect.objectContaining({ line: 1, reason: "header budget, but no timing line after it" })]);
   });
 });
