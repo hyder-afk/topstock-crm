@@ -1,6 +1,6 @@
 -- Bugs audit of 17 Oct 2026, finding L1: releasing a hold from a lead's Stock tab and pressing Undo held the pieces
 -- again without the hold's note, because get_lead_stock did not return it. Sorts after
--- 20261024090000_pipeline_board_order. A read-only function only: no table, policy or check changes.
+-- 20261024080000_pipeline_board_order. A read-only function only: no table, policy or check changes.
 --
 -- public.get_lead_stock's holds carry 'note'. It is the same note every signed-in person of the organisation already
 -- reads on the product panel (get_product's holds, list_reservations); private.stock_reservations is granted to

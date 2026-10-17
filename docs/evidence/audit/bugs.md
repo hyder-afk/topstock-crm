@@ -45,10 +45,10 @@ out to be real. M5 is narrower than the audit described (see its row).
   - **Stored prices** are written back into fields in the language's form (`priceInput`), so that a French edit of a
     2.125 price reads back unchanged.
   - No new strings: the existing field errors and the sale sheet's "needPrice" reason cover the refusal.
-- **M1 needs a new migration** (`20261024090000_pipeline_board_order`). A sort applied only to the loaded cards would be
+- **M1 needs a new migration** (`20261024080000_pipeline_board_order`). A sort applied only to the loaded cards would be
   wrong once more pages exist. `pipeline_board` is dropped and created again with `p_order`, so there are never two
   overloads; its grants are restored.
-- **L1's note needs a new migration** (`20261024090100_lead_stock_hold_note`). It adds `note` to `get_lead_stock`'s
+- **L1's note needs a new migration** (`20261024080100_lead_stock_hold_note`). It adds `note` to `get_lead_stock`'s
   holds. This exposes nothing new: every signed-in person in the organisation already reads the same note on the
   product panel.
 - **Board null**: the board shows the skeleton while loading and its error with Retry when the read fails. It does not
