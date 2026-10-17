@@ -227,13 +227,31 @@ export function trackRequests(page: Page) {
     // Next's link prefetches are speculative and never hold data a test waits for; on CI's Chromium 156 a prefetch the
     // router dropped was sometimes never reported finished or failed (PR #19: /inventory/import?_rsc= and
     // /inventory/settings?_rsc= open for good). Their cancellation noise is already filtered by isCancelledPrefetch.
+    // CI's Chromium 156 also never ends a request the page was still making when a navigation replaced its document: no
+    // finished, no failed (PR #25: day7b's first page.goto cut a chunk script, or /api/inventory/alerts, that the page
+    // openPage() loaded had just asked for, and the next settled() waited on it for good). Reproduced with Chrome Headless
+    // Shell 156.0.8078.4, which sends no loadingFinished or loadingFailed for them at all; Chromium 141 and WebKit report
+    // them failed (net::ERR_ABORTED). So when the new document commits, the old document's requests are forgotten, as
+    // those browsers do. A history change (pushState, replaceState) keeps the document and forgets nothing; settled()
+    // still waits for everything the page on screen has started.
+    let documentRequest: Request | undefined;
+    const bare = (url: string) => url.split("#")[0];
     page.on("request", (r) => {
+      if (r.isNavigationRequest() && r.frame() === page.mainFrame()) documentRequest = r;
       const h = r.headers();
       if (h["next-router-prefetch"] || h["next-router-segment-prefetch"]) return;
       set.add(r);
     });
+    page.on("framenavigated", (frame) => {
+      if (frame !== page.mainFrame() || !documentRequest || bare(frame.url()) !== bare(documentRequest.url())) return;
+      for (const r of set) if (r !== documentRequest) set.delete(r);
+      documentRequest = undefined;
+    });
     page.on("requestfinished", (r) => set.delete(r));
-    page.on("requestfailed", (r) => set.delete(r));
+    page.on("requestfailed", (r) => {
+      set.delete(r);
+      if (r === documentRequest) documentRequest = undefined;
+    });
     inFlight.set(page, set);
     pending = set;
   }
