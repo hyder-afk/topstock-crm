@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,20 +12,35 @@ import { homeKey } from "@/components/home/use-home";
 import { refreshTasks } from "@/components/tasks/use-tasks";
 import { useToast } from "@/components/ui/toast";
 import type { HomeData, HomeScope, HomeToday, TodayTask } from "@/lib/home";
+import { openCheck } from "@/lib/focus";
+import { springs } from "@/lib/motion";
 import { primaryZone } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 
 // Today (Day 5 design 7.10): overdue first ("Overdue · 2 days" in the red token, with the word), then meetings with
 // their times (DM Mono, in the profile zone, plus the lead's own time when its zone differs: the dual zone label of Day
-// 4b/4c), then the rest. Ticking a check marks the task done at once (Undo in the
+// 4b/4c), then the rest. Ticking a check fills it, then marks the task done (Undo in the
 // toast) through the lead page's setTaskDone (set_task_done, Day 4b). Six rows, then "+3 more · Open Tasks".
 // Tasks are always the caller's own, whatever the scope.
 
 const ROW = "flex min-h-14 items-center gap-2 md:min-h-12";
 
+// The check fills first; 160 ms later (as on the Tasks page) the row fades out and the rows below close the gap
+// (Apple audit #3; reduced motion: the fade only).
+const LEAVE_AFTER_MS = 160;
+
 function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undefined; onDone: (t: TodayTask, el: HTMLElement) => void }) {
   const t = useTranslations("Home.today");
   const format = useFormatter();
+  const reduce = useReducedMotion();
+  const [checking, setChecking] = useState(false);
+  // A row put back while it was still fading out (a failed tick) is the same row again, its check empty.
+  const present = useIsPresent();
+  const [wasPresent, setWasPresent] = useState(present);
+  if (present !== wasPresent) {
+    setWasPresent(present);
+    if (present) setChecking(false);
+  }
   const when = task.overdue
     ? task.overdue_days
       ? t("overdueDays", { days: task.overdue_days })
@@ -38,17 +55,34 @@ function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undef
       ? format.dateTime(new Date(task.due_at), { hour: "2-digit", minute: "2-digit", timeZone: theirZone })
       : null;
   return (
-    <li className={ROW}>
+    <motion.li
+      layout={reduce ? false : "position"}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={reduce ? { duration: 0.12 } : springs.smooth}
+      className={ROW}
+    >
       <button
         type="button"
         role="checkbox"
-        aria-checked={false}
+        aria-checked={checking}
         aria-label={t("markDone", { title: task.title })}
-        onClick={(e) => onDone(task, e.currentTarget)}
+        onClick={(e) => {
+          if (checking) return;
+          setChecking(true);
+          const check = e.currentTarget;
+          window.setTimeout(() => onDone(task, check), LEAVE_AFTER_MS);
+        }}
         className="group grid size-11 shrink-0 place-items-center rounded-full transition-[scale] duration-150 active:scale-[0.94]"
       >
-        <span className="grid size-5 place-items-center rounded-full border-2 border-muted-foreground transition-colors group-hover:border-foreground">
-          <Check aria-hidden="true" strokeWidth={3} className="size-3 opacity-0 transition-opacity group-hover:opacity-60" />
+        <span
+          className={cn(
+            "grid size-5 place-items-center rounded-full border-2 transition-[background-color,border-color] duration-150",
+            checking ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground group-hover:border-foreground",
+          )}
+        >
+          <Check aria-hidden="true" strokeWidth={3} className={cn("size-3 transition-opacity", checking ? "opacity-100" : "opacity-0 group-hover:opacity-60")} />
         </span>
       </button>
       <div className="flex min-w-0 flex-1 flex-col">
@@ -77,7 +111,7 @@ function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undef
         {when}
         {theirs ? <span className="block font-mono text-muted-foreground">{t("theirTime", { time: theirs })}</span> : null}
       </span>
-    </li>
+    </motion.li>
   );
 }
 
@@ -102,9 +136,9 @@ export function TodayCard({
   const done = async (task: TodayTask, check: HTMLElement) => {
     // The ticked row leaves the list: focus moves to the next row's check, else the previous one, else the heading,
     // never to the page body.
+    // A row still fading out after its own tick (its check filled) is skipped.
     const row = check.closest("li");
-    const sib = (el: Element | null | undefined) => el?.querySelector<HTMLElement>('[role="checkbox"]') ?? null;
-    (sib(row?.nextElementSibling) ?? sib(row?.previousElementSibling) ?? check.closest("section")?.querySelector<HTMLElement>("h2"))?.focus();
+    (openCheck(row, "nextElementSibling") ?? openCheck(row, "previousElementSibling") ?? check.closest("section")?.querySelector<HTMLElement>("h2"))?.focus();
     const key = homeKey(scope);
     const before = qc.getQueryData<HomeData>(key);
     qc.setQueryData<HomeData>(key, (old) => (old ? withoutTask(old, task) : old));
@@ -154,9 +188,12 @@ export function TodayCard({
       ) : (
         <>
           <ul className="-mx-2 flex flex-col">
-            {today.items.map((task) => (
-              <TaskRow key={task.id} task={task} zone={zone} onDone={(x, el) => void done(x, el)} />
-            ))}
+            {/* Rows already there when the card first shows do not move; one put back (Undo) fades in and rises. */}
+            <AnimatePresence initial={false}>
+              {today.items.map((task) => (
+                <TaskRow key={task.id} task={task} zone={zone} onDone={(x, el) => void done(x, el)} />
+              ))}
+            </AnimatePresence>
           </ul>
           {more > 0 ? (
             <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground">

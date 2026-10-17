@@ -17,6 +17,16 @@ export async function retryKeepingFocus(button: HTMLElement, target: (button: HT
 
 export const cardTitle = (el: HTMLElement) => el.closest("section")?.querySelector<HTMLElement>("[data-card-title]");
 
+/** The nearest list row's round check that is not ticked, walking one way from a row: where the focus goes when a
+ *  ticked row leaves (a row still fading out after its own tick, its check filled, is skipped). */
+export function openCheck(row: Element | null, step: "nextElementSibling" | "previousElementSibling"): HTMLElement | null {
+  for (let el = row?.[step]; el; el = el[step]) {
+    const check = el.querySelector<HTMLElement>('[role="checkbox"][aria-checked="false"]');
+    if (check) return check;
+  }
+  return null;
+}
+
 export const timelineTarget = (el: HTMLElement) => {
   const panel = el.closest<HTMLElement>('[role="tabpanel"]');
   return panel?.querySelector<HTMLElement>('[role="feed"]') ?? panel;

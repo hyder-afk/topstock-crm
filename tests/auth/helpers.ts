@@ -478,3 +478,22 @@ export async function pickDate(field: Locator, iso: string, locale: "en" | "fr" 
   await target.click();
   await expect(grid).toBeHidden();
 }
+
+/** Apple audit #3: records, for the list row holding `title`, when its round check was clicked, when it showed ticked
+ *  (aria-checked) and when the row left the page; read back with tickTimes. Times are performance.now() in the page. */
+export async function recordTick(page: Page, title: string) {
+  await page.evaluate((text) => {
+    const w = window as unknown as { __tick: { clickedAt: number | null; checkedAt: number | null; removedAt: number | null } };
+    w.__tick = { clickedAt: null, checkedAt: null, removedAt: null };
+    const row = [...document.querySelectorAll("li")].find((li) => li.textContent?.includes(text) && li.querySelector('[role="checkbox"]'));
+    const check = row?.querySelector('[role="checkbox"]');
+    if (!row || !check) throw new Error(`no row for ${text}`);
+    check.addEventListener("click", () => (w.__tick.clickedAt ??= performance.now()), { capture: true });
+    new MutationObserver(() => {
+      if (check.getAttribute("aria-checked") === "true") w.__tick.checkedAt ??= performance.now();
+      if (!row.isConnected) w.__tick.removedAt ??= performance.now();
+    }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-checked"] });
+  }, title);
+}
+export const tickTimes = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __tick: { clickedAt: number | null; checkedAt: number | null; removedAt: number | null } }).__tick);

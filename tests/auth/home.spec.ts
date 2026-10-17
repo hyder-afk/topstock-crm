@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, isCancelledPrefetch, settled, sql, trackRequests } from "./helpers";
+import { appReady, createUser, fullSession, isCancelledPrefetch, recordTick, settled, sql, tickTimes, trackRequests } from "./helpers";
 import { makeOrg, moveTo, seedHome, userId } from "./home-fixture";
 
 // The Home dashboard (Day 5c, design 8.5 "home.spec.ts"): greeting and calm line in English and French, KPIs equal to
@@ -348,8 +348,13 @@ test("today_toggle_done_undo", async ({ browser }) => {
   await expect(today.getByRole("listitem").nth(0)).toContainText("Overdue · 2 days");
   await expect(today.getByRole("listitem").nth(1)).toContainText("Showroom visit");
   await expect(today.getByRole("listitem").nth(1)).toContainText(/\d{2}:\d{2}/);
+  await recordTick(page, "Call back about sizes");
   await today.getByRole("checkbox", { name: "Mark “Call back about sizes” done" }).click();
   await expect(today.getByText("Call back about sizes")).toHaveCount(0);
+  // The check fills at once and the row stays on screen a moment before it leaves, as on the Tasks page (Apple audit #3).
+  const tick = await tickTimes(page);
+  expect((tick.checkedAt ?? Infinity) - (tick.clickedAt ?? 0), "the check fills at once").toBeLessThan(100);
+  expect((tick.removedAt ?? 0) - (tick.clickedAt ?? 0), "the ticked row is still seen before it leaves").toBeGreaterThanOrEqual(160);
   await expect(kpi(page, /Tasks due/)).toContainText("0 overdue");
   await expect.poll(() => sql(`select done_at is not null from public.tasks where id = '${overdueTask}'`)).toBe("t");
   // Focus moved to the next row's check, never to the page body.

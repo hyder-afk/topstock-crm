@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { addResizeObserverProbe, ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests, youngSession } from "./helpers";
+import { addResizeObserverProbe, ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, recordTick, seedLeads, setRole, settled, sql, tickTimes, totp, trackRequests, youngSession } from "./helpers";
 
 // The lead page (Day 4b, design 8.5): open from the list and back, J/K, local time, the call panel and every outcome,
 // email and WhatsApp with one-tap logging, notes (edit, undo, delete with a fresh code, draft), read-only and Do not
@@ -748,9 +748,14 @@ test("task_check_keeps_focus (next check, then the card heading) and a refused t
   const first = card.getByRole("checkbox", { name: "Mark “Send the price list” done" });
   const second = card.getByRole("checkbox", { name: "Mark “Confirm the samples” done" });
   await first.focus();
+  await recordTick(page, "Send the price list");
   await page.keyboard.press("Space");
   await expect(first).toHaveCount(0);
   await expect(second).toBeFocused();
+  // The check fills at once and the row stays on screen a moment before it leaves, as on the Tasks page (Apple audit #3).
+  const tick = await tickTimes(page);
+  expect((tick.checkedAt ?? Infinity) - (tick.clickedAt ?? 0), "the check fills at once").toBeLessThan(100);
+  expect((tick.removedAt ?? 0) - (tick.clickedAt ?? 0), "the ticked row is still seen before it leaves").toBeGreaterThanOrEqual(160);
   // A colleague deletes the task before Undo: the reopen is refused and the toast says so.
   await expect(toast(page)).toContainText("Done: Send the price list.");
   sql(`delete from public.tasks where company_id = '${lead}' and title = 'Send the price list'`);

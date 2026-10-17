@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useState, useSyncExternalStore } from "react";
+import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
 import { useFormatter, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Mail, MessageCircle, Pencil, Phone, Plus } from "lucide-react";
@@ -18,7 +19,8 @@ import { callHref, whatsappHref } from "@/lib/phone";
 import { DATE_CHIPS, LEAD_TASKS_SHOWN, chipDate, isOverdue, type LeadTask } from "@/lib/tasks";
 import { addDays, browserZone, localDate, primaryZone } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
-import { cardTitle, retryKeepingFocus } from "@/lib/focus";
+import { cardTitle, openCheck, retryKeepingFocus } from "@/lib/focus";
+import { springs } from "@/lib/motion";
 
 const noop = () => () => {};
 function useViewerZone() {
@@ -72,7 +74,7 @@ function useDueLabel() {
   };
 }
 
-/** A task with its round check: done at once (optimistic), with Undo. */
+/** A task with its round check: the check fills, then the task is done (optimistic), with Undo. */
 function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: Date | null }) {
   const t = useTranslations("LeadPage.tasks");
   const tErr = useTranslations("Errors");
@@ -80,15 +82,23 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
   const toast = useToast();
   const zone = useViewerZone();
   const dueLabel = useDueLabel();
+  const reduce = useReducedMotion();
   const overdue = now ? isOverdue(task, zone, now) : false;
+  const [checking, setChecking] = useState(false);
+  // A row put back while it was still fading out (a failed tick) is the same row again, its check empty.
+  const present = useIsPresent();
+  const [wasPresent, setWasPresent] = useState(present);
+  if (present !== wasPresent) {
+    setWasPresent(present);
+    if (present) setChecking(false);
+  }
 
   const toggle = async (check: HTMLElement) => {
     // The checked task leaves the list and its check with it: focus moves first to the next task's check, else the
     // previous one, else the card's heading, so a keyboard or screen-reader user is not dropped to the top of the page.
     const row = check.closest("li");
-    const sibling = (el: Element | null | undefined) => el?.querySelector<HTMLElement>('[role="checkbox"]') ?? null;
     const target =
-      sibling(row?.nextElementSibling) ?? sibling(row?.previousElementSibling) ?? check.closest("section")?.querySelector<HTMLElement>("[data-card-title]");
+      openCheck(row, "nextElementSibling") ?? openCheck(row, "previousElementSibling") ?? check.closest("section")?.querySelector<HTMLElement>("[data-card-title]");
     target?.focus();
     const before = queryClient.getQueryData<LeadTask[]>(leadTasksKey(leadId));
     queryClient.setQueryData<LeadTask[]>(leadTasksKey(leadId), (old) => old?.filter((x) => x.id !== task.id));
@@ -109,18 +119,37 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
     });
   };
 
+  // The check fills first; 160 ms later (as on the Tasks page) the row fades out and the rows below close the gap
+  // (Apple audit #3; reduced motion: the fade only).
   return (
-    <li className="flex items-start gap-2">
+    <motion.li
+      layout={reduce ? false : "position"}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={reduce ? { duration: 0.12 } : springs.smooth}
+      className="flex items-start gap-2"
+    >
       <button
         type="button"
         role="checkbox"
-        aria-checked={false}
+        aria-checked={checking}
         aria-label={t("markDone", { title: task.title })}
-        onClick={(e) => void toggle(e.currentTarget)}
+        onClick={(e) => {
+          if (checking) return;
+          setChecking(true);
+          const check = e.currentTarget;
+          window.setTimeout(() => void toggle(check), 160);
+        }}
         className="group grid size-11 shrink-0 place-items-center rounded-full transition-transform duration-150 active:scale-[0.94] sm:size-9"
       >
-        <span className="grid size-5 place-items-center rounded-full border-2 border-muted-foreground transition-colors group-hover:border-foreground">
-          <Check aria-hidden="true" strokeWidth={3} className="size-3 opacity-0 transition-opacity group-hover:opacity-60" />
+        <span
+          className={cn(
+            "grid size-5 place-items-center rounded-full border-2 transition-[background-color,border-color] duration-150",
+            checking ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground group-hover:border-foreground",
+          )}
+        >
+          <Check aria-hidden="true" strokeWidth={3} className={cn("size-3 transition-opacity", checking ? "opacity-100" : "opacity-0 group-hover:opacity-60")} />
         </span>
       </button>
       <div className="flex min-w-0 flex-1 flex-col pt-2.5 sm:pt-1.5">
@@ -133,7 +162,7 @@ function TaskRow({ task, leadId, now }: { task: LeadTask; leadId: string; now: D
           ) : null}
         </span>
       </div>
-    </li>
+    </motion.li>
   );
 }
 
@@ -219,9 +248,12 @@ export const NextStepCard = memo(function NextStepCard({ lead, initialTasks, onC
     content = (
       <div className="flex flex-col gap-3">
         <ul className="flex flex-col gap-1">
-          {tasks.data.slice(0, LEAD_TASKS_SHOWN).map((task) => (
-            <TaskRow key={task.id} task={task} leadId={lead.id} now={now} />
-          ))}
+          {/* Rows already there when the card first shows do not move; one put back (Undo) fades in and rises. */}
+          <AnimatePresence initial={false}>
+            {tasks.data.slice(0, LEAD_TASKS_SHOWN).map((task) => (
+              <TaskRow key={task.id} task={task} leadId={lead.id} now={now} />
+            ))}
+          </AnimatePresence>
         </ul>
         {tasks.data.length > LEAD_TASKS_SHOWN ? (
           <p className="text-sm text-muted-foreground">{t("tasks.more", { count: LEAD_TASKS_SHOWN })}</p>
