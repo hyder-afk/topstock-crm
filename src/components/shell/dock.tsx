@@ -181,9 +181,12 @@ export function Dock() {
           );
         })}
 
-        {/* The bead: decorative for assistive tech (the links carry the meaning); pointer-draggable for speed. */}
+        {/* The bead: decorative for assistive tech (the links carry the meaning); pointer-draggable for speed. Out of
+            the tab order (Motion would add tabindex 0 for onTap): keyboard users move with the links and arrow keys,
+            and a focusable element must never be aria-hidden (axe aria-hidden-focus). */}
         <motion.div
           aria-hidden="true"
+          tabIndex={-1}
           data-testid="dock-bead"
           drag="x"
           dragConstraints={{ left: minX, right: maxX }}
