@@ -308,7 +308,7 @@ function Results({
             <Button onClick={onImport}>
               {t("import", { count: toImport, formatted: n(toImport) })}
               {/* No darker fill: the black glyphs sit on the plain red (4.64:1). */}
-              {modKey ? <Kbd className="border-black/30 bg-transparent text-brand-foreground max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
+              {modKey ? <Kbd className="border-brand-foreground/30 bg-transparent text-brand-foreground max-sm:hidden">{`${modKey} ↩`}</Kbd> : null}
             </Button>
             {batch.progress ? (
               <p className="text-sm text-muted-foreground">

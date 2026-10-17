@@ -388,8 +388,8 @@ function CallPanel({
       style={{ transformOrigin: origin }}
       className={cn(
         "dock-glass fixed z-40 flex max-h-[calc(100dvh-max(24px,env(safe-area-inset-top,0px)))] flex-col overflow-y-auto overscroll-contain border border-border text-foreground shadow-[0_16px_48px_rgb(14_14_16/0.22)]",
-        "inset-x-0 bottom-0 rounded-t-[24px] pb-[calc(16px+env(safe-area-inset-bottom,0px))]",
-        "sm:inset-x-auto sm:right-[max(24px,env(safe-area-inset-right,0px))] sm:bottom-[104px] sm:w-[320px] sm:rounded-[24px] sm:pb-4",
+        "inset-x-0 bottom-0 rounded-t-xl pb-[calc(16px+env(safe-area-inset-bottom,0px))]",
+        "sm:inset-x-auto sm:right-[max(24px,env(safe-area-inset-right,0px))] sm:bottom-[104px] sm:w-[320px] sm:rounded-xl sm:pb-4",
       )}
     >
       {/* The header is the drag handle: pull down to close (rubber band, velocity projected). */}
