@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
 // The board's toolbar (Day 5 design 7.1): "Pipeline" (h1) and the totals badge; Team · Mine (managers and admins); owner
 // chips (Team view); "Stalled only" with its count; the sort menu (Value and Close date sort the loaded cards only); and
 // New deal, the one red button on the page. Two rows at 768; at 390 the owner chips scroll in their own row and New
-// deal is full width.
+// deal is full width. While a scope, owner or order not read before loads, the totals and the stalled count are not known
+// yet (null): a quiet block stands in for them and the controls stay where they are (board.tsx).
 export function BoardToolbar({
   total,
   canTeam,
@@ -30,7 +31,7 @@ export function BoardToolbar({
   onNewDeal,
   status,
 }: {
-  total: { count: number; value: string };
+  total: { count: number; value: string } | null;
   canTeam: boolean;
   scope: "team" | "mine";
   onScope: (s: "team" | "mine") => void;
@@ -38,7 +39,7 @@ export function BoardToolbar({
   onOwner: (id: string | null) => void;
   team: TeamMember[];
   stalledOnly: boolean;
-  stalledCount: number;
+  stalledCount: number | null;
   onStalled: (on: boolean) => void;
   order: SortOrder;
   onOrder: (o: SortOrder) => void;
@@ -58,9 +59,13 @@ export function BoardToolbar({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
-          <span className="rounded-sm bg-card px-2 py-1 font-mono text-sm tabular-nums">
-            {t("totals", { count: total.count, value: formatMoney(total.value, locale) })}
-          </span>
+          {total ? (
+            <span className="rounded-sm bg-card px-2 py-1 font-mono text-sm tabular-nums">
+              {t("totals", { count: total.count, value: formatMoney(total.value, locale) })}
+            </span>
+          ) : (
+            <span aria-hidden="true" className="h-7 w-32 self-center rounded-sm bg-muted motion-safe:animate-pulse" />
+          )}
         </div>
         <Button variant="brand" onClick={onNewDeal} className="max-sm:w-full">
           <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
@@ -105,7 +110,11 @@ export function BoardToolbar({
         <button type="button" aria-pressed={stalledOnly} onClick={() => onStalled(!stalledOnly)} className={chip(stalledOnly)}>
           {stalledOnly ? <Check aria-hidden="true" strokeWidth={2} className="size-4" /> : <span aria-hidden="true" className="size-1.5 rounded-full bg-status-amber" />}
           {t("stalledOnly")}
-          <span className="font-mono text-xs tabular-nums opacity-80">{format.number(stalledCount)}</span>
+          {stalledCount === null ? (
+            <span aria-hidden="true" className="h-3 w-4 rounded-sm bg-current opacity-20 motion-safe:animate-pulse" />
+          ) : (
+            <span className="font-mono text-xs tabular-nums opacity-80">{format.number(stalledCount)}</span>
+          )}
         </button>
         <DropdownMenu>
           <DropdownMenuTrigger className={chip(false)}>

@@ -895,20 +895,73 @@ test("scope_not_read_before_shows_skeleton_then_error_with_retry (the board neve
     await held;
     return failing ? route.fulfill({ status: 502, contentType: "application/json", body: "{}" }) : route.continue();
   });
-  await page.getByRole("radio", { name: "Mine" }).click();
-  // Mine is read for the first time: the board's skeleton while it loads (title, toolbar and columns never vanish).
+  // Chosen from the keyboard (keyboard-first): the radio keeps the focus through the skeleton and the error.
+  const mine = page.getByRole("radio", { name: "Mine" });
+  await mine.focus();
+  await page.keyboard.press("Enter");
+  // Mine is read for the first time: the columns' skeleton while it loads, under the real toolbar (title, totals'
+  // place and controls never vanish, so the control just used stays focused).
   await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  await expect(page.getByRole("heading", { name: "Pipeline", level: 1 })).toBeVisible();
+  await expect(mine).toHaveAttribute("aria-checked", "true");
+  await expect(mine).toBeFocused();
   release();
-  // It fails (and its one retry): the board's error with Retry, not a blank page.
+  // It fails (and its one retry): the board's error with Retry in the columns' place, not a blank page; the toolbar
+  // (with its one title) stays and so does the focus.
   const alert = page.getByRole("alert").filter({ hasText: "Couldn’t load the pipeline" });
   await expect(alert).toBeVisible();
-  await expect(alert.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pipeline", level: 1 })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Sort:/ })).toBeVisible();
+  await expect(mine).toBeFocused();
   failing = false;
   await alert.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
   await expect(card(page, deal)).toBeVisible();
   await expect(page.getByRole("radio", { name: "Mine" })).toHaveAttribute("aria-checked", "true");
   expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
+  await context.close();
+});
+
+test("sort_and_scope_keep_keyboard_focus_while_a_new_board_loads (the toolbar stays mounted)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const deal = makeDeal({ title: `Focus load ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  await expect(card(page, deal)).toBeVisible();
+  // Every board read is held until released, so the skeleton can be checked while it shows.
+  let release = () => {};
+  let held = new Promise<void>((r) => (release = r));
+  await page.route((url) => url.pathname === "/api/pipeline/board", async (route) => {
+    await held;
+    return route.continue();
+  });
+  // "Longest in stage" from the keyboard: open the sort menu with Enter, pick the order with the arrows and Enter.
+  const sort = page.getByRole("button", { name: /^Sort:/ });
+  await sort.focus();
+  await page.keyboard.press("Enter");
+  const longest = page.getByRole("menuitemradio", { name: /Longest in stage/ });
+  await expect(page.getByRole("menu")).toBeVisible();
+  for (let i = 0; i < 6 && !(await longest.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("ArrowDown");
+  await expect(longest).toBeFocused();
+  await page.keyboard.press("Enter");
+  // That order is read for the first time: the columns' skeleton, and the menu hands the focus back to the Sort button,
+  // which is still on the page (not <body>).
+  await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  await expect(page.getByRole("button", { name: "Sort: Longest in stage" })).toBeFocused();
+  release();
+  await expect(card(page, deal)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort: Longest in stage" })).toBeFocused();
+  // Mine from the keyboard, also read for the first time: the radio keeps the focus.
+  held = new Promise<void>((r) => (release = r));
+  const mine = page.getByRole("radio", { name: "Mine" });
+  await mine.focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  await expect(mine).toBeFocused();
+  release();
+  await expect(card(page, deal)).toBeVisible();
+  await expect(mine).toBeFocused();
+  expect(errors).toEqual([]);
   await context.close();
 });
 
