@@ -228,7 +228,8 @@ export function LeadsWorkspace({
               {t("importFromSheet")}
             </Link>
           ) : null}
-          <Button variant={isAdmin ? "quiet" : "brand"} onClick={() => setAdding(true)}>
+          {/* Every role: the header's Add stays the screen's one red primary action (DESIGN.md), so this one is quiet. */}
+          <Button variant="quiet" onClick={() => setAdding(true)}>
             <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
             {t("add")}
           </Button>

@@ -608,6 +608,9 @@ test("list states: Leads (skeleton rows, error with Try again, no match, the lis
     const rep = await openPage(browser, { path: "/leads", state: repState });
     await expect(rep.page.getByText(m("en", "Leads.emptyTitle"))).toBeVisible();
     await expect(rep.page.getByText(m("en", "Leads.emptyBodyRep"))).toBeVisible();
+    // One red primary action on the screen (Apple audit #23): the header's Add; the empty state's Add is quiet.
+    await expect(rep.page.getByRole("button", { name: m("en", "Leads.add") })).toHaveCount(2);
+    await expect(rep.page.locator("main").locator("button.bg-brand, a.bg-brand")).toHaveCount(1);
     await settled(rep.page);
     expect(rep.errors).toEqual([]);
     await rep.context.close();
