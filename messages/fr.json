@@ -2859,5 +2859,244 @@
     "timePattern24": "hh:mm",
     "timePattern12": "h:mm am",
     "clearSearch": "Effacer la recherche"
+  },
+  "Analytics": {
+    "title": "Analyses",
+    "loading": "Chargement des analyses…",
+    "thisPeriod": "Sur la période",
+    "rangeLine": "{range} · heure de Paris",
+    "updated": "Mis à jour à {time}",
+    "rateLimited": "Trop de mises à jour, derniers chiffres affichés. Réessayez dans {seconds} s.",
+    "formerMembers": "Anciens membres de l’équipe",
+    "noName": "Pas encore de nom",
+    "loadFailed": "Impossible de charger {block}",
+    "tryAgain": "Réessayer",
+    "showTable": "Afficher en tableau",
+    "weekOf": "Semaine du {date}",
+    "partialWeek": "semaine partielle",
+    "notEnough": "Pas assez de données",
+    "filters": {
+      "label": "Filtres",
+      "presets": "Période",
+      "7d": "7 jours",
+      "30d": "30 jours",
+      "90d": "90 jours",
+      "mtd": "Ce mois-ci",
+      "last_month": "Mois dernier",
+      "custom": "Personnalisée…",
+      "customLabel": "Dates personnalisées",
+      "tooLong": "Choisissez au plus 366 jours, jusqu’à aujourd’hui au plus tard.",
+      "person": "Chiffres de",
+      "team": "Toute l’équipe",
+      "personSearch": "Chercher dans l’équipe",
+      "personEmpty": "Aucune personne trouvée"
+    },
+    "kpi": {
+      "rowLabel": "Chiffres clés de la période",
+      "calls": {
+        "label": "Appels",
+        "sub": "{count, plural, one {# joint} other {# joints}}"
+      },
+      "connect": {
+        "label": "Taux de joignabilité",
+        "sub": "{reached} sur {calls, plural, one {# appel} other {# appels}}",
+        "none": "Aucun appel pour l’instant"
+      },
+      "won": {
+        "label": "Gagné",
+        "sub": "{count, plural, =0 {Aucune affaire gagnée} one {# affaire} other {# affaires}}"
+      },
+      "winRate": {
+        "label": "Taux de réussite",
+        "sub": "{won, plural, one {# gagnée} other {# gagnées}} · {lost, plural, one {# perdue} other {# perdues}}",
+        "notEnough": "Pas encore assez d’affaires conclues"
+      },
+      "cycle": {
+        "label": "Cycle médian",
+        "value": "{days} j",
+        "sub": "Sur {count, plural, one {# affaire gagnée} other {# affaires gagnées}}",
+        "notEnough": "Il faut 3 affaires gagnées"
+      },
+      "revenue": {
+        "label": "Chiffre d’affaires",
+        "sub": "{count, plural, =0 {Aucune vente} one {# vente} other {# ventes}}"
+      }
+    },
+    "duration": {
+      "minutes": "{m} min",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min",
+      "days": "{d} j"
+    },
+    "calls": {
+      "title": "Appels",
+      "block": "les appels",
+      "reached": "Joints",
+      "notReached": "Non joints",
+      "caption": "{calls, plural, one {# appel} other {# appels}}, {rate} joints ; pic : {day} ({count}).",
+      "captionNoCalls": "Aucun appel sur la période ; {emails} e-mails, {whatsapp} messages WhatsApp et {meetings} rendez-vous notés.",
+      "chartDays": "Graphique des appels. Les flèches parcourent les jours. Les mêmes chiffres sont dans Afficher en tableau.",
+      "chartWeeks": "Graphique des appels. Les flèches parcourent les semaines. Les mêmes chiffres sont dans Afficher en tableau.",
+      "tooltip": "{calls, plural, one {# appel} other {# appels}} · {reached, plural, one {# joint} other {# joints}} ({rate})",
+      "tooltipNoCalls": "Aucun appel",
+      "empty": "Aucun appel, e-mail ni message noté sur la période.",
+      "emptyAction": "Ouvrir la file d’appels",
+      "emails": "E-mails",
+      "whatsapp": "WhatsApp",
+      "meetings": "Rendez-vous",
+      "miniTotal": "{count}",
+      "meetingsHeld": "{count, plural, one {# tenu} other {# tenus}}",
+      "table": {
+        "day": "Jour",
+        "week": "Semaine",
+        "calls": "Appels",
+        "reached": "Joints",
+        "rate": "Taux de joignabilité",
+        "emails": "E-mails",
+        "whatsapp": "WhatsApp",
+        "meetings": "Rendez-vous"
+      }
+    },
+    "speed": {
+      "title": "Délai de premier contact",
+      "block": "le délai de premier contact",
+      "median": "Médiane {duration}",
+      "medianNone": "Aucun prospect contacté pour l’instant",
+      "sub": "{within1h} en moins d’1 h · {within24h} en moins de 24 h · prospects ajoutés à la main",
+      "caption": "{leads, plural, one {# prospect ajouté} other {# prospects ajoutés}} à la main ; {touched} contactés ; délai médian avant le premier contact {duration}.",
+      "captionUntouched": "{leads, plural, one {# prospect ajouté} other {# prospects ajoutés}} à la main ; aucun contacté pour l’instant.",
+      "chart": "Graphique du délai de premier contact. Les flèches parcourent les tranches de délai. Les mêmes chiffres sont dans Afficher en tableau.",
+      "tooltip": "{count, plural, one {# prospect} other {# prospects}} ({share})",
+      "empty": "Aucun prospect ajouté à la main sur la période. Les listes importées sont mesurées dans Qualité des listes.",
+      "buckets": {
+        "lt1h": "Moins d’1 h",
+        "lt24h": "1–24 h",
+        "lt3d": "1–3 jours",
+        "gte3d": "3 jours ou plus",
+        "none": "Pas encore"
+      },
+      "table": {
+        "bucket": "Délai avant le premier contact",
+        "leads": "Prospects",
+        "share": "Part"
+      }
+    },
+    "funnel": {
+      "title": "Entonnoir des affaires",
+      "block": "l’entonnoir des affaires",
+      "won": "Gagné",
+      "caption": "{cohort, plural, one {# affaire ouverte} other {# affaires ouvertes}} ; {qualified} arrivées à l’étape Qualifiée, {negotiations} en Négociation et {won} gagnées.",
+      "chart": "Graphique de l’entonnoir. Les flèches parcourent les étapes. Les mêmes chiffres sont dans Afficher en tableau.",
+      "tooltip": "{count} sur {cohort} ({share})",
+      "footer": "Encore ouvertes {open} · perdues {lost}",
+      "mistake": "{count, plural, one {# affaire ouverte par erreur, non comptée comme perdue.} other {# affaires ouvertes par erreur, non comptées comme perdues.}}",
+      "maturing": "Les affaires ouvertes récemment peuvent encore avancer.",
+      "noCohort": "Aucune affaire ouverte sur la période.",
+      "empty": "Aucune affaire ouverte ni conclue sur la période.",
+      "emptyAction": "Ouvrir le pipeline",
+      "daysTitle": "Jours par étape",
+      "days": "{days} j en médiane",
+      "daysCount": "{count, plural, one {# passage} other {# passages}}",
+      "daysNone": "Pas encore de passage",
+      "table": {
+        "stage": "Étape",
+        "reached": "Affaires",
+        "share": "Part des ouvertes"
+      }
+    },
+    "lost": {
+      "title": "Raisons de perte",
+      "block": "les raisons de perte",
+      "caption": "{count, plural, one {# affaire perdue} other {# affaires perdues}} ; le plus souvent {reason} ({top}).",
+      "chart": "Graphique des raisons de perte. Les flèches parcourent les raisons. Les mêmes chiffres sont dans Afficher en tableau.",
+      "tooltip": "{count} ({share})",
+      "none": "Aucune affaire perdue sur la période.",
+      "table": {
+        "reason": "Raison",
+        "deals": "Affaires",
+        "share": "Part"
+      }
+    },
+    "team": {
+      "title": "Équipe",
+      "block": "le tableau de l’équipe",
+      "caption": "Chiffres par personne sur la période, triés par nom.",
+      "person": "Personne",
+      "calls": "Appels",
+      "reached": "Joints",
+      "connect": "Taux de joignabilité",
+      "emails": "E-mails",
+      "whatsapp": "WhatsApp",
+      "meetings": "Rendez-vous",
+      "opened": "Affaires ouvertes",
+      "won": "Gagnées",
+      "wonValue": "Montant gagné",
+      "lost": "Perdues",
+      "winRate": "Taux de réussite",
+      "none": "—",
+      "empty": "Personne dans l’équipe pour l’instant."
+    },
+    "heat": {
+      "title": "Meilleur moment pour appeler",
+      "block": "le meilleur moment pour appeler",
+      "metric": "Afficher",
+      "rate": "Taux de joignabilité",
+      "volume": "Appels",
+      "gridLabel": "Appels par jour et par heure, heure de Paris",
+      "caption": "Taux de joignabilité par jour et par heure, heure de Paris ; meilleur créneau {slot} ({rate} sur {calls} appels).",
+      "captionVolume": "Appels par jour et par heure, heure de Paris ; créneau le plus chargé {slot} ({calls} appels).",
+      "captionFew": "Appels par jour et par heure, heure de Paris ; aucun créneau n’a encore 5 appels.",
+      "slot": "{day} {hour}",
+      "cell": "{day} {hour}, {calls, plural, one {# appel} other {# appels}}, {reached, plural, one {# joint} other {# joints}}, {rate}",
+      "cellFew": "{day} {hour}, {calls, plural, one {# appel} other {# appels}}, pas assez d’appels pour un taux",
+      "cellNone": "{day} {hour}, aucun appel",
+      "readout": "{hour} · {calls, plural, one {# appel} other {# appels}} · {reached, plural, one {# joint} other {# joints}} ({rate})",
+      "readoutBest": "meilleur {day} {rate}",
+      "readoutNone": "{hour} · aucun appel",
+      "tapHint": "Touchez une heure pour voir ses chiffres.",
+      "legendFew": "Pas assez d’appels",
+      "legendLess": "Moins",
+      "legendMore": "Plus",
+      "outside": "Dont {count, plural, one {# appel} other {# appels}} en dehors de 07:00–20:00.",
+      "empty": "La carte se remplit dès qu’un créneau horaire compte 5 appels.",
+      "weekday": "Jour",
+      "hour": "Heure",
+      "table": {
+        "slot": "Créneau",
+        "calls": "Appels",
+        "reached": "Joints",
+        "rate": "Taux de joignabilité"
+      }
+    },
+    "revenue": {
+      "title": "Chiffre d’affaires",
+      "block": "le chiffre d’affaires",
+      "caption": "{revenue} sur {sales, plural, one {# vente} other {# ventes}} ; meilleur : {bucket} ({best}).",
+      "chartDays": "Graphique du chiffre d’affaires. Les flèches parcourent les jours. Les mêmes chiffres sont dans Afficher en tableau.",
+      "chartWeeks": "Graphique du chiffre d’affaires. Les flèches parcourent les semaines. Les mêmes chiffres sont dans Afficher en tableau.",
+      "tooltip": "{revenue} · {sales, plural, one {# vente} other {# ventes}}",
+      "split": "Depuis le stock {stock} · en direct de la source {direct} · vente moyenne {average}",
+      "exVat": "Hors TVA.",
+      "empty": "Aucune vente enregistrée sur la période.",
+      "table": {
+        "day": "Jour",
+        "week": "Semaine",
+        "revenue": "Chiffre d’affaires",
+        "sales": "Ventes"
+      }
+    },
+    "products": {
+      "title": "Meilleurs produits",
+      "block": "les meilleurs produits",
+      "caption": "{count, plural, one {Le meilleur produit} other {Les # meilleurs produits}} par chiffre d’affaires ; en tête {name} ({revenue}).",
+      "chart": "Graphique des meilleurs produits. Les flèches parcourent les produits. Les mêmes chiffres sont dans Afficher en tableau.",
+      "tooltip": "{revenue} · {pieces, plural, one {# pièce} other {# pièces}}",
+      "empty": "Aucune vente enregistrée sur la période.",
+      "table": {
+        "product": "Produit",
+        "revenue": "Chiffre d’affaires",
+        "pieces": "Pièces"
+      }
+    }
   }
 }

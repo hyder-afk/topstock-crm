@@ -110,6 +110,20 @@
   --status-green: #15702f;
   --status-amber: #7c5300;
   --status-red: #b61c29;
+  /* Analytics charts (design docs/evidence/analytics/design.md 4.4): one monochrome ramp, exact hex (no opacity, so
+     2 px surface gaps stay clean), every step at least 3:1 on the card and on the cursor band. No Signal Red in any
+     chart: red fills only what you act on (DESIGN.md). */
+  --chart-seq-1: #8b8b8c;
+  --chart-seq-2: #6c6c6d;
+  --chart-seq-3: #4d4d4e;
+  --chart-seq-4: #2d2d2f;
+  --chart-seq-5: #0e0e10;
+  --chart-ink: var(--chart-seq-5); /* bars at rest; the active datum */
+  --chart-ink-65: var(--chart-seq-3); /* the other bars while one is active */
+  --chart-ink-35: var(--chart-seq-1); /* the remainder segment ("not reached", "Not yet") */
+  --chart-cursor: #f5f3ef; /* the band behind the active column (the page background) */
+  --chart-grid: var(--border);
+  --chart-axis: var(--muted-foreground);
   color-scheme: light;
 }
 
@@ -127,6 +141,12 @@
   --status-green: #30d158;
   --status-amber: #ffd60a;
   --status-red: #ff6961;
+  --chart-seq-1: #6b6b6b;
+  --chart-seq-2: #8e8e8e;
+  --chart-seq-3: #b0b0b0;
+  --chart-seq-4: #d2d2d2;
+  --chart-seq-5: #f5f3ef;
+  --chart-cursor: #0e0e10;
   color-scheme: dark;
 }
 
@@ -333,6 +353,35 @@
   .deal-sheet.dialog-content[data-state="closed"] {
     animation: deal-sheet-right-out 200ms cubic-bezier(0.32, 0, 0.67, 0);
   }
+}
+
+/* Analytics charts. The chart surface Recharts makes focusable (accessibilityLayer) takes the app's ink ring. A plot
+   waiting for its first-visit entrance starts collapsed on its baseline (scaleY for columns, scaleX for bars), so the
+   bars never flash full before they rise; the entrance itself is a Motion spring (charts.tsx). Under reduced motion
+   nothing is collapsed and nothing rises. */
+.analytics-chart .recharts-surface:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+.analytics-chart .recharts-surface:focus:not(:focus-visible) {
+  outline: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .analytics-chart[data-enter="pending"] .recharts-bar-rectangles {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    transform: scaleY(0);
+  }
+  .analytics-chart[data-enter="pending"][data-layout="bars"] .recharts-bar-rectangles {
+    transform-origin: left;
+    transform: scaleX(0);
+  }
+}
+/* "Not enough calls": a labelled non-data cell, the muted surface with a 45° hatch in the border colour. */
+.chart-hatch {
+  background-color: var(--muted);
+  background-image: repeating-linear-gradient(45deg, var(--border) 0 1.5px, transparent 1.5px 6px);
 }
 
 @media (pointer: fine) {
