@@ -13,21 +13,15 @@ import { cn } from "@/lib/utils";
 // copy is aria-hidden and screen readers get the final value once.
 
 let counted = false; // this tab already counted (module state: one per tab, like the greeting's)
-let risen = false; // this tab already played the entrance
 
 /** Decided once per Home mount, in the browser: count up now? (false on the server and on later visits). */
 export function decideFirstVisit(): boolean {
   if (typeof window === "undefined" || counted) return false;
   return performance.now() < COUNT_UP_HYDRATION_MS;
 }
-/** Called once Home has mounted: later visits in this tab neither count nor rise. */
+/** Called once Home has mounted: later visits in this tab do not count. */
 export function markHomeVisited() {
   counted = true;
-  risen = true;
-}
-/** Whether this render should carry the rise entrance (server render and first hydration: yes). */
-export function shouldRise(): boolean {
-  return !risen;
 }
 
 export const FirstVisitContext = createContext(false);

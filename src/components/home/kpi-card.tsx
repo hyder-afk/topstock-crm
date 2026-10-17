@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback } from "react";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
-import { CountUp, shouldRise } from "@/components/home/count-up";
+import { CountUp } from "@/components/home/count-up";
 import { CardError } from "@/components/home/home-card";
 import type { HomeSummary } from "@/lib/home";
 import { formatMoney } from "@/lib/money";
@@ -36,8 +36,8 @@ function KpiCard({
       href={href}
       className={cn(
         KPI_CARD_CLASS,
+        // No rise of its own (Apple audit #20): the page's first-visit rise (app template) already carries the tiles.
         "col-span-6 transition-[scale,background-color] duration-150 hover:bg-card/80 active:scale-[0.98] lg:col-span-3",
-        shouldRise() && "animate-page",
       )}
     >
       <span className={KPI_LABEL_CLASS}>{label}</span>
