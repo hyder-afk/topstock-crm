@@ -140,6 +140,7 @@ set client_min_messages = 'notice';
 set role authenticated;
 select pg_temp.as_perf(current_setting('perf.admin')) \g /dev/null
 select public.analytics_activity(((now() at time zone 'Europe/Paris')::date - 364), (now() at time zone 'Europe/Paris')::date) \g /dev/null
+select public.analytics_call_times(((now() at time zone 'Europe/Paris')::date - 364), (now() at time zone 'Europe/Paris')::date) \g /dev/null
 reset role;
 set auto_explain.log_min_duration = -1;
 set client_min_messages = 'warning';
