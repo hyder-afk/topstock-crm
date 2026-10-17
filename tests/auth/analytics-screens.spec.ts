@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, isCancelledPrefetch } from "./helpers";
+import { appReady, createUser, fullSession, isCancelledPrefetch, youngSession } from "./helpers";
 import { makeOrg, moveTo, userId } from "./home-fixture";
 import { seedAnalytics } from "./analytics-fixture";
 
@@ -23,6 +23,20 @@ type State = Awaited<ReturnType<BrowserContext["storageState"]>>;
 let state: State;
 let repState: State;
 let emptyState: State;
+/** Who each saved session belongs to, so a session about to expire can be renewed (access tokens last 900 s). */
+const who = new Map<State, { email: string; password: string; secret: string }>();
+/** The saved session, or a new one when its access token is close to expiry (helpers.ts youngSession). */
+async function fresh(browser: Browser, saved: State): Promise<State> {
+  const person = who.get(saved);
+  if (!person) throw new Error("unknown session");
+  const next = await youngSession(browser, saved, person);
+  if (next === saved) return saved;
+  who.set(next, person);
+  if (saved === state) state = next;
+  else if (saved === repState) repState = next;
+  else if (saved === emptyState) emptyState = next;
+  return next;
+}
 let repId = "";
 
 const full = [
@@ -45,10 +59,12 @@ async function shoot(
   o: { as?: State; act?: (page: Page, width: number) => Promise<void>; path?: string; fullPage?: boolean; ready?: boolean } = {},
 ) {
   const base = test.info().project.use.baseURL ?? "http://localhost:3100";
+  let session = o.as ?? state;
   for (const { locale, scheme } of combos) {
     for (const width of widths) {
+      session = await fresh(browser, session);
       const context = await browser.newContext({
-        storageState: o.as ?? state,
+        storageState: session,
         viewport: { width, height: width < 600 ? 844 : 900 },
         colorScheme: scheme,
         timezoneId: "Europe/Paris",
@@ -94,6 +110,9 @@ test.beforeAll(async ({ browser }) => {
   state = await fullSession(browser, adminEmail, password, secret);
   repState = await fullSession(browser, repEmail, password, repSecret);
   emptyState = await fullSession(browser, emptyEmail, password, emptySecret);
+  who.set(state, { email: adminEmail, password, secret });
+  who.set(repState, { email: repEmail, password, secret: repSecret });
+  who.set(emptyState, { email: emptyEmail, password, secret: emptySecret });
 });
 
 test("Analytics with data, every width, light and dark, EN and FR", async ({ browser }) => {

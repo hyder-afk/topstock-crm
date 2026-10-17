@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, isCancelledPrefetch, settled, trackRequests } from "./helpers";
+import { appReady, createUser, fullSession, isCancelledPrefetch, settled, trackRequests, youngSession } from "./helpers";
 import { makeOrg, moveTo, userId } from "./home-fixture";
 import { EMPTY_FILE, XSS_FILE, XSS_NAME, expected, seedAnalytics } from "./analytics-fixture";
 
@@ -28,15 +28,34 @@ let adminState: State;
 let repState: State;
 let emptyState: State;
 let limitState: State;
+/** Who each saved session belongs to, so a session about to expire can be renewed (access tokens last 900 s). */
+const who = new Map<State, { email: string; password: string; secret: string }>();
 let admin = "";
 let rep = "";
 
 const money = (n: number) => new Intl.NumberFormat("en", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 
+/**
+ * The saved session, or a new one when its access token is close to expiry (helpers.ts youngSession; tokens last 900 s
+ * and this file runs longer). The renewed session replaces the old one for the rest of the file.
+ */
+async function fresh(browser: Browser, state: State): Promise<State> {
+  const person = who.get(state);
+  if (!person) throw new Error("unknown session");
+  const next = await youngSession(browser, state, person);
+  if (next === state) return state;
+  who.set(next, person);
+  if (state === adminState) adminState = next;
+  else if (state === repState) repState = next;
+  else if (state === emptyState) emptyState = next;
+  else if (state === limitState) limitState = next;
+  return next;
+}
+
 async function open(browser: Browser, state: State, o: { width?: number; locale?: string; reducedMotion?: "reduce" | "no-preference"; bypassCSP?: boolean } = {}) {
   const width = o.width ?? 1440;
   const context = await browser.newContext({
-    storageState: state,
+    storageState: await fresh(browser, state),
     viewport: { width, height: width < 600 ? 844 : 900 },
     timezoneId: "Europe/Paris",
     hasTouch: width < 600,
@@ -97,6 +116,10 @@ test.beforeAll(async ({ browser }) => {
   repState = await fullSession(browser, repEmail, password, repSecret);
   emptyState = await fullSession(browser, emptyEmail, password, emptySecret);
   limitState = await fullSession(browser, limitEmail, password, limitSecret);
+  who.set(adminState, { email: adminEmail, password, secret: adminSecret });
+  who.set(repState, { email: repEmail, password, secret: repSecret });
+  who.set(emptyState, { email: emptyEmail, password, secret: emptySecret });
+  who.set(limitState, { email: limitEmail, password, secret: limitSecret });
 });
 
 test("renders_seeded_figures", async ({ browser }) => {
@@ -646,7 +669,7 @@ test("api_answers_401_400_403_and_429_over_http", async ({ browser }) => {
   }
   await anon.close();
   // 400: an unknown, repeated or bad parameter, a custom range out of bounds, a person outside the organisation.
-  const asAdmin = await browser.newContext({ storageState: adminState });
+  const asAdmin = await browser.newContext({ storageState: await fresh(browser, adminState) });
   const stranger = "00000000-0000-4000-8000-000000000000";
   for (const q of ["?foo=1", "?range=1y", "?idle=14", "?range=7d&range=30d", "?range=custom", "?range=custom&from=2020-01-01&to=2021-06-01", "?from=2026-01-01", `?rep=${stranger}`, "?rep=not-a-uuid"]) {
     const res = await asAdmin.request.get(`${base}/api/analytics${q}`);
@@ -659,13 +682,13 @@ test("api_answers_401_400_403_and_429_over_http", async ({ browser }) => {
   expect((await ok.json()).coverage.data.untouched).toBe(1); // Rita at 90 days: Halles Altamar, never contacted
   await asAdmin.close();
   // 403: a rep asking for a colleague (the database's own scope check).
-  const asRep = await browser.newContext({ storageState: repState });
+  const asRep = await browser.newContext({ storageState: await fresh(browser, repState) });
   const refused = await asRep.request.get(`${base}/api/analytics?rep=${admin}`);
   expect(refused.status()).toBe(403);
   expect(await refused.json()).toEqual({ error: "forbidden" });
   await asRep.close();
   // 429: the real per-person limiter (30 reads a minute), with Retry-After; its own person, so no other test waits.
-  const limited = await browser.newContext({ storageState: limitState });
+  const limited = await browser.newContext({ storageState: await fresh(browser, limitState) });
   const statuses: number[] = [];
   for (let i = 0; i < 30; i++) statuses.push((await limited.request.get(`${base}/api/analytics?range=7d`)).status());
   expect(statuses.every((s) => s === 200)).toBe(true);
