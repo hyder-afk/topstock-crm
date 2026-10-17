@@ -207,7 +207,11 @@ export function Dock() {
           }}
           onDrag={onDrag}
           onDragEnd={onDragEnd}
+          // A tap gives way under the finger (Apple audit #19); a press that becomes a drag lifts to 1.08 instead (whileDrag
+          // outranks whileTap). Reduced motion: neither.
+          whileTap={reduce ? undefined : { scale: 0.94 }}
           whileDrag={reduce ? undefined : { scale: 1.08 }}
+          transition={springs.bead}
           style={{ x, width: BEAD, height: BEAD, touchAction: "none" }}
           className={cn(
             "absolute top-[-20px] left-0 grid cursor-grab place-items-center rounded-full bg-brand text-brand-foreground",

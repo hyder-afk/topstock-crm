@@ -110,6 +110,32 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
     await context.close();
   });
 
+  test("pressing the bead gives way under the pointer, a drag lifts it (Apple audit #19)", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: state, viewport });
+    const page = await context.newPage();
+    await open(page, "/");
+    await beadSettledOver(page, "Home");
+    const scale = () => page.getByTestId("dock-bead").evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+    const bead = (await page.getByTestId("dock-bead").boundingBox())!;
+    await page.mouse.move(bead.x + bead.width / 2, bead.y + bead.height / 2);
+    await page.mouse.down();
+    await expect.poll(scale, { message: "pressed: smaller" }).toBeLessThan(0.97);
+    await page.mouse.up();
+    await expect.poll(scale, { message: "released: back to rest" }).toBeCloseTo(1, 2);
+    await expect(page).toHaveURL((u) => u.pathname === "/");
+    // A press that turns into a drag lifts instead.
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(bead.x + bead.width / 2 + i * 3, bead.y + bead.height / 2);
+      await page.waitForTimeout(16);
+    }
+    await expect.poll(scale, { message: "dragging: lifted" }).toBeGreaterThan(1.03);
+    await page.mouse.move(bead.x + bead.width / 2, bead.y + bead.height / 2);
+    await page.mouse.up();
+    await expect(page).toHaveURL((u) => u.pathname === "/");
+    await context.close();
+  });
+
   test("reduced motion: the bead lands at once", async ({ browser }) => {
     const context = await browser.newContext({ storageState: state, viewport, reducedMotion: "reduce" });
     const page = await context.newPage();
