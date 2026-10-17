@@ -168,4 +168,3 @@ Not measurements, skipped: 40 PLAN header lines.
 | Semgrep `p/github-actions` + `p/javascript` on the workflow and the script | no findings (run by the advisor; the registry is blocked by this session's proxy, so the builder could not rerun it) |
 | gitleaks | not installed here; runs in CI |
 | /security-review | see PR |
-
