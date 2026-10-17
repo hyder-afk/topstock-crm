@@ -72,7 +72,7 @@ What the loaded run shows:
 - **Page budgets with ×3: still met.**
   - Slowest at 90 days: sales team 118.4 ms, ×3 = 355 ms (under 1 s).
   - Slowest at 365 days: activity team 394.4 ms, ×3 = 1,183 ms (under 1.5 s).
-- **Per-function local budgets: four over under load.**
+- **Per-function local budgets: five over under load** (four sales cases plus batches team).
   - sales: 30 d team, 90 d team and person, 365 d person.
   - batches team.
 - **The noise is visible:**
