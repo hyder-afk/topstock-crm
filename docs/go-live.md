@@ -2,7 +2,11 @@
 
 Written 12 Oct 2026 by the builder. Brought up to date on 16 Oct 2026 with main (commit c8ac42a: all of Day 6 and
 Day 7, Gate 1 code part passed) and with Haider's decisions of 16 Oct 2026; part I3.3 (the daily security digest)
-written the same day. Master Plan section 9 Day 8, section 8
+written the same day. Brought up to date again on 17 Oct 2026 with main c543676 (PR #23, the security digest, merged
+as 2b1e7f5; PR #20, DB tests on the Paris day; PR #24, decision 9's 15-minute tokens, merged as c543676), plus the
+consistency and security audit follow-ups (D2 one authenticator per person, D10 Realtime, B3 `/forgot-password`), and
+with the audit-fixes PR (bugs and consistency audits: migrations `20261024080000_pipeline_board_order` and
+`20261024080100_lead_stock_hold_note`). Master Plan section 9 Day 8, section 8
 rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-alive"); Cloud Workflow sections 4 to
 7; docs/day0-setup.md ("Later visits"); docs/evidence/day7d/section8-checklist.md (the items marked "Day 8").
 
@@ -36,9 +40,9 @@ working.
 - optionally G1 and G2 step 1 (the key pair and the `AGE_PUBLIC_KEY` secret);
 - I3.1 and I3.2.
 
-Meanwhile Claude does the `jwt_expiry` PR (decision 9: 900 seconds); the hosting options are compared in
-`docs/evidence/day8/hosting-options.md` (decision 4, decided: stay on Vercel for now). The
-security digest template (I3.3) is written (16 Oct 2026) and comes to you as its own PR; once merged, its migration is
+Done meanwhile: PR #24 (merged as c543676) set `jwt_expiry = 900` (decision 9: 900 seconds); the hosting options
+are compared in `docs/evidence/day8/hosting-options.md` (decision 4, decided: stay on Vercel for now). The security
+digest template (I3.3) is merged (PR #23, 2b1e7f5): its migration `20261023090000_security_digest` is on main, so it is
 part of the SHA Claude confirms on 31 Oct.
 
 **From 31 Oct**, after you check github.com > your avatar > **Settings** > **Billing** (the page may be called
@@ -117,7 +121,7 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2, I3.3).
    project awake. It is free.
 9. **How long a sign-in token lasts in production (`jwt_expiry`)**: **decided by you on 16 Oct 2026: "15 minutes",
    900 seconds.** You already set Access token (JWT) expiry to 900 in the production dashboard that day, so part D6
-   is only a check. Claude's small PR sets `jwt_expiry = 900` in `supabase/config.toml` (dev gets it on the next
+   is only a check. Done: PR #24 (merged as c543676) set `jwt_expiry = 900` in `supabase/config.toml` (dev gets it on the next
    deploy-dev-db run; CI's local stack and the tests use it too) and the "Sign out of all devices" sheet now says
    "within 15 minutes". Why: after "Sign out of all devices", another device stays signed in until its token runs
    out (Day 7a residual R2); 900 shrinks that window from 1 hour to 15 minutes. Supabase's guide says the 1-hour
@@ -141,9 +145,11 @@ Why: production must get only reviewed code that passed the security gate.
    - the `advisor` subagent's verdict on this go-live kit: **APPROVED** (quoted);
    - CI green on `main`, and the **go-live commit SHA** (40 characters) you will deploy in part E: main **c8ac42a or
      later**, and Claude confirms it is **the newest commit on main** at that moment (F2 redeploys production from
-     main, so the database in E must match it), with every migration on main up to
-     `20261022130000_share_take_paris_day` (on 31 Oct also `20261023090000_security_digest`, which part I3.3 needs,
-     once its PR is merged), and `deploy-dev-db` green on it (dev has the same migrations). The same SHA serves as
+     main, so the database in E must match it), with every migration on main at that
+     confirmed SHA (Claude reads the list in `supabase/migrations/` at that SHA and names the last file and the count;
+     with the audit-fixes PR merged that is `20261024080100_lead_stock_hold_note`, 24 files, and part I3.3 needs
+     `20261023090000_security_digest` from PR #23 among them; `20261024090000_analytics` comes with the Analytics PR
+     and is then the last file), and `deploy-dev-db` green on it (dev has the same migrations). The same SHA serves as
      `SWEEPER_SHA` in part I2;
    - that topstock-crm's Actions logs, which anyone can read since the repository went public (16 Oct 2026), touch
      only dev and print no secret;
@@ -195,7 +201,10 @@ screen asks for a card or an upgrade, stop and tell Claude.
 2. Name: `TopStock rate limit`.
 3. **If**: **Request Path** > **Starts with** > `/api`.
 4. Add a second condition joined with **OR** (not AND): **Request Path** > **Starts with** > `/login`. Then a third,
-   also with **OR**: **Request Path** > **Starts with** > `/mfa`. If the editor only lets you join conditions with AND,
+   also with **OR**: **Request Path** > **Starts with** > `/mfa`, and a fourth, also with **OR**: **Request Path** >
+   **Starts with** > `/forgot-password` (recommended by the 17 Oct 2026 security audit: the reset page has no limit of
+   its own, and the project's email cap of 10 an hour is shared by everyone, so a script could use it up and delay real
+   resets and invites). If the editor only lets you join conditions with AND,
    delete the extra conditions, keep the `/api` one alone and tell Claude "rule: no OR".
 5. **Then**: **Rate Limit**. If a "Rate Limiting Pricing" window opens, read it and choose **Continue** (see the card
    rule above).
@@ -322,7 +331,12 @@ If you see a setting for the minimum time between emails to the same address, se
 |---|---|---|
 | TOTP (App Authenticator) | **Enabled** (enrol and verify) | `[auth.mfa.totp] enroll_enabled = true`, `verify_enabled = true` |
 | Phone MFA | **Disabled** | `[auth.mfa.phone] enroll_enabled = false`, `verify_enabled = false` |
-| Maximum enrolled factors per user | **10** | `max_enrolled_factors = 10` |
+| Maximum enrolled factors per user | **1** | `max_enrolled_factors = 1` |
+
+Why **1** (security audit, 17 Oct 2026): everyone has exactly one authenticator, and the app has no screen that lists
+factors, so a stolen signed-in session could otherwise add a second authenticator nobody would see. Setup still works:
+the app deletes any half-finished setup before it starts a new one. A lost phone is still handled by an admin removing
+the factor in the dashboard.
 
 ### D3. Authentication > URL Configuration
 | Setting | Value | config.toml |
@@ -386,6 +400,15 @@ The `lead-files` bucket itself is made by the migrations in part E; you check it
 ### D9. Project Settings > Infrastructure (check only)
 Read the Postgres version. **What you should see:** 17 (something). If it starts with another number, tell Claude
 "prod Postgres is N" before part G: the backup workflow installs version 17 tools.
+
+### D10. Realtime (recommended; security audit, 17 Oct 2026)
+The app uses no Realtime channel and publishes no table, but Realtime is on by default. With it open, anyone holding
+the public anon key could use public Broadcast and Presence channels as free messaging against the project's quota
+(Master Plan item 10: switch off unused APIs). **Recommended:** in **Realtime** > **Settings**, switch Realtime off if
+the screen offers it; otherwise turn off public access so that only private channels are allowed (the switch may be
+called "Allow public access" or "Private channels only"). Nothing in the app changes. If you find neither switch, tell
+Claude "no Realtime switch" and leave it. (Dev keeps `[realtime] enabled = true` in `supabase/config.toml` for now;
+changing dev is a separate small PR if you want them to match.)
 
 Save each screen.
 
@@ -695,7 +718,7 @@ old. If it is red, the summary says why; the runbook's "When it is red" table sa
 **Where Gate 1 stands.** Done: the code part (16 Oct). Now: production settings (D) and access checked (I3.1,
 I3.2). **Waiting for 31 Oct** (GitHub Actions minutes): the database in production and its checks (E, F5), backups
 (G), the restore test (H), keep-alive (I), the sweeper's dry runs (I2) and the security digest (I3.3; its template
-is written, waiting for its PR to merge). Hosting is decided (decision 4, 16 Oct 2026: Vercel Hobby for now, the
+is merged, PR #23). Hosting is decided (decision 4, 16 Oct 2026: Vercel Hobby for now, the
 fair-use risk accepted), so it no longer holds Gate 1 open. Real data (part J) waits for all of these, and for your
 "when everything is ready".
 

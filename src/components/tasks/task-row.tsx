@@ -195,7 +195,7 @@ export const TaskRow = memo(function TaskRow({
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t("menu", { title: task.title })}
-                className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-10"
+                className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-10"
               >
                 <Ellipsis aria-hidden="true" strokeWidth={1.75} className="size-5" />
               </DropdownMenuTrigger>

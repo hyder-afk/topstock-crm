@@ -424,3 +424,38 @@ test("interested_opens_deal_in_queue, the queue card's deal line (Day 4c rebase)
   expect(errors).toEqual([]);
   await context.close();
 });
+
+test("queue_outcome_deal_reaches_the_board: the board in this tab's cache is read again (bugs audit L3)", async ({ browser }) => {
+  sql(`update public.companies set lead_status = 'disqualified' where owner_id = '${admin}'`);
+  sql(`delete from private.queue_claims where user_id = '${admin}'`);
+  const lead = makeLead("Queue Board Lead", "warm");
+  const { context, page, errors } = await open(browser, adminState);
+  // The board first: it is now in this tab's cache (fresh for 30 s).
+  await settled(page);
+  await page.goto("/pipeline");
+  await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await appReady(page);
+  // The queue in the same tab (the dock, then the leads page's link): Interested opens a deal.
+  const dock = page.getByRole("navigation", { name: /Sections/ });
+  await dock.getByRole("link", { name: "Leads", exact: true }).click();
+  await page.getByRole("link", { name: "Work queue" }).click();
+  await expect(page.locator("main h1")).toContainText("Work queue");
+  await appReady(page);
+  await page.keyboard.press("Enter");
+  const card = page.locator("main section[role=region]:not([data-leaving])");
+  const outside = page.getByRole("button", { name: "Show leads outside calling hours" });
+  await expect(card.or(outside).first()).toBeVisible();
+  if (await outside.isVisible()) await outside.click();
+  await expect(card.locator("h2")).toContainText(`Queue Board Lead ${run}`);
+  await page.keyboard.press("Digit5");
+  await expect(page.getByRole("switch", { name: /Open a deal/ })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => dealsOn(lead)).toBe("1");
+  const deal = sql(`select id from public.deals where company_id = '${lead}'`);
+  // Back on the board (the dock): the new deal is there at once, not after the cache's 30 s.
+  await dock.getByRole("link", { name: "Pipeline", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await expect(page.locator(`[data-deal-card="${deal}"]`)).toBeVisible();
+  expect(errors).toEqual([]);
+  await context.close();
+});

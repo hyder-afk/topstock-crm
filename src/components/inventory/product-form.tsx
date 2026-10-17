@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { createProduct, updateProduct } from "@/app/(app)/inventory/actions";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { refreshInventory } from "@/components/inventory/use-inventory";
 import { requestId, runWithStepUp, useStockErrorText, type StepUp } from "@/components/inventory/stock-actions";
 import type { StockFailure, StockHint } from "@/lib/inventory/errors";
 import type { ProductDetail } from "@/lib/inventory/types";
-import { parsePrice, parseWhole, type QtyUnit } from "@/lib/inventory/units";
+import { parsePrice, parseWhole, priceInput, type QtyUnit } from "@/lib/inventory/units";
 import { cn } from "@/lib/utils";
 
 type Field = "name" | "category" | "carton" | "pallet" | "reorder" | "priceMin" | "priceMax" | "eta" | "cost" | "opening";
@@ -54,17 +54,18 @@ export function ProductFormDialog({
   onCreated?: (id: string) => void;
 }) {
   const t = useTranslations("Inventory.form");
+  const locale = useLocale();
   const errorText = useStockErrorText();
   const toast = useToast();
   const queryClient = useQueryClient();
   const id = useId();
   const editing = !!product;
-  const [v, setV] = useState(() => initial(product));
+  const [v, setV] = useState(() => initial(product, locale));
   const [seen, setSeen] = useState({ open, product });
   if (seen.open !== open || seen.product?.id !== product?.id) {
     setSeen({ open, product });
     if (open) {
-      setV(initial(product));
+      setV(initial(product, locale));
     }
   }
   const [busy, setBusy] = useState(false);
@@ -82,9 +83,9 @@ export function ProductFormDialog({
       ["carton", ppc !== null && ppc >= 1 && ppc <= 1_000_000],
       ["pallet", v.pallet === "" || (parseWhole(v.pallet) ?? 0) >= 1],
       ["reorder", v.reorder === "" || parseWhole(v.reorder) !== null],
-      ["priceMin", v.priceMin === "" || parsePrice(v.priceMin) !== null],
-      ["priceMax", v.priceMax === "" || parsePrice(v.priceMax) !== null],
-      ["cost", v.cost === "" || parsePrice(v.cost) !== null],
+      ["priceMin", v.priceMin === "" || parsePrice(v.priceMin, locale) !== null],
+      ["priceMax", v.priceMax === "" || parsePrice(v.priceMax, locale) !== null],
+      ["cost", v.cost === "" || parsePrice(v.cost, locale) !== null],
       ["opening", editing || v.opening === "" || fieldPieces(v.opening, v.openingUnit, ppc ?? 1) !== null],
     ];
     const bad = checks.find(([, ok]) => !ok);
@@ -93,8 +94,8 @@ export function ProductFormDialog({
       focusField(bad[0]);
       return;
     }
-    const pmin = v.priceMin === "" ? null : parsePrice(v.priceMin);
-    const pmax = v.priceMax === "" ? null : parsePrice(v.priceMax);
+    const pmin = v.priceMin === "" ? null : parsePrice(v.priceMin, locale);
+    const pmax = v.priceMax === "" ? null : parsePrice(v.priceMax, locale);
     if (pmin !== null && pmax !== null && pmin > pmax) {
       setFailure({ field: "priceMin", text: t("invalid.priceOrder") });
       focusField("priceMin");
@@ -111,7 +112,7 @@ export function ProductFormDialog({
       transitEta: v.eta || null,
       shareVisible: v.shareVisible === "yes",
     };
-    const cost = v.cost === "" ? null : parsePrice(v.cost);
+    const cost = v.cost === "" ? null : parsePrice(v.cost, locale);
     const opening = editing || v.opening === "" ? null : fieldPieces(v.opening, v.openingUnit, ppc as number);
     if (!editing && opening && !(await stepUp.ensureFresh(60))) return;
     setBusy(true);
@@ -231,16 +232,16 @@ export function ProductFormDialog({
   );
 }
 
-function initial(p: ProductDetail | null) {
+function initial(p: ProductDetail | null, locale: string) {
   return {
     name: p?.name ?? "",
     category: p?.category ?? "",
     carton: p ? String(p.pieces_per_carton) : "",
     pallet: fmt(p?.cartons_per_pallet),
     reorder: fmt(p?.reorder_point),
-    priceMin: fmt(p?.price_min),
-    priceMax: fmt(p?.price_max),
-    cost: fmt(p?.cost_per_piece),
+    priceMin: priceInput(p?.price_min, locale),
+    priceMax: priceInput(p?.price_max, locale),
+    cost: priceInput(p?.cost_per_piece, locale),
     eta: p?.transit_eta ?? "",
     shareVisible: p && !p.share_visible ? "no" : "yes",
     opening: "",

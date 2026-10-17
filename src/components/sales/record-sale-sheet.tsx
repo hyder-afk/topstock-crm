@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useId, useMemo, useState } from "react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { recordSale, undoSale } from "@/app/(app)/inventory/sales/actions";
@@ -16,7 +16,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { parsePrice } from "@/lib/inventory/units";
+import { parsePrice, priceInput } from "@/lib/inventory/units";
 import type { QtyUnit } from "@/lib/inventory/units";
 import type { StockFailure } from "@/lib/inventory/errors";
 import type { StockRow } from "@/lib/inventory/types";
@@ -43,7 +43,6 @@ type Line = {
 };
 
 const blankLine = (): Line => ({ key: crypto.randomUUID(), product: null, description: "", qtyText: "", unit: "piece", priceText: "" });
-const priceText = (n: number | null) => (n === null ? "" : String(Number(n)));
 
 // Record a sale (design 6.1, 6.2 and 10.2): lead, Warehouse inventory or Supplier Stock, lines (product, pieces or
 // cartons, price per piece prefilled with the max price, excluding VAT), the deal when the lead has one, the ship-to
@@ -65,6 +64,8 @@ export function RecordSaleSheet({
   const t = useTranslations("Sales.sheet");
   const tc = useTranslations("Sales");
   const format = useFormatter();
+  const locale = useLocale();
+  const priceText = (n: number | null) => priceInput(n, locale);
   const tDeal = useTranslations("Deals");
   const tStage = useTranslations("Stages");
   const dealWords = {
@@ -122,7 +123,7 @@ export function RecordSaleSheet({
   const parsed = lines.map((l) => {
     const ppc = l.product?.pieces_per_carton ?? 1;
     const pieces = fieldPieces(l.qtyText, l.unit, ppc);
-    const price = parsePrice(l.priceText);
+    const price = parsePrice(l.priceText, locale);
     const below = fulfilment === "from_stock" && !!l.product && price !== null && l.product.price_min !== null && price < Number(l.product.price_min);
     const room = l.product ? Math.max(0, l.product.wh_available + (heldFor[l.product.id] ?? 0)) : 0;
     const short = fulfilment === "from_stock" && !!l.product && pieces !== null && pieces > room;
@@ -280,7 +281,7 @@ export function RecordSaleSheet({
                   setDealId(null);
                 }}
                 className={cn(
-                  "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform] duration-150 active:scale-[0.97]",
+                  "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform,scale] duration-150 active:scale-[0.97]",
                   fulfilment === f ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground",
                 )}
               >
@@ -429,7 +430,7 @@ export function RecordSaleSheet({
                   name="ship_to_country"
                   autoComplete="off"
                   maxLength={2}
-                  placeholder="FR"
+                  placeholder={t("shipToPlaceholder")}
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
                   className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-base font-normal uppercase"

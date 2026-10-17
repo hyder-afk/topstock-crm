@@ -133,7 +133,7 @@ export function TabList<T extends string>({
               onPointerEnter={() => onIntent?.(item.id)}
               onFocus={() => onIntent?.(item.id)}
               className={cn(
-                "relative min-h-11 shrink-0 snap-start rounded-[10px] px-3.5 text-sm whitespace-nowrap transition-[color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+                "relative min-h-11 shrink-0 snap-start rounded-[10px] px-3.5 text-sm whitespace-nowrap transition-[color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
                 selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 "focus-visible:outline-offset-[-2px]",
               )}

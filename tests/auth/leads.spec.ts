@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { appReady, choose, createUser, fullSession, seedLeads, setRole, sql } from "./helpers";
 
 // Leads (Day 3a): the list pages and filters on the server, the preview shows contacts, leads and contacts can be
@@ -206,6 +206,97 @@ test.describe("desktop", () => {
     await page.getByRole("button", { name: "Delete view Cooling off" }).click();
     await expect(page.getByRole("status").filter({ hasText: "View deleted." })).toBeVisible();
     await context.close();
+  });
+
+  // Bugs audit M2, M3 and M4: a server action that throws (here its request is cut, as when the connection drops or a
+  // deploy lands) left the contact form on "Saving…" for good, kept a status that was never saved, and called a failed
+  // Undo "Change undone."; and once a toast's button had been clicked with the mouse, later toasts never left on their
+  // own. Each test cuts the leads page's server actions while `cut` is on.
+  async function leadPreview(browser: Browser, lead: string) {
+    const context = await browser.newContext({ storageState: adminState, viewport: { width: 1440, height: 900 } });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const state = { cut: false };
+    await page.route((url) => url.pathname === "/leads", (route) =>
+      state.cut && route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort("failed") : route.continue(),
+    );
+    await openLeads(page);
+    await rowLinks(page).filter({ hasText: lead }).click();
+    await expect(preview(page).getByRole("heading", { level: 2 })).toHaveText(lead);
+    return { context, page, errors, state };
+  }
+  const statusOf = (lead: string) => sql(`select lead_status from public.companies where name = '${lead}'`);
+
+  test("contact_save_that_cannot_be_sent_says_so_and_frees_the_button (bugs audit M2)", async ({ browser }) => {
+    const { context, page, errors, state } = await leadPreview(browser, "Maison Verdane");
+    await preview(page).getByRole("button", { name: "Add contact" }).click();
+    await preview(page).getByLabel("First name").fill("Gaëlle");
+    state.cut = true;
+    await preview(page).getByRole("button", { name: "Save contact" }).click();
+    await expect(preview(page).getByText("Couldn't save just now. Try again.")).toBeVisible();
+    await expect(preview(page).getByRole("button", { name: "Save contact" })).toBeEnabled();
+    state.cut = false;
+    await preview(page).getByRole("button", { name: "Save contact" }).click();
+    await expect(preview(page).getByText("Gaëlle")).toBeVisible();
+    expect(errors).toEqual([]);
+    await context.close();
+  });
+
+  test("status_change_and_undo_that_cannot_be_sent_say_so (bugs audit M3)", async ({ browser }) => {
+    const lead = "Maison Verdane";
+    const before = statusOf(lead);
+    sql(`update public.companies set lead_status = 'warm' where name = '${lead}'`);
+    const { context, page, errors, state } = await leadPreview(browser, lead);
+    try {
+      // The change goes back, with a toast.
+      state.cut = true;
+      await preview(page).getByRole("button", { name: "Set status" }).click();
+      await page.getByRole("menuitemradio", { name: "Customer" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Couldn't save just now. Try again." })).toBeVisible();
+      await expect(preview(page).getByText("Warm (in progress)").first()).toBeVisible();
+      await expect(preview(page).getByText("Customer", { exact: true })).toHaveCount(0);
+      expect(statusOf(lead)).toBe("warm");
+      // An Undo that cannot be sent says so, never "Change undone."
+      state.cut = false;
+      await preview(page).getByRole("button", { name: "Set status" }).click();
+      await page.getByRole("menuitemradio", { name: "Customer" }).click();
+      const changed = page.getByRole("status").filter({ hasText: "Status changed." });
+      await expect(changed).toBeVisible();
+      state.cut = true;
+      await changed.getByRole("button", { name: "Undo" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Couldn't save just now. Try again." })).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: "Change undone." })).toHaveCount(0);
+      expect(statusOf(lead)).toBe("customer");
+      expect(errors).toEqual([]);
+    } finally {
+      sql(`update public.companies set lead_status = '${before}' where name = '${lead}'`);
+      await context.close();
+    }
+  });
+
+  test("toast_after_a_mouse_click_on_another_still_leaves_on_its_own (bugs audit M4)", async ({ browser }) => {
+    const lead = "Maison Verdane";
+    const before = statusOf(lead);
+    sql(`update public.companies set lead_status = 'warm' where name = '${lead}'`);
+    const { context, page, errors } = await leadPreview(browser, lead);
+    try {
+      await preview(page).getByRole("button", { name: "Set status" }).click();
+      await page.getByRole("menuitemradio", { name: "Customer" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Status changed." })).toBeVisible();
+      // The mouse dismisses it (the box goes from under the pointer: no mouseleave ever comes), then moves away.
+      await page.getByRole("status").getByRole("button", { name: "Dismiss" }).click();
+      await page.mouse.move(4, 4);
+      await preview(page).getByRole("button", { name: "Set status" }).click();
+      await page.getByRole("menuitemradio", { name: "Warm (in progress)" }).click();
+      const next = page.getByRole("status").filter({ hasText: "Status changed." });
+      await expect(next).toBeVisible();
+      await expect(next).toBeHidden({ timeout: 10_000 }); // 6 s
+      expect(errors).toEqual([]);
+    } finally {
+      sql(`update public.companies set lead_status = '${before}' where name = '${lead}'`);
+      await context.close();
+    }
   });
 });
 

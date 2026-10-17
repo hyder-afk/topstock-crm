@@ -160,8 +160,8 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
                   onChange={(e) => setLanguage(e.target.value === "fr" ? "fr" : "en")}
                   className="font-normal"
                 >
-                  <option value="fr">Français</option>
-                  <option value="en">English</option>
+                  <option value="fr">{t("languageFr")}</option>
+                  <option value="en">{t("languageEn")}</option>
                 </Select>
               </div>
               <div className="flex flex-col gap-1 text-sm font-bold">

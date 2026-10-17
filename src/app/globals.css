@@ -184,8 +184,8 @@
   }
 }
 
-/* Entrances: transform and opacity only. Page enter on every navigation; word-by-word rise for the greeting
-   (first view per tab only, see greeting.tsx). The reduced-motion block below collapses both to instant. */
+/* Entrances: transform and opacity only. Page enter on the first visit to each page per tab (see (app)/template.tsx);
+   word-by-word rise for the greeting (first view per tab only, see greeting.tsx). The reduced-motion block below collapses both to instant. */
 @keyframes rise {
   from {
     opacity: 0;

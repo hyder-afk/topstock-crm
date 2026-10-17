@@ -42,7 +42,7 @@ export function OutcomePad({
             disabled={disabled[o]}
             onClick={() => onChange(o)}
             className={cn(
-              "flex min-h-14 min-w-0 items-center sm:min-h-11 justify-between gap-2 rounded-md px-3 text-left text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] disabled:opacity-50",
+              "flex min-h-14 min-w-0 items-center sm:min-h-11 justify-between gap-2 rounded-md px-3 text-left text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] disabled:opacity-50",
               on ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
             )}
           >
@@ -117,7 +117,7 @@ export function FollowUpPicker({
             aria-pressed={chip === c}
             onClick={() => onChange(chip === c && rule === "optional" ? noFollowUp : { ...value, date: dates[c] })}
             className={cn(
-              "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+              "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
               chip === c ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
             )}
           >
@@ -130,7 +130,7 @@ export function FollowUpPicker({
           aria-pressed={picking}
           onClick={() => onChange({ ...value, date: value.date && !chip ? value.date : addDays(today, 3) })}
           className={cn(
-            "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+            "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
             picking ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
           )}
         >

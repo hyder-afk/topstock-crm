@@ -51,7 +51,7 @@ export function LeadPreview({
         type="button"
         onClick={onClose}
         aria-label={t("close")}
-        className="hidden size-9 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] lg:grid"
+        className="hidden size-9 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] lg:grid"
       >
         <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
       </button>
@@ -347,7 +347,7 @@ function LeadDetailView({
                       type="button"
                       onClick={() => setContactEdit(c.id)}
                       aria-label={t("editContact", { name: personName(c) })}
-                      className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
+                      className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
                     >
                       <Pencil aria-hidden="true" strokeWidth={1.75} className="size-4" />
                     </button>

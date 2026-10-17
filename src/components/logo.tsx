@@ -10,7 +10,7 @@ export function Logo({ className }: { className?: string }) {
     <svg viewBox="0 0 7379 1940" width={184} height={48} className={className} role="img" aria-label="TopStock">
       <g transform="translate(0 570) scale(10)">
         <g transform="translate(0 -9) scale(0.83846)">
-          <path d={MARK} fill="#F2203E" />
+          <path d={MARK} className="fill-brand" />
         </g>
         <path d={WORD} fill="currentColor" />
       </g>

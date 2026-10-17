@@ -73,7 +73,7 @@ export const LeadHeader = memo(function LeadHeader({
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label={t("ownerMenu", { owner: ownerName ?? tLeads("unassigned") })}
-                className="inline-flex min-h-11 items-center gap-1 rounded-sm text-sm text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:min-h-0"
+                className="inline-flex min-h-11 items-center gap-1 rounded-sm text-sm text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:min-h-0"
               >
                 {ownerName ?? tLeads("unassigned")}
                 <ChevronDown aria-hidden="true" strokeWidth={1.75} className="size-4" />

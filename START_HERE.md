@@ -2,13 +2,13 @@
 
 ## For Haider (read only this box)
 
-1. Put this file in your project folder (`topstock-crm`), or in the root of the GitHub repository if you work in the browser.
-2. Open the folder in Claude Code. Desktop app: **Code** tab → **Local** → **Select folder** → pick `topstock-crm`. Permission mode: **Accept edits** (switch to **Auto** later if the approval prompts get tedious).
+1. This file is already in the root of the GitHub repository `topstock-crm`. The project is built **only in the cloud** (since 6 Oct 2026): nothing is installed or run on your Mac.
+2. Start a session at **claude.ai/code** on `topstock-crm`, in the cloud environment **TopStock** (`docs/TopStock_CRM_Cloud_Workflow.md` section 2).
 3. Send this message, nothing else:
 
    `Read START_HERE.md and follow it.`
 
-4. Claude Code works **one step at a time**. After every step it has its own reviewer (the `advisor` subagent) check the work, then prints a `REPORT` with what it needs from you. You only work in Claude Code; reply "go" for the next step.
+4. Claude Code works **one step at a time**. After every step it has its own reviewer (the `advisor` subagent) check the work, then prints a `REPORT` with what it needs from you. You only work in Claude Code; reply "go" for the next step. You see each change on the Vercel preview link of its pull request, on your phone or any browser.
 5. Optional: from the handover pack zip, copy `prototype/topstock-crm-prototype.html` into `docs/prototype/` and the two logo PNGs into `docs/assets/`. Not needed to start.
 
 Everything below this line is for Claude Code.
@@ -17,11 +17,11 @@ Everything below this line is for Claude Code.
 
 # Instructions for Claude Code
 
-> **Cloud-only since 6 Oct 2026.** Read `docs/TopStock_CRM_Cloud_Workflow.md` first. It overrides sections C.1, D, E and F below wherever they assume Haider's Mac (local installs, Terminal, `claude mcp add` at local scope, local scripts). Bootstrap (section C) is already done: commit 6be0957, merged in PR #1. There is **no separate advisor chat** any more: wherever this file says "the advisor", run the `advisor` subagent (`.claude/agents/advisor.md`) and follow the "Working with Haider" rules in `CLAUDE.md`.
+> **Cloud-only since 6 Oct 2026.** Read `docs/TopStock_CRM_Cloud_Workflow.md` first. It overrides sections B, C.1, D, E and F below wherever they assume Haider's Mac (local installs, Terminal, `claude mcp add` at local scope, local scripts). Bootstrap (section C) is already done: commit 6be0957, merged in PR #1. There is **no separate advisor chat** any more: wherever this file says "the advisor", run the `advisor` subagent (`.claude/agents/advisor.md`) and follow the "Working with Haider" rules in `CLAUDE.md`.
 
 ## A. Your role
 
-You are the **builder** of the TopStock Wholesale CRM + inventory system (IMS). The owner is **Haider**: a sales leader, not an engineer, working from a MacBook Air (Apple Silicon) and checking things on his phone. An **advisor Claude in a separate chat** reviews your work against the plan and gives Haider the next step. You never grade your own work as "done"; you produce evidence and let the advisor decide.
+You are the **builder** of the TopStock Wholesale CRM + inventory system (IMS). The owner is **Haider**: a sales leader, not an engineer, who works only in Claude Code and checks things on his phone. There is no separate advisor chat: the **`advisor` subagent** (`.claude/agents/advisor.md`, read-only, fresh context) reviews every step against the plan, and you fix what it raises until it says APPROVED. You never grade your own work as "done"; you produce evidence, the advisor approves, and Haider decides merges.
 
 This file embeds the whole project plan. Your first job is to unpack it into the repository (section C), so that every future session starts from `CLAUDE.md` and `docs/`.
 
@@ -29,7 +29,7 @@ This file embeds the whole project plan. Your first job is to unpack it into the
 
 - **One step at a time.** Before a step, say in two plain sentences what you are about to do and why. Do it. Then print the `REPORT` block (section H) and **stop**. Do not start the next step until Haider replies. Never list several steps and run them all.
 - **Plain language.** No jargon without a six-word explanation. He knows sales and what the product should feel like.
-- **He judges by seeing.** After any UI step, take screenshots (Playwright) and tell him the file paths, and start the dev server so he can open the app in the browser pane. Expect feedback as phone screenshots.
+- **He judges by seeing.** After any UI step, take screenshots (Playwright) and tell him the file paths, and give him the Vercel preview link of the pull request (there is no dev server on his Mac; the build runs only in the cloud). Expect feedback as phone screenshots.
 - **Be honest** about cost, limits and time, even when it is not what he hoped. He has accepted corrections before.
 - **Money:** budget is $0 beyond Claude Max (Vercel Hobby; Pro declined 16 Oct 2026, go-live decision 4). Warn before anything that could cost money and offer the free route.
 - **Ask** before anything irreversible (deleting data, rotating keys, force-pushing, upgrading plans). Otherwise take the obvious option and say which one you took.
@@ -96,7 +96,7 @@ Only after Haider says the advisor approved the sign-off table. Follow `docs/Top
 
 Scaffolding rule: `create-next-app` refuses a folder that already contains unknown files (this file, `CLAUDE.md`). Scaffold into a temporary subfolder (for example `.scaffold`), move everything from it to the repository root including dotfiles, delete the temporary folder, then run the dev server to prove it starts. Keep `docs/` and `CLAUDE.md` where they are.
 
-Order inside Day 1: `DESIGN.md` written as tokens from Master Plan section 4 (with one swappable brand accent; the brand is being redesigned), scaffold, Tailwind + shadcn + next-intl (EN, FR) + Motion, light/dark, `npm run verify` script (lint, typecheck, unit tests, Playwright, gitleaks, npm audit), pre-commit hook, CI workflow, then the database schema with RLS on every table. Context7 first for every library.
+Order inside Day 1: `DESIGN.md` written as tokens from Master Plan section 4 (with one swappable brand accent; the brand was decided on 7 Oct 2026: TopStock Black, Chalk White and greys with Signal Red, fonts Outfit + DM Mono, and `DESIGN.md` is the source of truth), scaffold, Tailwind + shadcn + next-intl (EN, FR) + Motion, light/dark, `npm run verify` script (lint, typecheck, unit tests, Playwright, gitleaks, npm audit), pre-commit hook, CI workflow, then the database schema with RLS on every table. Context7 first for every library.
 
 ## G. Rules that never change (details in CLAUDE.md)
 
@@ -133,13 +133,15 @@ Check each item against the screen you changed and write the finding and the fix
 7. **Calm**: no constant motion; entrances on first visit only; no hover lift on non-clickable things; skeletons rather than spinners.
 8. **Reduced motion**: `prefers-reduced-motion` removes stretch and entrance animations but keeps direct manipulation working.
 9. **Materials and depth**: translucency only on floating layers (dock, popovers), borders and tone for depth elsewhere, shadow only on floating layers.
-10. **Typography**: system stack, optical sizes, tabular numbers for money and counts, French labels up to 20 percent longer never clipped.
+10. **Typography**: brand fonts Outfit + DM Mono, self-hosted (DESIGN.md; replaced the system stack on 7 Oct 2026), DM Mono for money and counts that line up, French labels up to 20 percent longer never clipped.
 11. **Status is never colour-only**: every status carries a label or symbol; light-mode status text tokens green `#15702F`, amber `#7C5300`, red `#B61C29`.
 12. **Spatial consistency**: things come from and return to where they live; the dock stays bottom-centre on every screen size.
 
-## J. Byte counts for the verification in step C.2
+## J. Byte counts for the verification in step C.2 (bootstrap only, done in 6be0957)
 
-The split command must produce files with exactly these sizes (`wc -c`):
+These are the sizes of the **embedded snapshots** below, which the split command still produces byte for byte
+(checked 17 Oct 2026). The live files in the repository have grown since (for example `CLAUDE.md` and `docs/log.md`)
+and are not checked against this table. The split command must produce files with exactly these sizes (`wc -c`):
 
 | File | Bytes |
 |---|---|
@@ -155,9 +157,13 @@ The split command must produce files with exactly these sizes (`wc -c`):
 
 # Embedded files (written by the split command; do not edit by hand here)
 
-> **Note (16 Oct 2026):** these copies are older than the files in `docs/`; where they differ, `docs/` wins. In
-> particular, "Vercel Pro ($20/month)" below is superseded by go-live decision 4 (`docs/go-live.md`): production
-> stays on Vercel Hobby, Pro declined; the options are in `docs/evidence/day8/hosting-options.md`.
+> **Note (updated 17 Oct 2026):** every embedded file below is a historical snapshot from the bootstrap (6 Oct 2026).
+> Where it differs from the live `CLAUDE.md`, `DESIGN.md` or `docs/`, the live file wins. In particular: "Vercel Pro
+> ($20/month)" is superseded by go-live decision 4 (`docs/go-live.md`: production stays on Vercel Hobby, Pro declined;
+> options in `docs/evidence/day8/hosting-options.md`); "Black/white/greys" and the system font stack are superseded by
+> the TopStock brand in `DESIGN.md` (Signal Red accent, Outfit + DM Mono, 7 Oct 2026); "the advisor chat decides when
+> a step is done" is superseded by the `advisor` subagent (`.claude/agents/advisor.md`; no separate advisor chat since
+> 6 Oct 2026); and building on Haider's Mac is superseded by `docs/TopStock_CRM_Cloud_Workflow.md` (cloud only).
 
 <<<FILE CLAUDE.md>>>
 # TopStock Wholesale CRM + IMS
