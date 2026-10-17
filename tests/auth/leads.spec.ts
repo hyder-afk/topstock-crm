@@ -295,8 +295,27 @@ test.describe("desktop", () => {
       await preview(page).getByRole("button", { name: "Set status" }).click();
       await page.getByRole("menuitemradio", { name: "Customer" }).click();
       await expect(page.getByRole("status").filter({ hasText: "Status changed." })).toBeVisible();
+      // The leaving toast (Apple audit #9): a copy sinks out for 140 ms, out of the live region, then goes.
+      await page.evaluate(() => {
+        const w = window as unknown as { __gone: { text: string; added: number; removed: number | null }[] };
+        w.__gone = [];
+        new MutationObserver((list) => {
+          for (const m of list) {
+            for (const n of m.addedNodes)
+              if (n instanceof HTMLElement && n.matches("[data-toast-leaving]")) w.__gone.push({ text: n.textContent ?? "", added: performance.now(), removed: null });
+            for (const n of m.removedNodes)
+              if (n instanceof HTMLElement && n.matches("[data-toast-leaving]")) w.__gone.forEach((g) => (g.removed ??= performance.now()));
+          }
+        }).observe(document.body, { childList: true, subtree: true });
+      });
       // The mouse dismisses it (the box goes from under the pointer: no mouseleave ever comes), then moves away.
       await page.getByRole("status").getByRole("button", { name: "Dismiss" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "Status changed." })).toHaveCount(0);
+      await expect(page.locator("[data-toast-leaving]")).toHaveCount(0);
+      const gone = await page.evaluate(() => (window as unknown as { __gone: { text: string; added: number; removed: number | null }[] }).__gone);
+      expect(gone).toHaveLength(1);
+      expect(gone[0].text).toContain("Status changed.");
+      expect((gone[0].removed ?? 0) - gone[0].added, "the exit plays before the copy goes").toBeGreaterThanOrEqual(100);
       await page.mouse.move(4, 4);
       await preview(page).getByRole("button", { name: "Set status" }).click();
       await page.getByRole("menuitemradio", { name: "Warm (in progress)" }).click();
