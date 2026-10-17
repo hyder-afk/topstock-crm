@@ -17,7 +17,8 @@ Sources:
 Screens were checked by eye in `docs/evidence/audit/screens/`:
 - `leads-empty-admin-{en,fr}-{light,dark}-{1280,1440,1728,390}.png`;
 - `pipeline-skeleton-{mine,longest}-en-{light,dark}-{1440,390}.png`;
-- `pipeline-board-error-en-{light,dark}-{1440,390}.png`.
+- `pipeline-board-error-en-{light,dark}-{1440,390}.png`;
+- `pipeline-skeleton-mine-fr-{light,dark}-390.png` and `pipeline-board-error-fr-{light,dark}-390.png` (French, added after the merge of main's Next 16.4.1).
 
 In every shot: no horizontal scroll and no console error. The only console lines in the error shots are the two
 injected 502s.
