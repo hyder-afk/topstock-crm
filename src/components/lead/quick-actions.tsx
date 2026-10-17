@@ -174,7 +174,7 @@ export const QuickActions = memo(function QuickActions({
             type="button"
             onClick={() => setChip(null)}
             aria-label={t("dismissLog")}
-            className="grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
+            className="grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
           >
             <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
           </button>

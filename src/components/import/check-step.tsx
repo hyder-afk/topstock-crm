@@ -277,7 +277,7 @@ function Results({
                 aria-pressed={filter === f}
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "min-h-11 rounded-full px-3 text-sm transition-[background-color,transform] active:scale-[0.97] sm:min-h-9",
+                  "min-h-11 rounded-full px-3 text-sm transition-[background-color,transform,scale] active:scale-[0.97] sm:min-h-9",
                   filter === f ? "bg-foreground text-background" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
                 )}
               >

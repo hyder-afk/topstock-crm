@@ -12,7 +12,7 @@ export default function ErrorPage({ retry }: { error: Error & { digest?: string 
       <button
         type="button"
         onClick={retry}
-        className="w-fit rounded-md bg-brand px-4 py-2 font-bold text-brand-foreground transition-[filter,transform] duration-150 hover:brightness-105 active:scale-[0.97]"
+        className="w-fit rounded-md bg-brand px-4 py-2 font-bold text-brand-foreground transition-[filter,transform,scale] duration-150 hover:brightness-105 active:scale-[0.97]"
       >
         {t("retry")}
       </button>

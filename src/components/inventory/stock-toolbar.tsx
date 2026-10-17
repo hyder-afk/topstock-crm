@@ -147,7 +147,7 @@ export function StockToolbar({
             aria-pressed={current === f}
             onClick={() => onChange({ ...filters, filter: f === "all" ? undefined : f })}
             className={cn(
-              "inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-[color,background-color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+              "inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-[color,background-color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
               current === f ? "border-foreground bg-foreground text-background" : "border-border bg-card text-foreground hover:bg-muted",
             )}
           >

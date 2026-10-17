@@ -415,7 +415,7 @@ function CallPanel({
           type="button"
           onClick={dismiss}
           aria-label={t("close")}
-          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+          className="-mr-2 grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97]"
         >
           <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
         </button>

@@ -280,7 +280,7 @@ export function RecordSaleSheet({
                   setDealId(null);
                 }}
                 className={cn(
-                  "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform] duration-150 active:scale-[0.97]",
+                  "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform,scale] duration-150 active:scale-[0.97]",
                   fulfilment === f ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground",
                 )}
               >

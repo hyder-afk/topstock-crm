@@ -278,7 +278,7 @@ export function LeadPage({
       <div className="flex min-h-11 items-center justify-between gap-3">
         <Link
           href={backUrl}
-          className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+          className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-sm text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97]"
         >
           <ArrowLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
           {t("back")}
@@ -292,7 +292,7 @@ export function LeadPage({
                 aria-disabled={!nav.previous || undefined}
                 aria-label={t("previous")}
                 onClick={(e) => !nav.previous && e.preventDefault()}
-                className="grid size-11 place-items-center rounded-md transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
+                className="grid size-11 place-items-center rounded-md transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
               >
                 <ChevronLeft aria-hidden="true" strokeWidth={1.75} className="size-5" />
               </Link>
@@ -303,7 +303,7 @@ export function LeadPage({
                 aria-disabled={!nav.next || undefined}
                 aria-label={t("next")}
                 onClick={(e) => !nav.next && e.preventDefault()}
-                className="grid size-11 place-items-center rounded-md transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
+                className="grid size-11 place-items-center rounded-md transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] aria-disabled:opacity-40 sm:size-9"
               >
                 <ChevronRight aria-hidden="true" strokeWidth={1.75} className="size-5" />
               </Link>

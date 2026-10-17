@@ -17,7 +17,7 @@ export function SearchButton() {
       onClick={openPalette}
       aria-label={t("search")}
       aria-keyshortcuts="Meta+K Control+K /"
-      className="inline-flex min-h-11 items-center gap-2 rounded-md bg-muted px-3 text-sm text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:min-h-9 sm:min-w-56"
+      className="inline-flex min-h-11 items-center gap-2 rounded-md bg-muted px-3 text-sm text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:min-h-9 sm:min-w-56"
     >
       <Search aria-hidden="true" strokeWidth={1.75} className="size-5 sm:size-4" />
       <span className="hidden flex-1 text-left sm:inline">{t("searchHint")}</span>

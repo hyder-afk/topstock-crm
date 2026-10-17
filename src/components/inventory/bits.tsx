@@ -80,7 +80,7 @@ export function UnitToggle({ value, onChange, label, className }: { value: QtyUn
           aria-checked={value === u}
           onClick={() => onChange(u)}
           className={cn(
-            "min-h-11 min-w-12 rounded-[10px] px-3 font-mono text-sm transition-[color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+            "min-h-11 min-w-12 rounded-[10px] px-3 font-mono text-sm transition-[color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
             value === u ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
           )}
         >

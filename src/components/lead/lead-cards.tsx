@@ -244,7 +244,7 @@ export const NextStepCard = memo(function NextStepCard({ lead, initialTasks, onC
                 type="button"
                 disabled={adding}
                 onClick={() => void add(chipDate(c, zone, now))}
-                className="min-h-11 rounded-md bg-muted px-3 text-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.97] disabled:opacity-60 sm:min-h-9 dark:hover:brightness-125"
+                className="min-h-11 rounded-md bg-muted px-3 text-sm transition-[filter,transform,scale] duration-150 hover:brightness-95 active:scale-[0.97] disabled:opacity-60 sm:min-h-9 dark:hover:brightness-125"
               >
                 {tComposer(`chips.${c}`)}
               </button>
@@ -339,7 +339,7 @@ export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }
                       type="button"
                       onClick={() => setEditing(c.id)}
                       aria-label={t("editContact", { name })}
-                      className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
+                      className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
                     >
                       <Pencil aria-hidden="true" strokeWidth={1.75} className="size-4" />
                     </button>
@@ -378,7 +378,7 @@ export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }
                           )
                         }
                         aria-label={tLead("callContact", { name })}
-                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-muted px-3 text-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-muted px-3 text-sm transition-[filter,transform,scale] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
                       >
                         <Phone aria-hidden="true" strokeWidth={1.75} className="size-4" />
                         {tQuick("call")}
@@ -388,7 +388,7 @@ export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }
                       <a
                         href={mailHref(c.email)}
                         aria-label={tLead("emailContact", { name })}
-                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-muted px-3 text-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-muted px-3 text-sm transition-[filter,transform,scale] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
                       >
                         <Mail aria-hidden="true" strokeWidth={1.75} className="size-4" />
                         {tQuick("email")}
@@ -400,7 +400,7 @@ export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={tLead("whatsappContact", { name })}
-                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-muted px-3 text-sm transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-muted px-3 text-sm transition-[filter,transform,scale] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
                       >
                         <MessageCircle aria-hidden="true" strokeWidth={1.75} className="size-4" />
                         {tQuick("whatsapp")}

@@ -171,7 +171,7 @@ export function Dock() {
                   aria-hidden="true"
                   strokeWidth={1.75}
                   className={cn(
-                    "size-[22px] transition-[opacity,transform] duration-150 group-active:scale-[0.86]",
+                    "size-[22px] transition-[opacity,transform,scale] duration-150 group-active:scale-[0.86]",
                     on ? "opacity-0" : "opacity-100",
                   )}
                 />
