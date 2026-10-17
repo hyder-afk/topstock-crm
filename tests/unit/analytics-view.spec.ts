@@ -137,6 +137,11 @@ test("numbers, money and durations in English and French (Intl)", () => {
   expect(plain(formatPercent(0.314, "fr"))).toBe("31 %");
   expect(plain(formatMoneyCompact(1_240_000, "fr"))).toBe("1,2 M €");
   expect(formatMoneyCompact(1_240_000, "en")).toBe("€1.2M");
+  // A whole million reads "€2M" in every engine (Node 22 wrote "€2.0M" without minimumFractionDigits; Chromium "€2M").
+  expect(formatMoneyCompact(2_000_000, "en")).toBe("€2M");
+  expect(plain(formatMoneyCompact(1_000_000, "fr"))).toBe("1 M €");
+  expect(formatMoneyCompact(800, "en")).toBe("€800");
+  expect(formatTileMoney(3_000_000, "en")).toBe("€3M");
   expect(plain(formatTileMoney(48_300, "fr"))).toBe("48 300 €");
   expect(formatTileMoney(48_300, "en")).toBe("€48,300");
   expect(plain(formatTileMoney(2_500_000, "fr"))).toBe("2,5 M €"); // compact from one million (design 4.1)
@@ -161,8 +166,11 @@ test("dates: bucket starts are Paris calendar dates, formatted the same in every
   expect(bucketDate("2026-03-29", "fr")).toBe("29 mars");
   expect(bucketDay("2026-10-13", "en")).toBe("Tue, Oct 13");
   expect(bucketDay("2026-10-13", "fr")).toBe("mar. 13 oct.");
-  expect(plain(formatRange("2026-09-01", "2026-09-30", "en"))).toBe("Sep 1 – 30, 2026");
-  expect(plain(formatRange("2026-09-01", "2026-09-30", "fr"))).toBe("1–30 sept. 2026");
+  // Two plain dates and an en dash, never Intl's formatRange (its interval patterns are the engine's own: see below).
+  expect(formatRange("2026-09-01", "2026-09-30", "en")).toBe("Sep 1 – Sep 30, 2026");
+  expect(plain(formatRange("2026-09-01", "2026-09-30", "fr"))).toBe("1 sept. – 30 sept. 2026");
+  expect(formatRange("2025-12-15", "2026-01-13", "en")).toBe("Dec 15, 2025 – Jan 13, 2026");
+  expect(plain(formatRange("2025-12-15", "2026-01-13", "fr"))).toBe("15 déc. 2025 – 13 janv. 2026");
   expect(formatRange("2026-10-17", "2026-10-17", "en")).toBe("Oct 17, 2026");
   expect(weekdayName(1, "en")).toBe("Mon");
   expect(weekdayName(7, "fr", "long")).toBe("dimanche");
@@ -172,6 +180,46 @@ test("dates: bucket starts are Paris calendar dates, formatted the same in every
   // "Updated 14:32" is Paris time: 12:32 UTC in summer time.
   expect(formatClock(Date.parse("2026-10-17T12:32:00Z"), "en")).toBe("14:32");
   expect(formatClock(Date.parse("2026-12-01T12:32:00Z"), "fr")).toBe("13:32");
+});
+
+// The server renders Analytics in its own zone (CI's runner and Vercel run in UTC) and the browser hydrates it in the
+// person's (Europe/Paris): every text a formatter writes must not depend on the process zone, or React throws the server
+// HTML away (error 418). Node applies a new process.env.TZ at once, so one process checks several zones.
+test("formatters write the same text whatever the process time zone (server UTC, browser Paris)", () => {
+  const sample = () =>
+    (["en", "fr"] as const).flatMap((l) => [
+      formatRange("2026-09-17", "2026-10-16", l),
+      formatRange("2025-12-15", "2026-01-13", l),
+      formatRange("2026-10-25", "2026-10-25", l),
+      bucketDate("2026-10-25", l),
+      bucketDay("2026-03-29", l),
+      formatClock(Date.parse("2026-10-17T22:30:00Z"), l), // past midnight in Paris, still the 17th in UTC
+      formatClock(Date.parse("2026-10-17T08:00:00Z"), l),
+      formatParisDate("2026-10-17T22:30:00Z", l),
+      weekdayName(1, l),
+      weekdayName(7, l, "long"),
+      hourLabel(0, l),
+      hourLabel(23, l),
+      hourShort(7, l),
+      formatPercent(0.475, l),
+      formatDays(9.04, l),
+      formatMoneyCompact(2_000_000, l),
+      formatTileMoney(1_644, l),
+    ]);
+  const before = process.env.TZ;
+  try {
+    const seen = new Map<string, string[]>();
+    for (const tz of ["UTC", "Europe/Paris", "America/Los_Angeles", "Pacific/Kiritimati"]) {
+      process.env.TZ = tz;
+      expect(new Date(Date.UTC(2026, 9, 17, 22, 30)).getHours(), `TZ ${tz} applied`).toBe({ UTC: 22, "Europe/Paris": 0, "America/Los_Angeles": 15, "Pacific/Kiritimati": 12 }[tz]);
+      seen.set(tz, sample());
+    }
+    for (const [tz, texts] of seen) expect(texts, tz).toEqual(seen.get("UTC"));
+    expect(seen.get("UTC")).toContain("00:30"); // the Paris clock, not the process zone's
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
 });
 
 test("calls: rows, the busiest bucket, the caption sentence in both languages", () => {

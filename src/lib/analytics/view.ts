@@ -68,22 +68,60 @@ export function ratio(a: number, b: number): number | null {
   return b > 0 ? a / b : null;
 }
 
+// Every Intl option set Analytics formats with. The page is rendered on the server (Node) and hydrated in the browser,
+// and React throws away the server HTML (error 418) when one text differs, so each format must give the same text in
+// Node and in every browser engine: tests/auth/analytics.spec.ts (intl_server_and_browser_agree) formats sample values
+// with each set in Node and in the browser and compares them. Two formats failed that rule and are not used:
+// - DateTimeFormat.formatRange: interval patterns are the engine's own. Node 22 puts thin spaces (U+2009) around the
+//   dash, Chromium 156 ordinary spaces, so the range line failed hydration on PR #28's CI. The range line is two plain
+//   dates joined by RANGE_DASH instead.
+// - compact currency without minimumFractionDigits: Node 22 writes "€2.0M", Chromium "€2M" (a whole-million tile).
+export const INTL_NUMBER = {
+  percent: { style: "percent", maximumFractionDigits: 0 },
+  count: {},
+  compact: { notation: "compact", maximumFractionDigits: 1 },
+  moneyCompact: { style: "currency", currency: "EUR", notation: "compact", minimumFractionDigits: 0, maximumFractionDigits: 1 },
+  days: { maximumFractionDigits: 1 },
+  daysWhole: { maximumFractionDigits: 0 },
+  hourShort: { minimumIntegerDigits: 2, useGrouping: false },
+} as const satisfies Record<string, Intl.NumberFormatOptions>;
+
+export const INTL_DATE = {
+  /** A Paris calendar date (YYYY-MM-DD read as UTC midnight): "14 Oct" / "14 oct." */
+  dayMonth: { day: "numeric", month: "short", timeZone: "UTC" },
+  /** "Tue, Oct 14" / "mar. 14 oct." */
+  weekdayDayMonth: { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" },
+  /** "Oct 14, 2026" / "14 oct. 2026" */
+  dayMonthYear: { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" },
+  /** An instant on the Paris calendar: "14 Oct 2026". */
+  parisDayMonthYear: { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Paris" },
+  /** An instant on the Paris clock, 24-hour in both languages: "14:32". */
+  parisClock: { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Paris" },
+  /** An hour of the Paris day (read as a UTC hour): "07:00". */
+  hour: { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" },
+  weekdayShort: { weekday: "short", timeZone: "UTC" },
+  weekdayLong: { weekday: "long", timeZone: "UTC" },
+} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
+
+/** Between the two dates of the range line, in both languages ("Sep 1 – Sep 30, 2026", "1 sept. – 30 sept. 2026"). */
+export const RANGE_DASH = " – ";
+
 export function formatPercent(x: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(x);
+  return new Intl.NumberFormat(locale, INTL_NUMBER.percent).format(x);
 }
 
 export function formatCount(n: number, locale: string): string {
-  return new Intl.NumberFormat(locale).format(n);
+  return new Intl.NumberFormat(locale, INTL_NUMBER.count).format(n);
 }
 
 /** Compact counts for axis ticks ("1,2 k"). */
 export function formatCompact(n: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  return new Intl.NumberFormat(locale, INTL_NUMBER.compact).format(n);
 }
 
-/** EUR in compact notation ("1,2 M €"), for y ticks and tiles from one million. */
+/** EUR in compact notation ("1,2 M €", "2 M €"), for y ticks and tiles from one million. */
 export function formatMoneyCompact(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { style: "currency", currency: "EUR", notation: "compact", maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat(locale, INTL_NUMBER.moneyCompact).format(value);
 }
 
 /** Money on a tile: whole euros under one million, compact from there (design 4.1). */
@@ -102,45 +140,50 @@ export function duration(minutes: number): Duration {
 
 /** Days as a short figure: one decimal under 10 ("2,5"), whole days from there. */
 export function formatDays(days: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: days < 10 ? 1 : 0 }).format(days);
+  return new Intl.NumberFormat(locale, days < 10 ? INTL_NUMBER.days : INTL_NUMBER.daysWhole).format(days);
 }
 
 const utcDate = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 /** "14 Oct" / "14 oct." for a bucket's start (a Paris date, formatted as a UTC calendar date). */
 export function bucketDate(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(utcDate(iso));
+  return new Intl.DateTimeFormat(locale, INTL_DATE.dayMonth).format(utcDate(iso));
 }
 
 /** "Tue 14 Oct" / "mar. 14 oct." for a day bucket in a tooltip. */
 export function bucketDay(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(utcDate(iso));
+  return new Intl.DateTimeFormat(locale, INTL_DATE.weekdayDayMonth).format(utcDate(iso));
 }
 
-/** "1 Sep – 30 Sep 2026" for the range line (Intl's own range format, so each language joins it its own way). */
+/**
+ * The range line's dates: "Sep 1 – Sep 30, 2026" / "1 sept. – 30 sept. 2026" (the year once when both dates share it),
+ * one date when the range is a single day. Two plain dates and RANGE_DASH, never Intl's formatRange (see the note on INTL_NUMBER).
+ */
 export function formatRange(from: string, to: string, locale: string): string {
-  const f = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-  return from === to ? f.format(utcDate(from)) : f.formatRange(utcDate(from), utcDate(to));
+  const full = new Intl.DateTimeFormat(locale, INTL_DATE.dayMonthYear);
+  if (from === to) return full.format(utcDate(from));
+  const start = from.slice(0, 4) === to.slice(0, 4) ? new Intl.DateTimeFormat(locale, INTL_DATE.dayMonth) : full;
+  return `${start.format(utcDate(from))}${RANGE_DASH}${full.format(utcDate(to))}`;
 }
 
 /** "14:32" in Paris time (the page says "Paris time"), 24-hour in both languages. */
 export function formatClock(at: number, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/Paris" }).format(new Date(at));
+  return new Intl.DateTimeFormat(locale, INTL_DATE.parisClock).format(new Date(at));
 }
 
 /** ISO weekday (1 = Monday … 7 = Sunday) by name, short or long, from Intl (5 Jan 2026 is a Monday). */
 export function weekdayName(dow: number, locale: string, width: "short" | "long" = "short"): string {
-  return new Intl.DateTimeFormat(locale, { weekday: width, timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 4 + dow)));
+  return new Intl.DateTimeFormat(locale, width === "short" ? INTL_DATE.weekdayShort : INTL_DATE.weekdayLong).format(new Date(Date.UTC(2026, 0, 4 + dow)));
 }
 
 /** "10:00" for an hour of the Paris day, 24-hour in both languages. */
 export function hourLabel(hour: number, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 0, 5, hour)));
+  return new Intl.DateTimeFormat(locale, INTL_DATE.hour).format(new Date(Date.UTC(2026, 0, 5, hour)));
 }
 
 /** "07" for the heatmap's narrow hour labels. */
 export function hourShort(hour: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { minimumIntegerDigits: 2, useGrouping: false }).format(hour);
+  return new Intl.NumberFormat(locale, INTL_NUMBER.hourShort).format(hour);
 }
 
 /** Cuts a label for a narrow axis ("Denim jacket wash…"); the full text stays in the tooltip and the table. */
@@ -501,5 +544,5 @@ export function batchHref(id: string, owner: string | null): string {
 
 /** "14 Oct 2026" for an instant, on the Paris calendar (the day the import ran, in the business's zone). */
 export function formatParisDate(at: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Paris" }).format(new Date(at));
+  return new Intl.DateTimeFormat(locale, INTL_DATE.parisDayMonthYear).format(new Date(at));
 }
