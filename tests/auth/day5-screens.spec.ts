@@ -255,7 +255,7 @@ test("board errors (first read, a refresh), a column error, an empty board", asy
   } finally {
     sql("grant execute on function public.pipeline_board to authenticated");
   }
-  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer)', 'EXECUTE')")).toBe("t");
+  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer, text)', 'EXECUTE')")).toBe("t");
   // A later read fails in the browser: the 30 s refresh (on a fake clock) and its retry get 502 from
   // /api/pipeline/board; "Couldn't refresh" with Retry above the cards already shown.
   await shoot(browser, "/pipeline", "board-refresh-error", some, [390, 1440], async (page) => {

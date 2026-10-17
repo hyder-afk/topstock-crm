@@ -34,6 +34,9 @@ export const BOARD_PAGE = 50;
 export const VIRTUALISE_FROM = 60;
 export const sortOrders = ["recent", "oldest", "value", "close"] as const;
 export type SortOrder = (typeof sortOrders)[number];
+/** The server's keyset order for a sort: "Value" and "Close date" re-sort the "Recently moved" cards (design D20). */
+export type BoardOrder = "recent" | "oldest";
+export const boardOrderOf = (order: SortOrder): BoardOrder => (order === "oldest" ? "oldest" : "recent");
 export const updateFields = ["title", "value", "expected_close", "fulfilment", "contact_id", "owner_id"] as const;
 export type UpdateField = (typeof updateFields)[number];
 
@@ -208,7 +211,7 @@ export const dealIdInput = z.strictObject({ id: uuid });
 
 // ---- Route queries (GET /api/pipeline/*, /api/deals/[id], /api/leads/[id]/deals) ------------------------------------
 export const scopeParam = z.enum(["team", "mine"]);
-export const boardParams = z.strictObject({ scope: scopeParam.optional(), owner: uuid.optional() });
+export const boardParams = z.strictObject({ scope: scopeParam.optional(), owner: uuid.optional(), order: z.enum(["recent", "oldest"]).optional() });
 export const stageParams = z
   .strictObject({
     stage: z.enum(stageKeys),

@@ -714,7 +714,7 @@ test("board_read_fails_shows_retry_and_recovers (the first read on the server, a
   } finally {
     sql("grant execute on function public.pipeline_board to authenticated");
   }
-  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer)', 'EXECUTE')")).toBe("t");
+  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer, text)', 'EXECUTE')")).toBe("t");
   await first.page.getByRole("alert").getByRole("button", { name: "Retry" }).click();
   await expect(first.page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
   await expect(card(first.page, deal)).toBeVisible();
@@ -829,6 +829,54 @@ test("show_more_press_across_hydration_lands: the column keeps its place and hei
     await expect(leadColumn.getByRole("alert")).toHaveText(/^Couldn’t load more\s*Retry$/);
     expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
     expect(errors.length).toBe(1);
+    await context.close();
+  } finally {
+    sql(`delete from public.deals where company_id = '${lead}'`);
+  }
+});
+
+// ---- Bugs audit fixes (17 Oct 2026) -------------------------------------------------------------------------------
+
+test("sort_longest_in_stage_reads_oldest_first, and Show more continues that order (bugs audit M1)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const lead = makeLead("Longest In Stage");
+  // 55 deals in Negotiations, 401 to 455 days in their stage (older than anything earlier tests made), so the first page
+  // of "Longest in stage" is the 50 oldest and Show more brings the next ones.
+  sql(`insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, title, value, stage_entered_at)
+       select '${org}', '${lead}', s.id, '${admin}', '${admin}', 'Oldest sort ${run} ' || i, (i * 10)::numeric, now() - ((400 + i) || ' days')::interval
+         from public.pipeline_stages s, generate_series(1, 55) i where s.org_id = '${org}' and s.key = 'negotiations'`);
+  const idOf = (i: number) => sql(`select id from public.deals where title = 'Oldest sort ${run} ${i}'`);
+  const fresh = makeDeal({ stage: "negotiations", title: `Fresh sort ${run}` });
+  try {
+    const { context, page, errors } = await open(browser);
+    await gotoBoard(page);
+    const negotiations = column(page, "negotiations");
+    await expect(negotiations.locator("[data-deal-card]").first()).toHaveAttribute("data-deal-card", fresh);
+    const boards: string[] = [];
+    page.on("request", (r) => {
+      const u = new URL(r.url());
+      if (u.pathname === "/api/pipeline/board") boards.push(u.searchParams.get("order") ?? "recent");
+    });
+    await page.getByRole("button", { name: /^Sort:/ }).click();
+    await page.getByRole("menuitemradio", { name: /Longest in stage/ }).click();
+    await expect(page.getByRole("button", { name: "Sort: Longest in stage" })).toBeVisible();
+    // The column now starts with the deal longest in its stage (the server's first page in that order).
+    await expect(negotiations.locator("[data-deal-card]").first()).toHaveAttribute("data-deal-card", idOf(55));
+    expect(boards).toContain("oldest");
+    // Show more asks for the same order: the next page starts where the first one stopped (451 days, then 405), never
+    // with the newest deals.
+    const [more] = await Promise.all([
+      page.waitForResponse((r) => new URL(r.url()).pathname === "/api/pipeline/stage"),
+      negotiations.getByRole("button", { name: /^Show \d+ more$/ }).click(),
+    ]);
+    expect(new URL(more.url()).searchParams.get("order")).toBe("oldest");
+    const page2 = (await more.json()) as { cards: { id: string }[] };
+    expect(page2.cards[0].id).toBe(idOf(5));
+    // Back to Recently moved: the newest first again.
+    await page.getByRole("button", { name: /^Sort:/ }).click();
+    await page.getByRole("menuitemradio", { name: /Recently moved/ }).click();
+    await expect(negotiations.locator("[data-deal-card]").first()).toHaveAttribute("data-deal-card", fresh);
+    expect(errors).toEqual([]);
     await context.close();
   } finally {
     sql(`delete from public.deals where company_id = '${lead}'`);

@@ -41,6 +41,7 @@ import { lastUndoableMove, useBoard } from "@/components/pipeline/use-pipeline";
 import {
   BOARD_PAGE,
   boardColumns,
+  boardOrderOf,
   deleteOffered,
   freeDeleteUntil,
   reopenOffered,
@@ -190,13 +191,18 @@ function Pipeline({
   const [order, setOrder] = useState<SortOrder>("recent");
   const [stalledOnly, setStalledOnly] = useState(initialStalled);
   const [extraPages, setExtraPages] = useState(false);
-  const key = useMemo(() => ({ scope: canTeam ? scope : ("team" as const), owner: canTeam && scope === "team" ? owner : null }), [canTeam, scope, owner]);
+  const boardOrder = boardOrderOf(order);
+  const key = useMemo(
+    () => ({ scope: canTeam ? scope : ("team" as const), owner: canTeam && scope === "team" ? owner : null, order: boardOrder }),
+    [canTeam, scope, owner, boardOrder],
+  );
   // The scope for the strict reads (a column's next page, See all won / lost): a rep may only ask for their own deals.
   // The board itself keeps the "team" key (its first paint quietly narrows a rep to their own deals), but
   // list_stage_deals refuses a rep's "team" with 42501, so a rep's Show more and closed lists failed every time.
   const readScope = canTeam ? key.scope : "mine";
   const isFirstKey = key.scope === "team" && key.owner === null;
-  const query = useBoard(key, isFirstKey ? first : undefined, extraPages);
+  // The server's first paint is the team's board in the default order.
+  const query = useBoard(key, isFirstKey && key.order === "recent" ? first : undefined, extraPages);
   const board = query.data;
   const [now, setNow] = useState(() => query.dataUpdatedAt || Date.now());
   const [wasFetching, setWasFetching] = useState(query.isFetching);
@@ -406,7 +412,7 @@ function Pipeline({
       },
       menu: menuFor,
       live: (card) => {
-        const latest = qc.getQueryData<Board>(boardKey(key.scope, key.owner));
+        const latest = qc.getQueryData<Board>(boardKey(key.scope, key.owner, key.order));
         return (latest && findCard(latest, card.id)?.card) || card;
       },
       onKey: (card, action) => {
@@ -559,7 +565,7 @@ function Pipeline({
     setLoadingMore((s) => ({ ...s, [col.key]: true }));
     setMoreFailed((s) => ({ ...s, [col.key]: false }));
     try {
-      const p = new URLSearchParams({ stage: col.key, scope: readScope });
+      const p = new URLSearchParams({ stage: col.key, scope: readScope, order: key.order });
       if (key.owner) p.set("owner", key.owner);
       if (stalledOnly) p.set("stalled", "1");
       if (cursor) {
@@ -569,7 +575,7 @@ function Pipeline({
       const res = await fetch(`/api/pipeline/stage?${p}`, { headers: { accept: "application/json" } });
       if (!res.ok) throw new Error(String(res.status));
       const page = (await res.json()) as { cards: DealCard[]; next: Cursor };
-      qc.setQueryData<Board>(boardKey(key.scope, key.owner), (old) => (old ? appendPage(old, col.key, page.cards, stalledOnly ? col.next : page.next) : old));
+      qc.setQueryData<Board>(boardKey(key.scope, key.owner, key.order), (old) => (old ? appendPage(old, col.key, page.cards, stalledOnly ? col.next : page.next) : old));
       setExtraPages(true);
       if (phone) setShown((s) => ({ ...s, [col.key]: (s[col.key] ?? 30) + BOARD_PAGE }));
     } catch {
@@ -639,7 +645,11 @@ function Pipeline({
             writeUrl((u) => (on ? u.searchParams.set("stalled", "1") : u.searchParams.delete("stalled")));
           }}
           order={order}
-          onOrder={setOrder}
+          onOrder={(o) => {
+            setOrder(o);
+            // Another keyset order is another board (its own first page): its timer runs until its own Show more.
+            if (boardOrderOf(o) !== boardOrder) setExtraPages(false);
+          }}
           onNewDeal={() => setOpenNew(true)}
           status={status}
         />

@@ -19,6 +19,7 @@ import type { ActionFailure, ActionResult } from "@/lib/db-errors";
 import {
   DEAL_TOAST_SECONDS,
   type Board,
+  type BoardOrder,
   type DealCard,
   type DealDetail,
   type Fulfilment,
@@ -36,19 +37,19 @@ import { applyMove, findCard, removeCard, replaceCard, restoreFromLost } from "@
 import { boardKey, dealKey, fetchBoardClient, leadDealsKey } from "@/lib/prefetch";
 import { clearLastMove, lastUndoableMove, setLastMove, type LastMove } from "@/lib/last-move";
 
-// The pipeline's data and writes (Day 5 design 7.5). The board lives in the query cache under boardKey(scope, owner):
+// The pipeline's data and writes (Day 5 design 7.5). The board lives in the query cache under boardKey(scope, owner, order):
 // seeded from the server's promise, refetched on focus and every 30 s while the tab is visible. Every stage change is a
 // MutationObserver with scope "deal-<id>" (spike S12: TanStack runs one scope's mutations in series, other deals in
 // parallel), so quick keys on one card queue up; each mutationFn reads the deal's latest version when it runs. The move
 // shows at once (applyMove); a failure puts the snapshot back and drops the moves queued behind it on that deal (TanStack
 // does not cancel them: S12); a conflict (a result, D5) puts the card where it really is and says who moved it.
 
-export type ScopeOwner = { scope: "team" | "mine"; owner: string | null };
+export type ScopeOwner = { scope: "team" | "mine"; owner: string | null; order: BoardOrder };
 
 export function useBoard(key: ScopeOwner, initial: Board | undefined, extraPages: boolean) {
   return useQuery({
-    queryKey: boardKey(key.scope, key.owner),
-    queryFn: () => fetchBoardClient(key.scope, key.owner),
+    queryKey: boardKey(key.scope, key.owner, key.order),
+    queryFn: () => fetchBoardClient(key.scope, key.owner, key.order),
     initialData: initial,
     // The server's first paint is fresh for the usual 30 s; then focus and the 30 s timer refresh it. Once "Show more"
     // pages are loaded, the timer stops (a refetch would drop them); focus still refreshes.
