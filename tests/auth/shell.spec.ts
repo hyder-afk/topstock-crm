@@ -199,6 +199,61 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
   });
 });
 
+// Apple audit #6: a dialog closed while it is still opening turns back from where it is (it never jumps to fully open
+// first), and one opened again while it is closing rises from where it is (never from nothing). Ctrl+K toggles the
+// command menu; the keys are sent from inside the page on exact timers, and every frame's opacity is recorded.
+test("dialogs reverse mid-animation from where they are (Apple audit #6)", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: state, viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  await open(page, "/");
+  // Toggles the menu: each step waits `ms` (after the content has appeared, for a step marked `seen`), then presses.
+  const run = (steps: { ms: number; seen?: boolean }[]) =>
+    page.evaluate(async (list) => {
+      const frames: { t: number; opacity: number | null }[] = [];
+      const marks: number[] = [];
+      const start = performance.now();
+      const content = () => document.querySelector<HTMLElement>(".dialog-content");
+      let live = true;
+      const tick = () => {
+        const el = content();
+        frames.push({ t: performance.now() - start, opacity: el ? Number(getComputedStyle(el).opacity) : null });
+        if (live) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      for (const step of list) {
+        if (step.seen) while (!content()) await new Promise((r) => requestAnimationFrame(r));
+        await new Promise((r) => setTimeout(r, step.ms));
+        marks.push(performance.now() - start);
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true }));
+      }
+      await new Promise((r) => setTimeout(r, 600));
+      live = false;
+      return { frames, marks };
+    }, steps);
+  const before = (f: { t: number; opacity: number | null }[], t: number) => f.filter((x) => x.t < t).at(-1);
+  // Open, then close 40 ms in (mid-entrance).
+  const a = await run([{ ms: 0 }, { ms: 40, seen: true }]);
+  const closeAt = a.marks[1];
+  const atClose = before(a.frames, closeAt)?.opacity ?? 0;
+  const afterClose = a.frames.filter((f) => f.t > closeAt && f.opacity !== null).map((f) => f.opacity as number);
+  expect(atClose, "still opening when closed").toBeLessThan(0.99);
+  expect(afterClose.length, "the exit plays").toBeGreaterThan(0);
+  expect(Math.max(...afterClose), "never jumps to fully open before closing").toBeLessThanOrEqual(atClose + 0.02);
+  expect(a.frames.at(-1)?.opacity, "then gone").toBeNull();
+  // Open fully, close, and open again 40 ms into the exit.
+  const b = await run([{ ms: 0 }, { ms: 400, seen: true }, { ms: 40 }]);
+  const reopenAt = b.marks[2];
+  const atReopen = before(b.frames, reopenAt)?.opacity ?? 1;
+  const afterReopen = b.frames.filter((f) => f.t > reopenAt).map((f) => f.opacity ?? 0);
+  expect(atReopen, "still closing when reopened").toBeGreaterThan(0.01);
+  expect(Math.min(...afterReopen), "never drops to nothing before rising again").toBeGreaterThanOrEqual(atReopen - 0.02);
+  expect(afterReopen.at(-1)).toBeCloseTo(1, 2);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await context.close();
+});
+
 test("phone: five sections, Tasks and Analytics live under More", async ({ browser }) => {
   const context = await browser.newContext({ storageState: state, viewport: { width: 390, height: 844 }, hasTouch: true });
   const page = await context.newPage();
