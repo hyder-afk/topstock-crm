@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, sql, twoFrames } from "./helpers";
+import { appReady, createUser, fullSession, setRole, sql, twoFrames } from "./helpers";
 
 // The app shell and dock (Day 2): sections open by tap, keyboard and bead drag; phones show five items.
 test.describe.configure({ mode: "serial" });
@@ -10,6 +10,9 @@ let state: Awaited<ReturnType<BrowserContext["storageState"]>>;
 
 test.beforeAll(async ({ browser }) => {
   const secret = await createUser(email, password, true);
+  // A rep, whatever ran before: the first person in an org becomes its admin, and an admin's command menu also lists
+  // "Importer des prospects", which would change what "prosp" finds first in the French test below.
+  setRole(email, "rep");
   state = await fullSession(browser, email, password, secret);
 });
 
