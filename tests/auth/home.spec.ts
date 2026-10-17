@@ -290,6 +290,54 @@ test("reduced_motion_static_numbers and kpis_no_layout_shift", async ({ browser 
   await context.close();
 });
 
+// Apple audit #15: a figure that changes while it is still counting starts the next run from the number on screen,
+// never from the previous target. The page's clock is held, so each step is an exact number of frames.
+test("count_up_interrupted_starts_from_the_value_on_screen", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await recordCount(context);
+  // Late hydration (no first-visit count from 0): only scope switches move the figure.
+  const start = Date.now();
+  await page.clock.install({ time: start });
+  await page.clock.fastForward(1000);
+  await gotoHome(page);
+  const group = page.getByRole("group", { name: "Figures for" });
+  const shownText = kpi(page, /Open pipeline/).locator("[data-kpi-number] [aria-hidden]:not(.invisible)");
+  // Both scopes in the cache first, each figure at rest: Mine €50,000, Team €55,000.
+  await group.getByRole("button", { name: "Mine" }).click();
+  await expect(shownText).toHaveText("€50,000");
+  await group.getByRole("button", { name: "Team" }).click();
+  await expect(shownText).toHaveText("€55,000");
+  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 1000));
+  await page.evaluate(() => ((window as unknown as { __frames: string[] }).__frames = []));
+  // Team → Mine, cut short after 100 ms by Mine → Team.
+  await group.getByRole("button", { name: "Mine" }).click();
+  await expect(group.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
+  await page.clock.runFor(100);
+  // Only Open pipeline's frames (the other tiles' counts move between scopes too; Won this month does not change).
+  const money = async () => (await frames(page)).filter((f) => f.startsWith("€"));
+  const before = await money();
+  const mid = before.at(-1) as string;
+  expect(before.length, "the Team to Mine run has started").toBeGreaterThan(1);
+  expect(mid, "cut short mid-run").not.toBe("€50,000");
+  expect(mid).not.toBe("€55,000");
+  await group.getByRole("button", { name: "Team" }).click();
+  await expect(group.getByRole("button", { name: "Team" })).toHaveAttribute("aria-pressed", "true");
+  await page.clock.runFor(600);
+  const after = (await money()).slice(before.length);
+  // The next run starts where the number stood and only moves on towards the new target: every frame lies between the
+  // mid value and €55,000 (React may first write the final text, which the effect covers before paint), and the old
+  // target never shows.
+  const euros = (f: string) => Number(f.replace(/[^0-9]/g, ""));
+  expect(after.filter((f) => f !== "€55,000")[0], "the next run starts from the value on screen").toBe(mid);
+  expect(after, "no jump to the previous target").not.toContain("€50,000");
+  for (const f of after) expect(euros(f), f).toBeGreaterThanOrEqual(euros(mid));
+  expect(after.at(-1)).toBe("€55,000");
+  await page.clock.resume();
+  await expect(shownText).toHaveText("€55,000");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("today_toggle_done_undo", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await gotoHome(page);

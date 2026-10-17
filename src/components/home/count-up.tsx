@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 
 // Count-up (Day 5 design 7.11, D29). The server renders the final number, readable without JavaScript, under the CSS
 // rise entrance. On the first Home of a tab, when hydration lands within 800 ms of navigation start and motion is
-// allowed, each number counts from 0 in 0.7 s; later a changed figure eases from the old value in 0.3 s and an unchanged
-// one does not move. Frames are written into the text node React owns (no re-render per frame). No layout shift: the
-// number sits in a one-cell grid over an invisible copy of the final text (DM Mono: every digit is as wide), the moving
-// copy is aria-hidden and screen readers get the final value once.
+// allowed, each number counts from 0 in 0.7 s; later a changed figure eases from the value on screen in 0.3 s and an
+// unchanged one does not move. Frames are written into the text node React owns (no re-render per frame). No layout
+// shift: the number sits in a one-cell grid over an invisible copy of the final text (DM Mono: every digit is as wide),
+// the moving copy is aria-hidden and screen readers get the final value once.
 
 let counted = false; // this tab already counted (module state: one per tab, like the greeting's)
 
@@ -47,7 +47,9 @@ export function CountUp({
 }) {
   const firstVisit = useContext(FirstVisitContext);
   const ref = useRef<HTMLSpanElement>(null);
-  const shown = useRef<number | null>(null); // the value on screen after the last run
+  // The value on screen: the last run's latest frame, so a run cut short by a new value starts from where the number
+  // stands, never from the old target (Apple audit #15).
+  const shown = useRef<number | null>(null);
   const final = format(value);
 
   useLayoutEffect(() => {
@@ -57,18 +59,24 @@ export function CountUp({
     const reduced = prefersReducedMotion();
     const first = shown.current === null;
     const from = first ? (firstVisit && !reduced ? 0 : value) : (shown.current as number);
-    shown.current = value;
     if (from === value || reduced) {
+      shown.current = value;
       const text = format(value);
       if (node.nodeValue !== text) node.nodeValue = text; // React already wrote it; never touch the text needlessly
       return;
     }
+    shown.current = from;
     node.nodeValue = format(from); // before paint: no flash of the final value
     const controls = animate(from, value, {
       duration: first ? 0.7 : 0.3,
       ease: EASE,
       onUpdate: (v) => {
-        node.nodeValue = format(Math.round(v));
+        const n = Math.round(v);
+        shown.current = n;
+        node.nodeValue = format(n);
+      },
+      onComplete: () => {
+        shown.current = value;
       },
     });
     return () => controls.stop();
