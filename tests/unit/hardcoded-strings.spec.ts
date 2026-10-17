@@ -24,12 +24,7 @@ const ALLOWED = new Set([
   "app/global-error.tsx|Réessayer",
   // The brand name of the logo.
   "components/logo.tsx|TopStock",
-  // A country code as the example in the ship-to field.
-  "components/sales/record-sale-sheet.tsx|FR",
-  // Each language named in its own language, so a person finds theirs whatever the interface says.
-  "components/share-links/link-card.tsx|Français",
-  "components/share-links/link-card.tsx|English",
-  // The command menu's language switch, each language named in itself (as on the share-link card).
+  // The command menu's language switch, each language named in itself.
   "components/shell/command-palette.tsx|English",
   "components/shell/command-palette.tsx|Français",
 ]);

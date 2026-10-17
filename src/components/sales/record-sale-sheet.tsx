@@ -429,7 +429,7 @@ export function RecordSaleSheet({
                   name="ship_to_country"
                   autoComplete="off"
                   maxLength={2}
-                  placeholder="FR"
+                  placeholder={t("shipToPlaceholder")}
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
                   className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-base font-normal uppercase"
