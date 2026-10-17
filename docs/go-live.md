@@ -4,7 +4,9 @@ Written 12 Oct 2026 by the builder. Brought up to date on 16 Oct 2026 with main 
 Day 7, Gate 1 code part passed) and with Haider's decisions of 16 Oct 2026; part I3.3 (the daily security digest)
 written the same day. Brought up to date again on 17 Oct 2026 with main c543676 (PR #23, the security digest, merged
 as 2b1e7f5; PR #20, DB tests on the Paris day; PR #24, decision 9's 15-minute tokens, merged as c543676), plus the
-consistency and security audit follow-ups (D2 one authenticator per person, D10 Realtime, B3 `/forgot-password`). Master Plan section 9 Day 8, section 8
+consistency and security audit follow-ups (D2 one authenticator per person, D10 Realtime, B3 `/forgot-password`), and
+with the audit-fixes PR (bugs and consistency audits: migrations `20261024080000_pipeline_board_order` and
+`20261024080100_lead_stock_hold_note`). Master Plan section 9 Day 8, section 8
 rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-alive"); Cloud Workflow sections 4 to
 7; docs/day0-setup.md ("Later visits"); docs/evidence/day7d/section8-checklist.md (the items marked "Day 8").
 
@@ -143,8 +145,11 @@ Why: production must get only reviewed code that passed the security gate.
    - the `advisor` subagent's verdict on this go-live kit: **APPROVED** (quoted);
    - CI green on `main`, and the **go-live commit SHA** (40 characters) you will deploy in part E: main **c8ac42a or
      later**, and Claude confirms it is **the newest commit on main** at that moment (F2 redeploys production from
-     main, so the database in E must match it), with every migration on main up to
-     `20261023090000_security_digest` (22 files; part I3.3 needs that last one, merged in PR #23), and `deploy-dev-db` green on it (dev has the same migrations). The same SHA serves as
+     main, so the database in E must match it), with every migration on main at that
+     confirmed SHA (Claude reads the list in `supabase/migrations/` at that SHA and names the last file and the count;
+     with the audit-fixes PR merged that is `20261024080100_lead_stock_hold_note`, 24 files, and part I3.3 needs
+     `20261023090000_security_digest` from PR #23 among them; `20261024090000_analytics` comes with the Analytics PR
+     and is then the last file), and `deploy-dev-db` green on it (dev has the same migrations). The same SHA serves as
      `SWEEPER_SHA` in part I2;
    - that topstock-crm's Actions logs, which anyone can read since the repository went public (16 Oct 2026), touch
      only dev and print no secret;
