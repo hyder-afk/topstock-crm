@@ -292,6 +292,8 @@ test.describe("the whole French file (Day 7c)", () => {
     "Analytics.lost.tooltip",
     "Analytics.heat.slot",
     "Analytics.team.none",
+    // Analytics P3: the bare placeholder "{rate} ({count})" of list quality.
+    "Analytics.listQuality.share",
     // Units and codes kept in both languages.
     "Inventory.units.pcs",
     "Inventory.units.ctn",
