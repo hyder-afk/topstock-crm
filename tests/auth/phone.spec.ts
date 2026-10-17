@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { appReady, createUser, fullSession, isCancelledPrefetch, settled, sql, trackRequests } from "./helpers";
 import { makeOrg, moveTo, seedHome, userId } from "./home-fixture";
+import { seedAnalytics } from "./analytics-fixture";
 
 // Day 7c phone pass (plan section 4 row 7c, "every route"): every route of the app on a 390 x 844 phone, English and
 // French: the signed-in sections and their sub-pages, the sign-in pages (signed out, half signed in for the code, and a
@@ -18,7 +19,9 @@ import { makeOrg, moveTo, seedHome, userId } from "./home-fixture";
 // - phone_call_panel_tab (CI): with the call panel open on a phone, every page control reached with Tab ends above it.
 // - phone_shots (DAY7C_PHONE=1 only, so CI time does not change): screenshots into DAY7C_PHONE_DIR (locally
 //   docs/evidence/day7c/phone): every route at 390 and 768, the sheets, and the part-2 desktop changes at 1280 to 1728.
-// The person is an admin in an org made for this run (Home's fixture plus a small catalogue), so the screens hold data.
+// The person is an admin in an org made for this run (Home's fixture plus a small catalogue), so the screens hold data;
+// the Analytics fixture too (its lead names tagged apart from Home's), so /analytics is checked filled: the heatmap
+// drawn, Right now and list quality per import (Analytics P3, design 4.2).
 test.describe.configure({ mode: "serial", timeout: 900_000 });
 test.use({ actionTimeout: 15_000 });
 
@@ -463,6 +466,7 @@ test.beforeAll(async ({ browser }) => {
   moveTo(adminEmail, org, "admin", "Haider");
   moveTo(repEmail, org, "rep", "Kais");
   seedHome(org, userId(adminEmail), userId(repEmail), "");
+  seedAnalytics(org, userId(adminEmail), userId(repEmail), { tag: "(A)", file: "prospects-octobre.csv" });
   leadId = sql(`select id from public.companies where org_id = '${org}' and name = 'Maison Verdane'`);
   sql(`update public.companies set phone = '06 12 34 56 78', email = 'achats@example.com' where id = '${leadId}'`);
   seedCatalogue(org);
@@ -482,6 +486,13 @@ test("phone_fit: every route at 390 in EN and FR, and in French at 768 and 1280"
     const { context, page, errors } = await open(browser, { locale });
     for (const route of routes) {
       await go(page, route.path());
+      if (route.name === "analytics") {
+        // Checked filled (design 4.2): the phone heatmap drawn, every lazy chart drawn, Right now and list quality there.
+        await expect(page.locator("section[data-block=analytics-heat] [data-heat=phone] [role=gridcell]").first()).toBeVisible();
+        await page.waitForFunction(() => document.querySelectorAll(".analytics-chart").length === document.querySelectorAll(".analytics-chart svg.recharts-surface").length);
+        await expect(page.locator("[data-coverage-tile=untouched] [data-tile-link]")).toHaveCount(1);
+        await expect(page.locator("section[data-block=analytics-list-quality] [data-batch-card]")).toHaveCount(2);
+      }
       const fit = await fitProblems(page);
       // Not a vacuous pass: every route has at least the header's search and the dock's five links.
       expect(fit.checked, `${locale} ${route.name} targets checked`).toBeGreaterThanOrEqual(6);

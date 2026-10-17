@@ -48,3 +48,14 @@ export function listRateLimited(userId: string, limiter: UserLimiter = listLimit
   if (wait === 0) return null;
   return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { ...noStore, "Retry-After": String(wait) } });
 }
+
+// Analytics (design 3.6): 30 reads a minute per person on GET /api/analytics, its own window. Each read runs seven
+// aggregate functions over up to a year of rows, so the cap is far lower than the list APIs'; the page prefetches a
+// preset only after a 150 ms hover, once per fresh key, and keeps the last figures on a 429 (Retry-After).
+export const ANALYTICS_LIMIT = { windowMs: 60_000, max: 30 } as const;
+const analyticsLimiter = createUserLimiter(ANALYTICS_LIMIT);
+
+/** null when the Analytics read may go ahead; otherwise the 429 answer (generic code, Retry-After, no detail). */
+export function analyticsRateLimited(userId: string, limiter: UserLimiter = analyticsLimiter): NextResponse | null {
+  return listRateLimited(userId, limiter);
+}

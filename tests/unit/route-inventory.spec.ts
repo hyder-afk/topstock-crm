@@ -110,7 +110,7 @@ const REVIEWED = new Set([
   "src/app/(app)/leads/[id]/page.tsx", "src/app/(app)/leads/import/page.tsx", "src/app/(app)/leads/queue/page.tsx",
   "src/app/(app)/more/page.tsx", "src/app/(app)/more/team/page.tsx", "src/app/(app)/pipeline/page.tsx", "src/app/(app)/tasks/page.tsx",
   // the app's JSON reads and the queue's writes
-  "src/app/api/activities/[id]/route.ts", "src/app/api/deals/[id]/route.ts", "src/app/api/files/[id]/route.ts",
+  "src/app/api/activities/[id]/route.ts", "src/app/api/analytics/route.ts", "src/app/api/deals/[id]/route.ts", "src/app/api/files/[id]/route.ts",
   "src/app/api/home/route.ts", "src/app/api/imports/[id]/issues/route.ts", "src/app/api/inventory/alerts/route.ts",
   "src/app/api/inventory/movements/route.ts", "src/app/api/inventory/products/[id]/route.ts",
   "src/app/api/inventory/requests/[id]/route.ts", "src/app/api/inventory/requests/route.ts",

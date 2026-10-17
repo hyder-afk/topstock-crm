@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { createUserLimiter, LIST_LIMIT, listRateLimited } from "@/lib/rate-limit";
+import { ANALYTICS_LIMIT, analyticsRateLimited, createUserLimiter, LIST_LIMIT, listRateLimited } from "@/lib/rate-limit";
 
 // Gate 1 item 28 (Day 7a): the per-person limit on the search and list APIs.
 
@@ -69,6 +69,8 @@ const LIMITED = [
   "leads/[id]/tasks",
   "imports/[id]/issues",
 ];
+// Analytics (design 3.6): its own, lower limit (30 a minute), checked the same way right after the session.
+const ANALYTICS = ["analytics"];
 // Left out on purpose (docs/evidence/day7a/README.md, "Merge with Day 6"): one record by id, a fixed set of counts, a
 // file download, or the fixed client whitelist; never a page of rows or a search.
 const NOT_LISTS = [
@@ -94,12 +96,28 @@ test("every search and list API checks the limit right after the session", () =>
   }
 });
 
+test("the Analytics read checks its own limit right after the session (30 a minute, 429 with Retry-After)", async () => {
+  for (const route of ANALYTICS) {
+    const text = readFileSync(path.join(api, route, "route.ts"), "utf8");
+    expect(text, route).toMatch(/const session = await apiSession\(\);\n[^\n]*unauthorized[^\n]*\n\s*const limited = analyticsRateLimited\(session\.claims\.sub\);\n\s*if \(limited\) return limited;/);
+  }
+  expect(ANALYTICS_LIMIT).toEqual({ windowMs: 60_000, max: 30 });
+  const l = createUserLimiter(ANALYTICS_LIMIT);
+  for (let i = 0; i < 30; i++) expect(analyticsRateLimited("u", l)).toBeNull();
+  const res = analyticsRateLimited("u", l);
+  expect(res?.status).toBe(429);
+  expect(await res?.json()).toEqual({ error: "rate_limited" });
+  expect(res?.headers.get("cache-control")).toBe("private, no-store");
+  expect(Number(res?.headers.get("retry-after"))).toBeGreaterThan(0);
+  expect(analyticsRateLimited("someone else", l)).toBeNull();
+});
+
 test("every GET route under src/app/api is either limited or named as not a list", () => {
   const routes = (readdirSync(api, { recursive: true }) as string[])
     .filter((f) => path.basename(f) === "route.ts")
     .filter((f) => /export async function GET\b/.test(readFileSync(path.join(api, f), "utf8")))
     .map((f) => path.dirname(f).split(path.sep).join("/"))
     .sort();
-  expect(routes).toEqual([...LIMITED, ...NOT_LISTS].sort());
+  expect(routes).toEqual([...LIMITED, ...ANALYTICS, ...NOT_LISTS].sort());
   for (const route of NOT_LISTS) expect(LIMITED, route).not.toContain(route);
 });

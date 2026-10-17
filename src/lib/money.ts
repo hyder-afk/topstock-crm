@@ -79,6 +79,12 @@ export function subMoney(a: string | null, b: string | null): string {
   return fromCents(toCents(a ?? "0") - toCents(b ?? "0"));
 }
 
+/** The two money formats (whole euros, with cents): exported so tests can check Node and the browser write the same. */
+export const MONEY_OPTIONS = {
+  whole: { style: "currency", currency: "EUR", minimumFractionDigits: 0, maximumFractionDigits: 0 },
+  cents: { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 },
+} as const satisfies Record<string, Intl.NumberFormatOptions>;
+
 /**
  * A value for display: euros through Intl ("12 400 €" in French, "€12,400" in English). Cards and totals drop the cents
  * (design 7.2); `cents: true` keeps them when there are any (the deal sheet, the Win dialog).
@@ -90,7 +96,7 @@ function moneyFormat(locale: string, digits: 0 | 2): Intl.NumberFormat {
   const key = `${locale}|${digits}`;
   let f = formatters.get(key);
   if (!f) {
-    f = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR", minimumFractionDigits: digits, maximumFractionDigits: digits });
+    f = new Intl.NumberFormat(locale, digits === 2 ? MONEY_OPTIONS.cents : MONEY_OPTIONS.whole);
     formatters.set(key, f);
   }
   return f;
