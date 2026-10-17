@@ -136,6 +136,62 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
     await context.close();
   });
 
+  test("reduced motion: a press on the bead still shows, at once, and a drag does not lift it", async ({ browser }) => {
+    const context = await browser.newContext({ storageState: state, viewport, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await open(page, "/");
+    await beadSettledOver(page, "Home");
+    const scale = () => page.getByTestId("dock-bead").evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+    // Record the bead's scale on every frame. No spring means it is only ever at rest (1) or pressed (0.94), never in
+    // between. (When the press lands relative to a given frame varies, so the test reads the record, not one frame.)
+    const record = () =>
+      page.evaluate(() => {
+        const bead = document.querySelector("[data-testid=dock-bead]")!;
+        const store = window as unknown as { beadScales: number[] | null };
+        const out: number[] = [];
+        store.beadScales = out;
+        const tick = () => {
+          out.push(new DOMMatrix(getComputedStyle(bead).transform).a);
+          if (store.beadScales === out) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    const recorded = () =>
+      page.evaluate(() => {
+        const store = window as unknown as { beadScales: number[] | null };
+        const out = store.beadScales ?? [];
+        store.beadScales = null;
+        return out;
+      });
+    const onlyRestOrPressed = (xs: number[]) => xs.every((v) => Math.abs(v - 1) < 0.005 || Math.abs(v - 0.94) < 0.005);
+    const bead = (await page.getByTestId("dock-bead").boundingBox())!;
+    await page.mouse.move(bead.x + bead.width / 2, bead.y + bead.height / 2);
+    await record();
+    await page.mouse.down();
+    await expect.poll(scale, { message: "pressed" }).toBeCloseTo(0.94, 2);
+    await twoFrames(page);
+    let xs = await recorded();
+    expect(onlyRestOrPressed(xs), `press, no in-between scale: ${xs.join(" ")}`).toBe(true);
+    await record();
+    await page.mouse.up();
+    await expect.poll(scale, { message: "released" }).toBeCloseTo(1, 2);
+    await twoFrames(page);
+    xs = await recorded();
+    expect(onlyRestOrPressed(xs), `release, no in-between scale: ${xs.join(" ")}`).toBe(true);
+    // A press that turns into a drag does not lift.
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(bead.x + bead.width / 2 + i * 3, bead.y + bead.height / 2);
+      await page.waitForTimeout(16);
+    }
+    await twoFrames(page);
+    expect(await scale(), "dragging: no lift under reduced motion").toBeLessThanOrEqual(1);
+    await page.mouse.move(bead.x + bead.width / 2, bead.y + bead.height / 2);
+    await page.mouse.up();
+    await expect(page).toHaveURL((u) => u.pathname === "/");
+    await context.close();
+  });
+
   test("reduced motion: the bead lands at once", async ({ browser }) => {
     const context = await browser.newContext({ storageState: state, viewport, reducedMotion: "reduce" });
     const page = await context.newPage();
