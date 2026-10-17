@@ -89,3 +89,9 @@ the final code (24 files). Every shot: no console error, no horizontal scroll (0
 | `leads-empty-rep-{before,after}-en-{light,dark}-{1440,390}.png` | #23: before, two red "Add lead" buttons; after, the empty state's Add is quiet and the header's Add is the one red button |
 | `share-basket-{before,after}-en-{light,dark}-{1440,390}.png` | #13: the bar at rest looks the same (its rise is motion, counted in `share.spec`); the only pixel changes are the run's product name and the "Updated" time |
 | `home-{before,after}-en-{light,dark}-{1440,390}.png` | #20 and #22: at rest the page is the same. Pixel diff: the Today titles region is identical in both builds (#22); the meeting time differs (seeded relative to the clock); the KPI tiles differ by 13 pixels of at most 2/255 (edge anti-aliasing: the tiles are no longer a separate animated layer). #22 also checked in one page at one instant: adding `font-medium` back to the 6 Outfit titles changes no pixel |
+
+## Security review
+
+`/security-review` on apple-audit (a86550e..635d9a5): **no findings at confidence 8 or higher**. No server paths
+changed; the new right-click menus reuse the same role-gated items as the existing menus; no
+`dangerouslySetInnerHTML`; the new shortcuts are non-destructive; the share page changes are CSS only.
