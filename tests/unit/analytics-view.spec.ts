@@ -166,10 +166,12 @@ test("dates: bucket starts are Paris calendar dates, formatted the same in every
   expect(bucketDate("2026-03-29", "fr")).toBe("29 mars");
   expect(bucketDay("2026-10-13", "en")).toBe("Tue, Oct 13");
   expect(bucketDay("2026-10-13", "fr")).toBe("mar. 13 oct.");
-  // Two plain dates and an en dash, never Intl's formatRange (its interval patterns are the engine's own: see below).
-  expect(formatRange("2026-09-01", "2026-09-30", "en")).toBe("Sep 1 – Sep 30, 2026");
+  // Two plain dates and an en dash, never Intl's formatRange (its interval patterns are the engine's own: see below). A
+  // no-break space before the dash, so a wrapped range line never starts with it.
+  expect(formatRange("2026-09-01", "2026-09-30", "en")).toBe("Sep 1\u00a0– Sep 30, 2026");
   expect(plain(formatRange("2026-09-01", "2026-09-30", "fr"))).toBe("1 sept. – 30 sept. 2026");
-  expect(formatRange("2025-12-15", "2026-01-13", "en")).toBe("Dec 15, 2025 – Jan 13, 2026");
+  expect(formatRange("2026-09-01", "2026-09-30", "fr")).toContain("sept.\u00a0– 30");
+  expect(formatRange("2025-12-15", "2026-01-13", "en")).toBe("Dec 15, 2025\u00a0– Jan 13, 2026");
   expect(plain(formatRange("2025-12-15", "2026-01-13", "fr"))).toBe("15 déc. 2025 – 13 janv. 2026");
   expect(formatRange("2026-10-17", "2026-10-17", "en")).toBe("Oct 17, 2026");
   expect(weekdayName(1, "en")).toBe("Mon");

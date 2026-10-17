@@ -68,10 +68,12 @@ export function ratio(a: number, b: number): number | null {
   return b > 0 ? a / b : null;
 }
 
-// Every Intl option set Analytics formats with. The page is rendered on the server (Node) and hydrated in the browser,
-// and React throws away the server HTML (error 418) when one text differs, so each format must give the same text in
-// Node and in every browser engine: tests/auth/analytics.spec.ts (intl_server_and_browser_agree) formats sample values
-// with each set in Node and in the browser and compares them. Two formats failed that rule and are not used:
+// The Intl option sets Analytics formats with (money goes through src/lib/money.ts, MONEY_OPTIONS; names are sorted with
+// Intl.Collator, NAME_COLLATION). The page is rendered on the server (Node) and hydrated in the browser, and React
+// throws away the server HTML (error 418) when one text differs, so each format must give the same text in Node and in
+// every browser engine: tests/auth/analytics.spec.ts (intl_server_and_browser_agree) formats sample values with
+// INTL_NUMBER, INTL_DATE and MONEY_OPTIONS, and sorts sample names, in Node and in the browser and compares them. Two
+// formats failed that rule and are not used:
 // - DateTimeFormat.formatRange: interval patterns are the engine's own. Node 22 puts thin spaces (U+2009) around the
 //   dash, Chromium 156 ordinary spaces, so the range line failed hydration on PR #28's CI. The range line is two plain
 //   dates joined by RANGE_DASH instead.
@@ -103,8 +105,14 @@ export const INTL_DATE = {
   weekdayLong: { weekday: "long", timeZone: "UTC" },
 } as const satisfies Record<string, Intl.DateTimeFormatOptions>;
 
-/** Between the two dates of the range line, in both languages ("Sep 1 – Sep 30, 2026", "1 sept. – 30 sept. 2026"). */
-export const RANGE_DASH = " – ";
+/** How the Team table and the person picker sort names (accents and case ignored). */
+export const NAME_COLLATION = { sensitivity: "base" } as const satisfies Intl.CollatorOptions;
+
+/**
+ * Between the two dates of the range line, in both languages ("Sep 1 – Sep 30, 2026", "1 sept. – 30 sept. 2026"): a
+ * no-break space before the en dash, so a wrapped line (390 px) never starts with the dash.
+ */
+export const RANGE_DASH = "\u00a0– ";
 
 export function formatPercent(x: number, locale: string): string {
   return new Intl.NumberFormat(locale, INTL_NUMBER.percent).format(x);
@@ -443,7 +451,7 @@ export function teamRows(
     r.winRate = r.userId === null ? null : p.rate;
   }
   for (const r of rows.values()) r.connect = ratio(r.reached, r.calls);
-  const collator = new Intl.Collator(locale, { sensitivity: "base" });
+  const collator = new Intl.Collator(locale, NAME_COLLATION);
   const people = [...rows.values()].filter((r) => r.key !== "former").sort((a, b) => collator.compare(a.name, b.name));
   const former = rows.get("former");
   const formerHasFigures = former && former.calls + former.emails + former.whatsapp + former.meetings + former.opened + former.won + former.lost > 0;
@@ -452,7 +460,7 @@ export function teamRows(
 
 /** The person picker's options: everyone in list_team, by name. */
 export function teamOptions(team: AnalyticsTeamMember[], noName: string, locale: string): { value: string; label: string }[] {
-  const collator = new Intl.Collator(locale, { sensitivity: "base" });
+  const collator = new Intl.Collator(locale, NAME_COLLATION);
   return team
     .map((m) => ({ value: m.id, label: `${m.first_name} ${m.last_name}`.trim() || noName }))
     .sort((a, b) => collator.compare(a.label, b.label));

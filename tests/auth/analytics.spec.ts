@@ -4,7 +4,8 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import { appReady, createUser, fullSession, isCancelledPrefetch, settled, trackRequests, youngSession } from "./helpers";
 import { makeOrg, moveTo, userId } from "./home-fixture";
 import { EMPTY_FILE, XSS_FILE, XSS_NAME, expected, seedAnalytics } from "./analytics-fixture";
-import { INTL_DATE, INTL_NUMBER, formatRange } from "@/lib/analytics/view";
+import { INTL_DATE, INTL_NUMBER, NAME_COLLATION, formatRange } from "@/lib/analytics/view";
+import { MONEY_OPTIONS } from "@/lib/money";
 
 // Analytics P2 and P3 (design docs/evidence/analytics/design.md 5.3): the page renders the seeded
 // figures; the filters update the URL with replaceState and a reload restores the view; a rep sees no person picker and
@@ -168,15 +169,27 @@ test("renders_seeded_figures", async ({ browser }) => {
   await context.close();
 });
 
-// Every Intl format Analytics renders, run with the same options in Node (the server) and in the browser: they must write
-// the same text, or React throws the server HTML away on hydration (error 418; PR #28's CI, where Chromium 156 failed
-// the first render of /analytics). Self-contained: page.evaluate sends the function's source to the page.
-type IntlInput = { locales: string[]; date: Record<string, Intl.DateTimeFormatOptions>; number: Record<string, Intl.NumberFormatOptions>; dates: number[]; numbers: number[] };
-function formatAll({ locales, date, number, dates, numbers }: IntlInput): string[] {
+// Every Intl format Analytics renders (its INTL_DATE and INTL_NUMBER sets, and the money formats of src/lib/money.ts),
+// run with the same options in Node (the server) and in the browser, plus the name sort of the Team table and the person
+// picker: they must give the same text and order, or React throws the server HTML away on hydration (error 418; PR
+// #28's CI, where Chromium 156 laid out formatRange differently from Node). Self-contained: page.evaluate sends the
+// function's source to the page.
+type IntlInput = {
+  locales: string[];
+  date: Record<string, Intl.DateTimeFormatOptions>;
+  number: Record<string, Intl.NumberFormatOptions>;
+  collation: Intl.CollatorOptions;
+  dates: number[];
+  numbers: number[];
+  names: string[];
+};
+function formatAll({ locales, date, number, collation, dates, numbers, names }: IntlInput): string[] {
   const out: string[] = [];
   for (const l of locales) {
     for (const [name, o] of Object.entries(date)) for (const d of dates) out.push(`${l} ${name} ${d}: ${new Intl.DateTimeFormat(l, o).format(new Date(d))}`);
     for (const [name, o] of Object.entries(number)) for (const n of numbers) out.push(`${l} ${name} ${n}: ${new Intl.NumberFormat(l, o).format(n)}`);
+    const collator = new Intl.Collator(l, collation);
+    out.push(`${l} names: ${[...names].sort((a, b) => collator.compare(a, b)).join(" | ")}`);
   }
   return out;
 }
@@ -185,19 +198,23 @@ test("intl_server_and_browser_agree", async ({ browser }) => {
   // The browser in Paris time (the team's zone), Node in whatever zone the server runs (UTC on CI).
   const context = await browser.newContext({ timezoneId: "Europe/Paris" });
   const page = await context.newPage();
+  const number = { ...INTL_NUMBER, moneyWhole: MONEY_OPTIONS.whole, moneyCents: MONEY_OPTIONS.cents };
   const input: IntlInput = {
     locales: ["en", "fr"],
     date: INTL_DATE,
-    number: INTL_NUMBER,
+    number,
+    collation: NAME_COLLATION,
     // A range start, past midnight in Paris (still the day before in UTC), New Year's Eve, both DST changes.
     dates: ["2026-09-01T00:00:00Z", "2026-10-17T22:30:00Z", "2025-12-31T23:59:00Z", "2026-03-29T01:00:00Z", "2026-10-25T00:00:00Z"].map(Date.parse),
-    numbers: [0, 0.05, 0.475, 1, 7, 9.04, 12.5, 999, 1000, 1500, 1644, 48_300, 1_000_000, 1_240_000, 2_000_000, 12_000_000],
+    numbers: [0, 0.05, 0.475, 1, 7, 9.04, 12.5, 999, 1000, 1500, 1644, 1644.4, 48_300, 1_000_000, 1_240_000, 2_000_000, 12_000_000],
+    // Made-up names with accents, case and particles.
+    names: ["Émile", "eve", "Ève", "Zoë", "Åsa", "de la Cruz", "Dupont", "Ada", "Rita"],
   };
   const server = formatAll(input);
-  expect(server.length).toBe(2 * (Object.keys(INTL_DATE).length * 5 + Object.keys(INTL_NUMBER).length * 16));
+  expect(server.length).toBe(2 * (Object.keys(INTL_DATE).length * 5 + Object.keys(number).length * 17 + 1));
   expect(await page.evaluate(formatAll, input)).toEqual(server);
   // The range line is two of those dates and a dash (never formatRange, whose interval patterns are the engine's own).
-  expect(formatRange("2026-09-17", "2026-10-16", "en")).toBe("Sep 17 – Oct 16, 2026");
+  expect(formatRange("2026-09-17", "2026-10-16", "en")).toBe("Sep 17\u00a0– Oct 16, 2026");
   await context.close();
 });
 
