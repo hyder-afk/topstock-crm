@@ -53,7 +53,9 @@ function Tile({
       className={cn(
         KPI_CARD_CLASS,
         TILE_SPAN,
-        "relative",
+        // Top-aligned with the sub-line at the foot, so the numbers of a row line up when the Untouched tile's switch
+        // wraps under its number (phones).
+        "relative justify-start",
         href && "transition-[scale,background-color] duration-150 hover:bg-card/80 has-[a:active]:scale-[0.98]",
       )}
       data-coverage-tile={id}
@@ -71,7 +73,7 @@ function Tile({
         </span>
         {control}
       </div>
-      <span className={cn(KPI_SUB_CLASS, "line-clamp-2")} data-coverage-sub="">
+      <span className={cn(KPI_SUB_CLASS, "mt-auto line-clamp-2")} data-coverage-sub="">
         {value === 0 ? t("caughtUp") : sub}
       </span>
       {href ? (
@@ -183,7 +185,7 @@ export function RightNow({ data, loading, busy, stale, onRetry }: { data: Analyt
         </p>
       </div>
       <div
-        className="grid grid-cols-12 gap-3 transition-opacity duration-200 data-[stale=true]:opacity-60 sm:gap-4 min-[1440px]:gap-6"
+        className="grid grid-cols-12 gap-3 motion-safe:transition-opacity motion-safe:duration-200 data-[stale=true]:opacity-60 sm:gap-4 min-[1440px]:gap-6"
         data-stale={stale || undefined}
       >
         <div role="group" aria-label={t("rowLabel")} aria-busy={busy || undefined} className="col-span-12 grid grid-cols-12 gap-3 sm:gap-4 min-[1440px]:gap-6">
@@ -199,7 +201,7 @@ export function CoverageSkeleton() {
   return (
     <>
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className={cn(KPI_CARD_CLASS, TILE_SPAN)} aria-hidden="true">
+        <div key={i} className={cn(KPI_CARD_CLASS, TILE_SPAN, "justify-start")} aria-hidden="true">
           <div className={cn(KPI_LABEL_CLASS, "flex items-start")}>
             <Bone className="h-[18px] w-24" />
           </div>
@@ -209,7 +211,7 @@ export function CoverageSkeleton() {
             </div>
             {i === 0 ? <Bone className="h-11 w-[140px] rounded-md lg:h-10 lg:w-[116px]" /> : null}
           </div>
-          <div className={cn(KPI_SUB_CLASS, "flex items-center")}>
+          <div className={cn(KPI_SUB_CLASS, "mt-auto flex items-center")}>
             <Bone className="h-[14px] w-28 max-w-full" />
           </div>
         </div>

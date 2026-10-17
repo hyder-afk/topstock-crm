@@ -52,7 +52,7 @@ export function BlockError({ block, onRetry }: { block: string; onRetry: () => v
       <button
         type="button"
         onClick={onRetry}
-        className="inline-flex min-h-11 items-center font-bold text-foreground underline underline-offset-4 transition-[scale] duration-150 active:scale-[0.97]"
+        className="inline-flex min-h-11 items-center font-bold text-foreground underline underline-offset-4 hover:decoration-2 transition-[scale] duration-150 active:scale-[0.97]"
       >
         {t("tryAgain")}
       </button>
@@ -66,7 +66,7 @@ export function EmptyLine({ text, href, action }: { text: string; href?: string;
     <div className="flex flex-col items-start gap-1 text-sm text-muted-foreground" data-empty="">
       <p>{text}</p>
       {href && action ? (
-        <Link href={href} className="inline-flex min-h-11 items-center font-bold text-foreground underline underline-offset-4">
+        <Link href={href} className="inline-flex min-h-11 items-center font-bold text-foreground underline underline-offset-4 hover:decoration-2">
           {action}
         </Link>
       ) : null}

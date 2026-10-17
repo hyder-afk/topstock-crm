@@ -98,7 +98,7 @@ export function AnalyticsBody() {
           {t("thisPeriod")}
         </h2>
         <div
-          className="grid grid-cols-12 gap-3 transition-opacity duration-200 data-[stale=true]:opacity-60 sm:gap-4 min-[1440px]:gap-6"
+          className="grid grid-cols-12 gap-3 motion-safe:transition-opacity motion-safe:duration-200 data-[stale=true]:opacity-60 sm:gap-4 min-[1440px]:gap-6"
           data-stale={stale || undefined}
         >
           <div role="group" aria-label={t("kpi.rowLabel")} aria-busy={busy || undefined} className="col-span-12 grid grid-cols-12 gap-3 sm:gap-4 min-[1440px]:gap-6">

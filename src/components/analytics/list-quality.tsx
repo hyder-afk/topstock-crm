@@ -19,17 +19,20 @@ export function ListQualityCard({ data, loading, busy, onRetry }: { data: Analyt
   const locale = useLocale();
   const view = blockView(data?.batches ?? undefined, loading);
   const owner = data?.rep ?? null;
-  const share = (s: BatchShare) => (s.share === null ? "—" : t("share", { rate: formatPercent(s.share, locale), count: formatCount(s.count, locale) }));
+  const share = (s: BatchShare) =>
+    s.share === null ? "—" : <span className="whitespace-nowrap">{t("share", { rate: formatPercent(s.share, locale), count: formatCount(s.count, locale) })}</span>;
   const file = (r: BatchRow) => (
     <Link
       href={batchHref(r.id, owner)}
       className="inline-flex min-h-11 items-center font-bold [overflow-wrap:anywhere] underline-offset-4 hover:underline md:min-h-0"
       data-batch-file=""
+      translate="no"
     >
       {r.filename}
     </Link>
   );
-  const leads = (r: BatchRow) => (r.leads === 0 ? t("allRemoved") : formatCount(r.leads, locale));
+  const leads = (r: BatchRow) =>
+    r.leads === 0 ? <span className="font-sans text-muted-foreground">{t("allRemoved")}</span> : formatCount(r.leads, locale);
 
   let body: React.ReactNode;
   if (view.kind === "loading") body = <ListQualitySkeleton />;
