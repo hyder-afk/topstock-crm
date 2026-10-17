@@ -73,7 +73,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         type="button"
         aria-label={t("dismiss")}
         onClick={() => setToast(null)}
-        className="grid size-11 place-items-center rounded-md opacity-80 transition-[opacity,transform] duration-150 hover:opacity-100 active:scale-[0.97] sm:size-9"
+        className="grid size-11 place-items-center rounded-md opacity-80 transition-[opacity,transform,scale] duration-150 hover:opacity-100 active:scale-[0.97] sm:size-9"
       >
         <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
       </button>

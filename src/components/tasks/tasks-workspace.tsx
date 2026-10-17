@@ -379,7 +379,7 @@ export function TasksWorkspace({
                 onClick={() => setScope(s)}
                 onPointerEnter={() => prefetchTasks(queryClient, s, tab)}
                 className={cn(
-                  "min-h-11 rounded-[10px] px-3.5 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+                  "min-h-11 rounded-[10px] px-3.5 text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
                   scope === s ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                 )}
               >
