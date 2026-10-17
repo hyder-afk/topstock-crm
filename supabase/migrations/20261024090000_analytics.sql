@@ -9,7 +9,9 @@
 --  - activities_no_author_idx, so the team totals include a deleted author's entries without a full scan.
 -- House rules (design 3.1): every function is SECURITY INVOKER with static SQL (no dynamic statements, no string
 -- building), set search_path = '' and plan_cache_mode = force_custom_plan, so row level security decides every row a
--- figure counts and each call is planned for its own range. Two-factor sign-in is required (42501 'forbidden'). A rep
+-- figure counts and each call is planned for its own range; jit = off, because row level security inflates the
+-- planner's cost estimates past the JIT threshold and compiling then costs more than the read itself (measured on the
+-- perf seed: about 60 ms of JIT for a 28 ms read; docs/evidence/analytics/p1-perf.md). Two-factor sign-in is required (42501 'forbidden'). A rep
 -- always gets their own figures (42501 'scope' when asking for a colleague's); managers and admins get the team (p_user
 -- null) or one member of their organisation (P0002 'rep' for anyone else). Ranges are Paris dates: from 00:00 Paris on
 -- the first day to 00:00 Paris after the last (a 23 or 25 hour day stays one day), at most 366 days, never after Paris
@@ -81,7 +83,7 @@ $$;
 -- (user_id null, activities_no_author_idx). Notes are never activity. p_calls_only: calls only (best time to call).
 create function private.analytics_activity_rows(p_owner uuid, p_from timestamptz, p_to timestamptz, p_calls_only boolean)
 returns table (r_user uuid, r_type text, r_outcome text, r_at timestamptz)
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 begin
   if p_owner is not null then
     return query
@@ -113,7 +115,7 @@ $$;
 create function private.analytics_deal_rows(p_owner uuid, p_from timestamptz, p_to timestamptz)
 returns table (d_id uuid, d_owner uuid, d_status text, d_value numeric, d_created timestamptz, d_closed timestamptz,
                d_reason text)
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_org constant uuid := (select private.current_org_id());
 begin
@@ -142,7 +144,7 @@ $$;
 -- Leads added by hand (import_batch_id null) created in the range: the person's (lead owner) or the organisation's.
 create function private.analytics_lead_rows(p_owner uuid, p_from timestamptz, p_to timestamptz)
 returns table (l_id uuid, l_created timestamptz)
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_org constant uuid := (select private.current_org_id());
 begin
@@ -166,7 +168,7 @@ $$;
 -- limits a rep to sales they recorded or on leads they own.
 create function private.analytics_sale_lines(p_owner uuid, p_from timestamptz, p_to timestamptz)
 returns table (o_id uuid, o_at timestamptz, o_fulfilment text, l_id uuid, l_name text, l_qty integer, l_total numeric)
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 begin
   if p_owner is not null then
     return query
@@ -191,7 +193,7 @@ $$;
 -- 1.1 Activity: per bucket calls, reached calls, emails, WhatsApp messages and meetings; totals (and meetings held);
 -- the team view adds one row per person (user_id null: former team members). "Reached" is Home's K4 list.
 create function public.analytics_activity(p_from date, p_to date, p_user uuid default null) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   w record;
@@ -254,7 +256,7 @@ $$;
 -- deals), the funnel of the deals opened in the range, days in stage, lost reasons, and per owner in the team view.
 -- Only non-undone history rows count: a row is undone when it is an undo row or another row undoes it.
 create function public.analytics_pipeline(p_from date, p_to date, p_user uuid default null) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   w record;
@@ -353,7 +355,7 @@ $$;
 -- 1.3 Speed-to-lead: leads added by hand in the range; first touch = the earliest call, email, WhatsApp message or
 -- meeting on the lead at or after its creation, by anyone (activities_company_keyset_idx); wall-clock minutes.
 create function public.analytics_speed(p_from date, p_to date, p_user uuid default null) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   w record;
@@ -390,7 +392,7 @@ $$;
 
 -- 1.6 Best time to call: weekday (ISO 1 = Monday) x hour of the call in Paris time; only cells with calls.
 create function public.analytics_call_times(p_from date, p_to date, p_user uuid default null) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   w record;
@@ -418,7 +420,7 @@ $$;
 -- by fulfilment (revenue); top 10 products by revenue, grouped by lower(product_name) whether or not the line names a
 -- product, shown with the spelling on the newest sale. Cancelled (and undone) sales are left out.
 create function public.analytics_sales(p_from date, p_to date, p_user uuid default null) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   w record;
@@ -464,7 +466,7 @@ $$;
 -- 1.4 Coverage (right now, not the range): untouched leads (exactly private.lead_filter_sql's inactive-days rule, so the
 -- count equals the Leads list's count), never contacted, warm or negotiation leads with no next step, overdue tasks.
 create function public.analytics_coverage(p_user uuid default null, p_idle_days integer default 30) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   v_org uuid;
@@ -526,7 +528,7 @@ $$;
 -- imported lead batches; per batch the leads in it now and how many were contacted, reached, got a deal and won one.
 -- Only entries and deals created at or after the batch count (history from before the import never inflates it).
 create function public.analytics_batches(p_user uuid default null, p_limit integer default 20) returns jsonb
-language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan as $$
+language plpgsql stable security invoker set search_path = '' set plan_cache_mode = force_custom_plan set jit = off as $$
 declare
   v_owner uuid;
   v jsonb;

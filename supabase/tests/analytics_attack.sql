@@ -317,13 +317,14 @@ begin
     if f.prosrc ~* '\m(body|lost_note|cancel_reason|cost_per_piece|order_line_costs)\M' or f.prosrc ~* '\m[a-z]\.note\M' then
       raise exception 'FAIL: % reads a text or cost column', f.sig;
     end if;
-    -- Stable (the bucket list is immutable); the seven blocks and the four source helpers plan each call for its range.
+    -- Stable (the bucket list is immutable); the seven blocks and the four source helpers plan each call for its range,
+    -- without JIT.
     if f.provolatile <> (case when f.proname = 'analytics_buckets' then 'i' else 's' end) then
       raise exception 'FAIL: % volatility %', f.sig, f.provolatile;
     end if;
     if f.proname not in ('analytics_owner', 'analytics_window', 'analytics_buckets')
-       and not (f.proconfig @> array['plan_cache_mode=force_custom_plan']) then
-      raise exception 'FAIL: % does not force custom plans', f.sig;
+       and not (f.proconfig @> array['plan_cache_mode=force_custom_plan', 'jit=off']) then
+      raise exception 'FAIL: % does not force custom plans with JIT off', f.sig;
     end if;
   end loop;
   perform pg_temp.eq('analytics functions (7 blocks + 3 helpers + 4 source helpers)', n, 14);
