@@ -882,3 +882,32 @@ test("sort_longest_in_stage_reads_oldest_first, and Show more continues that ord
     sql(`delete from public.deals where company_id = '${lead}'`);
   }
 });
+
+test("scope_not_read_before_shows_skeleton_then_error_with_retry (the board never goes blank)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const deal = makeDeal({ title: `Scope load ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let failing = true;
+  await page.route((url) => url.pathname === "/api/pipeline/board" && url.searchParams.get("scope") === "mine", async (route) => {
+    await held;
+    return failing ? route.fulfill({ status: 502, contentType: "application/json", body: "{}" }) : route.continue();
+  });
+  await page.getByRole("radio", { name: "Mine" }).click();
+  // Mine is read for the first time: the board's skeleton while it loads (title, toolbar and columns never vanish).
+  await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  release();
+  // It fails (and its one retry): the board's error with Retry, not a blank page.
+  const alert = page.getByRole("alert").filter({ hasText: "Couldn’t load the pipeline" });
+  await expect(alert).toBeVisible();
+  await expect(alert.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  failing = false;
+  await alert.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await expect(card(page, deal)).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Mine" })).toHaveAttribute("aria-checked", "true");
+  expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
+  await context.close();
+});

@@ -35,6 +35,7 @@ import type { DealMenuActions } from "@/components/pipeline/deal-menu";
 import { DealSheet } from "@/components/pipeline/deal-sheet";
 import { LostBand } from "@/components/pipeline/lost-band";
 import { OpenDealSheet } from "@/components/pipeline/open-deal-sheet";
+import { PipelineSkeleton } from "@/components/pipeline/pipeline-skeleton";
 import { cardElement, settle, type SettleFrom } from "@/components/pipeline/settle";
 import { pageKeyAction } from "@/components/pipeline/use-board-keys";
 import { lastUndoableMove, useBoard } from "@/components/pipeline/use-pipeline";
@@ -134,14 +135,16 @@ export function PipelineView({
   );
 }
 
-function BoardError() {
+// The server's first paint failed (Retry reloads the page's data), or a scope, owner or order the browser read failed
+// (Retry reads it again).
+function BoardError({ onRetry }: { onRetry?: () => void }) {
   const t = useTranslations("Pipeline");
   const router = useRouter();
   return (
     <div role="alert" className="flex flex-col items-start gap-3 pt-4">
       <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
       <p className="text-muted-foreground">{t("loadFailed")}</p>
-      <Button variant="quiet" onClick={() => router.refresh()}>
+      <Button variant="quiet" onClick={() => (onRetry ? onRetry() : router.refresh())}>
         {t("retry")}
       </Button>
     </div>
@@ -604,7 +607,9 @@ function Pipeline({
     setInView(key);
   };
 
-  if (!board || !display) return null;
+  // A scope, owner or order not read before: the skeleton while it loads, the board's error with Retry when it fails
+  // (the board never just disappears).
+  if (!board || !display) return query.isError ? <BoardError onRetry={() => void query.refetch()} /> : <PipelineSkeleton label={t("loading")} />;
   const dragging = !!activeId;
   const status = !online ? (
     <span role="status">{t("offline")}</span>
