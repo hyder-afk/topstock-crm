@@ -21,17 +21,33 @@ open questions · Appendix A, facts checked in the repo.
 - The database does all the counting. There are seven read-only SQL functions, each SECURITY INVOKER with static SQL,
   one per block. The browser only ever gets totals and buckets, never rows of leads.
 - Who sees what:
-  - **Reps** see only their own numbers.
+  - **Reps** see only their own numbers on screen.
   - **Managers and admins** see the team and can pick one person.
   - **Admins** also see list quality per import, because import batches are admin-only under RLS today.
   - All three current users are admins, so today everyone sees everything.
-- Look: monochrome ink marks on cards, with Signal Red only on the datum under the pointer or keyboard focus. Status
-  colours appear only as labelled dots, as everywhere else. Recharts 3.10.1 is pinned and lazy-loaded, its own
-  animation is off, and entrances are transform/opacity springs on first visit only. Every chart has a caption, a
-  keyboard path and a "Show as table" view. Text is in EN and FR, and numbers, money (EUR) and dates use Intl.
+- How strong that rule is depends on the data, and it is not the same everywhere:
+  - **Per-person deal and sale figures are locked by RLS.** A rep cannot read a colleague's deals or sales by any
+    route.
+  - **Per-person call, email, WhatsApp and meeting counts are hidden on screen only.** The entries underneath are
+    readable by the whole team, because `activities_select` is org-wide (every lead's timeline is shared). The rep
+    view is a product rule, not a security boundary.
+- Look: monochrome ink only, with no Signal Red anywhere in a chart (DESIGN.md: red fills only what you act on).
+  - The datum under the pointer or keyboard focus stays full ink, the other bars step down to ink-65, and a cursor
+    band sits behind the active column.
+  - Every data mark is at least 3:1 on the card in both modes.
+  - Status colours appear only as labelled dots, as everywhere else.
+  - Recharts 3.10.1 is pinned and lazy-loaded, its own animation is off, and entrances are transform/opacity springs
+    on first visit only.
+  - Screen readers get the caption and a "Show as table" view; sighted keyboard users keep arrow-key navigation.
+  - Text is in EN and FR, and numbers, money (EUR) and dates use Intl.
 - Deferred to R3, with reasons in 1.9: Zoom call metrics, targets, leaderboard, weighted forecast and velocity,
   per-source and per-country quality, and coaching.
-- Build in six small PRs (section 6). The first is database only: functions, attack tests and timings.
+- Build in three PRs (section 6):
+  - P1: database, data layer and `/api/analytics`, no UI.
+  - P2: the shell and every "This period" chart.
+  - P3: Right now, list quality, the full e2e and perf suites, and the final audits.
+- This is a plan change: Master Plan section 11 now carries a "Plan change (17 Oct 2026)" note, and `docs/log.md` has
+  Haider's request and the builder's plan.
 
 ---
 
@@ -67,7 +83,7 @@ open questions · Appendix A, facts checked in the repo.
 | Lost | `status='lost' and closed_at` in range, excluding `lost_reason='mistake'`. "Opened by mistake" is shown separately as a footnote and never counts as a loss. |
 | Win rate | won / (won + lost without mistake) among deals closed in range. null below 5 closed, and the UI then says "Not enough closed deals yet". |
 | Cycle | For deals won in range: `closed_at - created_at` in days. The **median** is the headline (robust with a handful of deals); the mean and n go in the table. null below 3 won. A reopened-then-won deal measures from its first open to its last close. |
-| Funnel | Cohort = deals opened in range. A deal "reached" a stage when it has a **non-undone** `deal_stage_history` row with that `to_stage` or a later one (positions lead 1, qualified 2, negotiations 3), so a jump from Lead straight to Negotiations counts Qualified as passed. A row is undone when `kind='undo'`, or when another row has `undoes = id`. Won uses current `status='won'`. Also returned: still open, lost (excluding mistake), mistake. The UI notes that a recent cohort is still maturing. |
+| Funnel | Cohort = deals opened in range. Only **non-undone** history rows count; a row is undone when `kind='undo'`, or when another row has `undoes = id`. Rules: (1) an `open` or `move` row reaches its `to_stage` and every earlier open stage (positions lead 1, qualified 2, negotiations 3), so a jump from Lead straight to Negotiations counts Qualified as passed; (2) a non-undone `won` row, **or** current `status='won'`, reaches all three open stages and Won; (3) `lost` and `reopen` rows never count as reaching anything "later" (a deal lost from Lead reached Lead only; a reopen does not add a stage). Won in the funnel = rule (2). Also returned: still open, lost (excluding mistake), mistake. The UI notes that a recent cohort is still maturing. |
 | Days in stage | For each non-undone history row whose next non-undone row (`lead()` over `(deal_id order by id)`) falls in the range: `next.created_at - this.created_at`, grouped by this row's `to_stage` in (lead, qualified, negotiations). Median days and n. |
 | Lost reasons | Deals lost in range, grouped by `lost_reason`, using the 8 codes of `deals_lost_reason_code` and the existing `LostReasons` messages. `lost_note` is never read. |
 | Team view | Per owner: opened, won count and value, lost, win rate (with the same min-5 rule). |
@@ -94,7 +110,7 @@ team.
 |---|---|---|
 | Untouched N days | `lead_status in ('cold','warm','negotiation') and (last_activity_at is null or last_activity_at < now() - N days)`. N is 7, 30 or 90 (default 30), the Leads list's own `inactivityOptions`. This is exactly `private.lead_filter_sql()`'s `$7` rule, so the count matches the Leads list. Sub-line: of which never contacted (`last_activity_at is null`). | `/leads?inactive=N&status=cold,warm,negotiation[&owner=<rep>]` |
 | No next step | `lead_status in ('warm','negotiation') and next_action_at is null and not exists (open task on the lead: done_at is null and cancelled_at is null)` | none in v1 (no exact Leads filter exists) |
-| Overdue tasks | Open tasks (`done_at is null and cancelled_at is null`) with `due_at < now()` or `due_date < Paris today` | `/tasks?tab=overdue` (own scope) |
+| Overdue tasks | Open tasks (`done_at is null and cancelled_at is null`) with `due_at < now()` or `due_date < Paris today` | Own figures (a rep, or a manager or admin who picked themselves): `/tasks?tab=overdue`. Team view: `/tasks?tab=overdue&scope=team` (the Tasks page already reads `scope=team` for managers and admins). A manager or admin who picked **another** person: no link, because Tasks has no per-person filter and the count would not match. |
 
 Edge cases:
 - Imported leads start with the sheet's last-activity date (`companies.last_activity_at`, Day 3a). "Never contacted"
@@ -110,7 +126,7 @@ Edge cases:
 |---|---|
 | Source | `public.import_batches (id, kind='leads', status='imported', filename, created_at, imported)`, `public.companies.import_batch_id`, activities, deals |
 | Rows | The 20 most recent imported lead batches (`rolled_back`, `failed`, `staged` and `dry_run` are left out), newest first |
-| Columns | Leads in the batch now. **Contacted %**: leads with ≥ 1 call, email, WhatsApp or meeting at or after the batch's `created_at`. **Reached %**: leads with ≥ 1 reached call. **Deal %**: leads with ≥ 1 deal. **Won %**: leads with ≥ 1 won deal. Denominator = leads in the batch now (undone or deleted leads drop out). |
+| Columns | Leads in the batch now. **Contacted %**: leads with ≥ 1 call, email, WhatsApp or meeting. **Reached %**: leads with ≥ 1 reached call. **Deal %**: leads with ≥ 1 deal. **Won %**: leads with ≥ 1 won deal. The same lower bound applies to all four: only activities and deals with `created_at >= import_batches.created_at` count, so history from before the import (a lead that was already in the CRM, or entries dated from the sheet) never inflates a batch. Denominator = leads in the batch now (undone or deleted leads drop out). |
 | Scope | Whole life of the batch, not the date range. With the rep filter: only the batch's leads that person owns. |
 | Who | Admins only. `import_batches_admin` RLS already hides batches from managers and reps, so the function refuses them (42501 `forbidden`) and the UI does not render the block. |
 | Edge cases | `filename` is user-supplied text and is rendered as React text, never as HTML. A batch with 0 leads left shows "0 leads (all removed)". "Per source" and "per country" from the Master Plan wait: companies has no `source` column (Day 3a dropped it), and per country is a cheap later add. |
@@ -129,9 +145,9 @@ Edge cases:
 
 | | |
 |---|---|
-| Source | `private.orders (id, created_by, status, fulfilment, created_at)` and `private.order_lines (order_id, product_id, product_name, quantity, line_total)`, joined to `public.products (name)` (Day 6d) |
+| Source | `private.orders (id, created_by, status, fulfilment, created_at)` and `private.order_lines (order_id, product_name, quantity, line_total)` (Day 6d) |
 | Metrics | Revenue per bucket = `sum(line_total)` of orders with `status='confirmed'` and `created_at` in range. Totals: revenue, sales (orders), average sale, and the split by fulfilment (from stock or direct from source). Top 10 products by revenue, with pieces sold. |
-| Grouping | A product line groups by `product_id`, named by the current `products.name`. A line without a product (direct from source) groups by `lower(product_name)`. |
+| Grouping | Every line groups by `lower(order_lines.product_name)`, whether or not it has a `product_id`, so a stock line and a direct-from-source line for the same product name are one row. The name shown is the most recent spelling: the `product_name` of the group's line on the newest order (`orders.created_at desc, order_lines.id desc`). The products table is not read. |
 | Edge cases | Cancelled sales are left out (`status='cancelled'`). An undone sale is a returned and cancelled sale, so it is left out too. Margin is deferred (cost data is `private.order_line_costs`, managers and admins only; R2 stock analytics). RLS: a rep sees sales they recorded or on leads they own. "Mine" is `created_by = me`, which is the same as `list_sales(p_user)`. |
 
 ### 1.8 KPI row (This period)
@@ -249,13 +265,19 @@ returns table (t_from timestamptz, t_to timestamptz, bucket text)
 ```
 
 How the role rule maps to RLS:
-- For **deals, history and sales**, RLS is the security boundary. A rep could not read a colleague's deals even if the
-  scope check were wrong.
-- For **activities and leads**, RLS is org-wide (Haider, 10 Oct: "every user sees every lead"; the team reads every
-  timeline). There, "a rep sees only their own figures" is a **product rule** enforced by `analytics_owner`, the same
-  as Home's `home_summary` refusing the team scope to reps.
-- This adds no exposure. A signed-in rep can already read those rows through PostgREST under RLS (see the
-  rate-limit.ts header note). Attack tests check both kinds (5.2).
+- **Per-person deal and sale figures are locked by RLS.** For deals, stage history and sales, RLS is the security
+  boundary: a rep could not read a colleague's deals or sales even if `analytics_owner` were wrong. The attack tests
+  for these (C2) are security tests.
+- **Per-person activity counts (calls, emails, WhatsApp, meetings) and lead counts are hidden on screen only.**
+  `activities_select` and `companies_select` are org-wide (Haider, 10 Oct: "every user sees every lead"; the team reads
+  every timeline). Any signed-in rep can read every colleague's entries through PostgREST under RLS (see the
+  rate-limit.ts header note) and count them. So "a rep sees only their own activity figures" is a **product rule**
+  enforced by `analytics_owner`, the same as Home's `home_summary` refusing the team scope to reps. The attack test for
+  it (B2) checks that the product rule holds; it is not a security boundary, and the evidence says so.
+- Analytics adds no exposure: no function returns a row or a figure the caller could not already compute from rows RLS
+  lets them read.
+- If Haider ever wants activity counts truly private per person, that needs a change to `activities_select` (and to
+  the shared timeline), which is outside this design.
 
 ### 3.3 Function signatures and return shapes
 
@@ -268,7 +290,7 @@ part rather than reaching the browser). `p_user` is resolved by `analytics_owner
 | Pipeline | `public.analytics_pipeline(p_from date, p_to date, p_user uuid default null)` | `{opened:{count, value, no_value}, won:{count, value}, lost:{count, mistake}, win_rate:{won, lost, rate\|null}, cycle:{n, median_days\|null, mean_days\|null}, funnel:{cohort, lead, qualified, negotiations, won, still_open, lost, mistake}, stage_days:[{key, n, median_days\|null}], lost_reasons:[{code, count}], by_person:[{user_id\|null, opened, won, won_value, lost, rate\|null}]}` |
 | Speed | `public.analytics_speed(p_from date, p_to date, p_user uuid default null)` | `{leads, touched, median_minutes\|null, within_1h, within_24h, buckets:[{key:'lt1h'\|'lt24h'\|'lt3d'\|'gte3d'\|'none', count}]}` |
 | Call times | `public.analytics_call_times(p_from date, p_to date, p_user uuid default null)` | `{min_calls:5, cells:[{dow:1..7, hour:0..23, calls, reached}]}` |
-| Sales | `public.analytics_sales(p_from date, p_to date, p_user uuid default null)` | `{bucket, buckets:[{start, partial, revenue, sales}], totals:{revenue, sales, from_stock, direct}, top_products:[{product_id\|null, name, revenue, pieces}]}` (≤ 10) |
+| Sales | `public.analytics_sales(p_from date, p_to date, p_user uuid default null)` | `{bucket, buckets:[{start, partial, revenue, sales}], totals:{revenue, sales, from_stock, direct}, top_products:[{name, revenue, pieces}]}` (≤ 10; `name` = the most recent spelling of the group, 1.7) |
 | Coverage | `public.analytics_coverage(p_user uuid default null, p_idle_days integer default 30)` | `{idle_days, untouched, never_contacted, no_next_step, overdue_tasks, as_of}`; `p_idle_days in (7,30,90)` else 22023 `bounds` |
 | Batches | `public.analytics_batches(p_user uuid default null, p_limit integer default 20)` | `[{id, filename, created_at, leads, contacted, reached, with_deal, won}]`; admin only (42501 `forbidden`); `p_limit` 1–50 |
 
@@ -296,7 +318,7 @@ above:
 
 | Index | Why | Status |
 |---|---|---|
-| `activities_no_author_idx on public.activities (org_id, created_at) where user_id is null` | team totals include former members' entries without a full scan; tiny (only orphaned entries) | **add in A1** |
+| `activities_no_author_idx on public.activities (org_id, created_at) where user_id is null` | team totals include former members' entries without a full scan; tiny (only orphaned entries) | **add in P1** |
 | `activities_user_created_idx (user_id, created_at desc)` | activity, call times (person and team) | exists (Day 4a) |
 | `activities_company_keyset_idx (company_id, created_at desc, id desc)` | first touch per lead (speed), batch contacted | exists |
 | `companies_created_keyset_idx (org_id, created_at desc, id desc)`, `companies_import_batch_idx` | speed cohort, batches | exist |
@@ -304,7 +326,8 @@ above:
 | `deal_stage_history_deal_idx (deal_id, id desc)` | funnel, days in stage | exists |
 | `orders_org_idx`, `orders_creator_idx (created_by, created_at)` | sales | exist |
 | `tasks_org_assignee_idx (org_id, assignee_id, due_at)` | overdue tasks | exists |
-| Candidates **only if a budget fails**: `deals (org_id, created_at)` and `(owner_id, created_at)` for "opened"; a covering `activities (user_id, created_at) include (type, outcome, org_id)` for index-only activity scans | | not added |
+| `activities_user_created_cover_idx on public.activities (user_id, created_at) include (type, outcome, org_id)` | index-only scans for activity and call times | **added in P1 if** `analytics_activity` or `analytics_call_times` at 365 days measures over 400 ms; re-measured after |
+| Candidates **only if a budget fails**: `deals (org_id, created_at)` and `(owner_id, created_at)` for "opened" | | not added |
 
 ### 3.5 Zod input schemas (server)
 
@@ -326,8 +349,10 @@ export const analyticsParams = z.strictObject({
 - No user text exists anywhere in the inputs (dates, a uuid and an integer only), so nothing can be interpolated into
   a PostgREST filter.
 - Each response part has its own `strictObject` schema with bounds: counts are non-negative integers, money matches
-  `/^\d{1,16}(\.\d{1,2})?$/`, arrays are capped (buckets ≤ 53 weeks or 31 days, cells ≤ 168, products ≤ 10, batches
+  `/^\d{1,16}(\.\d{1,2})?$/`, arrays are capped (buckets ≤ 54 weeks or 31 days, cells ≤ 168, products ≤ 10, batches
   ≤ 50, reasons ≤ 8), and stage keys and reason codes are enums.
+- Why 54: a 366-day range is 52 weeks and 2 days, so it can touch 54 ISO weeks, with a partial week at each end (for
+  example Sunday 5 Jan 2025 to Monday 5 Jan 2026: the weeks of 30 Dec 2024 through 5 Jan 2026). A cap of 53 would make that valid answer fail its parse.
 
 ### 3.6 Server, route, cache
 
@@ -350,7 +375,20 @@ export const analyticsParams = z.strictObject({
     jitter).
   - `placeholderData: keepPreviousData`, so on a filter change the old frame stays at 60 % opacity until the new one
     lands. There is no skeleton then (dataviz rule "refetch keeps the frame").
-  - Hovering a preset prefetches it, and the dock prefetches the default view on hover or focus (as Home does).
+  - Prefetch (chosen: delayed, once per key; this keeps prefetching inside the 30-a-minute limit):
+    - Hovering a preset prefetches it only after the pointer has rested on it for 150 ms. Leaving earlier cancels
+      the timer.
+    - Each key is prefetched at most once while it is fresh. `prefetchQuery` with the 60 s `staleTime` does nothing
+      for a fresh key, and an in-flight key is not fetched twice.
+    - The dock prefetches only the default view (`30d`, own or team scope by role) after the same 150 ms on hover or
+      focus.
+    - Prefetches never retry.
+  - On a 429 from the limiter:
+    - The card keeps the old frame.
+    - A quiet muted line under the filter row says "Too many updates, showing the last figures. Try again in N s"
+      (N from `Retry-After`).
+    - Nothing turns red, and no card shows an error.
+    - The query retries once after `Retry-After`.
 
 ### 3.7 Performance budgets (measured later, never assumed)
 
@@ -370,6 +408,17 @@ and the Day 6d sales. A new `supabase/tests/perf_analytics.sql` runs after `perf
 | analytics_coverage (snapshot) | ≤ 60 ms | | |
 | analytics_batches (20 batches over 30k leads) | ≤ 400 ms | | |
 
+How the functions are written:
+- **One pass per function.** Each function reads its source rows once, into a `materialized` CTE, and derives buckets,
+  totals and `by_person` from that CTE (or with `grouping sets`), never by scanning the same table again for each
+  figure.
+- If `analytics_activity` or `analytics_call_times` at 365 days measures over 400 ms, P1 adds the covering index from
+  3.4 and measures again.
+- **Supabase Free margin.** The budgets are local timings. The evidence records each timing next to its ×3 projection,
+  because Supabase Free's shared CPU is assumed to be about three times slower than the local runner. The ×3
+  projection must still meet the page budgets: the slowest function at 90 days ×3 under 1 s (the uncached filter
+  change), and at 365 days ×3 under 1.5 s.
+
 Page budgets (CLAUDE.md):
 - The skeleton is immediate (loading.tsx).
 - All blocks are in under 2 s on first load.
@@ -378,7 +427,7 @@ Page budgets (CLAUDE.md):
 - Taps are acknowledged in under 100 ms.
 - `tests/auth/analytics-perf.spec.ts` measures this the way `home-perf.spec.ts` does.
 - Bundle: Recharts loads only on /analytics (`next/dynamic`, chart components `ssr:false`). Analytics route JS should
-  add no more than about 180 KB gzip over the shell, measured from the build output in A3. Home, Leads and Pipeline
+  add no more than about 180 KB gzip over the shell, measured from the build output in P2. Home, Leads and Pipeline
   JS must not change.
 
 ### 3.8 Migration plan
@@ -390,9 +439,11 @@ Page budgets (CLAUDE.md):
   2. The seven public functions (+ the Day 3a grant loop).
   3. `activities_no_author_idx`.
 - Rollback: drop the functions and the index. No data changes.
-- Before merge, on the DEV Supabase project (fake data, read-only MCP): run the Supabase security and performance
-  advisors and report the results. `scripts/db-advisors.sh` runs in `db-test.sh` locally (0 ERROR expected).
-  `gate1_attack.sql` picks up the new functions automatically: G4 (no DEFINER), G5 (not executable by PUBLIC), G6 (no
+- Advisors, twice, with both results in the report:
+  1. **Before merge, locally:** run `scripts/db-advisors.sh` (it also runs inside `db-test.sh`; 0 ERROR expected).
+  2. **Right after deploy-dev-db** has applied the migration to the DEV Supabase project (fake data only), run the
+     Supabase security and performance advisors through the read-only, project-scoped MCP.
+- `gate1_attack.sql` picks up the new functions automatically: G4 (no DEFINER), G5 (not executable by PUBLIC), G6 (no
   dynamic SQL).
 
 ### 3.9 Attack-test plan: `supabase/tests/analytics_attack.sql`
@@ -410,29 +461,33 @@ prove that nothing crosses orgs.
 | A1 | anon calls any analytics function | no privilege (rls_attack section 1 style), and G5 in gate1 |
 | A2 | aal1 session | 42501 `forbidden` on all seven |
 | B1 | rep, `p_user` null | own figures = hand count |
-| B2 | rep, `p_user` = colleague | 42501 `scope` (all functions with p_user) |
+| B2 | rep, `p_user` = colleague | 42501 `scope` (all functions with p_user). For activity, speed, call times and coverage this proves the **product rule** only (the rows are org-readable under RLS; the case also asserts that this rep can `select` the colleague's activities directly, so the evidence never claims more). For pipeline and sales the same call is also a security test (C2) |
 | B3 | rep, `p_user` = self | same as B1 |
 | B4 | manager, `p_user` null / = Rita | team figures / Rita's figures |
 | B5 | manager or admin, `p_user` = a TopStock-org user or a random uuid | P0002 `rep`, no figures |
 | B6 | after demoting Max to rep in the block (role change via `set_user_role` with fresh code) | team refused at once (role read per call) |
-| C1 | Analytics Org admin | no TopStock-org row in any count (exact numbers) |
+| C1 | Analytics Org admin | no TopStock-org row in any count (exact numbers); an entry whose author was deleted (`user_id` null) counts once in team totals, under Former team members |
 | C2 | rep pipeline and sales | equal to the rep's own deals and sales only; a colleague's won deal never appears, even in `by_person` (person scope has no by_person) |
 | D1 | `analytics_batches` as manager and as rep | 42501 `forbidden`; as admin: the rolled-back batch is absent; the filename returns byte-for-byte (a name with `<script>` and bidi-safe text) |
+| D2 | list-quality lower bound | a batch lead with a call, a reached call and a deal all dated **before** the batch's `created_at` counts in none of contacted, reached, deal or won %; the same three dated after count in each |
 | E1 | `p_from > p_to`, span 367 days, `p_to` = Paris tomorrow, null dates, `p_idle_days` 14, `p_limit` 0/51 | 22023 `bounds` |
 | F1 | Paris day edges: a call at 31 Oct 2026 23:30 UTC | counts on 1 Nov (Paris), not 31 Oct; range `to=2026-10-31` excludes it |
 | F2 | DST: 25 Oct 2026 (25 h day) and 29 Mar 2026 (23 h day) | one bucket each; hour cells in Paris time on both sides of the change |
-| F3 | week buckets for a 90-day range | first and last flagged partial; buckets contiguous, zeros filled |
+| F3 | week buckets | 90-day range: first and last flagged partial, buckets contiguous, zeros filled. 366-day range Sun 5 Jan 2025 to Mon 5 Jan 2026: exactly 54 buckets, both ends partial |
 | G1 | connect rate | only the five reached outcomes count; `wrong_number` does not |
-| G2 | funnel | undone move and its undo row excluded; Lead→Negotiations jump counts Qualified; mistake excluded from lost and win rate |
+| G2 | funnel | undone move and its undo row excluded; Lead→Negotiations jump counts Qualified; **Lead→Won** (won straight from Lead) counts Qualified, Negotiations and Won; a deal **lost from Lead** reached Lead only; a won-then-reopened deal still reached all stages (non-undone won row); a reopen row adds no stage; an undone win does not count as won; mistake excluded from lost and win rate |
 | G3 | speed | imported leads excluded; notes ignored; an activity dated before the lead's creation ignored |
 | G4 | coverage parity | `untouched` = `count_leads(p_statuses => '{cold,warm,negotiation}', p_owners => …, p_inactive_days => 30)` exactly; overdue with `due_date` = Paris yesterday counts, = Paris today does not |
-| G5 | sales | cancelled excluded; a product-less line grouped by name; revenue = sum of `line_total` |
+| G5 | sales | cancelled excluded; revenue = sum of `line_total`; a stock line and a product-less line named "Denim Jacket" and "denim jacket" are one row, shown with the spelling of the newest order |
 | H1 | no text leaks | sentinel strings in activity body, lost_note, cancel_reason, order note and cost never appear in any payload (`::text like '%sentinel%'`, as share_attack does) |
 | H2 | catalog | all seven `prosecdef = false`, `provolatile = 's'`, `search_path=''` |
 
-Mutation checks for the A1 evidence bundle:
+Mutation checks for the P1 evidence bundle:
 - Remove the rep branch of `analytics_owner`. Expect B2 to fail.
-- Drop `x.user_id is null` from the union. Expect the former-member count case to fail.
+- Drop `x.user_id is null` from the union. Expect C1's former-member count (an entry whose author was deleted) to
+  fail.
+- Let `lost` rows count as reaching later stages in the funnel. Expect G2's "lost from Lead" case to fail.
+- Drop the batch `created_at` lower bound from contacted %. Expect D2 to fail.
 - Use `current_date` instead of the Paris date. Expect F1 to fail in a Kiritimati or Pago_Pago session (the db.yml zone
   rule, log 16 Oct).
 
@@ -480,7 +535,18 @@ From top to bottom:
 5. Calls: chart height 200, x ticks every 7th day, mini columns below.
 6. Speed, Funnel and Lost reasons.
 7. Team: one compact card per person (no wide table, so no sideways scroll).
-8. Best time to call, **transposed** (rows = hours, columns = Mon–Sun), giving cells of about 44 × 28 px.
+8. Best time to call, **transposed** (rows = hours, columns = Mon to Sun). It must fit the card's content box: 390
+   minus 2 × 16 page padding minus 2 × 16 card padding = **326 px**.
+   - Hour label column: 32 px ("07"). Day columns: 40 px each with 2 px gaps, so 32 + 7 × 40 + 7 × 2 = 326 px.
+   - Rows are **44 px** tall.
+   - Cells are **not** individually tappable on touch (`pointer: coarse`): a 40 px cell would fail phone_fit's 44 px
+     tap-target rule, and a finger cannot hit one cell reliably.
+   - Instead, each hour row is the tap target, 326 × 44 px. Tapping it shows that row's readout in one fixed line
+     above the grid (two lines' height reserved, so nothing moves), e.g. "10:00 · 61 calls · 22 reached (36 %) · best
+     Tue 45 %". The full numbers per cell are in "Show as table".
+   - With a fine pointer or a keyboard (a tablet with a keyboard), cell focus and tooltips work as on desktop.
+   - `tests/auth/phone.spec.ts` already lists `/analytics` in phone_fit (`{ name: "analytics" }`). P3 makes sure it
+     runs against the real page with the heatmap filled (fixture data), not against an empty state.
 9. Revenue, Top products, Right now tiles 2 × 2, then List quality as one card per import.
 
 Analytics stays under More on the 5-item phone dock (Q13).
@@ -505,11 +571,27 @@ Common mechanics:
   generated summary sentence, e.g. "412 calls, 31 % reached; busiest day Tue 14 Oct (38)". The frame also has a
   "Show as table" `Disclosure` (existing `src/components/ui/disclosure.tsx`) that holds a real `<table>` with the same
   numbers.
-- Recharts 3 has `accessibilityLayer` on by default: the chart takes Tab focus and the arrow keys move the tooltip
-  (Context7, recharts Accessibility). The focus ring is the app's ink `--ring`. The chart's `title` and `desc` props are
-  set from the caption.
-- Heatmap: `role="grid"` with roving tabindex. Arrow keys, Home/End and PageUp/PageDown move between cells. Each cell
-  has an `aria-label` with the full readout, and the same tooltip shows on focus and on hover.
+- **Screen-reader model: option (b).**
+  - The screen-reader path is the `<figcaption>` (title plus the summary sentence) and the "Show as table" view. The
+    plot is not.
+  - The SVG drawing is `aria-hidden="true"`, and so is the tooltip.
+  - Keyboard navigation stays for sighted keyboard users. Recharts 3 has `accessibilityLayer` on by default (Context7,
+    recharts Accessibility): the chart surface takes Tab focus and the arrow keys move the tooltip.
+  - The one focusable element is that surface, and it sits **outside** the hidden drawing, so no focusable element is
+    ever inside `aria-hidden` (axe `aria-hidden-focus`, checked in e2e). It carries
+    `aria-label="Calls chart. Arrow keys move through the days. The same numbers are in Show as table."` (from
+    messages) and `aria-describedby` pointing at the caption.
+  - The focus ring is the app's ink `--ring`.
+- The three mini charts (Emails, WhatsApp, Meetings) set `accessibilityLayer={false}`: no tab stop, fully
+  `aria-hidden`. Their numbers are in the Calls table.
+- Heatmap: a real grid structure in **both** orientations. `role="grid"` contains one `role="row"` per weekday
+  (desktop) or per hour (phone). Each row starts with a `role="rowheader"`, followed by `role="gridcell"` elements.
+  There is one header row of `role="columnheader"` elements (hours on desktop, weekdays on phone).
+  - Keyboard: roving tabindex (a single tab stop). Arrow keys, Home and End move between cells; PageUp and PageDown
+    move to the first or last row.
+  - Each gridcell has an `aria-label` with the full readout ("Tuesday 10:00, 23 calls, 9 reached, 39 %"), and the same
+    tooltip shows on focus and on hover.
+  - On touch the rows are the targets (4.2).
 - Hit targets are larger than the marks: the full band for columns, at least 24 px.
 - Tooltips: `bg-card`, a 1 px border, radius 12, the floating-layer shadow. Text uses text tokens only. Untrusted names
   (products, file names) are React text.
@@ -518,24 +600,42 @@ Common mechanics:
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--chart-ink` | `#0E0E10` | `#F5F3EF` | main series, top heat bin |
-| `--chart-ink-65` | `#626264` | `#A9A8A7` | second step |
-| `--chart-ink-35` | `#ABABAB` | `#686769` | remainder segment ("not reached", "not yet") |
-| `--chart-seq-1..5` | `#ABABAB #878788 #626264 #3E3E40 #0E0E10` | `#686769 #898888 #A9A8A7 #CAC8C6 #F5F3EF` | heatmap bins (more = darker in light, lighter in dark) |
-| `--chart-empty` | `var(--muted)` + 45° hatch in `--border` | same | "not enough calls" |
+| `--chart-seq-1..5` | `#8B8B8C #6C6C6D #4D4D4E #2D2D2F #0E0E10` | `#6B6B6B #8E8E8E #B0B0B0 #D2D2D2 #F5F3EF` | the one ramp; heatmap bins (more = darker in light, lighter in dark) |
+| `--chart-ink` | `#0E0E10` (seq-5) | `#F5F3EF` (seq-5) | every bar at rest; the **active** datum while one is active |
+| `--chart-ink-65` | `#4D4D4E` (seq-3) | `#B0B0B0` (seq-3) | the **other** bars while a datum is active (they step down; the active one stays full ink) |
+| `--chart-ink-35` | `#8B8B8C` (seq-1) | `#6B6B6B` (seq-1) | the remainder segment ("not reached", "Not yet"); unchanged while a datum is active |
+| `--chart-cursor` | `#F5F3EF` (page background) | `#0E0E10` (page background) | the band behind the active column |
+| `--chart-empty` | `var(--muted)` + 45° hatch in `--border` | same | "not enough calls" (a labelled non-data cell, also in the legend and the table) |
 | `--chart-grid` | `var(--border)` | `var(--border)` | hairline grid and axis lines |
 | `--chart-axis` | `var(--muted-foreground)` | `var(--muted-foreground)` | tick and label text (6.2:1 light) |
-| `--chart-accent` | `var(--brand)` `#F2203E` | same | the **active datum only**: the hovered or focused bar (or the reached segment of the active column) |
-| `--chart-cursor` | `var(--muted)` | `var(--muted)` | hover band behind the active column |
 
-- The values are exact mixes of TopStock Black / Chalk White with the card surface, not opacity, so 2 px surface gaps
-  stay clean.
-- Checked with the dataviz validator (`validate_palette.js --ordinal`):
-  - Monotone lightness passes, and every adjacent step differs by ΔL ≥ 0.06 in both modes.
-  - The light end passes on the card (2.30:1 light, 3.02:1 dark).
-  - "Single hue" reports FAIL, but that is an artefact of neutral greys (chroma about 0.004, so the hue angle is
-    noise). Ink plus Signal Red as a pair: CVD ΔE 32.9 (protan), normal 51.0, both ≥ 3:1 on the card.
-- Signal Red is never used for text, never as a status, and never as a second series.
+There is **no** chart accent token, and **no Signal Red in any chart**. DESIGN.md gives red to what you act on (dock
+bead, Call, primary button, logo mark); a bar is not one of those. The active datum is shown by tone alone:
+- It stays full ink, and the other bars step down to ink-65.
+- The cursor band sits behind it.
+- In the stacked Calls chart, the active column keeps reached = ink. The other columns' reached segments step to
+  ink-65, and every remainder segment stays ink-35.
+
+How the ramp was built and checked (17 Oct 2026):
+- Light: tints of TopStock Black towards white. Dark: neutral greys up to Chalk White.
+- Hex values are exact, not opacity, so 2 px surface gaps stay clean.
+- The lightest step was chosen so every data mark is **at least 3:1** against both the card and the cursor band.
+- `validate_palette.js --ordinal` on both 5-step ramps: **ALL CHECKS PASS** (monotone lightness, adjacent ΔL ≥ 0.06,
+  light end ≥ 2:1, single hue: spread 0° light, 5° dark). The 3-step chart inks (seq-1, seq-3, seq-5) also pass in both
+  modes.
+- The first version of the ramp failed the 3:1 rule: its lightest light step `#ABABAB` was 2.30:1 on the card, and
+  its dark ramp failed "single hue" (69°). That claim of "passes" is withdrawn and replaced by the table below.
+
+| Step | Light hex | OKLab L | ΔL | vs card `#FFFFFF` | vs band `#F5F3EF` | Dark hex | OKLab L | ΔL | vs card `#1C1C21` | vs band `#0E0E10` |
+|---|---|---|---|---|---|---|---|---|---|---|
+| seq-1 | `#8B8B8C` | 0.637 | | 3.40:1 | 3.07:1 | `#6B6B6B` | 0.528 | | 3.18:1 | 3.62:1 |
+| seq-2 | `#6C6C6D` | 0.532 | 0.105 | 5.25:1 | 4.73:1 | `#8E8E8E` | 0.647 | 0.119 | 5.18:1 | 5.89:1 |
+| seq-3 | `#4D4D4E` | 0.421 | 0.111 | 8.44:1 | 7.62:1 | `#B0B0B0` | 0.757 | 0.110 | 7.83:1 | 8.89:1 |
+| seq-4 | `#2D2D2F` | 0.298 | 0.123 | 13.74:1 | 12.40:1 | `#D2D2D2` | 0.864 | 0.107 | 11.22:1 | 12.75:1 |
+| seq-5 | `#0E0E10` | 0.165 | 0.133 | 19.28:1 | 17.40:1 | `#F5F3EF` | 0.965 | 0.101 | 15.31:1 | 17.40:1 |
+
+- Ink-35 against ink-65, side by side in the stacked chart: ΔL 0.216 light, 0.229 dark. Clearly two tones, and a
+  2 px surface gap separates them as well.
 - Status colours appear only in the existing labelled dots, e.g. the "stalled" wording if linked. Recharts fills use
   `fill="var(--chart-ink)"` (CSS variables in SVG presentation attributes), so dark mode switches with `.dark` and
   needs no re-render.
@@ -576,6 +676,10 @@ Common mechanics:
   same component, so there is no layout jump.
 - Lazy chart chunks render the same chart-area placeholder while loading.
 - A card loads with its own skeleton only when no data exists for its key yet. Otherwise it keeps the previous frame.
+- While a refetch runs, each card's `<section>` has `aria-busy="true"`, and the old frame shows at 60 % opacity.
+- The line under the title, "Updated 14:32 · 1 Sep – 30 Sep 2026 · Paris time", is a polite live region
+  (`role="status"`, `aria-live="polite"`). It changes once when new figures land, so a screen reader hears one short
+  update, not every number.
 - Empty states (calm, one line, with an action where there is one):
 
   | Block | Empty message |
@@ -615,6 +719,8 @@ Common mechanics:
   - 31 Oct 23:30 UTC, which is already 1 Nov in Paris.
   - Month ends and 29 Feb 2028.
   - The bucket rule (31 days gives day buckets, 32 gives weeks).
+  - The week cap: Sun 5 Jan 2025 to Mon 5 Jan 2026 (366 days) gives exactly 54 week buckets, both partial at the ends,
+    and the parts schema accepts 54 and refuses 55.
   - Custom validation: reversed dates, 367 days, a future `to`, malformed input, and `from` without `custom`.
 - Zod params: the page drops bad values, the API refuses unknown keys.
 - Zod parts: `strictObject` rejects an extra key (e.g. `cost_per_piece`), negative counts, over-long arrays and bad
@@ -657,7 +763,19 @@ Run in `db-test.sh` under the CI zones, with `gate1_attack.sql` checking the cat
   - "Show as table" holds the same numbers as the tooltip.
   - The focus ring is visible.
 - Reduced motion: no count-up and no rise.
-- Coverage links: the Untouched tile's count equals the Leads list count at the target URL.
+- Coverage links:
+  - The Untouched tile's count equals the Leads list count at the target URL.
+  - Overdue goes to `/tasks?tab=overdue` for own figures and to `&scope=team` for the team view.
+  - A manager who picked another person sees no link.
+- Prefetch and the limiter: hovering a preset for less than 150 ms sends no request; hovering twice sends one. A
+  mocked 429 keeps the old frame and shows the quiet "Try again in N s" line, and no card shows an error.
+- Accessibility:
+  - axe on the full page with no `aria-hidden-focus` or `nested-interactive` findings.
+  - The heatmap exposes rows and gridcells in both orientations.
+  - `aria-busy` is set during a refetch, and the live region updates once.
+- Untrusted names: a product named `<img src=x onerror=alert(1)>` and a batch file named the same show as literal
+  text in the chart ticks, tooltips, tables and list-quality rows, and no dialog opens.
+- Phone: the heatmap fits 326 px, tapping an hour row fills the readout line, and phone_fit passes on the filled page.
 - `tests/auth/analytics-perf.spec.ts`: route timings and the Analytics JS size (3.7), and Home JS unchanged.
 - No horizontal scroll at 390, 768, 1024, 1280, 1440 and 1728 (the phone_fit pattern from Day 7c).
 
@@ -673,23 +791,30 @@ Run in `db-test.sh` under the CI zones, with `gate1_attack.sql` checking the cat
 
 ## 6 Build order, then open questions
 
-Each step is one PR: branch → CI green → Vercel preview → advisor APPROVED → Haider merges.
+Three PRs. Each one goes: branch → CI green → Vercel preview → advisor APPROVED → Haider merges.
 
-| Step | What | Done when |
+| PR | What | Done when |
 |---|---|---|
-| **A1** Database | migration `20261024090000_analytics.sql` (helpers, 7 functions, `activities_no_author_idx`), `analytics_attack.sql`, `perf_analytics.sql`, db-test and db-perf wiring | attack suite green under UTC, Kiritimati and Pago_Pago; budgets met (or an index added and re-measured); mutation checks caught; dev advisors 0 ERROR, results reported |
-| **A2** Data layer | `src/lib/analytics.ts`, `analytics-server.ts`, `GET /api/analytics` (+ limiter), unit and parity tests; no UI | unit suite green; 400/401/403 behaviour proven |
-| **A3** Shell | pin recharts 3.10.1 + react-is 19.3.0; chart tokens; `ChartFrame`, tooltip, bar wrappers; `loading.tsx` skeleton; page header, filter row (URL state), KPI tiles; messages EN+FR | screenshots of the shell matrix; bundle measured; Home JS unchanged |
-| **A4** Charts 1 | Calls + small multiples, Speed-to-lead, Funnel + days in stage, Lost reasons, with all states | e2e for these blocks, keyboard and table views |
-| **A5** Charts 2 | Team table, Best time to call heatmap, Revenue, Top products | e2e, heatmap keyboard, phone transposition |
-| **A6** Right now + finish | Coverage tiles with links, List quality (admin), full e2e and perf specs, full screenshot matrix, audits, security review | evidence bundle, advisor APPROVED, REPORT |
+| **P1** Database + data layer (no UI) | migration `20261024090000_analytics.sql` (helpers, 7 functions, `activities_no_author_idx`, plus the covering index if 365 days measures over 400 ms), `analytics_attack.sql`, `perf_analytics.sql`, db-test and db-perf wiring; `src/lib/analytics.ts`, `analytics-server.ts`, `GET /api/analytics` (+ limiter), unit and parity tests | attack suite green under UTC, Kiritimati and Pago_Pago; one pass per function; budgets met with the ×3 Supabase Free margin recorded; mutation checks caught; `scripts/db-advisors.sh` 0 ERROR before merge, and the dev advisors run right after deploy-dev-db, both reported; unit suite green; 400/401/403/429 behaviour proven |
+| **P2** Shell + all "This period" charts (branched from P1) | pin recharts 3.10.1 + react-is 19.3.0; chart tokens; `ChartFrame`, tooltip, bar wrappers; `loading.tsx` skeleton; page header, filter row (URL state), KPI tiles; Calls + small multiples, Speed-to-lead, Funnel + days in stage, Lost reasons, Team table, Best time to call heatmap (both orientations), Revenue, Top products, all with loading, empty and error states; messages EN+FR | e2e for these blocks, keyboard and table views, the screen-reader model checks; bundle measured, Home JS unchanged; npm audit and licence review of the new dependencies in P2's evidence; full screenshot matrix for these blocks, including 768 and 1024 |
+| **P3** Right now + finish | Coverage tiles with links, List quality (admin), the full e2e and perf specs, phone_fit on the filled page, the full screenshot matrix, `/apple-design` and web-design-guidelines audits, `/security-review` | evidence bundle, advisor APPROVED, REPORT |
+
+Build conditions (all three PRs):
+- No `dangerouslySetInnerHTML` anywhere.
+- Product names and file names are rendered only as React text: in tables, tooltips, and Recharts tick and label
+  formatters, which return strings or React text nodes, never HTML.
+- The full screenshot matrix: 390, 768, 1024, 1280, 1440 and 1728; light and dark; EN and FR.
+- The REPORT names the libraries checked with Context7: recharts, next, @tanstack/react-query and zod.
+- The npm audit and licence review of the new dependencies go in P2's evidence.
+- Performance: one pass per function; the covering index is added in P1 if 365 days measures over 400 ms; the ×3
+  Supabase Free margin is recorded (3.7).
 
 Haider said to go with the recommendations, so the builder proceeds on these unless he says otherwise. Each one is
 logged in `docs/log.md` when its step starts.
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | What does a rep see? | Own numbers only, no person picker, no Team table, no List quality. Managers and admins see the team and can pick a person. This matches Home and deals RLS. All three users are admins today. |
+| Q1 | What does a rep see? | Own numbers only on screen: no person picker, no Team table, no List quality. Managers and admins see the team and can pick a person. All three users are admins today. What this protects: per-person **deal and sale** figures are locked by RLS. Per-person **call, email, WhatsApp and meeting** counts are hidden on screen only, because the underlying entries are visible to the whole team (`activities_select` is org-wide); attack test B2 checks the product rule, not a security boundary. |
 | Q2 | Which time zone? | Fixed Europe/Paris for every figure (the business day; matches `list_sales`). Home's profile-zone figures agree while profiles are Paris. |
 | Q3 | Best time to call: whose clock? | Paris (the rep's clock) in v1, with a "Lead's local time" toggle in v1.1 using `companies.call_zone`. |
 | Q4 | Speed-to-lead: which leads, which clock? | Hand-added leads only, wall-clock time. Business-hours speed is a later refinement. |
@@ -703,7 +828,7 @@ logged in `docs/log.md` when its step starts.
 | Q12 | Heatmap scale? | Fixed connect-rate bins (0–10–20–30–45 %+) so maps compare across ranges, with a minimum of 5 calls per cell. |
 | Q13 | Analytics on the phone dock? | Keep the 5-item dock. Analytics stays under More (Day 2 decision). |
 | Q14 | Export? | Not in v1 (needs step-up MFA). "Show as table" covers reading. |
-| Q15 | Employee monitoring (not legal advice) | Per-person figures are visible to managers and admins only. Haider tells the team what is measured (the CNIL expects staff to be informed and the use proportionate). Nothing new is collected. |
+| Q15 | Employee monitoring (not legal advice) | The per-person screens are for managers and admins only. Be exact with the team: deal and sale figures per person are locked by RLS, while activity entries (calls, emails, WhatsApp, meetings) were already visible to the whole team on every lead's timeline, and Analytics only stops showing colleagues' counts on screen. Haider tells the team what is measured (the CNIL expects staff to be informed and the use proportionate). Nothing new is collected. |
 
 ---
 

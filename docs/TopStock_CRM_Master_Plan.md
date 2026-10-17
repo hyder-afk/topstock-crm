@@ -488,6 +488,8 @@ Stock RLS (all three admins see everything today, policies still written per rol
 - Requires a paid Zoom plan with cloud recording and audio transcripts enabled (section 3)
 
 ### Sales analytics dashboard (Analytics tab)
+> **Plan change (17 Oct 2026), for Haider to approve when Analytics v1 merges (HAIDER DECIDES).** Haider asked on 16 Oct 2026: "nothing shows on analytics i want visuals" (`docs/log.md`). Analytics v1 is pulled forward from Release 3, built **only from data that already exists**: activities, leads, deals and stage history, tasks, import batches and sales. It adds no new tables. These stay in Release 3: Zoom call metrics, targets (actual vs target), the leaderboard, and the weighted forecast and pipeline velocity. The "nightly refresh via a scheduled Action for heavy aggregates" below is dropped: live SQL functions are fast enough at 30k leads and 300k activities (budgets and measurements in the design). Three PRs: database and data layer, the "This period" charts, then "Right now" and the final checks. Detail: `docs/evidence/analytics/design.md`.
+
 | Area | Metrics |
 |---|---|
 | Activity | Calls, emails, WhatsApp, meetings per rep per day/week; connect rate |
