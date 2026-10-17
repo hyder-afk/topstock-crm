@@ -135,7 +135,7 @@ export function ArrivingList({ canManage, stepUp, onOpen }: { canManage: boolean
                 />
               </label>
             ) : null}
-            <button type="button" onClick={() => onOpen(r.id)} className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center rounded-sm text-left transition-colors active:bg-muted/50">
+            <button type="button" onClick={() => onOpen(r.id)} className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center rounded-sm text-left active:bg-muted/50">
               <span className="max-w-full truncate font-bold" dir="auto">{r.name}</span>
               <span className="text-xs text-muted-foreground">
                 <span className="font-mono" translate="no">{productRef(r.number)}</span>

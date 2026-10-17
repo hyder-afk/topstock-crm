@@ -86,7 +86,7 @@ export function ItemSheet({
                   </span>
                 </DialogDescription>
               </div>
-              <button type="button" onClick={onClose} aria-label={t("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97]">
+              <button type="button" onClick={onClose} aria-label={t("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full transition-[scale] duration-150 hover:bg-muted active:scale-[0.97]">
                 <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
               </button>
             </div>
@@ -215,7 +215,7 @@ export function ReviewSheet({
                 {t("body")}
               </DialogDescription>
             </div>
-            <button type="button" onClick={() => onOpenChange(false)} aria-label={ti("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97]">
+            <button type="button" onClick={() => onOpenChange(false)} aria-label={ti("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full transition-[scale] duration-150 hover:bg-muted active:scale-[0.97]">
               <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
             </button>
           </div>
@@ -236,7 +236,7 @@ export function ReviewSheet({
                   <Button type="button" variant="link" className="px-2" onClick={() => onEdit(l)} aria-label={t("edit", { name: l.item.name })}>
                     {t("change")}
                   </Button>
-                  <button type="button" onClick={() => onRemove(l.item.number)} aria-label={t("remove", { name: l.item.name })} className="grid size-11 place-items-center rounded-full transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97]">
+                  <button type="button" onClick={() => onRemove(l.item.number)} aria-label={t("remove", { name: l.item.name })} className="grid size-11 place-items-center rounded-full transition-[scale] duration-150 hover:bg-muted active:scale-[0.97]">
                     <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
                   </button>
                 </li>
