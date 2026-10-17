@@ -148,7 +148,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
                 aria-keyshortcuts="c"
                 aria-label={t("callNumber", { number: mainNumber })}
                 data-queue-call="lead"
-                className="inline-flex min-h-14 items-center gap-2 rounded-md bg-brand px-5 text-lg font-bold text-brand-foreground transition-[filter,transform] duration-150 hover:brightness-105 active:scale-[0.97] max-sm:w-full max-sm:justify-center sm:min-h-12"
+                className="inline-flex min-h-14 items-center gap-2 rounded-md bg-brand px-5 text-lg font-bold text-brand-foreground transition-[filter,transform,scale] duration-150 hover:brightness-105 active:scale-[0.97] max-sm:w-full max-sm:justify-center sm:min-h-12"
               >
                 <Phone aria-hidden="true" strokeWidth={2} className="size-5" />
                 {t("call")}
@@ -196,7 +196,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
                       onClick={() => onDial({ kind: "contact", contactId: c.id })}
                       aria-label={t("callNumber", { number: c.phone as string })}
                       aria-current={dialled?.kind === "contact" && dialled.contactId === c.id ? "true" : undefined}
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-card px-3 text-sm font-bold transition-[filter,transform] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
+                      className="inline-flex min-h-11 items-center gap-1.5 rounded-md bg-card px-3 text-sm font-bold transition-[filter,transform,scale] duration-150 hover:brightness-95 active:scale-[0.97] sm:min-h-9 dark:hover:brightness-125"
                     >
                       <Phone aria-hidden="true" strokeWidth={1.75} className="size-4" />
                       {t("call")}

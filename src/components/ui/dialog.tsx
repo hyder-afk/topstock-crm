@@ -15,7 +15,7 @@ export const DialogClose = DialogPrimitive.Close;
 // On phones a short confirmation sits at the bottom of the screen like a sheet, within reach of the thumb, and rises
 // from the bottom edge (globals.css, .phone-sheet).
 export const phoneSheet =
-  "phone-sheet max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-[24px] max-sm:pb-[env(safe-area-inset-bottom)]";
+  "phone-sheet max-sm:top-auto max-sm:bottom-0 max-sm:w-full max-sm:rounded-b-none max-sm:rounded-t-xl max-sm:pb-[env(safe-area-inset-bottom)]";
 
 // Rendered first inside the content: its first render happens when the dialog opens, before any autoFocus inside it
 // moves the focus, so it sees the element that opened the dialog.

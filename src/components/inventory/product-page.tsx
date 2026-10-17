@@ -20,12 +20,12 @@ export function ProductPage({ product, role, me, stepUpSeconds }: { product: Pro
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4 pt-2">
       <Link
         href="/inventory"
-        className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md px-2 text-sm text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+        className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md px-2 text-sm text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97]"
       >
         <ArrowLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
         {t("back")}
       </Link>
-      <div className="animate-page rounded-lg bg-card p-5">
+      <div className="rounded-lg bg-card p-5">
         <ProductPanel id={product.id} role={role} me={me} stepUp={stepUp} initial={product} asPage onClose={() => router.push("/inventory")} />
       </div>
       {stepUpHook.dialog}

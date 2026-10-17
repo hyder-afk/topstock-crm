@@ -204,7 +204,7 @@ export function HoldSheet({
                   aria-checked={place === pl}
                   onClick={() => setPlace(pl)}
                   className={cn(
-                    "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform] duration-150 active:scale-[0.97]",
+                    "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform,scale] duration-150 active:scale-[0.97]",
                     place === pl ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground",
                   )}
                 >
@@ -224,7 +224,7 @@ export function HoldSheet({
                   aria-pressed={days === d}
                   onClick={() => setDays(d)}
                   className={cn(
-                    "min-h-11 rounded-full border px-4 text-sm transition-[transform,background-color] duration-150 active:scale-[0.97] sm:min-h-9",
+                    "min-h-11 rounded-full border px-4 text-sm transition-[transform,scale,background-color] duration-150 active:scale-[0.97] sm:min-h-9",
                     days === d ? "border-foreground bg-foreground text-background" : "border-border",
                   )}
                 >

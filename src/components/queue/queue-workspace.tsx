@@ -460,7 +460,7 @@ export function QueueWorkspace({
         <Link
           href="/leads"
           prefetch={false}
-          className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md px-2 text-sm text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+          className="-ml-2 inline-flex min-h-11 items-center gap-1 self-start rounded-md px-2 text-sm text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97]"
         >
           <ArrowLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
           {t("back")}
@@ -527,7 +527,7 @@ export function QueueWorkspace({
                   aria-pressed={settings.scope === sc}
                   onClick={() => setSettings((cur) => ({ ...cur, scope: sc }))}
                   className={cn(
-                    "min-h-11 shrink-0 rounded-[10px] px-3.5 text-sm whitespace-nowrap transition-[background-color,color,transform] duration-150 active:scale-[0.97] max-sm:py-1 max-sm:leading-tight max-sm:text-balance max-sm:whitespace-normal sm:min-h-9",
+                    "min-h-11 shrink-0 rounded-[10px] px-3.5 text-sm whitespace-nowrap transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] max-sm:py-1 max-sm:leading-tight max-sm:text-balance max-sm:whitespace-normal sm:min-h-9",
                     settings.scope === sc ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -572,7 +572,7 @@ export function QueueWorkspace({
                 writeSkipLunch(on);
                 setSettings((cur) => ({ ...cur, skipLunch: on }));
               }}
-              className={cn("relative h-7 w-12 shrink-0 rounded-full transition-[background-color,transform] duration-150 active:scale-[0.97]", settings.skipLunch ? "bg-primary" : "bg-muted ring-1 ring-border ring-inset")}
+              className={cn("relative h-7 w-12 shrink-0 rounded-full transition-[background-color,transform,scale] duration-150 active:scale-[0.97]", settings.skipLunch ? "bg-primary" : "bg-muted ring-1 ring-border ring-inset")}
             >
               <span
                 aria-hidden="true"
@@ -751,6 +751,7 @@ export function QueueWorkspace({
             <DialogDescription className="sr-only">{current?.name}</DialogDescription>
             <textarea
               name="queue_note_sheet"
+              aria-label={t("noteSheet")}
               autoComplete="off"
               value={note}
               onChange={(e) => current && setNotes((m) => ({ ...m, [current.id]: e.target.value }))}

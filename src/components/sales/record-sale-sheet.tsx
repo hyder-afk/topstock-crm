@@ -281,7 +281,7 @@ export function RecordSaleSheet({
                   setDealId(null);
                 }}
                 className={cn(
-                  "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform] duration-150 active:scale-[0.97]",
+                  "min-h-11 rounded-[10px] px-3 text-sm font-bold transition-[color,transform,scale] duration-150 active:scale-[0.97]",
                   fulfilment === f ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground",
                 )}
               >
@@ -430,7 +430,7 @@ export function RecordSaleSheet({
                   name="ship_to_country"
                   autoComplete="off"
                   maxLength={2}
-                  placeholder="FR"
+                  placeholder={t("shipToPlaceholder")}
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
                   className="min-h-11 rounded-md border border-border bg-background px-3 font-mono text-base font-normal uppercase"
