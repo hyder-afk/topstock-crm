@@ -64,7 +64,7 @@ export function StageStepper({
         })}
       </div>
       {card.status === "open" && !disabled ? (
-        <button type="button" onClick={onLose} className="min-h-11 self-start rounded-md px-1 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline sm:min-h-9">
+        <button type="button" onClick={onLose} className="min-h-11 self-start rounded-md px-1 text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline active:opacity-60 sm:min-h-9">
           {t("markLost")}
         </button>
       ) : null}

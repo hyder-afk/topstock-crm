@@ -259,7 +259,7 @@ function SaleDetailView({ id, companyId, canManage, stepUp }: { id: string; comp
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/leads/${s.company_id}?tab=stock`} className="inline-flex min-h-11 items-center px-1 text-sm font-bold underline-offset-4 hover:underline sm:min-h-9">
+        <Link href={`/leads/${s.company_id}?tab=stock`} className="inline-flex min-h-11 items-center px-1 text-sm font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-9">
           {t("openLead")}
         </Link>
         {s.can_undo ? (
@@ -517,7 +517,7 @@ function RequestDetailView({ id, onRecordSale }: { id: string; onRecordSale: (le
         })}
       </ul>
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/leads/${r.company_id}?tab=stock`} className="inline-flex min-h-11 items-center px-1 text-sm font-bold underline-offset-4 hover:underline sm:min-h-9">
+        <Link href={`/leads/${r.company_id}?tab=stock`} className="inline-flex min-h-11 items-center px-1 text-sm font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-9">
           {t("openLead")}
         </Link>
         {isOpen && r.lines.some((l) => l.product_id) ? (

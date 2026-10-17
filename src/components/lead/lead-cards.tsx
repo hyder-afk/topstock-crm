@@ -224,7 +224,7 @@ export const NextStepCard = memo(function NextStepCard({ lead, initialTasks, onC
           })}
         </span>
         {lead.can_edit ? (
-          <button type="button" onClick={onChangeNext} className="min-h-11 font-bold underline-offset-4 hover:underline sm:min-h-0">
+          <button type="button" onClick={onChangeNext} className="min-h-11 font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-0">
             {t("change")}
           </button>
         ) : null}
@@ -388,7 +388,7 @@ export const ContactsCard = memo(function ContactsCard({ lead, readOnlyContact }
                         {lead.can_edit && !readOnlyContact ? (
                           <>
                             {" · "}
-                            <button type="button" onClick={() => setEditing(c.id)} className="min-h-11 font-bold text-foreground underline-offset-4 hover:underline sm:min-h-0">
+                            <button type="button" onClick={() => setEditing(c.id)} className="min-h-11 font-bold text-foreground underline-offset-4 hover:underline active:opacity-60 sm:min-h-0">
                               {tLead("fix")}
                             </button>
                           </>

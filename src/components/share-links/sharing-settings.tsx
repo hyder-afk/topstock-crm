@@ -94,7 +94,7 @@ export function SharingSettings({ initialOn, stepUpSeconds }: { initialOn: boole
                   {/* 20 px tall in the row; on phones the tap area reaches 44 px (Day 7c phone pass). */}
                   <Link
                     href={`/leads/${l.company_id}?tab=stock`}
-                    className="relative flex max-w-full min-w-0 self-start font-bold underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-3 max-sm:before:min-w-11 max-sm:before:content-['']"
+                    className="relative flex max-w-full min-w-0 self-start font-bold underline-offset-4 hover:underline active:opacity-60 max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-3 max-sm:before:min-w-11 max-sm:before:content-['']"
                     dir="auto"
                   >
                     <span className="truncate">{l.company_name}</span>

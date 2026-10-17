@@ -649,7 +649,7 @@ function FileRow({
           <a
             href={href}
             {...(inline ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-            className="flex min-h-6 min-w-0 rounded-sm font-bold underline-offset-4 hover:underline max-sm:after:absolute max-sm:after:inset-0 max-sm:after:rounded-md"
+            className="flex min-h-6 min-w-0 rounded-sm font-bold underline-offset-4 hover:underline active:opacity-60 max-sm:after:absolute max-sm:after:inset-0 max-sm:after:rounded-md"
           >
             <FileName name={file.name} />
             {inline ? <span className="sr-only"> {t("opensNewTab")}</span> : null}

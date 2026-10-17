@@ -237,11 +237,11 @@ export function ReservedList({ me, canManage, onOpen }: { me: string; canManage:
         {rows.map((h) => (
           <li key={h.id} className="flex flex-wrap items-center gap-3 p-3 sm:flex-nowrap sm:px-4">
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <button type="button" onClick={() => onOpen(h.product_id)} className="min-h-11 max-w-full truncate text-left font-bold underline-offset-4 hover:underline sm:min-h-0" dir="auto">
+              <button type="button" onClick={() => onOpen(h.product_id)} className="min-h-11 max-w-full truncate text-left font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-0" dir="auto">
                 {h.product_name}
               </button>
               <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-                <Link href={`/leads/${h.company_id}?tab=stock`} className="inline-flex min-h-11 items-center truncate text-foreground underline-offset-4 hover:underline sm:min-h-0" dir="auto">
+                <Link href={`/leads/${h.company_id}?tab=stock`} className="inline-flex min-h-11 items-center truncate text-foreground underline-offset-4 hover:underline active:opacity-60 sm:min-h-0" dir="auto">
                   {h.company_name}
                 </Link>
                 <span>· {tPlace(h.location)}</span>
@@ -379,7 +379,7 @@ export function MovementsList({
                   </span>
                 </span>
                 <span className="col-span-2 row-start-2 flex min-w-0 flex-col gap-0.5 sm:col-span-1 sm:row-start-auto">
-                  <button type="button" onClick={() => onOpen(m.product_id)} className="min-h-11 max-w-full truncate text-left underline-offset-4 hover:underline sm:min-h-0" dir="auto">
+                  <button type="button" onClick={() => onOpen(m.product_id)} className="min-h-11 max-w-full truncate text-left underline-offset-4 hover:underline active:opacity-60 sm:min-h-0" dir="auto">
                     {m.product_name}
                   </button>
                   <span className="truncate text-xs text-muted-foreground" dir="auto">

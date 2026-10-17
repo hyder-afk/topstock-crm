@@ -122,7 +122,7 @@ export function LoginForm() {
       <Button type="submit" width="full" disabled={pending}>
         {pending ? t("signingIn") : t("signIn")}
       </Button>
-      <Link href="/forgot-password" className="self-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline min-h-11 inline-flex items-center">
+      <Link href="/forgot-password" className="self-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline active:opacity-60 min-h-11 inline-flex items-center">
         {t("forgotLink")}
       </Link>
     </form>
@@ -171,7 +171,7 @@ export function ForgotPasswordForm() {
 function BackToSignIn() {
   const t = useTranslations("Auth");
   return (
-    <Link href="/login" className="self-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline min-h-11 inline-flex items-center">
+    <Link href="/login" className="self-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline active:opacity-60 min-h-11 inline-flex items-center">
       {t("backToSignIn")}
     </Link>
   );

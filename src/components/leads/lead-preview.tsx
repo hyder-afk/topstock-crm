@@ -137,7 +137,7 @@ function LeadDetailView({
     {
       label: t("phone"),
       value: lead.phone ? (
-        <a href={telHref(lead.phone)} className="font-mono text-sm underline-offset-4 hover:underline">
+        <a href={telHref(lead.phone)} className="font-mono text-sm underline-offset-4 hover:underline active:opacity-60">
           {lead.phone}
         </a>
       ) : (
@@ -147,7 +147,7 @@ function LeadDetailView({
     {
       label: t("email2"),
       value: lead.email ? (
-        <a href={mailHref(lead.email)} className="break-all underline-offset-4 hover:underline">
+        <a href={mailHref(lead.email)} className="break-all underline-offset-4 hover:underline active:opacity-60">
           {lead.email}
         </a>
       ) : (
@@ -331,12 +331,12 @@ function LeadDetailView({
                     {c.title ? <span className="text-muted-foreground">{c.title}</span> : null}
                     <span className={cn("flex flex-wrap gap-x-4 gap-y-1", !c.phone && !c.email && "hidden")}>
                       {c.phone ? (
-                        <a href={telHref(c.phone)} className="font-mono underline-offset-4 hover:underline">
+                        <a href={telHref(c.phone)} className="font-mono underline-offset-4 hover:underline active:opacity-60">
                           {c.phone}
                         </a>
                       ) : null}
                       {c.email ? (
-                        <a href={mailHref(c.email)} className="break-all underline-offset-4 hover:underline">
+                        <a href={mailHref(c.email)} className="break-all underline-offset-4 hover:underline active:opacity-60">
                           {c.email}
                         </a>
                       ) : null}

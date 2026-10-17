@@ -88,7 +88,7 @@ export function AttentionCard({
             ))}
           </ul>
           {attention.total > attention.items.length ? (
-            <Link href="/pipeline?stalled=1" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/pipeline?stalled=1" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground active:opacity-60">
               {t("seeAll", { count: attention.total })}
             </Link>
           ) : null}

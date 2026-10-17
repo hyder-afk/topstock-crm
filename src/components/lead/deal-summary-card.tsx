@@ -50,11 +50,11 @@ export function DealSummaryCard({ lead, onOpenDeal, onNewDeal, onShowDeals }: { 
           </button>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             {more > 0 ? (
-              <button type="button" onClick={onShowDeals} className="min-h-11 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-0">
+              <button type="button" onClick={onShowDeals} className="min-h-11 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline active:opacity-60 sm:min-h-0">
                 {t("moreOpen", { count: more })}
               </button>
             ) : null}
-            <Link href={`/pipeline?deal=${latest.id}`} className="min-h-11 py-2 font-bold underline-offset-4 hover:underline sm:min-h-0 sm:py-0">
+            <Link href={`/pipeline?deal=${latest.id}`} className="min-h-11 py-2 font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-0 sm:py-0">
               {t("onBoard")}
             </Link>
           </div>

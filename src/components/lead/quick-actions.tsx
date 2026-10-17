@@ -148,7 +148,7 @@ export const QuickActions = memo(function QuickActions({
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {!main ? (
             lead.can_edit ? (
-              <button type="button" onClick={onShowDetails} className="min-h-11 underline-offset-4 hover:underline sm:min-h-0">
+              <button type="button" onClick={onShowDetails} className="min-h-11 underline-offset-4 hover:underline active:opacity-60 sm:min-h-0">
                 {t("noPhoneAdd")}
               </button>
             ) : (

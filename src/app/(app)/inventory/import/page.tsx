@@ -13,7 +13,7 @@ export default async function StockImportPage() {
   return (
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <Link href="/inventory" className="inline-flex min-h-11 items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">
+        <Link href="/inventory" className="inline-flex min-h-11 items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground active:opacity-60">
           <ChevronLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
           {t("back")}
         </Link>

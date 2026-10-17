@@ -91,7 +91,7 @@ function TaskRow({ task, zone, onDone }: { task: TodayTask; zone: string | undef
           // the row keeps its height and matches its skeleton (Day 7c phone pass).
           <Link
             href={`/leads/${task.company_id}`}
-            className="relative flex max-w-full min-w-0 self-start text-sm hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-3 max-sm:before:min-w-11 max-sm:before:content-['']"
+            className="relative flex max-w-full min-w-0 self-start text-sm hover:underline active:opacity-60 max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-3 max-sm:before:min-w-11 max-sm:before:content-['']"
           >
             <span className="truncate">{task.title}</span>
           </Link>
@@ -168,7 +168,7 @@ export function TodayCard({
       className="col-span-12 lg:col-span-7"
       busy={loading}
       action={
-        <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+        <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground active:opacity-60 sm:min-h-0">
           {t("openTasks")}
         </Link>
       }
@@ -196,7 +196,7 @@ export function TodayCard({
             </AnimatePresence>
           </ul>
           {more > 0 ? (
-            <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground">
+            <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground active:opacity-60">
               {t("more", { count: more })} · {t("openTasks")}
             </Link>
           ) : null}

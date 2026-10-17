@@ -53,7 +53,7 @@ export function PipelineSnapshot({
       className="col-span-12 lg:col-span-5"
       busy={loading}
       action={
-        <Link href="/pipeline" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+        <Link href="/pipeline" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground active:opacity-60 sm:min-h-0">
           {t("open")}
         </Link>
       }

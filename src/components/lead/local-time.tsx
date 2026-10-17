@@ -83,7 +83,7 @@ export function LocalTime({
       <span className="inline-flex flex-wrap items-center gap-x-1.5 text-muted-foreground">
         {t("zoneUnknown")}
         {onAddCountry ? (
-          <button type="button" onClick={onAddCountry} className="min-h-11 font-bold text-foreground underline-offset-4 hover:underline sm:min-h-0">
+          <button type="button" onClick={onAddCountry} className="min-h-11 font-bold text-foreground underline-offset-4 hover:underline active:opacity-60 sm:min-h-0">
             {t("addCountry")}
           </button>
         ) : null}
@@ -141,7 +141,7 @@ export function LocalTime({
           {canSetZone ? (
             <>
               {" · "}
-              <button type="button" onClick={onSetZone} className="min-h-11 font-bold text-foreground underline-offset-4 hover:underline sm:min-h-0">
+              <button type="button" onClick={onSetZone} className="min-h-11 font-bold text-foreground underline-offset-4 hover:underline active:opacity-60 sm:min-h-0">
                 {t("setTimezone")}
               </button>
             </>

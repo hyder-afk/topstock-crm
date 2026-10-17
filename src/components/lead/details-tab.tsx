@@ -85,7 +85,7 @@ export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { 
     {
       label: tPreview("phone"),
       value: lead.phone ? (
-        <a href={callHref(lead.phone, lead.country)} className="font-mono underline-offset-4 hover:underline" translate="no">
+        <a href={callHref(lead.phone, lead.country)} className="font-mono underline-offset-4 hover:underline active:opacity-60" translate="no">
           {lead.phone}
         </a>
       ) : (
@@ -95,7 +95,7 @@ export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { 
     {
       label: tPreview("email2"),
       value: lead.email ? (
-        <a href={mailHref(lead.email)} className="break-all underline-offset-4 hover:underline">
+        <a href={mailHref(lead.email)} className="break-all underline-offset-4 hover:underline active:opacity-60">
           {lead.email}
         </a>
       ) : (
@@ -243,7 +243,7 @@ export const DetailsTab = memo(function DetailsTab({ lead, team, canAssign }: { 
               <>
                 <dt className="text-muted-foreground">{t("import")}</dt>
                 <dd className="min-w-0 break-words">
-                  <Link href={`/leads?batch=${lead.import.id}`} className="underline-offset-4 hover:underline">
+                  <Link href={`/leads?batch=${lead.import.id}`} className="underline-offset-4 hover:underline active:opacity-60">
                     {t("fromImport", {
                       file: lead.import.filename,
                       date: format.dateTime(new Date(lead.import.created_at), { day: "numeric", month: "short" }),

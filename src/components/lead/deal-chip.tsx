@@ -77,7 +77,7 @@ export function ComposerDealChip({
           </button>
         </span>
       ) : (
-        <button type="button" onClick={() => onChange(deals[0].id)} className="min-h-11 rounded-md px-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-9">
+        <button type="button" onClick={() => onChange(deals[0].id)} className="min-h-11 rounded-md px-2 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline active:opacity-60 sm:min-h-9">
           {t("aboutLabel")}
         </button>
       )}

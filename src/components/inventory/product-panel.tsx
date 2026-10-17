@@ -384,7 +384,7 @@ function HoldsSection({ p, me, canManage }: { p: ProductDetail; me: string; canM
           {p.holds.map((h) => (
             <li key={h.id} className="flex items-center justify-between gap-3 p-3 text-sm">
               <span className="flex min-w-0 flex-col gap-0.5">
-                <Link href={`/leads/${h.company_id}?tab=stock`} className="flex min-h-11 items-center truncate font-bold underline-offset-4 hover:underline sm:min-h-0" dir="auto">
+                <Link href={`/leads/${h.company_id}?tab=stock`} className="flex min-h-11 items-center truncate font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-0" dir="auto">
                   {h.company_name}
                 </Link>
                 <span className="truncate text-xs text-muted-foreground">
@@ -465,7 +465,7 @@ function RecentMovements({ p }: { p: ProductDetail }) {
           })}
         </ul>
       )}
-      <Link href={`/inventory?tab=movements&product=${p.id}`} className="flex min-h-11 w-fit items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-9">
+      <Link href={`/inventory?tab=movements&product=${p.id}`} className="flex min-h-11 w-fit items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline active:opacity-60 sm:min-h-9">
         {t("allMovements")}
       </Link>
     </section>

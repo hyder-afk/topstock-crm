@@ -303,7 +303,7 @@ export function LeadsWorkspace({
             <div className="flex flex-wrap items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
               <span className="px-1 font-bold">{t("selected", { count: selectedRows.length })}</span>
               <DropdownMenu>
-                <DropdownMenuTrigger className="min-h-11 rounded-md px-3 underline-offset-4 hover:underline sm:min-h-9">{t("setStatus")}</DropdownMenuTrigger>
+                <DropdownMenuTrigger className="min-h-11 rounded-md px-3 underline-offset-4 hover:underline active:opacity-60 sm:min-h-9">{t("setStatus")}</DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   {leadStatuses.map((s) => (
                     <DropdownMenuItem
@@ -320,7 +320,7 @@ export function LeadsWorkspace({
               </DropdownMenu>
               {canAssign ? (
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="min-h-11 rounded-md px-3 underline-offset-4 hover:underline sm:min-h-9">{t("setOwner")}</DropdownMenuTrigger>
+                  <DropdownMenuTrigger className="min-h-11 rounded-md px-3 underline-offset-4 hover:underline active:opacity-60 sm:min-h-9">{t("setOwner")}</DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
                     {team.map((m) => (
                       <DropdownMenuItem

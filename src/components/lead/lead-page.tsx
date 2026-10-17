@@ -234,7 +234,7 @@ export function LeadPage({
       <div className="flex flex-col items-start gap-4 pt-4">
         <h1 className="text-2xl font-bold">{t("goneTitle")}</h1>
         <p className="text-muted-foreground">{tLeads("preview.notFound")}</p>
-        <Link href={backUrl} className="font-bold underline-offset-4 hover:underline">
+        <Link href={backUrl} className="font-bold underline-offset-4 hover:underline active:opacity-60">
           {t("back")}
         </Link>
       </div>

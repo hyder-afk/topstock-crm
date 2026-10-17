@@ -40,7 +40,7 @@ export default async function TeamPage() {
       <div className="flex flex-col gap-2">
         <Link
           href="/more"
-          className="-ml-1 inline-flex min-h-11 w-fit items-center gap-1 rounded-md pr-2 text-muted-foreground transition-colors duration-150 hover:text-foreground"
+          className="-ml-1 inline-flex min-h-11 w-fit items-center gap-1 rounded-md pr-2 text-muted-foreground transition-colors duration-150 hover:text-foreground active:opacity-60"
         >
           <ChevronLeft aria-hidden="true" strokeWidth={1.75} className="size-5" />
           {t("back")}

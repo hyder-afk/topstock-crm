@@ -274,7 +274,7 @@ export const QueueCardView = forwardRef<HTMLHeadingElement, {
           <button
             type="button"
             onClick={() => setScriptLang(lang === "fr" ? "en" : "fr")}
-            className="min-h-11 self-start text-sm font-bold underline-offset-4 hover:underline sm:min-h-0"
+            className="min-h-11 self-start text-sm font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-0"
           >
             {lang === "fr" ? t("script.inEnglish") : t("script.inFrench")}
           </button>

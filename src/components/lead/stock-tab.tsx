@@ -318,7 +318,7 @@ function Bought({ data, leadId }: { data: LeadStock; leadId: string }) {
             ))}
           </ul>
           {data.sales_count > data.sales.length ? (
-            <Link href={`/inventory?tab=sales&company=${leadId}`} className="inline-flex min-h-11 items-center self-start text-sm font-bold underline-offset-4 hover:underline">
+            <Link href={`/inventory?tab=sales&company=${leadId}`} className="inline-flex min-h-11 items-center self-start text-sm font-bold underline-offset-4 hover:underline active:opacity-60">
               {t("showAll")}
             </Link>
           ) : null}

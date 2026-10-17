@@ -37,7 +37,7 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
         loading ? (
           <LowStockActionSkeleton />
         ) : lowStock ? (
-          <Link href="/inventory?filter=low" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground sm:min-h-0">
+          <Link href="/inventory?filter=low" className="inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground active:opacity-60 sm:min-h-0">
             {t("open")}
           </Link>
         ) : undefined
@@ -87,7 +87,7 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
                 <li key={f.key}>
                   <Link
                     href={f.href}
-                    className="flex min-h-11 items-center gap-2 rounded-sm px-2 text-sm text-muted-foreground hover:text-foreground md:min-h-9"
+                    className="flex min-h-11 items-center gap-2 rounded-sm px-2 text-sm text-muted-foreground hover:text-foreground active:opacity-60 md:min-h-9"
                   >
                     {f.tone ? <Dot tone={f.tone} /> : <span aria-hidden="true" className="inline-block size-2 shrink-0" />}
                     <span className="min-w-0">{t(f.key, { count: f.count })}</span>

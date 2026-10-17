@@ -747,7 +747,7 @@ const EntryItem = memo(function EntryItem({
               {entry.truncated && !full && expanded ? "…" : ""}
             </p>
             {!expanded && (clamped || entry.truncated) ? (
-              <button type="button" onClick={() => void showMore()} className="min-h-11 text-sm font-bold underline-offset-4 hover:underline sm:min-h-0">
+              <button type="button" onClick={() => void showMore()} className="min-h-11 text-sm font-bold underline-offset-4 hover:underline active:opacity-60 sm:min-h-0">
                 {t("showMore")}
               </button>
             ) : null}

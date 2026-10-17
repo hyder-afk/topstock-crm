@@ -15,7 +15,7 @@ export function ClientView({ preview }: { preview: SharePreview | null }) {
   const format = useFormatter();
   return (
     <div className="mx-auto flex w-full max-w-[720px] min-w-0 flex-col gap-5 pt-2">
-      <Link href="/inventory" className="inline-flex min-h-11 items-center gap-2 self-start text-sm text-muted-foreground hover:text-foreground">
+      <Link href="/inventory" className="inline-flex min-h-11 items-center gap-2 self-start text-sm text-muted-foreground hover:text-foreground active:opacity-60">
         <ArrowLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
         {t("clientViewBack")}
       </Link>
