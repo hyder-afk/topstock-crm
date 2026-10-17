@@ -18,6 +18,12 @@ export const CALL_OUTCOMES = [
   "connected",
 ] as const;
 export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+/**
+ * The call outcomes that reached someone (Home's K4 "calls today: reached" and Analytics' connect rate). No answer,
+ * voicemail and wrong number are dials that reached nobody. One list for both: tests/unit/analytics.spec.ts checks it
+ * against home_summary's SQL and every list in the Analytics migration.
+ */
+export const REACHED_OUTCOMES = ["connected", "interested", "meeting_booked", "not_interested", "do_not_contact"] as const;
 export const OTHER_OUTCOMES = ["sent", "held", "no_show"] as const;
 export type Outcome = CallOutcome | (typeof OTHER_OUTCOMES)[number];
 
