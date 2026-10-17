@@ -412,6 +412,34 @@ test("a refused person filter is 'forbidden' (403); a person outside the organis
   expect(typeof aal === "string" ? aal : aal.activity).toEqual({ ok: false });
 });
 
+test("C4: the six blocks start before the role read answers; list quality and the team wait for it", async () => {
+  const { rpc, calls } = fakeRpc();
+  let answer!: (role: "admin" | "manager" | "rep") => void;
+  const role = new Promise<"admin" | "manager" | "rep">((resolve) => (answer = resolve));
+  const pending = runAnalytics(rpc, query, role);
+  await Promise.resolve();
+  expect(calls.map((c) => c.fn).sort()).toEqual([
+    "analytics_activity",
+    "analytics_call_times",
+    "analytics_coverage",
+    "analytics_pipeline",
+    "analytics_sales",
+    "analytics_speed",
+  ]);
+  answer("admin");
+  const data = await pending;
+  if (typeof data === "string") throw new Error(data);
+  expect(data.batches?.ok).toBe(true);
+  expect(data.team?.ok).toBe(true);
+  expect(calls.map((c) => c.fn)).toEqual(expect.arrayContaining(["analytics_batches", "list_team"]));
+  // A role read that fails is a rep: the blocks still answer, nothing admin-only runs.
+  const r = fakeRpc();
+  const asRep = await runAnalytics(r.rpc, query, Promise.reject(new Error("profile read failed")));
+  if (typeof asRep === "string") throw new Error(asRep);
+  expect([asRep.activity.ok, asRep.batches, asRep.team]).toEqual([true, null, null]);
+  expect(r.calls.map((c) => c.fn)).not.toContain("analytics_batches");
+});
+
 test("the role the server acts on: anything unknown is a rep", () => {
   expect(analyticsRole("admin")).toBe("admin");
   expect(analyticsRole("manager")).toBe("manager");

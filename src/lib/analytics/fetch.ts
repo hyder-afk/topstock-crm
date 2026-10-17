@@ -56,22 +56,34 @@ const skipped = Promise.resolve({ data: null, error: null });
 /**
  * Every Analytics block for one range and person. Never throws. "forbidden": the database refused the person filter
  * (42501 'scope': a rep asking for a colleague); "invalid": the person is not a member of the caller's organisation
- * (P0002 'rep').
+ * (P0002 'rep'). The role may still be on its way (P1 condition C4): the six blocks every role reads start at once, in
+ * parallel with the role read; list quality (admins) and list_team (managers and admins) start as soon as the role is
+ * known. The role only decides which extra reads run; the database checks every scope itself.
  */
-export async function runAnalytics(rpc: Rpc, q: AnalyticsQuery, role: AnalyticsRole): Promise<AnalyticsData | "forbidden" | "invalid"> {
+export async function runAnalytics(
+  rpc: Rpc,
+  q: AnalyticsQuery,
+  roleOrPromise: AnalyticsRole | PromiseLike<AnalyticsRole>,
+): Promise<AnalyticsData | "forbidden" | "invalid"> {
   const span = { p_from: q.range.from, p_to: q.range.to, p_user: q.rep };
-  const isAdmin = role === "admin";
-  const seesTeam = role === "admin" || role === "manager";
-  const settled = await Promise.allSettled([
+  // allSettled at once, so a block that fails while the role is still loading is already handled.
+  const blocks = Promise.allSettled([
     rpc("analytics_activity", span),
     rpc("analytics_pipeline", span),
     rpc("analytics_speed", span),
     rpc("analytics_call_times", span),
     rpc("analytics_sales", span),
     rpc("analytics_coverage", { p_user: q.rep, p_idle_days: q.idle }),
+  ]);
+  // A role read that fails counts as a rep (the least it may see), so the blocks above still settle on their own.
+  const role = await Promise.resolve(roleOrPromise).then(analyticsRole, () => "rep" as const);
+  const isAdmin = role === "admin";
+  const seesTeam = role === "admin" || role === "manager";
+  const extras = Promise.allSettled([
     isAdmin ? rpc("analytics_batches", { p_user: q.rep, p_limit: DEFAULT_BATCHES }) : skipped,
     seesTeam ? rpc("list_team") : skipped,
   ]);
+  const settled = [...(await blocks), ...(await extras)];
   const errors = settled.map((s) => (s.status === "fulfilled" ? s.value.error : null));
   if (errors.some((e) => e?.code === "42501" && e.hint === "scope")) return "forbidden";
   if (errors.some((e) => e?.code === "P0002" && e.hint === "rep")) return "invalid";

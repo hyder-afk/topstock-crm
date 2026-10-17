@@ -11,6 +11,11 @@ export async function fetchAnalyticsRole(supabase: SupabaseClient, userId: strin
   return analyticsRole(error ? null : data?.role);
 }
 
-export async function fetchAnalytics(supabase: SupabaseClient, q: AnalyticsQuery, role: AnalyticsRole): Promise<AnalyticsData | "forbidden" | "invalid"> {
+/** `role` may be the pending role read: the blocks every role reads start without waiting for it (P1 condition C4). */
+export async function fetchAnalytics(
+  supabase: SupabaseClient,
+  q: AnalyticsQuery,
+  role: AnalyticsRole | Promise<AnalyticsRole>,
+): Promise<AnalyticsData | "forbidden" | "invalid"> {
   return runAnalytics((fn, args) => supabase.rpc(fn, args), q, role);
 }

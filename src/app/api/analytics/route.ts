@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   if (!query.success) return NextResponse.json({ error: "invalid" }, { status: 400, headers: noStore });
   const range = resolveRange(query.data, parisToday());
   if (!range) return NextResponse.json({ error: "invalid" }, { status: 400, headers: noStore });
-  const role = await fetchAnalyticsRole(session.supabase, session.claims.sub);
+  // The role read runs in parallel with the blocks every role reads (P1 condition C4).
+  const role = fetchAnalyticsRole(session.supabase, session.claims.sub);
   const data = await fetchAnalytics(session.supabase, { range, rep: query.data.rep ?? null, idle: query.data.idle ?? DEFAULT_IDLE }, role);
   if (data === "forbidden") return NextResponse.json({ error: "forbidden" }, { status: 403, headers: noStore });
   if (data === "invalid") return NextResponse.json({ error: "invalid" }, { status: 400, headers: noStore });
