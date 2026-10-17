@@ -982,3 +982,20 @@ test("field_edit_after_own_move_and_a_colleagues_edit_needs_no_conflict_round_tr
   expect(errors).toEqual([]);
   await context.close();
 });
+
+test("close_date_passed_follows_the_paris_day_after_midnight (bugs audit L2)", async ({ browser }) => {
+  // 00:30 in Paris on 13 Oct 2026 is still 12 Oct in UTC: a deal expected to close on 12 Oct has passed its date.
+  const deal = makeDeal({ title: `Due ${run}` });
+  sql(`update public.deals set expected_close = '2026-10-12' where id = '${deal}'`);
+  const { context, page, errors } = await open(browser);
+  await page.clock.setFixedTime(new Date("2026-10-12T22:30:00Z"));
+  await settled(page);
+  await page.goto("/leads");
+  await appReady(page);
+  // Into the board in the browser (a client navigation), so its cards are drawn with the fixed clock.
+  await page.getByRole("navigation", { name: /Sections/ }).getByRole("link", { name: "Pipeline", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await expect(card(page, deal)).toContainText("Close date passed · Oct 12");
+  expect(errors).toEqual([]);
+  await context.close();
+});

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isoDate } from "@/lib/activities";
 import { isMoney } from "@/lib/money";
+import { localDate } from "@/lib/timezones";
 
 // Deals and the pipeline (Day 5 design sections 4.4, 5.5 and 5.6). The lists and limits below are the database's own
 // literals (migration 20261015090000_deals_pipeline.sql); tests/unit/day5-parity.spec.ts reads the migration and fails
@@ -231,6 +232,15 @@ const DAY = 24 * HOUR;
 /** Whole days since `since` (elapsed time, no time zone: 7 × 24 h is 7 days on a clock-change week too). */
 export function elapsedDays(since: string, now: number): number {
   return Math.max(0, Math.floor((now - Date.parse(since)) / DAY));
+}
+
+/**
+ * An open deal whose expected close date is before today in `zone` (the viewer's day, as Home's attention card counts
+ * it in the profile's zone), never the UTC day: between midnight and 01:00/02:00 in Paris the UTC date is still
+ * yesterday's (bugs audit L2).
+ */
+export function closeDatePassed(card: Pick<DealCard, "status" | "expected_close">, now: number, zone: string): boolean {
+  return card.status === "open" && card.expected_close !== null && card.expected_close < localDate(zone, new Date(now));
 }
 
 /**
