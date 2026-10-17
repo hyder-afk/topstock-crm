@@ -18,6 +18,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -37,6 +38,7 @@ import { LostBand } from "@/components/pipeline/lost-band";
 import { OpenDealSheet } from "@/components/pipeline/open-deal-sheet";
 import { PipelineColumnsSkeleton } from "@/components/pipeline/pipeline-skeleton";
 import { cardElement, settle, type SettleFrom } from "@/components/pipeline/settle";
+import { releaseVelocity, type PointerSample } from "@/lib/motion";
 import { pageKeyAction } from "@/components/pipeline/use-board-keys";
 import { lastUndoableMove, useBoard } from "@/components/pipeline/use-pipeline";
 import {
@@ -320,9 +322,9 @@ function Pipeline({
     return next ? { id: next.id, column: undefined } : { id: "", column: col.key };
   }, []);
 
-  const settleNext = (id: string, from: { left: number; top: number } | null) => {
+  const settleNext = (id: string, from: { left: number; top: number; vx?: number; vy?: number } | null) => {
     tokens.current += 1;
-    if (from) setSettleFrom({ id, left: from.left, top: from.top, token: tokens.current });
+    if (from) setSettleFrom({ id, left: from.left, top: from.top, token: tokens.current, vx: from.vx, vy: from.vy });
   };
   const rectOf = (id: string) => {
     const r = cardElement(id)?.getBoundingClientRect();
@@ -527,7 +529,14 @@ function Pipeline({
   const instructions = useMemo(() => buildInstructions((k) => tAnn(k as "instructions")), [tAnn]);
   const activeCard = activeId && board ? (findCard(board, activeId)?.card ?? null) : null;
 
+  // The pointer's last positions during a drag, for the release speed the settle carries on with (Apple audit #16).
+  const moves = useRef<PointerSample[]>([]);
+  const onDragMove = (e: DragMoveEvent) => {
+    moves.current.push({ t: performance.now(), x: e.delta.x, y: e.delta.y });
+    if (moves.current.length > 8) moves.current.shift();
+  };
   const onDragStart = (e: DragStartEvent) => {
+    moves.current = [];
     setActiveId(String(e.active.id));
     if (navigator.vibrate && navigator.userActivation?.hasBeenActive) navigator.vibrate(8);
   };
@@ -535,7 +544,10 @@ function Pipeline({
   const onDragEnd = (e: DragEndEvent) => {
     const id = String(e.active.id);
     const r = e.active.rect.current.translated;
-    const from = r ? { id, left: r.left, top: r.top, token: 0 } : null;
+    // A keyboard move has no speed; a pointer drop carries the hand's release speed into the settle.
+    const v = e.activatorEvent instanceof KeyboardEvent ? { x: 0, y: 0 } : releaseVelocity(moves.current, performance.now());
+    moves.current = [];
+    const from = r ? { id, left: r.left, top: r.top, token: 0, vx: v.x, vy: v.y } : null;
     setActiveId(null);
     setOverId(null);
     const card = board ? findCard(board, id)?.card : null;
@@ -544,8 +556,10 @@ function Pipeline({
       if (from) settleNext(id, from);
       return;
     }
-    if (to === "won") return askWin(card, from);
-    if (to === "lost") return askLose(card, from);
+    // Won and Lost ask first: the settle comes later (if the dialog is cancelled), with no speed left in it.
+    const still = from ? { ...from, vx: 0, vy: 0 } : null;
+    if (to === "won") return askWin(card, still);
+    if (to === "lost") return askLose(card, still);
     moveCard(card, to as OpenStageKey, from, e.activatorEvent instanceof KeyboardEvent);
   };
   const onDragCancel = () => {
@@ -720,6 +734,7 @@ function Pipeline({
             autoScroll={AUTO_SCROLL}
             accessibility={{ announcements, screenReaderInstructions: instructions }}
             onDragStart={onDragStart}
+            onDragMove={onDragMove}
             onDragOver={onDragOver}
             onDragEnd={onDragEnd}
             onDragCancel={onDragCancel}
