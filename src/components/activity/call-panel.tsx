@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { AnimatePresence, motion, useIsPresent, useReducedMotion, type PanInfo } from "motion/react";
+import { AnimatePresence, motion, useDragControls, useIsPresent, useMotionValue, useReducedMotion, type PanInfo } from "motion/react";
 import { PhoneOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -196,6 +196,11 @@ function CallPanel({
   const headingId = useId();
   const dismissedId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  // The whole panel follows a pull on its header (Apple audit #1): drag starts from the header only, so the buttons and
+  // fields inside keep working; let go past the threshold and it carries on down at the release speed.
+  const dragControls = useDragControls();
+  const y = useMotionValue(0);
+  const [thrown, setThrown] = useState<{ to: number; velocity: number } | null>(null);
   const padRef = useRef<HTMLDivElement>(null);
   const logItRef = useRef<HTMLButtonElement>(null);
   const saveRef = useRef<HTMLButtonElement>(null);
@@ -368,8 +373,17 @@ function CallPanel({
     };
   }, []);
 
+  // Past the threshold (offset plus the projected flick): a call already marked "not logged" closes, and the panel keeps
+  // going down from where the finger left it, at the release speed (springs.sheet), out of view; any other phase asks
+  // first ("not logged"), so the panel springs back home. Reduced motion: the existing fade.
   const onDragEnd = (_: unknown, info: PanInfo) => {
-    if (info.offset.y + (reduce ? 0 : project(info.velocity.y)) > 140) dismiss();
+    if (info.offset.y + (reduce ? 0 : project(info.velocity.y)) <= 140) return;
+    const el = panelRef.current;
+    if (phase === "notLogged" && isPresent && !reduce && el) {
+      const to = y.get() + Math.max(0, window.innerHeight - el.getBoundingClientRect().top);
+      setThrown({ to, velocity: Math.max(0, info.velocity.y) });
+    }
+    dismiss();
   };
 
   const awayMinutes = call.awayMs ? Math.max(1, Math.round(call.awayMs / 60_000)) : null;
@@ -383,22 +397,31 @@ function CallPanel({
       aria-labelledby={headingId}
       initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.6 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}
+      exit={
+        reduce
+          ? { opacity: 0 }
+          : thrown
+            ? { y: thrown.to, transition: { ...springs.sheet, velocity: thrown.velocity } }
+            : { opacity: 0, scale: 0.9 }
+      }
       transition={reduce ? { duration: 0.12 } : springs.sheet}
-      style={{ transformOrigin: origin }}
+      drag="y"
+      dragControls={dragControls}
+      dragListener={false}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0.08, bottom: 0.6 }}
+      dragSnapToOrigin
+      onDragEnd={onDragEnd}
+      style={{ transformOrigin: origin, y }}
       className={cn(
         "dock-glass fixed z-40 flex max-h-[calc(100dvh-max(24px,env(safe-area-inset-top,0px)))] flex-col overflow-y-auto overscroll-contain border border-border text-foreground shadow-[0_16px_48px_rgb(14_14_16/0.22)]",
         "inset-x-0 bottom-0 rounded-t-xl pb-[calc(16px+env(safe-area-inset-bottom,0px))]",
         "sm:inset-x-auto sm:right-[max(24px,env(safe-area-inset-right,0px))] sm:bottom-[104px] sm:w-[320px] sm:rounded-xl sm:pb-4",
       )}
     >
-      {/* The header is the drag handle: pull down to close (rubber band, velocity projected). */}
-      <motion.div
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0.08, bottom: 0.6 }}
-        dragSnapToOrigin
-        onDragEnd={onDragEnd}
+      {/* The header is the drag handle: pull the panel down to close (rubber band, velocity projected). */}
+      <div
+        onPointerDown={(e) => dragControls.start(e)}
         style={{ touchAction: "none" }}
         className="flex cursor-grab items-start gap-2 px-5 pt-3 select-none active:cursor-grabbing"
       >
@@ -419,7 +442,7 @@ function CallPanel({
         >
           <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
         </button>
-      </motion.div>
+      </div>
 
       <div className="flex flex-col gap-3 px-5 pt-1">
         {/* Stays in the accessibility tree while empty (sr-only, not display:none) so the queued-call message is announced. */}

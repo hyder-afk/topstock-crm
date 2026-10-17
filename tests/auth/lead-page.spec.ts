@@ -294,6 +294,66 @@ test("call_panel_survives_navigation, then undo_within_window puts the lead back
   await context.close();
 });
 
+test("call_panel_pull_moves_the_whole_panel; past the threshold it asks, then a throw carries it away (Apple audit #1)", async ({ browser }) => {
+  const lead = makeLead("Halles Tirées");
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoLead(page, lead);
+  await page.getByRole("link", { name: "Call", exact: true }).first().click();
+  await expect(panel(page)).toContainText("Calling Halles Tirées");
+  await page.waitForTimeout(700); // the entrance settles
+  const heading = panel(page).getByRole("heading").first();
+  const box = async () => (await panel(page).boundingBox())!;
+  const rest = await box();
+  // Pulls the header down by dy in slow, even steps (no flick), then holds or lets go.
+  const pull = async (dy: number, release: boolean) => {
+    const h = (await heading.boundingBox())!;
+    const x = h.x + 8;
+    const y0 = h.y + h.height / 2;
+    await page.mouse.move(x, y0);
+    await page.mouse.down();
+    for (let i = 1; i <= 20; i++) {
+      await page.mouse.move(x, y0 + (dy * i) / 20);
+      await page.waitForTimeout(16);
+    }
+    await page.waitForTimeout(150);
+    if (release) await page.mouse.up();
+  };
+  // Held 100 px down: the whole panel follows (rubber band), the header stays at the top of it.
+  await pull(100, false);
+  const held = await box();
+  const headingHeld = (await heading.boundingBox())!;
+  expect(held.y - rest.y, "the panel follows the finger").toBeGreaterThan(30);
+  expect(headingHeld.y - held.y, "the header moves with the panel, not over it").toBeLessThan(40);
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs((await box()).y - rest.y), { message: "springs back home" }).toBeLessThan(1);
+  await expect(panel(page)).toContainText("Calling Halles Tirées");
+  // Past the threshold while the call is not logged: it asks first and springs back.
+  await pull(240, true);
+  await expect(panel(page)).toContainText("Call not logged.");
+  await expect.poll(async () => Math.abs((await box()).y - rest.y)).toBeLessThan(1);
+  // Again: the panel carries on down, still opaque, out of view, then goes.
+  await page.evaluate(() => {
+    const w = window as unknown as { __throw: { top: number; opacity: number }[] };
+    w.__throw = [];
+    const until = performance.now() + 1500;
+    const tick = () => {
+      const el = document.querySelector<HTMLElement>("[data-call-panel]");
+      if (el) w.__throw.push({ top: el.getBoundingClientRect().top, opacity: Number(getComputedStyle(el).opacity) });
+      if (performance.now() < until) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await pull(240, true);
+  await expect(panel(page)).toHaveCount(0);
+  await page.waitForTimeout(400);
+  const frames = await page.evaluate(() => (window as unknown as { __throw: { top: number; opacity: number }[] }).__throw);
+  const viewport = page.viewportSize()!.height;
+  expect(frames.some((f) => f.top >= viewport - 4 && f.opacity > 0.9), "slid out of view at full opacity").toBe(true);
+  expect(sql(`select count(*) from public.activities where company_id = '${lead}'`)).toBe("0");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("call_panel_focus_returns (WCAG 2.4.3) and second_call_waits_for_the_open_one", async ({ browser }) => {
   const lead = makeLead("Comptoir Double");
   addContact(lead, "Ines", "06 11 22 33 44", null);
