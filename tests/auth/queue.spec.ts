@@ -6,7 +6,9 @@ import { appReady, countryInHours, createUser, fullSession, setRole, settled, si
 // never served, typing a note never fires keys, a lost connection saves the outcome once, closing the tab lets the
 // claims go, a rep sees only their own leads, and the lead page says who is on a lead. Calling hours follow the real
 // clock (the database's now()), so the leads are put in a country that is in hours now (countryInHours); when none is
-// (weekends), the tests use "Show leads outside calling hours". Outcomes are checked in the database.
+// (weekends), the tests use "Show leads outside calling hours". That choice holds for the rest of the visit (a later
+// Start goes straight to a card; builder decision under Haider's standing instruction, 17 Oct 2026), so only a visit's
+// first Start shows the outside-hours state (passOutsideHours). Outcomes are checked in the database.
 test.describe.configure({ mode: "serial" });
 
 const password = "Work-Queue-Pass-42!";
@@ -55,20 +57,29 @@ const heading = (page: Page) => card(page).locator("h2");
 // The toast as drawn (a "Logged" toast is shown but not read out: the page's own live message says it once).
 const toast = (page: Page) => page.locator("[data-toast]").last();
 
+/** Pages whose current visit to the queue has taken "Show leads outside calling hours" (it holds until the queue is left). */
+const outsideChosen = new WeakSet<Page>();
+
+/** After Start, when every zone is closed: the outside-hours state and its escape, on the visit's first Start only. */
+async function passOutsideHours(page: Page) {
+  if (open || outsideChosen.has(page)) return;
+  await expect(page.getByRole("button", { name: "Show leads outside calling hours" })).toBeVisible();
+  await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  outsideChosen.add(page);
+}
+
 async function openQueue(page: Page) {
   await settled(page);
+  outsideChosen.delete(page); // a new visit: the choice starts over
   await page.goto("/leads/queue");
   await expect(page.locator("main h1")).toContainText("Work queue");
   await appReady(page);
 }
 
-/** Start (↩ from the keyboard), past the outside-hours state when every zone is closed now. */
+/** Start (↩ from the keyboard), past the outside-hours state when every zone is closed now (first Start of a visit). */
 async function start(page: Page) {
   await page.keyboard.press("Enter");
-  if (!open) {
-    await expect(page.getByRole("button", { name: "Show leads outside calling hours" })).toBeVisible();
-    await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
-  }
+  await passOutsideHours(page);
   await expect(card(page)).toHaveCount(1);
 }
 
@@ -237,6 +248,15 @@ test("outside_hours_state_then_show_outside, dnc_never_served", async ({ browser
   await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
   await expect(heading(page)).toHaveText("Nuit Un");
   await expect(card(page)).toContainText("Outside calling hours");
+  await page.keyboard.press("1");
+  await expect(page.getByRole("heading", { name: "Everyone due has been called." })).toBeVisible();
+  // The choice holds for the visit: another lead outside its hours, Back to the start, Start goes straight to its card
+  // (no "Nobody to call right now." again). The leads' country is closed now, so this runs at any hour.
+  makeLeads(adminEmail, ["Nuit Deux"], { country: closed as string });
+  await page.getByRole("button", { name: "Back to the start" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(heading(page)).toHaveText("Nuit Deux");
+  await expect(page.getByRole("heading", { name: "Nobody to call right now." })).toHaveCount(0);
   await page.keyboard.press("1");
   await expect(page.getByRole("heading", { name: "Everyone due has been called." })).toBeVisible();
   // The Do not contact lead was never offered nor claimed.
@@ -456,7 +476,7 @@ test("focus_never_drops_to_body: after Start, Done for now, the empty state and 
   // Start with the pointer: the button goes, the first card's heading takes the focus.
   await page.getByRole("button", { name: "Start" }).click();
   expect(await onBody()).toBe(false);
-  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await passOutsideHours(page);
   await expect(heading(page)).toBeFocused();
   // Done for now: back on the start screen, Start has the focus.
   await page.getByRole("button", { name: "Done for now" }).click();
@@ -506,7 +526,7 @@ test("stop_while_in_flight: Done for now while a save or Start is on its way lea
   fresh(adminEmail);
   makeLeads(adminEmail, ["Stop Last"]);
   await page.getByRole("button", { name: "Start" }).click();
-  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await passOutsideHours(page);
   await expect(heading(page)).toHaveText("Stop Last");
   await page.keyboard.press("Digit1");
   await page.getByRole("button", { name: "Done for now" }).click();
@@ -520,10 +540,8 @@ test("stop_while_in_flight: Done for now while a save or Start is on its way lea
   makeLeads(adminEmail, ["Stop Echo", "Stop Foxtrot", "Stop Golf"]);
   await slow(page, (u) => u.pathname === "/leads/queue", 1500, (h) => !!h["next-action"]);
   await page.getByRole("button", { name: "Start" }).click();
-  if (!open) {
-    // Every zone is closed: Start lands on the outside-hours state first; take the escape, then stop at once.
-    await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
-  }
+  // Every zone closed: the escape was taken earlier in this visit and still holds, so Start goes straight to a card.
+  await passOutsideHours(page);
   await page.getByRole("button", { name: "Done for now" }).click();
   await page.waitForTimeout(2500);
   await expect.poll(() => claims(adminEmail), { timeout: 10_000 }).toBe("0");
@@ -549,7 +567,7 @@ test("restart_while_in_flight: Done for now then Start at once while a save is o
   await page.keyboard.press("Digit1");
   await page.getByRole("button", { name: "Done for now" }).click();
   await page.getByRole("button", { name: "Start" }).click();
-  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await passOutsideHours(page);
   await expect.poll(() => outcomes(leadId(adminEmail, first)), { timeout: 10_000 }).toBe("no_answer");
   // Every job on the chain has run (the old answer's release included).
   await page.waitForTimeout(4000);
@@ -635,8 +653,9 @@ test("undo_on_empty_screen and queue_owns_u: U on the empty state brings the lea
   await page.keyboard.press("g");
   await page.keyboard.press("q");
   await expect(page.locator("main h1")).toContainText("Work queue");
+  outsideChosen.delete(page); // a new visit: the choice starts over
   await page.getByRole("button", { name: "Start" }).click();
-  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await passOutsideHours(page);
   await expect(heading(page)).toHaveText("Undo Only");
   await page.keyboard.press("Digit1");
   // The last lead: the empty state, whose toast offers Undo (U).
@@ -690,8 +709,9 @@ test("caches_after_outcome: back on the lead page after a queue outcome, its tim
   await page.keyboard.press("g");
   await page.keyboard.press("q");
   await expect(page.locator("main h1")).toContainText("Work queue");
+  outsideChosen.delete(page); // a new visit: the choice starts over
   await page.getByRole("button", { name: "Start" }).click();
-  if (!open) await page.getByRole("button", { name: "Show leads outside calling hours" }).click();
+  await passOutsideHours(page);
   await expect(heading(page)).toHaveText("Cache Comptoir");
   await page.keyboard.press("Digit5");
   await page.keyboard.press("Enter");
