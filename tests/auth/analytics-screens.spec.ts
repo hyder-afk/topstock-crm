@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, createUser, fullSession, isCancelledPrefetch, youngSession } from "./helpers";
+import { appReady, createUser, fullSession, isCancelledPrefetch, twoFrames, youngSession } from "./helpers";
 import { makeOrg, moveTo, userId } from "./home-fixture";
 import { seedAnalytics } from "./analytics-fixture";
 
@@ -141,10 +141,23 @@ test("representative set: empty org, one card failing, rep view, tooltips, skele
     fullPage: false,
     act: async (page) => {
       const svg = page.locator("section[data-block=analytics-calls] svg.recharts-surface").first();
+      const tip = page.locator("section[data-block=analytics-calls] .recharts-tooltip-wrapper").first();
+      // Recharts takes one arrow key per animation frame (its keydown is rAF-throttled: a key pressed before the last
+      // one was handled replaces it), so each key waits two frames. A re-measure can also draw the chart's <svg> anew,
+      // which drops focus (CI, PR #28): then start over, first walking back to the first day so the count holds.
+      const step = async (key: string) => {
+        await page.keyboard.press(key);
+        await twoFrames(page);
+      };
       await svg.scrollIntoViewIfNeeded();
-      await svg.focus();
-      for (let i = 0; i < 27; i++) await page.keyboard.press("ArrowRight"); // Paris today minus 2: the 6-call day
-      await expect(page.locator("section[data-block=analytics-calls] .recharts-tooltip-wrapper").first()).toBeVisible();
+      await expect(async () => {
+        await svg.focus();
+        await expect(svg).toBeFocused({ timeout: 1000 });
+        for (let i = 0; i < 30; i++) await step("ArrowLeft");
+        for (let i = 0; i < 27; i++) await step("ArrowRight"); // Paris today minus 2: the 6-call day
+        await expect(svg).toBeFocused({ timeout: 1000 });
+        await expect(tip).toBeVisible({ timeout: 1000 });
+      }).toPass({ timeout: 30_000 });
     },
   });
   // The heatmap: a cell's tooltip on desktop; the hour readout on a phone (a tap on the 10:00 row).
