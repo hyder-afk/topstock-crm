@@ -79,16 +79,91 @@ Notes.
 3. #21 (reduced transparency) checked in Chromium through CDP media emulation on the share bar: default
    `blur(8px)` on 95 % card; reduced transparency `none` on solid `rgb(255,255,255)`.
 
+Advisor round 1 follow-up runs (Chromium 1194, fresh `next build` of the round-1 code, throwaway stack):
+- `leads.spec` 12 / 12 (the "/" check, after the `checkVisibility()` guard; also checked with
+  `Element.prototype.checkVisibility` deleted: "/" still focuses the search, no page error).
+- `shell.spec` 28 / 28; the new reduced-motion bead test 45 / 45 (`--repeat-each=15` at 1280, 1440, 1728). It can fail:
+  with the spring put back it fails and prints the in-between scales (`1 0.9927 0.9723 0.9540 0.9450 0.9409 …`).
+- `day7b.spec` 21 / 21 (11 screenshot-only tests skipped by design), `share` 12 / 12, `sales` 12 / 12, `inventory` 11 / 11.
+
+Security tooling:
+- gitleaks 8.28.0: `gitleaks git --log-opts="origin/main..HEAD"`: 24 commits scanned, **no leaks found**;
+  `gitleaks dir docs/evidence/apple-audit src`: **no leaks found**.
+- npm audit and Semgrep: left to CI. This step changes no dependency (`package.json` and `package-lock.json` untouched),
+  so npm audit cannot differ from main; Semgrep runs on the PR.
+
+## Context7 and docs lookups
+
+Done after the build, against the code as written (the advisor flagged that none were recorded). Every API is used the
+way its docs describe. One small code change came out of them: the `checkVisibility()` guard below.
+
+| API (where) | Source | What the docs say, and how the code matches |
+|---|---|---|
+| Motion `useDragControls`, `dragListener={false}` (call-panel.tsx) | Context7 `/websites/motion_dev` (react-use-drag-controls) | `dragListener={false}` stops a drag starting on the element itself; `controls.start(event)` from another element's `onPointerDown` starts it. The panel header calls `dragControls.start(e)`, so only the header pulls the panel and its buttons stay plain taps |
+| Motion transition `velocity`, physics springs (call-panel.tsx, settle.ts) | Context7 `/websites/motion_dev` (transitions, spring-value) | Physics springs (stiffness, damping, mass) carry the gesture's velocity; duration-based springs do not. Our `springs.*` are physics springs, and the throw / settle pass the release velocity as `velocity` |
+| Motion `custom` with variant functions and `AnimatePresence custom` (queue-workspace.tsx, the card's travel direction) | Context7 `/websites/motion_dev` (motion component, advanced props) | `custom` feeds dynamic variant functions; on `AnimatePresence` it reaches exiting children whose props can no longer update. Both the presence and the child get `custom={dir}` |
+| Radix ContextMenu `Trigger disabled` (task-row.tsx) | Context7 `/websites/radix-ui_primitives` (context-menu) | `disabled` is a `ContextMenu.Trigger` prop (added in 2.1.0), default false; when true the menu does not open. Used as `<ContextMenuTrigger asChild disabled={editing \|\| !hasMenu}>` |
+| Radix Presence and exit animations (dialogs, sheets) | Context7 `/websites/radix-ui_primitives` (guides/animation) | Primitives suspend unmount while a CSS animation plays out. The closed state's invisible `dialog-hold` animation is what keeps the content mounted while the CSS transition runs |
+| Tailwind 4 `@custom-variant` (globals.css) | Context7 `/websites/tailwindcss` (adding custom styles) | Shorthand form `@custom-variant name (selector-or-at-rule);` is valid without `@slot` when no nesting is needed. `@custom-variant reduced-transparency (@media (prefers-reduced-transparency: reduce));` matches it |
+| CSS `@starting-style` (globals.css) | Context7 `/mdn/content` (@starting-style) | Only for transitions. A standalone block must come after the rule it starts from (same specificity). Every standalone block in globals.css comes after its `[data-state="open"]` rule; the phone and desktop variants nest it inside their `@media` |
+| `Element.checkVisibility()` (leads-toolbar.tsx) | Context7 `/mdn/content` (checkvisibility) | Returns false when the element has no box. It is missing in Safari before 17.4, so the call is now guarded with a fallback to `offsetParent !== null` (the advisor's optional note) |
+| `prefers-reduced-transparency` (globals.css, #21) | Context7 `/mdn/content` | Media feature for the OS "reduce transparency" setting; where it is unsupported the default blur stays, which is the current behaviour |
+
+## web-design-guidelines audit (after the fixes)
+
+Rules pinned at vercel-labs/web-interface-guidelines `434b7f9`, applied to the lines this branch changes in `src/`
+(56 files). 5 findings, all low; 0 on reduced motion, `transition: all`, focus, touch targets or context-menu ARIA.
+
+| Finding | Outcome |
+|---|---|
+| `inventory/tab-lists.tsx:138` adds `transition-colors` only to fade the new press tint | Fixed: transition removed, the tint is instant (as on lead rows) |
+| `share/share-request.tsx:89, 218, 239` `transition-[background-color,scale]` also fades the hover tint that was instant before | Fixed: `transition-[scale]` |
+| `sales/hold-and-request-sheets.tsx:365`, `sales/record-sale-sheet.tsx:304` `transition-[color,scale]` fades text colour | Fixed: `transition-[scale]` |
+| New press tints and the check fill ride colour transitions that were already there (closed-deals, deal-summary-card, deals-tab, recent-activity, choose-step, stock-choose; today-card and lead-cards check) | Kept: the same 150 ms recipe the Tasks page already uses; a colour change, not layout, and covered by the reduced-motion block |
+| `active:opacity-60` on the 47 text links and text buttons lowers contrast while held ("active more prominent than rest") | Kept on purpose: the iOS press dim for text controls (Apple audit #11). The dim lasts only while the finger is down. Logged as a deviation in `docs/log.md` |
+
+Checked and passing: every new CSS animation is under the global reduced-motion block (`globals.css` 396-405), every new
+Motion path has a reduced branch, new motion moves only transform and opacity (`dialog-hold` animates an invisible
+custom property), focus rings come from the global `:focus-visible` rule and no press removes them, no control got
+smaller, the task row's context menu has `role=menu`, an `aria-label`, Shift+F10 / Menu key and focus return, and the
+toast's leaving copy is `aria-hidden`, `inert` and outside the live region.
+
+Pre-existing, outside this step (not changed here): `ui/dialog.tsx:40` `focus:outline-none` and no `overscroll-behavior`
+on plain dialog content; inline phone and email links without a 44 px tap area on phones (details-tab, lead-preview);
+lead page "Back" link without `min-h-11`; some controls with a press but no hover state. Listed as follow-ups.
+
+## Apple re-check after the fixes
+
+Each finding re-read against the final code:
+
+- **19 builder findings: all resolved** (#1-3, #5, #6, #8-16, #19-23), each with its file:line evidence in the review
+  notes; e.g. #1 `call-panel.tsx` (header-only drag, throw from the live `y` with release velocity), #6 `globals.css`
+  (transitions with `@starting-style`, reverse from where they are), #15 `count-up.tsx` (restarts from the number on
+  screen), #16 `board.tsx` + `settle.ts` (release velocity carried into the settle).
+- **5 HAIDER DECIDES (#4, #7, #17, #18, #24): untouched** (command palette, deal-sheet grabber, TOTP field, heading
+  tracking, list-row context menus).
+- New problems the re-check found:
+  1. Under reduced motion the dock bead had no press response while every CSS press still showed an instant press.
+     **Fixed:** the bead's press shows instantly under reduced motion (no spring, no drag lift); new `shell.spec` test
+     "reduced motion: a press on the bead still shows, at once, and a drag does not lift it".
+  2. A toast dismissed during its 220 ms rise sinks from its resting place, not from where it was. **Kept:** toasts stay
+     at least 6 s, so this needs a dismiss inside the first fifth of a second; the copy is a new element, so following
+     the live position would need measuring the old one. Noted as a follow-up.
+- **Unresolved: none.**
+
 ## Screenshots
 
 In `docs/evidence/apple-audit/screens/`, EN, light and dark, 1440 and 390, `-before-` from a86550e and `-after-` from
-the final code (24 files). Every shot: no console error, no horizontal scroll (0 px).
+the final code (24 files), plus 12 for the one visible change (#23, advisor round 1): `leads-empty-rep-after-en-{light,dark}-{1280,1728}.png`
+and `leads-empty-rep-after-fr-{light,dark}-{1280,1440,1728,390}.png` (a new rep alone in an empty organisation; 900 px
+high on desktop, 390x844 on phone). 768 and 1024 are not shot: no layout changed. Every shot: no console error, no
+horizontal scroll (0 px); the #23 shots also have exactly one red button in `main` (the header's Add).
 
 | Shots | What to see |
 |---|---|
-| `leads-empty-rep-{before,after}-en-{light,dark}-{1440,390}.png` | #23: before, two red "Add lead" buttons; after, the empty state's Add is quiet and the header's Add is the one red button |
+| `leads-empty-rep-{before,after}-en-{light,dark}-{1440,390}.png`, `leads-empty-rep-after-{en,fr}-…` | #23: before, two red "Add lead" buttons; after, the empty state's Add is quiet and the header's Add is the one red button |
 | `share-basket-{before,after}-en-{light,dark}-{1440,390}.png` | #13: the bar at rest looks the same (its rise is motion, counted in `share.spec`); the only pixel changes are the run's product name and the "Updated" time |
-| `home-{before,after}-en-{light,dark}-{1440,390}.png` | #20 and #22: at rest the page is the same. Pixel diff: the Today titles region is identical in both builds (#22); the meeting time differs (seeded relative to the clock); the KPI tiles differ by 13 pixels of at most 2/255 (edge anti-aliasing: the tiles are no longer a separate animated layer). #22 also checked in one page at one instant: adding `font-medium` back to the 6 Outfit titles changes no pixel |
+| `home-{before,after}-en-{light,dark}-{1440,390}.png` | #20 and #22: at rest the page is the same. Pixel diff: the Today titles region is identical in both builds (#22); the meeting time differs (seeded relative to the clock); the KPI tiles differ by 13 pixels of at most 2/255 (edge anti-aliasing: the tiles are no longer a separate animated layer). #22 also checked in one page at one instant: adding `font-medium` back to the 4 title spans changes no pixel |
 
 ## Security review
 
