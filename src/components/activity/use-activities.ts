@@ -79,6 +79,12 @@ export function refreshLead(queryClient: QueryClient, leadId: string) {
   void queryClient.invalidateQueries({ queryKey: ["home"] }); // Home's calls, tasks and feed (Day 5c)
 }
 
+/** A deal a call opened or took back (Day 5b): the pipeline board and the lead's Deals tab are fetched again. */
+export function refreshDeals(queryClient: QueryClient, leadId: string) {
+  void queryClient.invalidateQueries({ queryKey: ["lead-deals", leadId] });
+  void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+}
+
 // The last entry this tab logged, for U and Cmd/Ctrl+Z (design 5.3: toast 10 s, keys and the entry menu 2 minutes).
 let lastLogged: { activityId: string; leadId: string; at: number; until: number } | null = null;
 export function lastUndoable() {
@@ -181,8 +187,7 @@ export function useLogActivity() {
             : t(`dealSkipped.${saved.deal.reason}`)
         : null;
       if (saved.deal || input.dealId) {
-        void queryClient.invalidateQueries({ queryKey: ["lead-deals", input.leadId] });
-        void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+        refreshDeals(queryClient, input.leadId);
         if (input.dealId) void queryClient.invalidateQueries({ queryKey: ["deal", input.dealId] });
       }
       if (input.type === "call" && saved.editable === false) {
@@ -247,10 +252,7 @@ export function useUndoActivity() {
       );
       refreshLead(queryClient, leadId);
       // Day 5b: the deal the call opened went with it, or stayed because it changed since.
-      if (result.data.deal) {
-        void queryClient.invalidateQueries({ queryKey: ["lead-deals", leadId] });
-        void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
-      }
+      if (result.data.deal) refreshDeals(queryClient, leadId);
       // The entry had changed the status, and it did not come back: a colleague changed it since (never overwritten).
       toast.show(
         result.data.deal === "kept" ? t("dealKept") : statusExpected && !result.data.restored.status ? t("undonePartly") : t("undone"),

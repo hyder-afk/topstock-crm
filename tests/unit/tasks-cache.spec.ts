@@ -5,6 +5,7 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import {
+  refreshTasks,
   removeTask,
   restoreTask,
   tasksKey,
@@ -90,5 +91,18 @@ test("a failed tick puts back its own task only, where it was", async () => {
   restoreTask(client, snapA, "A");
   expect(shown(client)).toEqual(["A", "C"]);
   expect(client.getQueryData<InfiniteData<TaskPageWithCounts>>(tasksKey("mine", "done"))?.pages[0].rows.map((r) => r.id)).toEqual(["D"]);
+  client.clear();
+});
+
+// Bugs audit L3: a task ticked on the Tasks page left Home's Today card stale (and the reverse, see today-card.tsx).
+test("refreshTasks reads Home again with the task lists", () => {
+  const client = new QueryClient();
+  client.setQueryData(["home", "mine"], { any: 1 });
+  client.setQueryData(tasksKey("mine", "today"), { pages: [page(["A"])], pageParams: [null] });
+  client.setQueryData(["lead-tasks", "L"], []);
+  refreshTasks(client, "L");
+  expect(client.getQueryState(["home", "mine"])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(tasksKey("mine", "today"))?.isInvalidated).toBe(true);
+  expect(client.getQueryState(["lead-tasks", "L"])?.isInvalidated).toBe(true);
   client.clear();
 });

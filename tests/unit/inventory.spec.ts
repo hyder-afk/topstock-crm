@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { QueryClient } from "@tanstack/react-query";
+import { refreshInventory } from "@/components/inventory/use-inventory";
 import { STOCK_HINTS, stockError } from "@/lib/inventory/errors";
 import { parseStockFilters, stockFiltersToParams, parseTab, movementParams } from "@/lib/inventory/filters";
 import { moneyTotal, pieces, priceRange, pricePerPiece } from "@/lib/inventory/format";
@@ -152,4 +154,15 @@ test.describe("action schemas (strict, whitelisted)", () => {
     expect(receiveInput.safeParse({ productId: req, place: "transit", pieces: 10, reason: "received", note: null, requestId: req }).success).toBe(true);
     expect(receiveInput.safeParse({ productId: req, place: "transit", pieces: 10, reason: "count", note: null, requestId: req }).success).toBe(false);
   });
+});
+
+// Bugs audit L3: a stock change left Home's low-stock card stale for up to its stale time.
+test("refreshInventory reads Home again (its low-stock card)", () => {
+  const client = new QueryClient();
+  client.setQueryData(["home", "mine"], { any: 1 });
+  client.setQueryData(["stock", ""], { any: 1 });
+  refreshInventory(client, "p1");
+  expect(client.getQueryState(["home", "mine"])?.isInvalidated).toBe(true);
+  expect(client.getQueryState(["stock", ""])?.isInvalidated).toBe(true);
+  client.clear();
 });

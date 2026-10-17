@@ -83,8 +83,9 @@ export function insertTask(queryClient: QueryClient, scope: TaskScope, bucket: T
   );
 }
 
-/** Everything the Tasks page and the lead pages show about tasks is read again. */
+/** Everything the Tasks page, the lead pages and Home's Today card show about tasks is read again. */
 export function refreshTasks(queryClient: QueryClient, leadId?: string | null) {
   void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+  void queryClient.invalidateQueries({ queryKey: ["home"] });
   if (leadId) void queryClient.invalidateQueries({ queryKey: ["lead-tasks", leadId] });
 }
