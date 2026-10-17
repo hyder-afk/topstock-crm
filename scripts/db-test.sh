@@ -3,13 +3,13 @@
 # No keys; the only network call fetches the pinned advisor rules (scripts/db-advisors.sh).
 # CI runs the same migrations and tests against the real Supabase Postgres image.
 set -euo pipefail
-# The app's day is the Paris day ((now() at time zone 'Europe/Paris')::date), so the tests' current_date must be too:
-# with the session on UTC, checks at a day limit (a hold up to 90 days out) flipped between 22:00 and 24:00 UTC.
-export PGTZ=Europe/Paris
+# The tests do not depend on the session's time zone: dates checked against the guards' Paris day come from
+# pg_temp.paris_today() (or the same expression), never current_date. Run with any PGTZ, at any hour.
+# DB_TEST_PORT picks the throwaway cluster's port (default 54329) when another run holds it.
+PORT="${DB_TEST_PORT:-54329}"
+case "$PORT" in ''|*[!0-9]*) echo "DB_TEST_PORT must be a number" >&2; exit 2 ;; esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN=/usr/lib/postgresql/16/bin
-PORT="${DB_TEST_PORT:-54329}"  # another port when two checkouts run their tests at the same time
-case "$PORT" in *[!0-9]*|"") echo "DB_TEST_PORT must be a number" >&2; exit 2 ;; esac
 WORK="$(mktemp -d -p /tmp)"
 chown postgres "$WORK" 2>/dev/null || true
 cleanup() {
