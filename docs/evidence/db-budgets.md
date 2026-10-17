@@ -6,11 +6,18 @@ The `db-budgets` workflow (manual start; re-times the database speed budgets on 
 
 - `scripts/db-budget-table.mjs` (Node, no dependency) reads the logs, prints one Markdown table per log
   (label | measured | budget | OK/MISS), lists every line that mentions a budget but could not be read (never dropped),
-  counts the plan headers it skips, and exits 1 on a miss or an "OVER BUDGET" line, 2 when a log is missing or no budget
-  line was found (an empty table never passes), else 0.
-- `.github/workflows/db-budgets.yml`: the summary step (`if: always()`, never fails itself) writes the table to the run
+  counts the plan headers it skips, and exits 1 on a miss or an "OVER BUDGET" line, else 2 when the check is incomplete,
+  else 0. Incomplete means: a log missing or unreadable; any one log with no budget row (an empty table never passes);
+  a line that mentions a budget but could not be read; or a required budget ID with fewer rows than `REQUIRED` lists
+  (P1 2, P2 6, P3 1, P4 5, P4b 2, P5 4 (the two "with a deal" lines, two values each), P6 2, P7 3, P8 2, P11 3, I1 11,
+  I2 1, I3 1, I4 3, I5 6, I6 3, I7 2, I8 1, I9 3, I10 1, I11 1, I12 1, I13 2, I14 1, I16 2, I17 2: the counts of the
+  full local run below, over both logs; a script that adds a case needs no change, one that drops or renames a case
+  must update the list). The missing IDs are listed under the table.
+- `.github/workflows/db-budgets.yml`: both measuring steps use `shell: bash` (bash `-eo pipefail`), so a crash in
+  `db-perf.sh` or the import block fails its step despite `| tee`; the summary step (`if: always()`, never fails itself) writes the table to the run
   summary and the log artifact; the last step reruns the parser and fails the job on a miss. Action pins unchanged.
-- `tests/unit/db-budget-table.spec.ts`: 20 tests with sample lines of every perf script's output format.
+- `tests/unit/db-budget-table.spec.ts`: 26 tests with sample lines of every perf script's output format, plus the exit 2
+  cases (one empty log, an unreadable line, a missing or short required ID, a header budget that must not leak).
 
 ## What is compared
 
@@ -22,7 +29,7 @@ The `db-budgets` workflow (manual start; re-times the database speed budgets on 
 | `label : log_activity x ms, undo_activity y ms (budget 15 / 18 ms)` (perf_day5 P5) | in order: log_activity against 15, undo_activity against 18 (`day5/design.md` P5 "≤ 15 / ≤ 18 ms", `day5b/perf.md`) |
 | `... (baseline)` | informational row, never a miss |
 | `SIZE label : n bytes (budget 153,600)` (perf_share I10) | bytes (a budget with no unit takes the value's unit) |
-| `=== ... (budget 10 ms each) ===` then `label : x ms` lines (perf_files P11) | the header budget, for each line after it |
+| `=== ... (budget 10 ms each) ===` then `label : x ms` lines (perf_files P11) | the header budget, for each line after it; the first timing line must come within 3 lines of the header, else the header is listed as unreadable |
 | `label: wall clock x ms (budget 3,000 ms)`; `...: wall clock x ms; p95 y ms (...) (budget 25 ms)` (stock_concurrency I16) | the wall clock; p95 when the line has one |
 | `TIMING label (budget 1,500 ms each, 30 s in all):` then psql `Time:` lines (perf_stock_import I12 to I14) | slowest call against "each", the sum against "in all"; a `Time:` line right after another one is `\gexec`'s own query, left out |
 
@@ -148,3 +155,17 @@ Measured: p95 where a line gives p95 and avg; the average where it gives avg and
 **Lines that mention a budget but could not be read (0):** none.
 
 Not measurements, skipped: 40 PLAN header lines.
+
+## Checks
+
+| Check | Result |
+|---|---|
+| `npm run lint` | 0 errors (3 warnings, unchanged on main: `useVirtualizer` in check-step, stock-table, leads-table) |
+| `npm run typecheck` | clean |
+| Unit (`npm run test:unit`) | `db-budget-table.spec.ts` 26 passed; full suite 771 passed |
+| Parser on the local logs above | 71 budgets, 62 OK, 9 missed, 0 unreadable, no required ID missing; exit 1 |
+| Workflow steps simulated locally (`RUNNER_TEMP`, `GITHUB_STEP_SUMMARY` set) | summary step exit 0 with the table written; fail step exit 1; with the stock log removed the summary names it and the fail step still fails |
+| Semgrep `p/github-actions` + `p/javascript` on the workflow and the script | no findings (run by the advisor; the registry is blocked by this session's proxy, so the builder could not rerun it) |
+| gitleaks | not installed here; runs in CI |
+| /security-review | see PR |
+

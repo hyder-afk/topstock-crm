@@ -1,7 +1,8 @@
 # Day 7d (Gate 1, plan question 11, Haider 15 Oct 2026 "the GitHub runner, once"): re-times the database speed budgets
 # once on a GitHub runner instead of loading fake test data into the dev project. Started by hand only
 # (Actions > db-budgets > Run workflow); never on a push or a PR, so it costs runner minutes only when asked.
-# PREPARED, RUNS WHEN CI BILLING IS BACK (GitHub Actions is blocked by billing on 16 Oct 2026).
+# Ran green on run 38983135615 but could not fail on a miss; the budget table and fail-on-miss below were added
+# after it (branch db-budgets-table). Next manual run pending Haider.
 # workflow_dispatch runs only once this file is on the default branch (GitHub docs, "Manually running a workflow"):
 # start it after the PR merges, or with `gh workflow run db-budgets --ref <branch>` once main has the file.
 # ubuntu-24.04 ships PostgreSQL 16 (actions/runner-images toolset-2404.json) with its service disabled by default; this
@@ -39,8 +40,11 @@ jobs:
           nproc; free -m
       - name: Database budgets (scripts/db-perf.sh)
         # The script runs initdb and the server as the postgres user (as on the local VMs), so it needs root.
+        # shell: bash runs with -o pipefail, so a crash before `| tee` fails the step (the summary still runs).
+        shell: bash
         run: sudo -E bash scripts/db-perf.sh 2>&1 | tee "$RUNNER_TEMP/db-perf.log"
       - name: Stock sheet import at 5,000 rows (Day 6c budget, 30 s)
+        shell: bash
         run: |
           sudo bash -euo pipefail -c '
             BIN=/usr/lib/postgresql/16/bin; WORK=$(mktemp -d -p /tmp); chown postgres "$WORK"
@@ -80,5 +84,6 @@ jobs:
             ${{ runner.temp }}/budget-table.md
           retention-days: 30
       - name: Fail on a missed budget
-        # Exit 1: a measure over its budget or an "OVER BUDGET" line; exit 2: a log missing or no budget line found.
+        # Exit 1: a measure over its budget or an "OVER BUDGET" line; exit 2: the check is incomplete (a log missing or
+        # with no budget row, an unreadable budget line, or a required budget ID missing).
         run: node scripts/db-budget-table.mjs "$RUNNER_TEMP/db-perf.log" "$RUNNER_TEMP/stock-import-perf.log" > /dev/null
