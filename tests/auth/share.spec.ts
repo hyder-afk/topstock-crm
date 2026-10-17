@@ -264,8 +264,17 @@ test("share_public_request_creates_task_for_owner", async ({ browser }) => {
   await sheet.getByLabel("Quantité").fill("25");
   await expect(sheet.getByText("= 600 pcs")).toBeVisible();
   await expect(sheet.getByText("Nous avons 480 pcs. Nous demandons le reste au fournisseur.")).toBeVisible();
+  // The basket bar rises from the bottom edge when it first appears (Apple audit #13).
+  await page.evaluate(() => {
+    const w = window as unknown as { __barRise: number };
+    w.__barRise = 0;
+    document.addEventListener("animationstart", (e) => {
+      if (e.animationName === "sheet-in" && (e.target as Element).matches(".fixed.bottom-0")) w.__barRise += 1;
+    });
+  });
   await sheet.getByRole("button", { name: "Ajouter à la demande" }).click();
   await expect(sheet).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __barRise: number }).__barRise)).toBe(1);
   await expect(page.getByRole("button", { name: new RegExp(visible) })).toBeFocused();
   await expect(page.getByText("Votre demande · 1 article")).toBeVisible();
   await page.waitForTimeout(2100); // the time trap: a person takes more than 2 s

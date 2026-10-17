@@ -291,6 +291,11 @@
 
 /* The product panel as a right-hand sheet (1024 to 1279 px) slides in from the right edge it is attached to, and the
    panel beside the stock table (1280 px and up) settles in from the right when it opens (Day 6b; Apple audit #8). */
+/* The client share page's basket bar rises from the bottom edge it lives on, once, when it first appears (Apple audit
+   #13; the phone sheets' rise; the reduced-motion block makes it instant). */
+.animate-bar-in {
+  animation: sheet-in 320ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
 @keyframes side-in {
   from {
     opacity: 0.6;
