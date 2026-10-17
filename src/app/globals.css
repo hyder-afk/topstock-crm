@@ -288,7 +288,7 @@
 }
 
 /* The product panel as a right-hand sheet (1024 to 1279 px) slides in from the right edge it is attached to, and the
-   panel beside the stock table (1280 px and up) settles in from the right on each product (Day 6b). */
+   panel beside the stock table (1280 px and up) settles in from the right when it opens (Day 6b; Apple audit #8). */
 @keyframes side-in {
   from {
     opacity: 0.6;

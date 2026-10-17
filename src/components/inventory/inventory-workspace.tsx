@@ -379,8 +379,10 @@ export function InventoryWorkspace({
           )}
         </div>
         {panelOpen && ui.product ? (
-          <aside aria-label={t("panelLabel")} data-product-panel className="min-w-0 self-start rounded-lg bg-card p-5 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-32px)] xl:overflow-y-auto xl:overscroll-contain">
-            <div key={ui.product} className="animate-panel">
+          // The panel settles in when it opens; stepping to another product (J/K, arrows) updates it in place, as the
+          // Leads preview does (Apple audit #8). The key still gives each product a fresh panel state.
+          <aside aria-label={t("panelLabel")} data-product-panel className="animate-panel min-w-0 self-start rounded-lg bg-card p-5 xl:sticky xl:top-4 xl:max-h-[calc(100dvh-32px)] xl:overflow-y-auto xl:overscroll-contain">
+            <div key={ui.product}>
               <ProductPanel id={ui.product} role={role} me={me} stepUp={stepUp} onClose={closeProduct} />
             </div>
           </aside>

@@ -325,12 +325,26 @@ test("inventory_keyboard_only", async ({ browser }) => {
   await expect(table.getByRole("link")).toHaveCount(2);
   // Tab into the table, Enter opens, Down moves to the next product (and opens it), Esc closes.
   await table.getByRole("link").first().focus();
+  // The side panel's entrance plays when it opens, not again for each product stepped to (Apple audit #8).
+  await page.evaluate(() => {
+    const w = window as unknown as { __panelIn: number };
+    w.__panelIn = 0;
+    document.addEventListener("animationstart", (e) => e.animationName === "panel-in" && (w.__panelIn += 1));
+  });
+  const panelEntrances = () => page.evaluate(() => (window as unknown as { __panelIn: number }).__panelIn);
   await page.keyboard.press("Enter");
   const panel = page.getByRole("complementary", { name: "Product" });
   const first = (await panel.getByRole("heading").first().textContent())?.trim();
+  await expect.poll(panelEntrances).toBe(1);
   await page.keyboard.press("ArrowDown");
   await expect(panel.getByRole("heading").first()).not.toHaveText(first ?? "");
   await expect(table.getByRole("link").nth(1)).toBeFocused();
+  await page.keyboard.press("k");
+  await expect(panel.getByRole("heading").first()).toHaveText(first ?? "");
+  await page.keyboard.press("j");
+  await expect(table.getByRole("link").nth(1)).toBeFocused();
+  await page.waitForTimeout(300);
+  expect(await panelEntrances(), "no entrance replayed while stepping through products").toBe(1);
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
   await expect(table.getByRole("link").nth(1)).toBeFocused();
