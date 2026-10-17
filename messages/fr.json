@@ -1373,7 +1373,7 @@
     "refreshFailed": "Impossible d’actualiser",
     "retry": "Réessayer",
     "offline": "Vous êtes hors ligne · les déplacements sont en pause",
-    "loading": "Chargement du pipeline",
+    "loading": "Chargement du pipeline…",
     "loadFailed": "Impossible de charger le pipeline",
     "confirmWin": "Confirmez la vente",
     "conflict": "{name} vient de la déplacer en {stage}.",

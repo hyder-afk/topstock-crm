@@ -1373,7 +1373,7 @@
     "refreshFailed": "Couldn’t refresh",
     "retry": "Retry",
     "offline": "You’re offline · moves are paused",
-    "loading": "Loading the pipeline",
+    "loading": "Loading the pipeline…",
     "loadFailed": "Couldn’t load the pipeline",
     "confirmWin": "Confirm the win",
     "conflict": "{name} moved this to {stage} a moment ago.",
