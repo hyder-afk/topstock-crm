@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Select } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { kindIcon } from "@/components/tasks/quick-add";
 import { personName, type TeamMember } from "@/lib/leads";
@@ -103,119 +104,182 @@ export const TaskRow = memo(function TaskRow({
     wasEditing.current = editing;
   }, [editing]);
 
+  const hasMenu = task.can_edit && !task.pending;
+  // An item picked from the right-click menu moves the focus itself (the edit form, the next row, the delete dialog);
+  // Escape gives it back to where it was before the menu opened.
+  const picked = useRef(false);
+  const onEdit = () => {
+    picked.current = true;
+    onEditChange(task.id);
+  };
+  const onDismiss = () => {
+    picked.current = true;
+    if (checkRef.current) actions.dismiss(task, checkRef.current);
+  };
+  const onDelete = () => {
+    picked.current = true;
+    if (checkRef.current) actions.askDelete(task, checkRef.current);
+  };
+
   return (
-    <motion.li
-      ref={rowRef}
-      layout={reduce ? false : "position"}
-      // A task added after the list was first drawn fades in and rises 8 px (design 7.8; reduced motion: the fade only).
-      // Rows already there when the list first shows do not move (AnimatePresence initial={false} in the list).
-      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={reduce ? { duration: 0.12 } : springs.smooth}
-      data-task-id={task.id}
-      // Long lists (pages of 50 add up): rows far off screen skip layout and paint until they come near.
-      className={cn("flex min-h-14 items-start gap-2 border-b border-border px-2 py-1.5 [contain-intrinsic-size:auto_64px] [content-visibility:auto] last:border-b-0 sm:px-3", task.pending && "opacity-70")}
-    >
-      {editing ? (
-        <EditForm task={task} zone={zone} team={team} canAssign={canAssign} onSave={(v) => actions.save(task, v)} onClose={() => onEditChange(null)} />
-      ) : (
-        <>
-          <button
-            ref={checkRef}
-            type="button"
-            role="checkbox"
-            aria-checked={shownChecked}
-            aria-label={done ? t("markOpen", { title: task.title }) : t("markDone", { title: task.title })}
-            data-task-check
-            disabled={task.pending}
-            onClick={(e) => {
-              setChecking(true);
-              actions.toggle(task, e.currentTarget, () => setChecking(false));
-            }}
-            className="group grid size-11 shrink-0 place-items-center rounded-full transition-transform duration-150 active:scale-[0.94] sm:size-10"
-          >
-            <span
-              className={cn(
-                "grid size-5 place-items-center rounded-full border-2 transition-[background-color,border-color] duration-150",
-                shownChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground group-hover:border-foreground",
-              )}
-            >
-              <Check aria-hidden="true" strokeWidth={3} className={cn("size-3 transition-opacity", shownChecked ? "opacity-100" : "opacity-0 group-hover:opacity-60")} />
-            </span>
-          </button>
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5 sm:py-2">
-            <span dir="auto" className={cn("text-sm break-words", done && "text-muted-foreground line-through decoration-1")}>
-              {task.title}
-            </span>
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <Icon aria-hidden="true" strokeWidth={1.75} className="size-3.5" />
-                <span className="sr-only">{t(`kinds.${task.kind}`)}</span>
-                <span className="font-mono">
-                  {done && task.done_at && now
-                    ? t("doneAt", { when: format.dateTime(new Date(task.done_at), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone }) })
-                    : now
-                      ? due(task, now)
-                      : " "}
-                </span>
-              </span>
-              {theirs ? <span className="font-mono">{t("theirTime", { time: theirs })}</span> : null}
-              {overdue ? <span className="font-bold text-status-red">{t("overdue")}</span> : null}
-              {task.company_id && task.company_name ? (
-                <Link
-                  href={`/leads/${task.company_id}`}
-                  data-task-lead
-                  // 24 px tall in the line; on phones the tap area reaches 44 px (10 px above and below, over text only),
-                  // so the row keeps its height and matches its skeleton.
-                  className="relative inline-flex min-h-6 max-w-full items-center gap-1 text-foreground underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-2.5 max-sm:before:content-['']"
-                >
-                  <Building2 aria-hidden="true" strokeWidth={1.75} className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="truncate">{task.company_name}</span>
-                </Link>
-              ) : null}
-              {task.contact_name ? <span className="truncate">{task.contact_name}</span> : null}
-              {task.company_lead_status === "do_not_contact" ? (
-                <span className="inline-flex items-center gap-1">
-                  <span aria-hidden="true" className="size-1.5 rounded-full bg-status-red" />
-                  {t("dncLead")}
-                </span>
-              ) : null}
-            </span>
-          </div>
-          {showAssignee ? (
-            <span
-              className="mt-2.5 grid size-8 shrink-0 place-items-center rounded-full bg-muted font-mono text-[11px] text-muted-foreground sm:mt-2"
-            >
-              <span className="sr-only">{t("assignee", { name: personName({ first_name: task.assignee_first_name, last_name: task.assignee_last_name }) })}</span>
-              <span aria-hidden="true">{initials(task.assignee_first_name, task.assignee_last_name)}</span>
-            </span>
-          ) : null}
-          {task.can_edit && !task.pending ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label={t("menu", { title: task.title })}
-                className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-10"
+    // Right-click (or Shift+F10, the Menu key) opens the ⋯ menu's items at the pointer, as on a deal card (Apple audit
+    // #14). Not while the row is an edit form or has no menu: the browser's own menu then.
+    <ContextMenu onOpenChange={(open) => open && (picked.current = false)}>
+      <ContextMenuTrigger asChild disabled={editing || !hasMenu}>
+        <motion.li
+          ref={rowRef}
+          layout={reduce ? false : "position"}
+          // A task added after the list was first drawn fades in and rises 8 px (design 7.8; reduced motion: the fade only).
+          // Rows already there when the list first shows do not move (AnimatePresence initial={false} in the list).
+          initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={reduce ? { duration: 0.12 } : springs.smooth}
+          data-task-id={task.id}
+          // Long lists (pages of 50 add up): rows far off screen skip layout and paint until they come near.
+          className={cn("flex min-h-14 items-start gap-2 border-b border-border px-2 py-1.5 [contain-intrinsic-size:auto_64px] [content-visibility:auto] last:border-b-0 sm:px-3", task.pending && "opacity-70")}
+        >
+          {editing ? (
+            <EditForm task={task} zone={zone} team={team} canAssign={canAssign} onSave={(v) => actions.save(task, v)} onClose={() => onEditChange(null)} />
+          ) : (
+            <>
+              <button
+                ref={checkRef}
+                type="button"
+                role="checkbox"
+                aria-checked={shownChecked}
+                aria-label={done ? t("markOpen", { title: task.title }) : t("markDone", { title: task.title })}
+                data-task-check
+                disabled={task.pending}
+                onClick={(e) => {
+                  setChecking(true);
+                  actions.toggle(task, e.currentTarget, () => setChecking(false));
+                }}
+                className="group grid size-11 shrink-0 place-items-center rounded-full transition-transform duration-150 active:scale-[0.94] sm:size-10"
               >
-                <Ellipsis aria-hidden="true" strokeWidth={1.75} className="size-5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
-                {!done ? <DropdownMenuItem onSelect={() => onEditChange(task.id)}>{t("edit")}</DropdownMenuItem> : null}
-                {!done ? (
-                  <DropdownMenuItem onSelect={() => checkRef.current && actions.dismiss(task, checkRef.current)}>{t("dismiss")}</DropdownMenuItem>
-                ) : null}
-                {!done ? <DropdownMenuSeparator /> : null}
-                <DropdownMenuItem onSelect={() => checkRef.current && actions.askDelete(task, checkRef.current)} className="text-status-red">
-                  {t("delete")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </>
-      )}
-    </motion.li>
+                <span
+                  className={cn(
+                    "grid size-5 place-items-center rounded-full border-2 transition-[background-color,border-color] duration-150",
+                    shownChecked ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground group-hover:border-foreground",
+                  )}
+                >
+                  <Check aria-hidden="true" strokeWidth={3} className={cn("size-3 transition-opacity", shownChecked ? "opacity-100" : "opacity-0 group-hover:opacity-60")} />
+                </span>
+              </button>
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5 sm:py-2">
+                <span dir="auto" className={cn("text-sm break-words", done && "text-muted-foreground line-through decoration-1")}>
+                  {task.title}
+                </span>
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <Icon aria-hidden="true" strokeWidth={1.75} className="size-3.5" />
+                    <span className="sr-only">{t(`kinds.${task.kind}`)}</span>
+                    <span className="font-mono">
+                      {done && task.done_at && now
+                        ? t("doneAt", { when: format.dateTime(new Date(task.done_at), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone }) })
+                        : now
+                          ? due(task, now)
+                          : " "}
+                    </span>
+                  </span>
+                  {theirs ? <span className="font-mono">{t("theirTime", { time: theirs })}</span> : null}
+                  {overdue ? <span className="font-bold text-status-red">{t("overdue")}</span> : null}
+                  {task.company_id && task.company_name ? (
+                    <Link
+                      href={`/leads/${task.company_id}`}
+                      data-task-lead
+                      // The lead link keeps the browser's own link menu (open in a new tab), not the row's.
+                      onContextMenu={(e) => e.stopPropagation()}
+                      // 24 px tall in the line; on phones the tap area reaches 44 px (10 px above and below, over text only),
+                      // so the row keeps its height and matches its skeleton.
+                      className="relative inline-flex min-h-6 max-w-full items-center gap-1 text-foreground underline-offset-4 hover:underline max-sm:before:absolute max-sm:before:inset-x-0 max-sm:before:-inset-y-2.5 max-sm:before:content-['']"
+                    >
+                      <Building2 aria-hidden="true" strokeWidth={1.75} className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{task.company_name}</span>
+                    </Link>
+                  ) : null}
+                  {task.contact_name ? <span className="truncate">{task.contact_name}</span> : null}
+                  {task.company_lead_status === "do_not_contact" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span aria-hidden="true" className="size-1.5 rounded-full bg-status-red" />
+                      {t("dncLead")}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              {showAssignee ? (
+                <span
+                  className="mt-2.5 grid size-8 shrink-0 place-items-center rounded-full bg-muted font-mono text-[11px] text-muted-foreground sm:mt-2"
+                >
+                  <span className="sr-only">{t("assignee", { name: personName({ first_name: task.assignee_first_name, last_name: task.assignee_last_name }) })}</span>
+                  <span aria-hidden="true">{initials(task.assignee_first_name, task.assignee_last_name)}</span>
+                </span>
+              ) : null}
+              {hasMenu ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label={t("menu", { title: task.title })}
+                    className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-10"
+                  >
+                    <Ellipsis aria-hidden="true" strokeWidth={1.75} className="size-5" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent onCloseAutoFocus={(e) => e.preventDefault()}>
+                    <TaskMenuItems kind="dropdown" done={done} onEdit={onEdit} onDismiss={onDismiss} onDelete={onDelete} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </>
+          )}
+        </motion.li>
+      </ContextMenuTrigger>
+      {hasMenu && !editing ? (
+        <ContextMenuContent
+          aria-label={t("menu", { title: task.title })}
+          onCloseAutoFocus={(e) => {
+            if (!picked.current) return;
+            picked.current = false;
+            e.preventDefault();
+          }}
+        >
+          <TaskMenuItems kind="context" done={done} onEdit={onEdit} onDismiss={onDismiss} onDelete={onDelete} />
+        </ContextMenuContent>
+      ) : null}
+    </ContextMenu>
   );
 });
+
+const menuParts = {
+  context: { Item: ContextMenuItem, Separator: ContextMenuSeparator },
+  dropdown: { Item: DropdownMenuItem, Separator: DropdownMenuSeparator },
+} as const;
+
+/** The row's menu items, the same in the ⋯ menu and the right-click menu: Edit, Dismiss (open tasks), Delete. */
+function TaskMenuItems({
+  kind,
+  done,
+  onEdit,
+  onDismiss,
+  onDelete,
+}: {
+  kind: keyof typeof menuParts;
+  done: boolean;
+  onEdit: () => void;
+  onDismiss: () => void;
+  onDelete: () => void;
+}) {
+  const t = useTranslations("Tasks");
+  const { Item, Separator } = menuParts[kind];
+  return (
+    <>
+      {!done ? <Item onSelect={onEdit}>{t("edit")}</Item> : null}
+      {!done ? <Item onSelect={onDismiss}>{t("dismiss")}</Item> : null}
+      {!done ? <Separator /> : null}
+      <Item onSelect={onDelete} className="text-status-red">
+        {t("delete")}
+      </Item>
+    </>
+  );
+}
 
 function EditForm({
   task,

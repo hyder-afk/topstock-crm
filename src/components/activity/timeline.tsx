@@ -29,6 +29,7 @@ import {
   type TimelinePage,
 } from "@/lib/activities";
 import { personName } from "@/lib/leads";
+import { isTyping } from "@/lib/shortcuts";
 import { addDays, browserZone, localDate } from "@/lib/timezones";
 import { cn } from "@/lib/utils";
 import { retryKeepingFocus, timelineTarget } from "@/lib/focus";
@@ -481,6 +482,8 @@ const EntryItem = memo(function EntryItem({
   const [confirming, setConfirming] = useState(false);
   const [askedOnce, setAskedOnce] = useState(false);
   if (confirming && !askedOnce) setAskedOnce(true);
+  // The ⋯ menu: null until first used (a plain button until then), then open or closed.
+  const [menuOpen, setMenuOpen] = useState<boolean | null>(null);
   const bodyRef = useRef<HTMLParagraphElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -608,7 +611,17 @@ const EntryItem = memo(function EntryItem({
       : null;
 
   // Only a just-logged entry rises in (Motion); the others are plain articles, which mount far faster while scrolling.
+  const hasMenu = !entry.pending && (entry.is_mine || canDelete);
   const shell = {
+    // Right-click (or Shift+F10, the Menu key) on the entry opens its ⋯ menu, which takes the focus and gives it back to
+    // its button (Apple audit #14). The menu stays lazy (no right-click menu mounted per entry); the browser's own menu
+    // stays on the edit box, a link and selected text.
+    onContextMenu: (e: React.MouseEvent<HTMLElement>) => {
+      if (!hasMenu || editing || isTyping(e.target) || (e.target as Element).closest("a[href]")) return;
+      if (window.getSelection()?.toString()) return;
+      e.preventDefault();
+      setMenuOpen(true);
+    },
     "aria-busy": entry.pending || undefined,
     "aria-posinset": posInSet,
     "aria-setsize": setSize,
@@ -652,9 +665,11 @@ const EntryItem = memo(function EntryItem({
               ) : null}
             </p>
           </div>
-          {!entry.pending && (entry.is_mine || canDelete) ? (
+          {hasMenu ? (
             <EntryMenu
               label={t("menu")}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
               triggerRef={menuRef}
               // Picking Edit text: the menu closes into the text box, not back to its button (Radix's default).
               onCloseAutoFocus={(e) => {
@@ -794,16 +809,20 @@ const menuTrigger =
  */
 function EntryMenu({
   label,
+  open,
+  onOpenChange: setOpen,
   triggerRef,
   onCloseAutoFocus,
   children,
 }: {
   label: string;
+  /** null until first used. */
+  open: boolean | null;
+  onOpenChange: (open: boolean) => void;
   triggerRef?: React.Ref<HTMLButtonElement>;
   onCloseAutoFocus?: (e: Event) => void;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState<boolean | null>(null);
   const icon = <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />;
   if (open === null) {
     return (

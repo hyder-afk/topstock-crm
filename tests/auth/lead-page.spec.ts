@@ -438,6 +438,12 @@ test("note_edit_marks_edited, xss_note_is_text, draft_survives_reload", async ({
   expect(await page.locator("main img[src='x']").count()).toBe(0);
   expect(dialogs).toBe(0);
   expect(sql(`select body from public.activities where company_id = '${lead}'`)).toBe(evil);
+  // Right-click on the entry opens its ⋯ menu (Apple audit #14); Escape gives the focus back to the menu's button.
+  await entry.getByRole("heading").first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Edit text" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  await expect(entry.getByRole("button", { name: "Entry options" })).toBeFocused();
   // Edit by the author: "Edited".
   await entry.getByRole("button", { name: "Entry options" }).click();
   await page.getByRole("menuitem", { name: "Edit text" }).click();

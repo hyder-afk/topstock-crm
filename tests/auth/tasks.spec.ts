@@ -162,6 +162,33 @@ test("dismiss_and_undo: Dismiss from the menu, Undo puts it back", async ({ brow
   await context.close();
 });
 
+test("right_click_opens_the_row_menu: the ⋯ menu's items at the pointer, Shift+F10 too (Apple audit #14)", async ({ browser }) => {
+  makeTask(adminEmail, "Check the pallet labels", { date: todayIn("Europe/Paris") });
+  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  await openTasks(page);
+  const menu = page.getByRole("menu", { name: "More actions for “Check the pallet labels”" });
+  // Right-click on the row's title: the same items as its ⋯ menu.
+  await row(page, "Check the pallet labels").getByText("Check the pallet labels").click({ button: "right" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveText(["Edit", "Dismiss", "Delete"]);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  // From the keyboard: Shift+F10 on the row's check opens it; Escape gives the focus back to the check.
+  const check = row(page, "Check the pallet labels").getByRole("checkbox");
+  await check.focus();
+  await page.keyboard.press("Shift+F10");
+  await expect(menu).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(check).toBeFocused();
+  // An item works as from the ⋯ menu.
+  await row(page, "Check the pallet labels").getByText("Check the pallet labels").click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Dismiss" }).click();
+  await expect(row(page, "Check the pallet labels")).toHaveCount(0);
+  await expect.poll(() => sql(`select cancelled_at is not null from public.tasks where ${mine()} and title = 'Check the pallet labels'`)).toBe("t");
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("karachi_today_boundary: Today and Tomorrow follow the profile's zone, not the browser's", async ({ browser }) => {
   // A timed task at 02:00 Karachi time tomorrow, and an all-day task on Karachi's today.
   const at = sql(`select to_char((date_trunc('day', now() at time zone 'Asia/Karachi') + interval '1 day 2 hours') at time zone 'Asia/Karachi' at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`);
