@@ -130,6 +130,18 @@ export function QueueWorkspace({
   const q = useQueue({ scope: "mine", anyHours: false, skipLunch: false }, onEvent);
   const { settings, setSettings, current, next } = q;
 
+  // Which way the cards travel (Apple audit #5): forward, the card leaves to the left and the next comes from the right;
+  // a card that comes back (Undo puts the last logged lead back at the front) returns from the left, the way it left,
+  // and the current card makes way to the right. Worked out when the card on screen changes, from the cards that left.
+  const [travel, setTravel] = useState<{ id: string | null; dir: 1 | -1; left: string[] }>({ id: current?.id ?? null, dir: 1, left: [] });
+  if ((current?.id ?? null) !== travel.id) {
+    const id = current?.id ?? null;
+    const back = id !== null && travel.left.includes(id);
+    const left = travel.left.filter((x) => x !== id);
+    if (travel.id && !back) left.push(travel.id);
+    setTravel({ id, dir: back ? -1 : 1, left: left.slice(-5) });
+  }
+
   // "Logged: No answer · back Tue 13 Oct · Undo (U)" for 10 s, once per saved outcome.
   const { lastLogged, undo } = q;
   useEffect(() => {
@@ -666,8 +678,8 @@ export function QueueWorkspace({
         <QueueCardSkeleton label={t("loading")} />
       ) : (
         <div className="relative grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 [grid-template-areas:'head'_'rail'_'details'] lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr] lg:items-start lg:[grid-template-areas:'head_rail'_'details_rail']">
-          <AnimatePresence mode="popLayout" initial={false}>
-            <CardShell key={current.id} labelledBy={`queue-card-${current.id}`} reduce={!!reduce}>
+          <AnimatePresence mode="popLayout" initial={false} custom={travel.dir}>
+            <CardShell key={current.id} labelledBy={`queue-card-${current.id}`} reduce={!!reduce} dir={travel.dir}>
               {onlyDnc ? (
                 <p role="note" className="flex items-start gap-2 rounded-md bg-muted p-3 text-sm">
                   <span aria-hidden="true" className="mt-1.5 size-1.5 shrink-0 rounded-full bg-status-red" />
@@ -774,11 +786,19 @@ export function QueueWorkspace({
 }
 
 /**
- * The card's frame: out to the left and in from the right (the `snappy` spring; a key mid-flight starts from where the
- * card is), a short fade with reduced motion. The leaving card is hidden from assistive tech and inert, so only the new
- * card is announced and focusable.
+ * The card's frame: out to the left and in from the right, or the other way for a card that comes back (dir -1, given
+ * to the leaving card too through AnimatePresence's custom); the `snappy` spring, a key mid-flight starts from where
+ * the card is; a short fade with reduced motion. The leaving card is hidden from assistive tech and inert, so only the
+ * new card is announced and focusable.
  */
-function CardShell({ labelledBy, reduce, children }: { labelledBy: string; reduce: boolean; children: React.ReactNode }) {
+const cardTravel = {
+  enter: (dir: 1 | -1) => ({ opacity: 0, x: 32 * dir }),
+  center: { opacity: 1, x: 0 },
+  exit: (dir: 1 | -1) => ({ opacity: 0, x: -32 * dir }),
+};
+const cardFade = { enter: { opacity: 0 }, center: { opacity: 1 }, exit: { opacity: 0 } };
+
+function CardShell({ labelledBy, reduce, dir, children }: { labelledBy: string; reduce: boolean; dir: 1 | -1; children: React.ReactNode }) {
   const present = useIsPresent();
   return (
     <motion.section
@@ -787,9 +807,12 @@ function CardShell({ labelledBy, reduce, children }: { labelledBy: string; reduc
       aria-hidden={present ? undefined : true}
       inert={!present}
       data-leaving={present ? undefined : ""}
-      initial={reduce ? { opacity: 0 } : { opacity: 0, x: 32 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={reduce ? { opacity: 0 } : { opacity: 0, x: -32 }}
+      data-from={dir === -1 ? "left" : "right"}
+      custom={dir}
+      variants={reduce ? cardFade : cardTravel}
+      initial="enter"
+      animate="center"
+      exit="exit"
       transition={reduce ? { duration: 0.12 } : springs.snappy}
       className="relative flex min-w-0 flex-col gap-4 rounded-lg bg-card p-4 [grid-area:head] sm:p-6"
     >

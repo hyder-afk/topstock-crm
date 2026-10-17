@@ -183,8 +183,33 @@ test("skip_and_undo, undo_reclaims_lead: Skip writes nothing; U takes the outcom
   await expect(heading(page)).not.toHaveText(called);
   await expect(toast(page)).toContainText("Logged: No answer");
   await expect.poll(() => outcomes(leadId(adminEmail, called))).toBe("no_answer");
+  // Forward, the next card comes in from the right (Apple audit #5).
+  await expect(card(page)).toHaveAttribute("data-from", "right");
+  const replaced = await current(page);
+  // Every frame for a second: each card's heading and its horizontal offset.
+  await page.evaluate(() => {
+    const w = window as unknown as { __travel: { name: string; x: number }[] };
+    w.__travel = [];
+    const until = performance.now() + 1000;
+    const tick = () => {
+      for (const el of document.querySelectorAll<HTMLElement>("main section[role=region][data-from]")) {
+        w.__travel.push({ name: (el.querySelector("h2")?.textContent ?? "").trim(), x: new DOMMatrix(getComputedStyle(el).transform).m41 });
+      }
+      if (performance.now() < until) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
   await page.keyboard.press("u");
   await expect(heading(page)).toHaveText(called);
+  // The lead Undo brings back returns from the left, the way it left, and the card it replaces makes way to the right.
+  await expect(card(page)).toHaveAttribute("data-from", "left");
+  await page.waitForTimeout(1100);
+  const travel = await page.evaluate(() => (window as unknown as { __travel: { name: string; x: number }[] }).__travel);
+  const back = travel.filter((f) => f.name === called).map((f) => f.x);
+  const away = travel.filter((f) => f.name === replaced).map((f) => f.x);
+  expect(Math.min(...back), "the returning card enters from the left").toBeLessThan(-1);
+  expect(Math.max(...back), "never from the right").toBeLessThanOrEqual(0.5);
+  expect(Math.max(...away), "the replaced card leaves to the right").toBeGreaterThan(1);
   await expect(toast(page)).toContainText("Undone");
   await expect.poll(() => outcomes(leadId(adminEmail, called))).toBe("");
   expect(sql(`select count(*) from private.queue_claims where company_id = '${leadId(adminEmail, called)}' and user_id = '${userId(adminEmail)}'`)).toBe("1");
