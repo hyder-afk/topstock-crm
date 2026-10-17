@@ -87,7 +87,7 @@ export function ChooseStep({
         }}
         className={cn(
           "group flex cursor-pointer flex-col items-start gap-4 rounded-lg border border-dashed border-border bg-background p-6 transition-[border-color,background-color] sm:p-8",
-          "hover:border-foreground/40",
+          "hover:border-foreground/40 active:bg-muted",
           // The file field itself is visually hidden, so the whole zone carries the keyboard focus ring.
           "has-[:focus-visible]:border-foreground/60 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
           dragging && "border-foreground/60 bg-muted",

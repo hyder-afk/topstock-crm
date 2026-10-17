@@ -86,7 +86,7 @@ export function RecentActivity({
             return (
               <li key={row.item_id}>
                 {row.company_id ? (
-                  <Link href={`/leads/${row.company_id}`} className={`${cls} transition-[background-color] duration-150 hover:bg-muted`}>
+                  <Link href={`/leads/${row.company_id}`} className={`${cls} transition-[background-color] duration-150 hover:bg-muted active:bg-muted`}>
                     {body}
                   </Link>
                 ) : (

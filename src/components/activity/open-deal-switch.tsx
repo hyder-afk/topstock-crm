@@ -42,7 +42,7 @@ export function OpenDealSwitch({
         aria-checked={on}
         aria-keyshortcuts="D"
         onClick={onToggle}
-        className="flex min-h-11 items-center justify-between gap-3 text-left text-sm font-bold"
+        className="flex min-h-11 items-center justify-between gap-3 text-left text-sm font-bold transition-[scale] duration-150 active:scale-[0.97]"
       >
         <span>{tOut("openDeal")}</span>
         <span className="flex items-center gap-2">

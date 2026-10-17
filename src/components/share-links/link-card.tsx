@@ -223,7 +223,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
                   href={whatsappTextHref(message(made), lead.phone, lead.country)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 font-bold text-primary-foreground"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 font-bold text-primary-foreground transition-[scale] duration-150 active:scale-[0.97]"
                 >
                   <MessageCircle aria-hidden="true" strokeWidth={1.75} className="size-4" />
                   {t("shareWhatsapp")}
@@ -234,7 +234,7 @@ export function ShareLinkCard({ lead, canEdit, ownerFirstName, me, stepUp }: { l
                 </Button>
                 <a
                   href={mailtoHref(wordsFor[made.language].t("emailSubject"), message(made), lead.email)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-muted px-4 font-bold text-foreground"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-muted px-4 font-bold text-foreground transition-[scale] duration-150 active:scale-[0.97]"
                 >
                   <Mail aria-hidden="true" strokeWidth={1.75} className="size-4" />
                   {t("email")}
@@ -393,7 +393,7 @@ function StockTextDialog({
                   href={whatsappTextHref(text, lead.phone, lead.country)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 font-bold text-primary-foreground"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-4 font-bold text-primary-foreground transition-[scale] duration-150 active:scale-[0.97]"
                 >
                   <MessageCircle aria-hidden="true" strokeWidth={1.75} className="size-4" />
                   {t("openWhatsapp")}

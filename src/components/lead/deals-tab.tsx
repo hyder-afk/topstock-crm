@@ -151,7 +151,7 @@ function DealRow({ deal, onOpenDeal, onReopen }: { deal: DealCard; onOpenDeal: (
         type="button"
         data-deal-row={deal.id}
         onClick={() => onOpenDeal(deal.id)}
-        className="flex min-h-[72px] min-w-0 flex-1 flex-col items-start justify-center gap-1 rounded-md px-1 text-left transition-colors hover:bg-muted/60"
+        className="flex min-h-[72px] min-w-0 flex-1 flex-col items-start justify-center gap-1 rounded-md px-1 text-left transition-colors hover:bg-muted/60 active:bg-muted/60"
       >
         <span className="flex w-full items-center gap-2">
           <MiniStepper stage={deal.stage} />

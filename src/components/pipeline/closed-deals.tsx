@@ -89,7 +89,7 @@ function ClosedList({ kind, scope, owner, onOpenDeal }: { kind: "won" | "lost"; 
                 <button
                   type="button"
                   onClick={() => onOpenDeal(d.id)}
-                  className="flex min-h-14 w-full items-center justify-between gap-3 rounded-md px-3 text-left transition-colors hover:bg-muted"
+                  className="flex min-h-14 w-full items-center justify-between gap-3 rounded-md px-3 text-left transition-colors hover:bg-muted active:bg-muted"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-bold">{d.company_name}</span>

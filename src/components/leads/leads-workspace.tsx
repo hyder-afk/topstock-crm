@@ -347,7 +347,7 @@ export function LeadsWorkspace({
               <button
                 type="button"
                 onClick={() => setRowSelection({})}
-                className="ml-auto min-h-11 rounded-md px-3 underline-offset-4 hover:underline sm:min-h-9"
+                className="ml-auto min-h-11 rounded-md px-3 underline-offset-4 transition-[scale] duration-150 hover:underline active:scale-[0.97] sm:min-h-9"
               >
                 {t("clearSelection")}
               </button>

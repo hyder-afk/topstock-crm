@@ -86,7 +86,7 @@ export function ItemSheet({
                   </span>
                 </DialogDescription>
               </div>
-              <button type="button" onClick={onClose} aria-label={t("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full hover:bg-muted">
+              <button type="button" onClick={onClose} aria-label={t("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97]">
                 <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
               </button>
             </div>
@@ -95,7 +95,7 @@ export function ItemSheet({
                 {t("quantity")}
               </label>
               <div className="flex items-stretch gap-2">
-                <button type="button" onClick={() => step(-1)} aria-label={t("less")} className="grid size-11 shrink-0 place-items-center rounded-md bg-muted">
+                <button type="button" onClick={() => step(-1)} aria-label={t("less")} className="grid size-11 shrink-0 place-items-center rounded-md bg-muted transition-[scale] duration-150 active:scale-[0.97]">
                   <Minus aria-hidden="true" strokeWidth={2} className="size-4" />
                 </button>
                 <input
@@ -109,7 +109,7 @@ export function ItemSheet({
                   aria-describedby={`${id}-qty-hint`}
                   className="min-h-11 w-full min-w-0 rounded-md border border-border bg-background px-3 text-right font-mono text-base tabular-nums"
                 />
-                <button type="button" onClick={() => step(1)} aria-label={t("more")} className="grid size-11 shrink-0 place-items-center rounded-md bg-muted">
+                <button type="button" onClick={() => step(1)} aria-label={t("more")} className="grid size-11 shrink-0 place-items-center rounded-md bg-muted transition-[scale] duration-150 active:scale-[0.97]">
                   <Plus aria-hidden="true" strokeWidth={2} className="size-4" />
                 </button>
                 <div role="radiogroup" aria-label={t("unit")} className="grid shrink-0 grid-cols-2 rounded-md bg-muted p-1">
@@ -120,7 +120,7 @@ export function ItemSheet({
                       role="radio"
                       aria-checked={unit === u}
                       onClick={() => setUnit(u)}
-                      className={cn("min-h-11 min-w-11 rounded-[10px] px-2 font-mono text-sm sm:min-h-9", unit === u && "bg-card shadow-sm")}
+                      className={cn("min-h-11 min-w-11 rounded-[10px] px-2 font-mono text-sm transition-[scale] duration-150 active:scale-[0.97] sm:min-h-9", unit === u && "bg-card shadow-sm")}
                     >
                       {u === "piece" ? t("pcs") : t("ctn")}
                     </button>
@@ -215,7 +215,7 @@ export function ReviewSheet({
                 {t("body")}
               </DialogDescription>
             </div>
-            <button type="button" onClick={() => onOpenChange(false)} aria-label={ti("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full hover:bg-muted">
+            <button type="button" onClick={() => onOpenChange(false)} aria-label={ti("close")} className="-mt-2 -mr-2 grid size-11 shrink-0 place-items-center rounded-full transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97]">
               <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
             </button>
           </div>
@@ -236,7 +236,7 @@ export function ReviewSheet({
                   <Button type="button" variant="link" className="px-2" onClick={() => onEdit(l)} aria-label={t("edit", { name: l.item.name })}>
                     {t("change")}
                   </Button>
-                  <button type="button" onClick={() => onRemove(l.item.number)} aria-label={t("remove", { name: l.item.name })} className="grid size-11 place-items-center rounded-full hover:bg-muted">
+                  <button type="button" onClick={() => onRemove(l.item.number)} aria-label={t("remove", { name: l.item.name })} className="grid size-11 place-items-center rounded-full transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.97]">
                     <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
                   </button>
                 </li>

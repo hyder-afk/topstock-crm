@@ -106,10 +106,10 @@ export function ArrivingList({ canManage, stepUp, onOpen }: { canManage: boolean
       {canManage && selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
           <span className="px-1 font-bold">{t("selected", { count: selected.size })}</span>
-          <button type="button" onClick={() => void markSelected()} aria-disabled={bulkBusy || undefined} className="min-h-11 rounded-md px-3 font-bold underline-offset-4 hover:underline sm:min-h-9">
+          <button type="button" onClick={() => void markSelected()} aria-disabled={bulkBusy || undefined} className="min-h-11 rounded-md px-3 font-bold underline-offset-4 transition-[scale] duration-150 hover:underline active:scale-[0.97] aria-disabled:active:scale-100 sm:min-h-9">
             {bulkBusy ? t("marking") : t("markSelected")}
           </button>
-          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto min-h-11 rounded-md px-3 underline-offset-4 hover:underline sm:min-h-9">
+          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto min-h-11 rounded-md px-3 underline-offset-4 transition-[scale] duration-150 hover:underline active:scale-[0.97] sm:min-h-9">
             {t("clear")}
           </button>
         </div>
@@ -135,7 +135,7 @@ export function ArrivingList({ canManage, stepUp, onOpen }: { canManage: boolean
                 />
               </label>
             ) : null}
-            <button type="button" onClick={() => onOpen(r.id)} className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center rounded-sm text-left">
+            <button type="button" onClick={() => onOpen(r.id)} className="flex min-h-11 min-w-0 flex-1 flex-col items-start justify-center rounded-sm text-left transition-colors active:bg-muted/50">
               <span className="max-w-full truncate font-bold" dir="auto">{r.name}</span>
               <span className="text-xs text-muted-foreground">
                 <span className="font-mono" translate="no">{productRef(r.number)}</span>

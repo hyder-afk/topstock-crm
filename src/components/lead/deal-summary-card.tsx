@@ -31,7 +31,7 @@ export function DealSummaryCard({ lead, onOpenDeal, onNewDeal, onShowDeals }: { 
     <Card title={t("summaryTitle")}>
       {latest ? (
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={() => onOpenDeal(latest.id)} className="flex min-h-11 flex-col items-start gap-1 rounded-md text-left transition-colors hover:bg-muted/60">
+          <button type="button" onClick={() => onOpenDeal(latest.id)} className="flex min-h-11 flex-col items-start gap-1 rounded-md text-left transition-colors hover:bg-muted/60 active:bg-muted/60">
             <span className="flex items-center gap-2">
               <MiniStepper stage={latest.stage} />
               <span className="text-sm font-bold">{latest.title ?? tD("untitled")}</span>

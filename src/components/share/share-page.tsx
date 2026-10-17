@@ -184,7 +184,7 @@ export function SharePage() {
                   if (l === locale) return;
                   window.location.assign(token ? `/s/${l}#${token}` : `/s/${l}`);
                 }}
-                className={`grid min-h-11 min-w-11 place-items-center rounded-[10px] px-2 font-mono text-sm ${l === locale ? "bg-card shadow-sm" : ""}`}
+                className={`grid min-h-11 min-w-11 place-items-center rounded-[10px] px-2 font-mono text-sm transition-[scale] duration-150 active:scale-[0.97] ${l === locale ? "bg-card shadow-sm" : ""}`}
               >
                 {l.toUpperCase()}
               </a>

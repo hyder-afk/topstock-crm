@@ -108,7 +108,7 @@ export function SalesList({
             type="button"
             onClick={onClearCompany}
             aria-label={t("clearLead", { lead: companyName ?? "" })}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-muted px-4 text-sm sm:min-h-9"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-muted px-4 text-sm transition-[scale] duration-150 active:scale-[0.97] sm:min-h-9"
           >
             <span className="max-w-[24ch] truncate" dir="auto" translate="no">
               {companyName ?? t("oneLead")}
@@ -134,7 +134,7 @@ function SaleItem({ sale, open, onToggle, canManage, stepUp }: { sale: SaleRow; 
         aria-expanded={open}
         aria-controls={`${id}-detail`}
         onClick={onToggle}
-        className="flex min-h-[64px] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left hover:bg-muted/50 sm:flex-nowrap sm:px-4"
+        className="flex min-h-[64px] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left hover:bg-muted/50 active:bg-muted/50 sm:flex-nowrap sm:px-4"
       >
         {/* Phones: the sale on its own line, the type and the total under it (the lead's name keeps its room). */}
         <span className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-auto sm:flex-1">
@@ -427,7 +427,7 @@ function RequestItem({ row, open, onToggle, onRecordSale }: { row: RequestRow; o
         aria-expanded={open}
         aria-controls={`${id}-detail`}
         onClick={onToggle}
-        className="flex min-h-[64px] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left hover:bg-muted/50 sm:flex-nowrap sm:px-4"
+        className="flex min-h-[64px] w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left hover:bg-muted/50 active:bg-muted/50 sm:flex-nowrap sm:px-4"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate font-bold" dir="auto" translate="no">

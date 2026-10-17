@@ -301,7 +301,7 @@ export function RecordSaleSheet({
                       type="button"
                       aria-label={t("removeLine", { n: i + 1 })}
                       onClick={() => setLines((ls) => ls.filter((x) => x.key !== p.l.key))}
-                      className="grid size-11 place-items-center rounded-md text-muted-foreground hover:text-foreground sm:size-9"
+                      className="grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
                     >
                       <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
                     </button>

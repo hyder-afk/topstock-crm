@@ -698,7 +698,7 @@ function Pipeline({
                     type="button"
                     aria-current={inView === c.key ? "true" : undefined}
                     onClick={() => scrollToColumn(c.key)}
-                    className="relative min-h-11 shrink-0 rounded-md px-3 text-sm whitespace-nowrap"
+                    className="relative min-h-11 shrink-0 rounded-md px-3 text-sm whitespace-nowrap transition-[scale] duration-150 active:scale-[0.97]"
                   >
                     {inView === c.key ? (
                       <motion.span layoutId="stage-tab-pill" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }} className="absolute inset-0 rounded-md bg-card" />
