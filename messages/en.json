@@ -213,7 +213,7 @@
     "everywhere": {
       "open": "Sign out of all devices",
       "title": "Sign out of all devices?",
-      "body": "You will be signed out here and on every other phone, tablet and computer. Other devices lose access within an hour at most. You will need your password and a code from your authenticator app to sign in again.",
+      "body": "You will be signed out here and on every other phone, tablet and computer. Other devices lose access within 15 minutes at most. You will need your password and a code from your authenticator app to sign in again.",
       "cancel": "Cancel",
       "confirm": "Sign out everywhere",
       "unavailable": "Could not sign out of all devices. Please try again.",

@@ -31,7 +31,7 @@ psql -h 127.0.0.1 -p 54330 -U postgres -d postgres -X -q \
   -c "create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role dashboard_user nologin;"
 
 SECRET="$(openssl rand -hex 32)"
-export GOTRUE_JWT_SECRET="$SECRET" GOTRUE_JWT_EXP=3600 GOTRUE_JWT_AUD=authenticated GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
+export GOTRUE_JWT_SECRET="$SECRET" GOTRUE_JWT_EXP=900 GOTRUE_JWT_AUD=authenticated GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
   GOTRUE_JWT_ADMIN_ROLES=service_role GOTRUE_DB_DRIVER=postgres DB_NAMESPACE=auth \
   DATABASE_URL="postgres://supabase_auth_admin:root@127.0.0.1:54330/postgres?sslmode=disable" \
   GOTRUE_DB_MIGRATIONS_PATH="$OUT/src/migrations" API_EXTERNAL_URL="http://127.0.0.1:54321/auth/v1" \
