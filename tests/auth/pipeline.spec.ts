@@ -714,7 +714,7 @@ test("board_read_fails_shows_retry_and_recovers (the first read on the server, a
   } finally {
     sql("grant execute on function public.pipeline_board to authenticated");
   }
-  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer)', 'EXECUTE')")).toBe("t");
+  expect(sql("select has_function_privilege('authenticated', 'public.pipeline_board(text, uuid, integer, text)', 'EXECUTE')")).toBe("t");
   await first.page.getByRole("alert").getByRole("button", { name: "Retry" }).click();
   await expect(first.page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
   await expect(card(first.page, deal)).toBeVisible();
@@ -833,4 +833,222 @@ test("show_more_press_across_hydration_lands: the column keeps its place and hei
   } finally {
     sql(`delete from public.deals where company_id = '${lead}'`);
   }
+});
+
+// ---- Bugs audit fixes (17 Oct 2026) -------------------------------------------------------------------------------
+
+test("sort_longest_in_stage_reads_oldest_first, and Show more continues that order (bugs audit M1)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const lead = makeLead("Longest In Stage");
+  // 55 deals in Negotiations, 401 to 455 days in their stage (older than anything earlier tests made), so the first page
+  // of "Longest in stage" is the 50 oldest and Show more brings the next ones.
+  sql(`insert into public.deals (org_id, company_id, stage_id, owner_id, created_by, title, value, stage_entered_at)
+       select '${org}', '${lead}', s.id, '${admin}', '${admin}', 'Oldest sort ${run} ' || i, (i * 10)::numeric, now() - ((400 + i) || ' days')::interval
+         from public.pipeline_stages s, generate_series(1, 55) i where s.org_id = '${org}' and s.key = 'negotiations'`);
+  const idOf = (i: number) => sql(`select id from public.deals where title = 'Oldest sort ${run} ${i}'`);
+  const fresh = makeDeal({ stage: "negotiations", title: `Fresh sort ${run}` });
+  try {
+    const { context, page, errors } = await open(browser);
+    await gotoBoard(page);
+    const negotiations = column(page, "negotiations");
+    await expect(negotiations.locator("[data-deal-card]").first()).toHaveAttribute("data-deal-card", fresh);
+    const boards: string[] = [];
+    page.on("request", (r) => {
+      const u = new URL(r.url());
+      if (u.pathname === "/api/pipeline/board") boards.push(u.searchParams.get("order") ?? "recent");
+    });
+    await page.getByRole("button", { name: /^Sort:/ }).click();
+    await page.getByRole("menuitemradio", { name: /Longest in stage/ }).click();
+    await expect(page.getByRole("button", { name: "Sort: Longest in stage" })).toBeVisible();
+    // The column now starts with the deal longest in its stage (the server's first page in that order).
+    await expect(negotiations.locator("[data-deal-card]").first()).toHaveAttribute("data-deal-card", idOf(55));
+    expect(boards).toContain("oldest");
+    // Show more asks for the same order: the next page starts where the first one stopped (451 days, then 405), never
+    // with the newest deals.
+    const [more] = await Promise.all([
+      page.waitForResponse((r) => new URL(r.url()).pathname === "/api/pipeline/stage"),
+      negotiations.getByRole("button", { name: /^Show \d+ more$/ }).click(),
+    ]);
+    expect(new URL(more.url()).searchParams.get("order")).toBe("oldest");
+    const page2 = (await more.json()) as { cards: { id: string }[] };
+    expect(page2.cards[0].id).toBe(idOf(5));
+    // Back to Recently moved: the newest first again.
+    await page.getByRole("button", { name: /^Sort:/ }).click();
+    await page.getByRole("menuitemradio", { name: /Recently moved/ }).click();
+    await expect(negotiations.locator("[data-deal-card]").first()).toHaveAttribute("data-deal-card", fresh);
+    expect(errors).toEqual([]);
+    await context.close();
+  } finally {
+    sql(`delete from public.deals where company_id = '${lead}'`);
+  }
+});
+
+test("scope_not_read_before_shows_skeleton_then_error_with_retry (the board never goes blank)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const deal = makeDeal({ title: `Scope load ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let failing = true;
+  await page.route((url) => url.pathname === "/api/pipeline/board" && url.searchParams.get("scope") === "mine", async (route) => {
+    await held;
+    return failing ? route.fulfill({ status: 502, contentType: "application/json", body: "{}" }) : route.continue();
+  });
+  // Chosen from the keyboard (keyboard-first): the radio keeps the focus through the skeleton and the error.
+  const mine = page.getByRole("radio", { name: "Mine" });
+  await mine.focus();
+  await page.keyboard.press("Enter");
+  // Mine is read for the first time: the columns' skeleton while it loads, under the real toolbar (title, totals'
+  // place and controls never vanish, so the control just used stays focused).
+  await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  await expect(page.getByRole("heading", { name: "Pipeline", level: 1 })).toBeVisible();
+  await expect(mine).toHaveAttribute("aria-checked", "true");
+  await expect(mine).toBeFocused();
+  release();
+  // It fails (and its one retry): the board's error with Retry in the columns' place, not a blank page; the toolbar
+  // (with its one title) stays and so does the focus.
+  const alert = page.getByRole("alert").filter({ hasText: "Couldn’t load the pipeline" });
+  await expect(alert).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pipeline", level: 1 })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Sort:/ })).toBeVisible();
+  await expect(mine).toBeFocused();
+  failing = false;
+  await alert.getByRole("button", { name: "Retry" }).click();
+  await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await expect(card(page, deal)).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Mine" })).toHaveAttribute("aria-checked", "true");
+  expect(errors.filter((e) => !injected502.test(e))).toEqual([]);
+  await context.close();
+});
+
+test("sort_and_scope_keep_keyboard_focus_while_a_new_board_loads (the toolbar stays mounted)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const deal = makeDeal({ title: `Focus load ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  await expect(card(page, deal)).toBeVisible();
+  // Every board read is held until released, so the skeleton can be checked while it shows.
+  let release = () => {};
+  let held = new Promise<void>((r) => (release = r));
+  await page.route((url) => url.pathname === "/api/pipeline/board", async (route) => {
+    await held;
+    return route.continue();
+  });
+  // "Longest in stage" from the keyboard: open the sort menu with Enter, pick the order with the arrows and Enter.
+  const sort = page.getByRole("button", { name: /^Sort:/ });
+  await sort.focus();
+  await page.keyboard.press("Enter");
+  const longest = page.getByRole("menuitemradio", { name: /Longest in stage/ });
+  await expect(page.getByRole("menu")).toBeVisible();
+  for (let i = 0; i < 6 && !(await longest.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press("ArrowDown");
+  await expect(longest).toBeFocused();
+  await page.keyboard.press("Enter");
+  // That order is read for the first time: the columns' skeleton, and the menu hands the focus back to the Sort button,
+  // which is still on the page (not <body>).
+  await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  await expect(page.getByRole("button", { name: "Sort: Longest in stage" })).toBeFocused();
+  release();
+  await expect(card(page, deal)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort: Longest in stage" })).toBeFocused();
+  // Mine from the keyboard, also read for the first time: the radio keeps the focus.
+  held = new Promise<void>((r) => (release = r));
+  const mine = page.getByRole("radio", { name: "Mine" });
+  await mine.focus();
+  await page.keyboard.press("Space");
+  await expect(page.locator('[aria-busy="true"]').getByText("Loading the pipeline")).toBeAttached();
+  await expect(mine).toBeFocused();
+  release();
+  await expect(card(page, deal)).toBeVisible();
+  await expect(mine).toBeFocused();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("failed_move_rolls_back_its_own_card_only: another deal moved meanwhile stays where it went (bugs audit M5)", async ({ browser }) => {
+  const failing = makeDeal({ title: `Fails ${run}` });
+  const other = makeDeal({ title: `Lands ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  // The first deal's move is held, then cut. Next.js sends server actions one at a time, so the second deal's move goes
+  // out only once the first has failed; it is slowed down here, so the board can be read while it is on its way.
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route((url) => url.pathname === "/pipeline", async (route) => {
+    const r = route.request();
+    if (r.method() !== "POST" || !r.headers()["next-action"]) return route.continue();
+    if (r.postData()?.includes(failing)) {
+      await held;
+      return route.abort("failed");
+    }
+    if (r.postData()?.includes(other)) await new Promise((done) => setTimeout(done, 4000));
+    return route.continue();
+  });
+  await mainOf(page, failing).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(column(page, "qualified").locator(`[data-deal-card="${failing}"]`)).toBeVisible();
+  await mainOf(page, other).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(column(page, "qualified").locator(`[data-deal-card="${other}"]`)).toBeVisible();
+  release();
+  await expect(toast(page)).toContainText("Couldn’t move the deal");
+  // Only the failed deal goes back. The other one stays in Qualified while its own move is on its way (the snapshot of
+  // the whole board, taken before the first move, put it back in Lead until its answer came).
+  await expect(column(page, "lead").locator(`[data-deal-card="${failing}"]`)).toBeVisible();
+  await expect(column(page, "lead").locator(`[data-deal-card="${other}"]`)).toHaveCount(0, { timeout: 1000 });
+  await expect(column(page, "qualified").locator(`[data-deal-card="${other}"]`)).toBeVisible({ timeout: 1000 });
+  await expect.poll(() => stageOf(other), { timeout: 15_000 }).toBe("qualified");
+  await expect(column(page, "qualified").locator(`[data-deal-card="${other}"]`)).toBeVisible();
+  expect(stageOf(failing)).toBe("lead");
+  expect(errors.filter((e) => !/ERR_FAILED|Failed to fetch|Failed to load resource/.test(e))).toEqual([]);
+  await context.close();
+});
+
+test("field_edit_after_own_move_and_a_colleagues_edit_needs_no_conflict_round_trip (bugs audit M6)", async ({ browser }) => {
+  const deal = makeDeal({ title: `Versions ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  await mainOf(page, deal).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => stageOf(deal)).toBe("qualified");
+  await expect(toast(page)).toContainText("Moved to Qualified");
+  // A colleague changes the value since (the version goes up; the superuser's write skips the guard, so it is bumped
+  // here as update_deal would).
+  sql(`update public.deals set value = 999, version = version + 1 where id = '${deal}'`);
+  // The sheet reads the deal as it is now (the colleague's value), and the title is edited there.
+  const updates: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.headers()["next-action"] && r.postData()?.includes('"fields":["title"]')) updates.push(r.postData() ?? "");
+  });
+  // Opened from the card in this tab (a reload would forget the version the move left behind).
+  await mainOf(page, deal).focus();
+  await page.keyboard.press("Enter");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByLabel("Value")).toHaveValue(/999/);
+  await sheet.getByLabel("What’s being sold").fill(`Versions renamed ${run}`);
+  await sheet.getByLabel("What’s being sold").press("Enter");
+  await expect(toast(page)).toContainText("Saved");
+  expect(sql(`select title from public.deals where id = '${deal}'`)).toBe(`Versions renamed ${run}`);
+  // One request: the version sent is the one on screen, not the older one this tab's move left behind (which the
+  // database refused as a conflict before the sheet sent it again).
+  expect(updates).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("close_date_passed_follows_the_paris_day_after_midnight (bugs audit L2)", async ({ browser }) => {
+  // 00:30 in Paris on 13 Oct 2026 is still 12 Oct in UTC: a deal expected to close on 12 Oct has passed its date.
+  const deal = makeDeal({ title: `Due ${run}` });
+  sql(`update public.deals set expected_close = '2026-10-12' where id = '${deal}'`);
+  const { context, page, errors } = await open(browser);
+  await page.clock.setFixedTime(new Date("2026-10-12T22:30:00Z"));
+  await settled(page);
+  await page.goto("/leads");
+  await appReady(page);
+  // Into the board in the browser (a client navigation), so its cards are drawn with the fixed clock.
+  await page.getByRole("navigation", { name: /Sections/ }).getByRole("link", { name: "Pipeline", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Pipeline board" })).toBeVisible();
+  await expect(card(page, deal)).toContainText("Close date passed · Oct 12");
+  expect(errors).toEqual([]);
+  await context.close();
 });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import { dealPath, elapsedDays, stallState, stepStage, nextStage, reopenStage, type DealHistoryRow, type StageKey } from "@/lib/deals";
+import { closeDatePassed, dealPath, elapsedDays, stallState, stepStage, nextStage, reopenStage, type DealHistoryRow, type StageKey } from "@/lib/deals";
 
 // Days in stage and Stalled (Day 5 design 5.5, D16). The SQL (private.deal_cards) is the source; these cases are shared
 // with deals_attack.sql's "stall-cases" block, read from that file so both sides run the same lines:
@@ -95,4 +95,18 @@ test("the deal's path folds undo pairs and counts days per stage", () => {
     { stage: "qualified", days: 5, current: false },
     { stage: "negotiations", days: 12, current: true },
   ]);
+});
+
+// Bugs audit L2: the card read "today" as the UTC date, so from midnight to 02:00 in Paris (summer) a close date of
+// yesterday was not yet passed on the board while Home already counted it.
+test("close date passed follows the viewer's day, not the UTC day", () => {
+  const card = { status: "open" as const, expected_close: "2026-07-14" };
+  const halfPastMidnightParis = Date.parse("2026-07-14T22:30:00Z"); // 15 Jul, 00:30 in Paris (UTC+2)
+  expect(closeDatePassed(card, halfPastMidnightParis, "Europe/Paris")).toBe(true);
+  expect(closeDatePassed(card, halfPastMidnightParis, "America/New_York")).toBe(false); // still 14 Jul there
+  expect(closeDatePassed(card, Date.parse("2026-07-14T21:30:00Z"), "Europe/Paris")).toBe(false); // 23:30 on the 14th in Paris
+  expect(closeDatePassed({ ...card, expected_close: "2026-12-14" }, Date.parse("2026-12-14T23:30:00Z"), "Europe/Paris")).toBe(true); // winter, UTC+1
+  expect(closeDatePassed({ ...card, expected_close: "2026-12-15" }, Date.parse("2026-12-14T23:30:00Z"), "Europe/Paris")).toBe(false); // today itself
+  expect(closeDatePassed({ status: "won", expected_close: "2026-07-01" }, halfPastMidnightParis, "Europe/Paris")).toBe(false);
+  expect(closeDatePassed({ status: "open", expected_close: null }, halfPastMidnightParis, "Europe/Paris")).toBe(false);
 });

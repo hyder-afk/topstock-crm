@@ -84,7 +84,8 @@ export function LeadForm({
     }
     setFieldErrors([]);
     setPending(true);
-    const error = await onSubmit(values);
+    // A server action that throws (the connection dropped, a 5xx, a new deploy) says so and frees the button.
+    const error = await onSubmit(values).catch(() => "unavailable" as const);
     setPending(false);
     setFormError(error);
   }

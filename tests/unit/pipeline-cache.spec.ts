@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Board, DealCard } from "@/lib/deals";
-import { addCard, appendPage, applyMove, findCard, removeCard, replaceCard, restoreFromLost, sortLoaded } from "@/lib/pipeline-cache";
+import { addCard, appendPage, applyMove, findCard, removeCard, replaceCard, restoreFromLost, rollbackCard, sortLoaded } from "@/lib/pipeline-cache";
 
 // The board in the query cache (Day 5 design 7.5 and 8.4): the optimistic move, its rollback, a conflict's reconcile and
 // two queued moves, each keeping counts, totals and cursors right.
@@ -75,6 +75,42 @@ test("rollback restores the snapshot byte for byte (the same object)", () => {
   const moved = applyMove(applyMove(b, b.stages[0].cards[0].id, "qualified", NOW), b.stages[1].cards[0].id, "negotiations", NOW);
   expect(moved).not.toBe(snapshot);
   expect(JSON.stringify(snapshot)).toBe(before); // nothing was mutated in place
+});
+
+// Bugs audit M5: A's move fails while B's move shows (B's own answer comes later, or came already). The rollback puts A
+// back where it was and keeps B where it went (the whole-board snapshot taken before A moved still had B in its old
+// column).
+test("rollbackCard: a failed move puts back its own card only; another card's move that landed stays", () => {
+  const b = board();
+  const a = b.stages[0].cards[0].id; // Lead, 1000.00, first
+  const other = b.stages[1].cards[0].id; // Qualified, 250.50
+  const snapshot = b; // taken when A's move started
+  const afterBoth = replaceCard(applyMove(applyMove(b, a, "qualified", NOW), other, "negotiations", NOW), { ...findCard(b, other)!.card, stage: "negotiations", stage_entered_at: NOW, version: 4 }, other);
+  const rolled = rollbackCard(afterBoth, snapshot, a);
+  expect(findCard(rolled, a)).toMatchObject({ column: "lead", index: 0, card: findCard(b, a)!.card });
+  expect(findCard(rolled, other)).toMatchObject({ column: "negotiations", card: { version: 4 } });
+  expect(col(rolled, "lead")).toMatchObject({ count: 5, value: "3000.00", no_value: 2, stalled: 1 });
+  expect(col(rolled, "qualified")).toMatchObject({ count: 0, value: "0.00" });
+  expect(col(rolled, "negotiations")).toMatchObject({ count: 1, value: "250.50" });
+  expect(rolled.open_total).toEqual(b.open_total);
+});
+
+test("rollbackCard: a card goes back to its own place in the column, and a failed win or loss undoes its counts", () => {
+  const b = board();
+  const second = b.stages[0].cards[1].id;
+  const rolled = rollbackCard(applyMove(b, second, "qualified", NOW), b, second);
+  expect(col(rolled, "lead").cards.map((c) => c.id)).toEqual(col(b, "lead").cards.map((c) => c.id));
+  const id = b.stages[1].cards[0].id;
+  const won = rollbackCard(applyMove(b, id, "won", NOW, { value: "18400.00", fulfilment: "from_stock" }), b, id);
+  expect(won.won).toEqual(b.won);
+  expect(col(won, "qualified")).toEqual(col(b, "qualified"));
+  const lost = rollbackCard(applyMove(b, id, "lost", NOW, { lost_reason: "price" }), b, id, "price");
+  expect(lost.lost).toEqual(b.lost);
+  expect(col(lost, "qualified")).toEqual(col(b, "qualified"));
+  expect(lost.open_total).toEqual(b.open_total);
+  // A board that never showed the card is left as it is.
+  const elsewhere = { ...b, stages: b.stages.map((s) => ({ ...s, cards: s.cards.filter((c) => c.id !== id) })) };
+  expect(rollbackCard(b, elsewhere, id)).toBe(b);
 });
 
 test("a conflict reconciles to the server's card where it really is", () => {

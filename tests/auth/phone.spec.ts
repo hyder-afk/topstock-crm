@@ -157,7 +157,8 @@ const sheets: Sheet[] = [
     name: "record-sale",
     path: () => "/inventory?tab=sales",
     open: async (page, l) => {
-      await page.locator("main").getByRole("button", { name: say(l, "Sales.tab.recordSale") }).first().click();
+      // At 390 the header button's name is its visible word, "Sell" / "Vendre" (WCAG 2.5.3, consistency audit 4.2).
+      await page.locator("main").getByRole("button", { name: say(l, "Inventory.recordSaleShort"), exact: true }).first().click();
       return topDialog(page);
     },
   },

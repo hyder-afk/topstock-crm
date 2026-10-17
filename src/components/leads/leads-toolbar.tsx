@@ -331,17 +331,20 @@ function FilterChips({ filters, onChange, team }: { filters: LeadFilters; onChan
     chips.push({ key: "inactive", label: tF("chipInactive", { days: filters.inactive }), remove: () => onChange({ ...filters, inactive: undefined }) });
   if (filters.batch) chips.push({ key: "batch", label: tF("chipBatch"), remove: () => onChange({ ...filters, batch: undefined }) });
   if (!chips.length) return null;
+  // 12 px between wrapped rows: each remove button's 44 px target reaches 6 px above and below its chip, so two rows'
+  // targets never overlap.
   return (
-    <ul className="flex flex-wrap items-center gap-2">
+    <ul className="flex flex-wrap items-center gap-x-2 gap-y-3">
       {chips.map((c) => (
         <li key={c.key}>
           <span className="inline-flex min-h-8 items-center gap-1 rounded-sm bg-muted py-0.5 pr-1 pl-3 text-xs">
             {c.label}
+            {/* 28 px to look at, 44 px to tap: the ::before reaches 8 px past each edge. */}
             <button
               type="button"
               onClick={c.remove}
               aria-label={tF("remove", { name: c.label })}
-              className="grid size-7 place-items-center rounded-sm text-muted-foreground hover:text-foreground active:scale-[0.97]"
+              className="relative grid size-7 place-items-center rounded-sm text-muted-foreground transition-[color,scale] duration-150 before:absolute before:-inset-2 hover:text-foreground active:scale-[0.97]"
             >
               <X aria-hidden="true" strokeWidth={1.75} className="size-3.5" />
             </button>
@@ -438,7 +441,7 @@ function ViewsPopover({
                   type="button"
                   onClick={() => void remove(v)}
                   aria-label={t("deleteView", { name: v.name })}
-                  className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground active:scale-[0.97] sm:size-9"
+                  className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
                 >
                   <Trash2 aria-hidden="true" strokeWidth={1.75} className="size-4" />
                 </button>

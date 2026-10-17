@@ -58,8 +58,22 @@ export async function removeTask(queryClient: QueryClient, id: string): Promise<
   return snapshot;
 }
 
-export function restoreLists(queryClient: QueryClient, snapshot: ListsSnapshot) {
-  for (const [key, data] of snapshot) queryClient.setQueryData(key, data);
+/**
+ * A change that failed puts back its own task only, at the place it had in each list of the snapshot; everything else
+ * stays as the lists are now (bugs audit M5: putting back whole lists brought back a task ticked since, on its old tab).
+ */
+export function restoreTask(queryClient: QueryClient, snapshot: ListsSnapshot, id: string) {
+  for (const [key, before] of snapshot) {
+    const page = before?.pages.findIndex((p) => p.rows.some((r) => r.id === id)) ?? -1;
+    if (!before || page < 0) continue;
+    const index = before.pages[page].rows.findIndex((r) => r.id === id);
+    const row = before.pages[page].rows[index];
+    queryClient.setQueryData<Lists>(key, (old) => {
+      if (!old?.pages.length || old.pages.some((p) => p.rows.some((r) => r.id === id))) return old;
+      const at = Math.min(page, old.pages.length - 1);
+      return { ...old, pages: old.pages.map((p, i) => (i === at ? { ...p, rows: [...p.rows.slice(0, index), row, ...p.rows.slice(index)] } : p)) };
+    });
+  }
 }
 
 /** Puts a just-added task at the top of a loaded list (shown at once, replaced when the list is read again). */
@@ -69,8 +83,9 @@ export function insertTask(queryClient: QueryClient, scope: TaskScope, bucket: T
   );
 }
 
-/** Everything the Tasks page and the lead pages show about tasks is read again. */
+/** Everything the Tasks page, the lead pages and Home's Today card show about tasks is read again. */
 export function refreshTasks(queryClient: QueryClient, leadId?: string | null) {
   void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+  void queryClient.invalidateQueries({ queryKey: ["home"] });
   if (leadId) void queryClient.invalidateQueries({ queryKey: ["lead-tasks", leadId] });
 }

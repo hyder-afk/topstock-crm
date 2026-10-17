@@ -204,7 +204,7 @@ test.describe("stock list text", () => {
     const items = [item(0, 0), ...Array.from({ length: 40 }, (_, i) => item(i + 1))];
     const text = stockListText(items, FR, { link: "https://crm.example/s/fr#" + TOKEN, firstName: "Henri" });
     expect(text.split("\n").filter((l) => l.startsWith("•"))).toHaveLength(30);
-    expect(text).toContain("• T-shirt coton 1 : 2,50 €/pc · 4 200 pcs");
+    expect(text).toContain("• T-shirt coton 1 : 2,50 € la pièce · 4 200 pcs");
     expect(text).not.toContain("T-shirt coton 0 :");
     expect(text).toContain("… et d’autres articles.");
     expect(text.endsWith("Henri, TopStock Wholesale")).toBe(true);

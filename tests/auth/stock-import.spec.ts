@@ -303,6 +303,40 @@ test("stock_import_rep_404, stock_staging_not_exposed", async ({ browser }) => {
   }
 });
 
+test("check_failing_after_the_page_was_left_throws_its_import_away (bugs audit L5)", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const { context, page } = await open(browser, adminState);
+  await gotoImport(page);
+  const { file } = await tagged("stock-40-fake.csv", `${tag}L5`);
+  // The check call (it names the policy) is held until the person has left the page in the app, then cut, and so are
+  // its tries again (sent to whatever page is open by then): the half-sent import must not stay staged in Past imports.
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  let checks = 0;
+  await page.route("**/*", async (route) => {
+    const r = route.request();
+    if (r.method() === "POST" && r.headers()["next-action"] && r.postData()?.includes('"policy":"keep_crm"')) {
+      checks += 1;
+      await held;
+      return route.abort("failed");
+    }
+    return route.continue();
+  });
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await expect(page.getByRole("heading", { name: "Match the columns" })).toBeVisible();
+  await page.getByRole("button", { name: /^Check\b/ }).click();
+  await page.waitForTimeout(300);
+  await codeIfAsked(page);
+  await expect.poll(() => checks, { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
+  const batch = sql(`select id from public.import_batches where kind = 'stock' order by created_at desc limit 1`);
+  expect(sql(`select status from public.import_batches where id = '${batch}'`)).toBe("staged");
+  await page.getByRole("navigation", { name: /Sections/ }).getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^Hello/ })).toBeVisible();
+  release();
+  await expect.poll(() => sql(`select status from public.import_batches where id = '${batch}'`), { timeout: 30_000 }).toBe("discarded");
+  await context.close();
+});
+
 test("screens", async ({ browser }) => {
   test.setTimeout(900_000);
   const out = path.resolve(__dirname, "../../test-results/stock-import-screens");

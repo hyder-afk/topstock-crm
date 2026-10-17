@@ -326,7 +326,8 @@ export function InventoryWorkspace({
               <span className="hidden sm:inline">{t("newProduct")}</span>
             </Button>
           ) : null}
-          <Button variant="brand" onClick={() => openSale(null, null)} aria-label={t("recordSale")} className="whitespace-nowrap">
+          {/* No aria-label: the visible words are the name ("Sell" on phones, "Record sale" wider), so voice control finds it. */}
+          <Button variant="brand" onClick={() => openSale(null, null)} className="whitespace-nowrap">
             <Receipt aria-hidden="true" strokeWidth={1.75} className="size-4" />
             <span className="sm:hidden">{t("recordSaleShort")}</span>
             <span className="hidden sm:inline">{t("recordSale")}</span>

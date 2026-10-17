@@ -67,6 +67,14 @@ for (const width of [1280, 1440, 1728]) test.describe(`desktop ${width}`, () => 
     const context = await browser.newContext({ storageState: state, viewport });
     const page = await context.newPage();
     await open(page, "/");
+    // axe aria-hidden-focus on the dock: nothing hidden from assistive tech can take the keyboard focus (the bead).
+    const hiddenFocusable = await dock(page).evaluate((nav) =>
+      [...nav.querySelectorAll<HTMLElement>('[aria-hidden="true"]')]
+        .flatMap((el) => [el, ...el.querySelectorAll<HTMLElement>("*")])
+        .filter((el) => el.tabIndex >= 0 && (el.hasAttribute("tabindex") || el.matches("a[href],button,input,select,textarea")))
+        .map((el) => el.outerHTML.slice(0, 80)),
+    );
+    expect(hiddenFocusable).toEqual([]);
     await dock(page).getByRole("link", { name: "Home", exact: true }).focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");

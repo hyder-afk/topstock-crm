@@ -305,7 +305,7 @@ test.describe("the whole French file (Day 7c)", () => {
     "Share.item.ctn",
     "Share.item.equals",
     "Share.item.equalsCartons",
-    "ShareText.perPiece",
+    "Sales.sheet.shipToPlaceholder",
     "Share.ref",
     "Pickers.monthLetters",
     "Pickers.timePattern24",
@@ -320,6 +320,9 @@ test.describe("the whole French file (Day 7c)", () => {
     "Share.basket.line",
     "Share.basket.counter",
     "ShareLinks.hint",
+    // Each language named in itself (the share-link card's page language), whatever the interface language.
+    "ShareLinks.languageFr",
+    "ShareLinks.languageEn",
     // The call scripts: both files hold both languages (the caller picks the script's language, not the interface's).
     "Queue.script.en",
     "Queue.script.enNoName",

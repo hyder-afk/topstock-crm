@@ -227,7 +227,7 @@ function Reserved({ data, canEdit, me, leadId, onSell }: { data: LeadStock; canE
     if (busy) return;
     setBusy(h.id);
     if (what === "release") {
-      await release({ ...h, company_id: leadId, note: null }, h.product_id);
+      await release({ ...h, company_id: leadId }, h.product_id);
       refreshSales(queryClient, leadId);
     } else if (what === "extend") {
       const res = await extendHold({ reservationId: h.id, holdUntil: extendedUntil(h.hold_until) }).catch(() => null);

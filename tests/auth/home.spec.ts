@@ -313,6 +313,31 @@ test("today_toggle_done_undo", async ({ browser }) => {
   await context.close();
 });
 
+test("today_tick_reaches_the_tasks_page: its list in this tab's cache is read again (bugs audit L3)", async ({ browser }) => {
+  const task = sql(`select id from public.tasks where org_id = '${org}' and title = 'Send the price list'`);
+  const { context, page, errors } = await open(browser, adminState);
+  try {
+    // The Tasks page first: its Today list is now in this tab's cache (fresh for 15 s).
+    await settled(page);
+    await page.goto("/tasks");
+    const listed = page.getByRole("tabpanel").getByRole("listitem").filter({ hasText: "Send the price list" });
+    await expect(listed).toBeVisible();
+    await appReady(page);
+    // Home in the same tab (the dock), the task ticked on the Today card, then Tasks again (the dock).
+    const dock = page.getByRole("navigation", { name: /Sections/ });
+    await dock.getByRole("link", { name: "Home", exact: true }).click();
+    await card(page, /^Today/).getByRole("checkbox", { name: "Mark “Send the price list” done" }).click();
+    await expect.poll(() => sql(`select done_at is not null from public.tasks where id = '${task}'`)).toBe("t");
+    await dock.getByRole("link", { name: "Tasks", exact: true }).click();
+    await expect(page.locator("main h1")).toContainText("Tasks");
+    await expect(listed).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    sql(`update public.tasks set done_at = null where id = '${task}'`);
+    await context.close();
+  }
+});
+
 test("attention_opens_deal_sheet and refetch_after_move", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await gotoHome(page);

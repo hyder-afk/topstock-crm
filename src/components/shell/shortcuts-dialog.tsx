@@ -85,7 +85,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
       >
         <DialogClose
           aria-label={t("close")}
-          className="absolute top-3 right-3 grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97]"
+          className="absolute top-3 right-3 grid size-11 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97]"
         >
           <X aria-hidden="true" strokeWidth={1.75} className="size-5" />
         </DialogClose>

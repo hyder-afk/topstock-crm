@@ -35,12 +35,14 @@ import type { DealMenuActions } from "@/components/pipeline/deal-menu";
 import { DealSheet } from "@/components/pipeline/deal-sheet";
 import { LostBand } from "@/components/pipeline/lost-band";
 import { OpenDealSheet } from "@/components/pipeline/open-deal-sheet";
+import { PipelineColumnsSkeleton } from "@/components/pipeline/pipeline-skeleton";
 import { cardElement, settle, type SettleFrom } from "@/components/pipeline/settle";
 import { pageKeyAction } from "@/components/pipeline/use-board-keys";
 import { lastUndoableMove, useBoard } from "@/components/pipeline/use-pipeline";
 import {
   BOARD_PAGE,
   boardColumns,
+  boardOrderOf,
   deleteOffered,
   freeDeleteUntil,
   reopenOffered,
@@ -133,14 +135,16 @@ export function PipelineView({
   );
 }
 
-function BoardError() {
+// The server's first paint failed (the whole page: its title, and Retry reloads the page's data), or a scope, owner or
+// order the browser read failed (in the columns' place under the toolbar, which has the title; Retry reads it again).
+function BoardError({ onRetry }: { onRetry?: () => void }) {
   const t = useTranslations("Pipeline");
   const router = useRouter();
   return (
-    <div role="alert" className="flex flex-col items-start gap-3 pt-4">
-      <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
+    <div role="alert" className={cn("flex flex-col items-start gap-3", onRetry ? "rounded-lg bg-card p-5" : "pt-4")}>
+      {onRetry ? null : <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>}
       <p className="text-muted-foreground">{t("loadFailed")}</p>
-      <Button variant="quiet" onClick={() => router.refresh()}>
+      <Button variant="quiet" onClick={() => (onRetry ? onRetry() : router.refresh())}>
         {t("retry")}
       </Button>
     </div>
@@ -190,13 +194,18 @@ function Pipeline({
   const [order, setOrder] = useState<SortOrder>("recent");
   const [stalledOnly, setStalledOnly] = useState(initialStalled);
   const [extraPages, setExtraPages] = useState(false);
-  const key = useMemo(() => ({ scope: canTeam ? scope : ("team" as const), owner: canTeam && scope === "team" ? owner : null }), [canTeam, scope, owner]);
+  const boardOrder = boardOrderOf(order);
+  const key = useMemo(
+    () => ({ scope: canTeam ? scope : ("team" as const), owner: canTeam && scope === "team" ? owner : null, order: boardOrder }),
+    [canTeam, scope, owner, boardOrder],
+  );
   // The scope for the strict reads (a column's next page, See all won / lost): a rep may only ask for their own deals.
   // The board itself keeps the "team" key (its first paint quietly narrows a rep to their own deals), but
   // list_stage_deals refuses a rep's "team" with 42501, so a rep's Show more and closed lists failed every time.
   const readScope = canTeam ? key.scope : "mine";
   const isFirstKey = key.scope === "team" && key.owner === null;
-  const query = useBoard(key, isFirstKey ? first : undefined, extraPages);
+  // The server's first paint is the team's board in the default order.
+  const query = useBoard(key, isFirstKey && key.order === "recent" ? first : undefined, extraPages);
   const board = query.data;
   const [now, setNow] = useState(() => query.dataUpdatedAt || Date.now());
   const [wasFetching, setWasFetching] = useState(query.isFetching);
@@ -406,7 +415,7 @@ function Pipeline({
       },
       menu: menuFor,
       live: (card) => {
-        const latest = qc.getQueryData<Board>(boardKey(key.scope, key.owner));
+        const latest = qc.getQueryData<Board>(boardKey(key.scope, key.owner, key.order));
         return (latest && findCard(latest, card.id)?.card) || card;
       },
       onKey: (card, action) => {
@@ -559,7 +568,7 @@ function Pipeline({
     setLoadingMore((s) => ({ ...s, [col.key]: true }));
     setMoreFailed((s) => ({ ...s, [col.key]: false }));
     try {
-      const p = new URLSearchParams({ stage: col.key, scope: readScope });
+      const p = new URLSearchParams({ stage: col.key, scope: readScope, order: key.order });
       if (key.owner) p.set("owner", key.owner);
       if (stalledOnly) p.set("stalled", "1");
       if (cursor) {
@@ -569,7 +578,7 @@ function Pipeline({
       const res = await fetch(`/api/pipeline/stage?${p}`, { headers: { accept: "application/json" } });
       if (!res.ok) throw new Error(String(res.status));
       const page = (await res.json()) as { cards: DealCard[]; next: Cursor };
-      qc.setQueryData<Board>(boardKey(key.scope, key.owner), (old) => (old ? appendPage(old, col.key, page.cards, stalledOnly ? col.next : page.next) : old));
+      qc.setQueryData<Board>(boardKey(key.scope, key.owner, key.order), (old) => (old ? appendPage(old, col.key, page.cards, stalledOnly ? col.next : page.next) : old));
       setExtraPages(true);
       if (phone) setShown((s) => ({ ...s, [col.key]: (s[col.key] ?? 30) + BOARD_PAGE }));
     } catch {
@@ -598,7 +607,6 @@ function Pipeline({
     setInView(key);
   };
 
-  if (!board || !display) return null;
   const dragging = !!activeId;
   const status = !online ? (
     <span role="status">{t("offline")}</span>
@@ -619,7 +627,7 @@ function Pipeline({
           on Show more was lost (PR #17 CI). */}
       <div className="flex min-w-0 flex-col gap-5 pt-2 md:min-h-[calc(100dvh-190px)]">
         <BoardToolbar
-          total={board.open_total}
+          total={board?.open_total ?? null}
           canTeam={canTeam}
           scope={scope}
           onScope={(s) => {
@@ -633,154 +641,170 @@ function Pipeline({
           }}
           team={team}
           stalledOnly={stalledOnly}
-          stalledCount={stalledTotal}
+          stalledCount={board ? stalledTotal : null}
           onStalled={(on) => {
             setStalledOnly(on);
             writeUrl((u) => (on ? u.searchParams.set("stalled", "1") : u.searchParams.delete("stalled")));
           }}
           order={order}
-          onOrder={setOrder}
+          onOrder={(o) => {
+            setOrder(o);
+            // Another keyset order is another board (its own first page): its timer runs until its own Show more.
+            if (boardOrderOf(o) !== boardOrder) setExtraPages(false);
+          }}
           onNewDeal={() => setOpenNew(true)}
           status={status}
+          failed={!board && query.isError}
         />
 
-        {orgEmpty && isFirstKey ? (
-          <div className="flex flex-col items-start gap-3 rounded-lg bg-card p-5">
-            <p className="max-w-[65ch] text-sm">{t("empty.org")}</p>
-            <div className="flex flex-wrap gap-2">
-              <Link href="/leads" className="inline-flex min-h-11 items-center rounded-md bg-muted px-4 text-sm font-bold transition-transform duration-150 active:scale-[0.97]">
-                {t("empty.orgLeads")}
-              </Link>
+        {/* A scope, owner or order not read before: the columns' skeleton while it loads, the board's error with Retry
+            when it fails (the board never just disappears). The toolbar above stays mounted, so the control just used
+            keeps the keyboard focus. */}
+        {board && display ? (
+          <>
+          {orgEmpty && isFirstKey ? (
+            <div className="flex flex-col items-start gap-3 rounded-lg bg-card p-5">
+              <p className="max-w-[65ch] text-sm">{t("empty.org")}</p>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/leads" className="inline-flex min-h-11 items-center rounded-md bg-muted px-4 text-sm font-bold transition-transform duration-150 active:scale-[0.97]">
+                  {t("empty.orgLeads")}
+                </Link>
+              </div>
             </div>
-          </div>
-        ) : null}
-        {!isFirstKey && board.open_total.count === 0 && board.won.count === 0 && canTeam && scope === "mine" ? (
-          <p className="flex flex-wrap items-center gap-2 text-sm">
-            {t("empty.mine")}
-            <Button variant="link" className="min-h-11 text-sm sm:min-h-9" onClick={() => setScope("team")}>
-              {t("empty.showTeam")}
-            </Button>
-          </p>
-        ) : null}
-        {filteredEmpty ? (
-          <p className="flex flex-wrap items-center gap-2 text-sm">
-            {t("empty.filtered")}
-            <Button variant="link" className="min-h-11 text-sm sm:min-h-9" onClick={() => setStalledOnly(false)}>
-              {t("empty.clear")}
-            </Button>
-          </p>
-        ) : null}
-
-        {phone ? (
-          <nav aria-label={t("stageTabs")} className="sticky top-0 z-[5] -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
-            <div className="edge-fade flex gap-1 overflow-x-auto">
-              {columns.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  aria-current={inView === c.key ? "true" : undefined}
-                  onClick={() => scrollToColumn(c.key)}
-                  className="relative min-h-11 shrink-0 rounded-md px-3 text-sm whitespace-nowrap"
-                >
-                  {inView === c.key ? (
-                    <motion.span layoutId="stage-tab-pill" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }} className="absolute inset-0 rounded-md bg-card" />
-                  ) : null}
-                  <span className="relative">
-                    {tStage(`short.${c.key}`)} <span className="font-mono text-xs tabular-nums text-muted-foreground">{format.number(c.count)}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </nav>
-        ) : null}
-
-        <DndContext
-          id="pipeline-board"
-          sensors={online ? sensors : NO_SENSORS}
-          collisionDetection={pointerFirst}
-          measuring={MEASURING}
-          autoScroll={AUTO_SCROLL}
-          accessibility={{ announcements, screenReaderInstructions: instructions }}
-          onDragStart={onDragStart}
-          onDragOver={onDragOver}
-          onDragEnd={onDragEnd}
-          onDragCancel={onDragCancel}
-        >
-          <div
-            ref={boardRef}
-            role="region"
-            aria-label={t("boardLabel")}
-            data-dragging={dragging || undefined}
-            onKeyDown={onBoardKeyDown}
-            className="min-w-0 md:flex md:grow md:basis-0 md:flex-col"
-          >
-            <div
-              ref={scrollerRef}
-              className={cn(
-                "-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-8 sm:px-8 md:min-h-min md:grow md:basis-0 lg:mx-0 lg:grid lg:grid-cols-[repeat(4,minmax(220px,1fr))] lg:gap-3 lg:overflow-visible lg:px-0 xl:gap-4",
-                dragging ? "snap-none select-none" : "snap-x snap-mandatory lg:snap-none",
-              )}
-            >
-              {columns.map((c) => (
-                <Column
-                  key={c.key}
-                  column={c.key}
-                  title={c.key === "won" ? `${tStage("won")} · ${tStage("wonWindow")}` : tStage(c.key)}
-                  count={c.count}
-                  value={c.value}
-                  stalled={c.stalled}
-                  cards={c.cards}
-                  hiddenCount={c.hidden}
-                  canShowMore={!!c.next || (stalledOnly && c.stalled > c.cards.length)}
-                  loadingMore={!!loadingMore[c.key]}
-                  loadMoreFailed={!!moreFailed[c.key]}
-                  onShowMore={() => void showMore(c)}
-                  showOwner={key.scope === "team" && key.owner === null && canTeam}
-                  now={now}
-                  stallDays={c.stallDays}
-                  tabStopId={tabStopId}
-                  dimId={pending?.id ?? null}
-                  activeId={activeId}
-                  over={overId === c.key}
-                  dragging={dragging}
-                  phone={phone}
-                  emptyText={c.key === "lead" ? t("empty.lead") : t("empty.column", { stage: tStage(c.key) })}
-                  footer={
-                    c.key === "won" && board.won.count > 0 ? (
-                      <Button variant="link" className="mt-1 min-h-11 w-full text-xs sm:min-h-9" onClick={() => setClosedList("won")}>
-                        {t("seeWon")}
-                      </Button>
-                    ) : null
-                  }
-                />
-              ))}
-            </div>
-            <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-              <span>{t("lostLine", { count: format.number(board.lost.count) })}</span>
-              {board.lost.reasons.map((r) => (
-                <span key={r.code}>
-                  <span aria-hidden="true">· </span>
-                  {t("lostReason", { reason: tReason(r.code), count: format.number(r.count) })}
-                </span>
-              ))}
-              {/* On phones the link takes its own line, so no separator is left hanging at a line's end (Day 7c). */}
-              <span aria-hidden="true" className="max-sm:hidden">
-                ·
-              </span>
-              <Button variant="link" className="min-h-11 text-sm max-sm:basis-full max-sm:justify-start sm:min-h-0" onClick={() => setClosedList("lost")}>
-                {t("seeLost")}
+          ) : null}
+          {!isFirstKey && board.open_total.count === 0 && board.won.count === 0 && canTeam && scope === "mine" ? (
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              {t("empty.mine")}
+              <Button variant="link" className="min-h-11 text-sm sm:min-h-9" onClick={() => setScope("team")}>
+                {t("empty.showTeam")}
               </Button>
             </p>
-          </div>
-          <AnimatePresence>{dragging ? <LostBand key="lost-band" /> : null}</AnimatePresence>
-          <DragOverlay dropAnimation={null}>{activeCard ? <DealCardGhost card={activeCard} /> : null}</DragOverlay>
-        </DndContext>
+          ) : null}
+          {filteredEmpty ? (
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              {t("empty.filtered")}
+              <Button variant="link" className="min-h-11 text-sm sm:min-h-9" onClick={() => setStalledOnly(false)}>
+                {t("empty.clear")}
+              </Button>
+            </p>
+          ) : null}
 
-        {pending ? (
-          <p className="sr-only" role="status">
-            {pending.to === "won" ? t("confirmWin") : null}
-          </p>
-        ) : null}
+          {phone ? (
+            <nav aria-label={t("stageTabs")} className="sticky top-0 z-[5] -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
+              <div className="edge-fade flex gap-1 overflow-x-auto">
+                {columns.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    aria-current={inView === c.key ? "true" : undefined}
+                    onClick={() => scrollToColumn(c.key)}
+                    className="relative min-h-11 shrink-0 rounded-md px-3 text-sm whitespace-nowrap"
+                  >
+                    {inView === c.key ? (
+                      <motion.span layoutId="stage-tab-pill" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 30 }} className="absolute inset-0 rounded-md bg-card" />
+                    ) : null}
+                    <span className="relative">
+                      {tStage(`short.${c.key}`)} <span className="font-mono text-xs tabular-nums text-muted-foreground">{format.number(c.count)}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </nav>
+          ) : null}
+
+          <DndContext
+            id="pipeline-board"
+            sensors={online ? sensors : NO_SENSORS}
+            collisionDetection={pointerFirst}
+            measuring={MEASURING}
+            autoScroll={AUTO_SCROLL}
+            accessibility={{ announcements, screenReaderInstructions: instructions }}
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDragEnd={onDragEnd}
+            onDragCancel={onDragCancel}
+          >
+            <div
+              ref={boardRef}
+              role="region"
+              aria-label={t("boardLabel")}
+              data-dragging={dragging || undefined}
+              onKeyDown={onBoardKeyDown}
+              className="min-w-0 md:flex md:grow md:basis-0 md:flex-col"
+            >
+              <div
+                ref={scrollerRef}
+                className={cn(
+                  "-mx-4 flex gap-3 overflow-x-auto overscroll-x-contain px-4 pb-2 sm:-mx-8 sm:px-8 md:min-h-min md:grow md:basis-0 lg:mx-0 lg:grid lg:grid-cols-[repeat(4,minmax(220px,1fr))] lg:gap-3 lg:overflow-visible lg:px-0 xl:gap-4",
+                  dragging ? "snap-none select-none" : "snap-x snap-mandatory lg:snap-none",
+                )}
+              >
+                {columns.map((c) => (
+                  <Column
+                    key={c.key}
+                    column={c.key}
+                    title={c.key === "won" ? `${tStage("won")} · ${tStage("wonWindow")}` : tStage(c.key)}
+                    count={c.count}
+                    value={c.value}
+                    stalled={c.stalled}
+                    cards={c.cards}
+                    hiddenCount={c.hidden}
+                    canShowMore={!!c.next || (stalledOnly && c.stalled > c.cards.length)}
+                    loadingMore={!!loadingMore[c.key]}
+                    loadMoreFailed={!!moreFailed[c.key]}
+                    onShowMore={() => void showMore(c)}
+                    showOwner={key.scope === "team" && key.owner === null && canTeam}
+                    now={now}
+                    stallDays={c.stallDays}
+                    tabStopId={tabStopId}
+                    dimId={pending?.id ?? null}
+                    activeId={activeId}
+                    over={overId === c.key}
+                    dragging={dragging}
+                    phone={phone}
+                    emptyText={c.key === "lead" ? t("empty.lead") : t("empty.column", { stage: tStage(c.key) })}
+                    footer={
+                      c.key === "won" && board.won.count > 0 ? (
+                        <Button variant="link" className="mt-1 min-h-11 w-full text-xs sm:min-h-9" onClick={() => setClosedList("won")}>
+                          {t("seeWon")}
+                        </Button>
+                      ) : null
+                    }
+                  />
+                ))}
+              </div>
+              <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <span>{t("lostLine", { count: format.number(board.lost.count) })}</span>
+                {board.lost.reasons.map((r) => (
+                  <span key={r.code}>
+                    <span aria-hidden="true">· </span>
+                    {t("lostReason", { reason: tReason(r.code), count: format.number(r.count) })}
+                  </span>
+                ))}
+                {/* On phones the link takes its own line, so no separator is left hanging at a line's end (Day 7c). */}
+                <span aria-hidden="true" className="max-sm:hidden">
+                  ·
+                </span>
+                <Button variant="link" className="min-h-11 text-sm max-sm:basis-full max-sm:justify-start sm:min-h-0" onClick={() => setClosedList("lost")}>
+                  {t("seeLost")}
+                </Button>
+              </p>
+            </div>
+            <AnimatePresence>{dragging ? <LostBand key="lost-band" /> : null}</AnimatePresence>
+            <DragOverlay dropAnimation={null}>{activeCard ? <DealCardGhost card={activeCard} /> : null}</DragOverlay>
+          </DndContext>
+
+          {pending ? (
+            <p className="sr-only" role="status">
+              {pending.to === "won" ? t("confirmWin") : null}
+            </p>
+          ) : null}
+          </>
+        ) : query.isError ? (
+          <BoardError onRetry={() => void query.refetch()} />
+        ) : (
+          <PipelineColumnsSkeleton label={t("loading")} />
+        )}
       </div>
 
       <DealSheet

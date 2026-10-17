@@ -100,6 +100,8 @@ export type LeadHold = {
   created_at: string;
   pieces_per_carton: number;
   price_max: number | null;
+  /** The hold's note (the Undo of a release holds the pieces again with it). */
+  note: string | null;
 };
 /**
  * An open deal of the lead, for the hold and sale pickers (list_lead_deals_for_stock). Day 5's deal schema: a deal may

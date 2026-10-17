@@ -23,6 +23,15 @@ export function PipelineSkeleton({ label }: { label: string }) {
           <div className="h-11 w-40 rounded-md bg-card sm:h-9" />
         </div>
       </div>
+      <ColumnsBlocks />
+    </div>
+  );
+}
+
+// Below the toolbar: the stage tabs on phones, the four columns and the Lost line.
+function ColumnsBlocks() {
+  return (
+    <>
       <div className="-mx-4 flex gap-1 overflow-hidden px-4 py-2 md:hidden">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className={`h-11 w-24 shrink-0 ${bar}`} />
@@ -44,6 +53,18 @@ export function PipelineSkeleton({ label }: { label: string }) {
         ))}
       </div>
       <div className={`h-5 w-72 md:-mt-2 ${bar}`} />
+    </>
+  );
+}
+
+// The columns alone, under the board's real toolbar, while a scope, owner or order not read before loads (board.tsx):
+// the toolbar the person just used stays where it is, and so does their keyboard focus. The same blocks and gaps as the
+// board's columns; the wrapper grows into the space the toolbar leaves, as the board's columns do.
+export function PipelineColumnsSkeleton({ label }: { label: string }) {
+  return (
+    <div aria-busy="true" className="flex min-w-0 flex-col gap-5 md:grow">
+      <span className="sr-only">{label}</span>
+      <ColumnsBlocks />
     </div>
   );
 }

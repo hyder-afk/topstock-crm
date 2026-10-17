@@ -1306,6 +1306,19 @@ begin
   if (b -> 'stages' -> 1 -> 'cards' -> 0 ->> 'stage_entered_at')::timestamptz <> now() - interval '2 days' then
     raise exception 'FAIL: newest in stage first';
   end if;
+  -- board_order_oldest (bugs audit M1): "Longest in stage" starts each open column with the oldest stage clock, as
+  -- list_stage_deals pages it, and its cursor continues from the last card shown; Won stays newest close first.
+  b := public.pipeline_board('team', null, 7, 'oldest');
+  if (select array_agg(x.e ->> 'id' order by x.o) from jsonb_array_elements(b -> 'stages' -> 0 -> 'cards') with ordinality as x (e, o))
+       is distinct from (select array_agg(l.id::text order by l.rn)
+                           from (select d.id, row_number() over () as rn
+                                   from public.list_stage_deals('lead', 'team', null, false, 'oldest', null, null, 7) d) l)
+     or (b -> 'stages' -> 0 -> 'cards' -> 0 ->> 'stage_entered_at')::timestamptz
+        > (b -> 'stages' -> 0 -> 'cards' -> 6 ->> 'stage_entered_at')::timestamptz
+     or b -> 'stages' -> 0 -> 'next' ->> 'after_id' <> b -> 'stages' -> 0 -> 'cards' -> 6 ->> 'id'
+     or b -> 'won' -> 'cards' <> public.pipeline_board('team', null, 7) -> 'won' -> 'cards' then
+    raise exception 'FAIL: board_order_oldest %', b -> 'stages' -> 0 -> 'next';
+  end if;
   -- rep_board_team_falls_back_to_mine, rep_stage_list_team_42501, rep_summary_team_42501
   perform pg_temp.act(r2);
   b := public.pipeline_board('team');
@@ -1361,6 +1374,7 @@ begin
   perform pg_temp.expect_error($q$select * from public.list_stage_deals('lead', p_order => 'value')$q$, '22023', 'bad_order');
   perform pg_temp.expect_error($q$select * from public.list_stage_deals('lead', 'everyone')$q$, '22023', 'bad_scope');
   perform pg_temp.expect_error($q$select public.pipeline_board('everyone')$q$, '22023', 'bad_scope');
+  perform pg_temp.expect_error($q$select public.pipeline_board(p_order => 'value')$q$, '22023', 'bad_order');
   perform pg_temp.expect_error($q$select public.pipeline_summary(null)$q$, '22023', 'bad_scope');
   perform pg_temp.expect_error($q$select * from public.list_stage_deals('somewhere')$q$, '22023', 'stage');
   perform pg_temp.expect_error($q$select * from public.list_stage_deals('lead', p_limit => 0)$q$, '22023', 'limit');

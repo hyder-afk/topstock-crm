@@ -2,8 +2,8 @@ import { addMoney, subMoney, toCents } from "@/lib/money";
 import type { Board, BoardColumnKey, DealCard, LostReason, SortOrder, StageKey } from "@/lib/deals";
 
 // The board in the query cache, changed by pure functions (Day 5 design 7.5): a move shows at once (optimistic), a
-// failure puts back the snapshot taken before (the same object, so nothing is rebuilt), and a server answer replaces the
-// card where it really is. Nothing here touches the network.
+// failure puts that card back where the snapshot taken before had it (other cards keep what landed meanwhile), and a
+// server answer replaces the card where it really is. Nothing here touches the network.
 
 /** The column a card sits in on the board (Lost is not a column: its cards leave the board). */
 export function columnOf(stage: StageKey): BoardColumnKey | null {
@@ -148,6 +148,25 @@ export function replaceCard(board: Board, card: DealCard | null, id: string, ord
   if (!at && card.stage === "lost") return next; // already counted where it was
   next = addCard(next, card, order);
   return next;
+}
+
+/**
+ * A failed change rolled back for its own card only: the card goes back to the column and place it had in `before` (the
+ * board when the change started), with both columns' counts and totals; every other card stays as the board has it now,
+ * so another deal's move made in between is kept (bugs audit M5: a whole-board snapshot put it back in its old column
+ * until its own answer came). `lostReason`: the failed change was a loss with this reason (the card left the board for the Lost line).
+ */
+export function rollbackCard(board: Board, before: Board, id: string, lostReason?: LostReason): Board {
+  const was = findCard(before, id);
+  if (!was) return board; // the change never showed on this board
+  const next = addCard(findCard(board, id) ? removeCard(board, id) : lostReason ? unlose(board, lostReason) : board, was.card);
+  const place = (cards: DealCard[]) => {
+    const rest = cards.filter((c) => c.id !== id);
+    return [...rest.slice(0, was.index), was.card, ...rest.slice(was.index)];
+  };
+  return was.column === "won"
+    ? { ...next, won: { ...next.won, cards: place(next.won.cards) } }
+    : { ...next, stages: next.stages.map((s) => (s.key === was.column ? { ...s, cards: place(s.cards) } : s)) };
 }
 
 /** An Undo that brings a lost card back (the board did not hold it): the Lost line goes down, the card comes back. */

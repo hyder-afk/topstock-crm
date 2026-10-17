@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 // shadcn-style button on TopStock tokens. "brand" is the one primary action per screen (black text on Signal Red).
 const variants = cva(
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 text-base font-bold transition-[filter,transform,background-color,color] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60 aria-disabled:opacity-60 aria-disabled:active:scale-100",
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 text-base font-bold transition-[filter,transform,scale,background-color,color] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60 aria-disabled:opacity-60 aria-disabled:active:scale-100",
   {
     variants: {
       variant: {

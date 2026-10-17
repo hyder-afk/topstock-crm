@@ -19,7 +19,7 @@ export const kindIcon: Record<TaskKind, typeof ListTodo> = { todo: ListTodo, cal
 
 const chipClass = (on: boolean) =>
   cn(
-    "min-h-11 shrink-0 rounded-md px-3 text-sm whitespace-nowrap transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+    "min-h-11 shrink-0 rounded-md px-3 text-sm whitespace-nowrap transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
     on ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
   );
 
@@ -164,7 +164,7 @@ export const QuickAdd = forwardRef<HTMLInputElement, { zone: string; now: Date |
                 aria-pressed={kind === k}
                 onClick={() => setKind(k)}
                 className={cn(
-                  "inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-7",
+                  "inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-7",
                   kind === k ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
                 )}
               >

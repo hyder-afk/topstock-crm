@@ -442,7 +442,7 @@ export function FilesTab({ leadId, initial, stepUp }: { leadId: string; initial:
                       {...(canRetry(u.error) ? {} : { "data-upload-action": true })}
                       aria-label={t("dismiss", { name: u.name })}
                       onClick={() => dismiss(u)}
-                      className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
+                      className="grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:text-foreground active:scale-[0.97] sm:size-9"
                     >
                       <X aria-hidden="true" strokeWidth={1.75} className="size-4" />
                     </button>
@@ -670,7 +670,7 @@ function FileRow({
                 onClick={() => (busy ? undefined : onDelete())}
                 aria-disabled={busy || undefined}
                 aria-label={t("retryDeleteNamed", { name: file.name })}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm font-bold text-foreground underline-offset-4 transition-[opacity,transform] duration-150 hover:underline active:scale-[0.97] aria-disabled:opacity-60 sm:min-h-0 sm:min-w-0"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-sm font-bold text-foreground underline-offset-4 transition-[opacity,transform,scale] duration-150 hover:underline active:scale-[0.97] aria-disabled:opacity-60 sm:min-h-0 sm:min-w-0"
               >
                 {t("retryDelete")}
               </button>
@@ -693,7 +693,7 @@ function FileRow({
               type="button"
               data-file-actions={file.id}
               aria-label={t("menu", { name: file.name })}
-              className="relative grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] sm:size-9"
+              className="relative grid size-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-[color,transform,scale] duration-150 hover:bg-muted hover:text-foreground active:scale-[0.97] sm:size-9"
             >
               <MoreHorizontal aria-hidden="true" strokeWidth={1.75} className="size-5" />
             </button>

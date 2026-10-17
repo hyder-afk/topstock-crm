@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { setTaskDone } from "@/app/(app)/leads/[id]/actions";
 import { CardError, HomeCard, RowSkeletons } from "@/components/home/home-card";
 import { homeKey } from "@/components/home/use-home";
+import { refreshTasks } from "@/components/tasks/use-tasks";
 import { useToast } from "@/components/ui/toast";
 import type { HomeData, HomeScope, HomeToday, TodayTask } from "@/lib/home";
 import { primaryZone } from "@/lib/timezones";
@@ -113,12 +114,13 @@ export function TodayCard({
       toast.show(t("failed"));
       return;
     }
-    void qc.invalidateQueries({ queryKey: ["home"] });
+    // Home, the Tasks page and the lead's Tasks card all show it (refreshTasks reads Home again too).
+    refreshTasks(qc, task.company_id);
     toast.show(t("done"), {
       label: t("undo"),
       run: async () => {
         const again = await setTaskDone({ id: task.id, on: false }).catch(() => ({ ok: false as const, error: "unavailable" as const }));
-        void qc.invalidateQueries({ queryKey: ["home"] });
+        refreshTasks(qc, task.company_id);
         if (!again.ok) toast.show(tErr(again.error));
       },
     });

@@ -195,9 +195,10 @@ export function StockImportWorkspace({ initialImports, stepUpSeconds }: { initia
       void refreshImports();
       void choices;
     } catch (cause) {
+      // Thrown away even when the page was left meanwhile (it needs no screen): a half-sent import would stay staged.
+      if (batchId) void discardStockImport({ batchId }).catch(() => null);
       if (!mounted.current) return;
       const code = cause instanceof ImportStopped ? cause.code : "unavailable";
-      if (batchId) void discardStockImport({ batchId }).catch(() => null);
       if (code !== "cancelled") setError(code);
       setPhase({ kind: "match" });
       focusHeading();

@@ -121,7 +121,7 @@ export function useReservations(f: { company?: string; product?: string; status?
   });
 }
 
-/** After any stock change: every list, the KPIs and the product (when known) are fetched again. */
+/** After any stock change: every list, the KPIs, the product (when known) and Home (low stock) are fetched again. */
 export function refreshInventory(queryClient: QueryClient, productId?: string) {
   void queryClient.invalidateQueries({ queryKey: ["stock"] });
   void queryClient.invalidateQueries({ queryKey: summaryKey });
@@ -129,4 +129,5 @@ export function refreshInventory(queryClient: QueryClient, productId?: string) {
   void queryClient.invalidateQueries({ queryKey: ["reservations"] });
   if (productId) void queryClient.invalidateQueries({ queryKey: productKey(productId) });
   else void queryClient.invalidateQueries({ queryKey: ["product"] });
+  void queryClient.invalidateQueries({ queryKey: ["home"] });
 }

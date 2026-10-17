@@ -262,7 +262,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
               aria-pressed={type === k}
               onClick={() => switchType(k)}
               className={cn(
-                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[10px] px-1 text-[0.6875rem] leading-tight transition-[background-color,color,transform] duration-150 active:scale-[0.97]",
+                "flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[10px] px-1 text-[0.6875rem] leading-tight transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97]",
                 type === k ? "bg-pill text-foreground shadow-[0_1px_3px_rgb(14_14_16/0.12)]" : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -343,7 +343,7 @@ export const Composer = memo(function Composer({ lead, mode, autoFocus = false, 
                 setFollow(m === "book" ? { date: null, time: "10:00" } : noFollowUp);
               }}
               className={cn(
-                "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform] duration-150 active:scale-[0.97] sm:min-h-9",
+                "min-h-11 rounded-md px-3 text-sm transition-[background-color,color,transform,scale] duration-150 active:scale-[0.97] sm:min-h-9",
                 meeting === m ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:brightness-95 dark:hover:brightness-125",
               )}
             >
