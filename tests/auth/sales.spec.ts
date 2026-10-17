@@ -211,6 +211,34 @@ test("hold_then_sell_held_uses_the_hold", async ({ browser }) => {
   await context.close();
 });
 
+test("release_from_stock_tab_then_undo_shows_the_hold_again_with_its_note (bugs audit L1)", async ({ browser }) => {
+  // A hold with a note, made by the admin (as the Hold sheet would).
+  asUser(
+    adminEmail,
+    `select public.post_stock_movement(p_product => '${pid(cup)}', p_kind => 'reserve', p_qty => 50, p_location => 'warehouse',
+      p_company => '${leadId}', p_hold_until => (now() at time zone 'Europe/Paris')::date + 7, p_note => 'Keep for the fair')`,
+  );
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoStockTab(page);
+  const reserved = panel(page).getByRole("region", { name: /^Reserved/ });
+  await expect(reserved.getByText(cup)).toBeVisible();
+  await reserved.getByRole("button", { name: `Release the hold on ${cup}` }).click();
+  const released = page.getByRole("status").filter({ hasText: "Hold released." });
+  await expect(released).toBeVisible();
+  await expect(reserved.getByText("No stock held for this lead.")).toBeVisible();
+  await released.getByRole("button", { name: "Undo" }).click();
+  await expect(toast(page)).toContainText("Held again.");
+  // The tab shows the hold again at once (its list is read again), and the new hold keeps the note.
+  await expect(reserved.getByText(cup)).toBeVisible();
+  expect(sql(`select coalesce(r.note, '(none)') from private.stock_reservations r where r.company_id = '${leadId}' and r.status = 'active'
+               order by r.created_at desc limit 1`)).toBe("Keep for the fair");
+  // Tidy up for the tests after: the hold goes again.
+  await reserved.getByRole("button", { name: `Release the hold on ${cup}` }).click();
+  await expect(reserved.getByText("No stock held for this lead.")).toBeVisible();
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
 test("team_logged_request_answered_from_inbox", async ({ browser }) => {
   const { context, page, errors } = await open(browser, adminState);
   await gotoStockTab(page);

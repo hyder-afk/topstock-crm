@@ -599,8 +599,9 @@ declare
 begin
   perform pg_temp.as_user('00000000-0000-0000-0000-0000000000b1', 'aal2', 30);
   v := public.get_lead_stock('5a000000-0000-0000-0000-0000000000b1');
+  -- Each hold carries its note (bugs audit L1: a release's Undo holds the pieces again with it).
   if not (v ->> 'can_edit')::boolean or jsonb_array_length(v -> 'holds') < 1 or jsonb_array_length(v -> 'requests') <> 1
-     or (v ->> 'sales_count')::int < 5 or (v ->> 'bought_total')::numeric <= 0 then
+     or (v ->> 'sales_count')::int < 5 or (v ->> 'bought_total')::numeric <= 0 or not (v -> 'holds' -> 0 ? 'note') then
     raise exception 'FAIL: get_lead_stock: %', v;
   end if;
   if (select count(*) from public.list_sales(p_company => '5a000000-0000-0000-0000-0000000000b1', p_limit => 2)) <> 2

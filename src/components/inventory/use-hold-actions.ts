@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { releaseHold, reserveStock } from "@/app/(app)/inventory/actions";
 import { useToast } from "@/components/ui/toast";
-import { refreshInventory } from "@/components/inventory/use-inventory";
+import { refreshSales } from "@/components/sales/use-sales";
 import { requestId, useStockErrorText } from "@/components/inventory/stock-actions";
 import type { Place } from "@/lib/inventory/types";
 
@@ -30,7 +30,8 @@ export function useReleaseHold() {
   return useCallback(
     async (hold: HoldLike, productId: string) => {
       const res = await releaseHold({ productId, reservationId: hold.id, pieces: null, requestId: requestId() }).catch(() => null);
-      refreshInventory(queryClient, productId);
+      // The inventory, and the lead's Stock tab and the stock alerts, wherever the release was pressed.
+      refreshSales(queryClient, hold.company_id);
       if (!res || !res.ok) {
         toast.show(res ? errorText(res) : t("failed"));
         return false;
@@ -51,7 +52,7 @@ export function useReleaseHold() {
               requestId: requestId(),
             })
               .then((r) => {
-                refreshInventory(queryClient, productId);
+                refreshSales(queryClient, hold.company_id);
                 toast.show(r.ok ? t("reheld") : errorText(r));
               })
               .catch(() => toast.show(t("failed"))),
