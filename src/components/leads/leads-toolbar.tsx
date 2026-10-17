@@ -80,7 +80,9 @@ export function LeadsToolbar({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || document.querySelector("[role=dialog]")) return;
       const input = searchRef.current;
-      if (!input || !input.checkVisibility()) return;
+      // checkVisibility is Safari 17.4+; older Safari falls back to offsetParent (null when the toolbar is hidden).
+      if (!input) return;
+      if (!(typeof input.checkVisibility === "function" ? input.checkVisibility() : input.offsetParent !== null)) return;
       e.preventDefault();
       input.focus();
     };
