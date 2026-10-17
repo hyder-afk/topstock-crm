@@ -25,7 +25,7 @@ export function ProductPage({ product, role, me, stepUpSeconds }: { product: Pro
         <ArrowLeft aria-hidden="true" strokeWidth={1.75} className="size-4" />
         {t("back")}
       </Link>
-      <div className="animate-page rounded-lg bg-card p-5">
+      <div className="rounded-lg bg-card p-5">
         <ProductPanel id={product.id} role={role} me={me} stepUp={stepUp} initial={product} asPage onClose={() => router.push("/inventory")} />
       </div>
       {stepUpHook.dialog}
