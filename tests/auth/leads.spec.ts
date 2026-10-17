@@ -140,6 +140,17 @@ test.describe("desktop", () => {
     await page.keyboard.press("ArrowDown");
     await expect(preview(page).getByRole("heading", { level: 2 })).toHaveText("Maison Verdane");
     await expect(rowLinks(page).nth(1)).toBeFocused();
+    // J and K do the same, as on the stock list and the lead page (Apple audit #10).
+    await page.keyboard.press("k");
+    await expect(preview(page).getByRole("heading", { level: 2 })).toHaveText("Comptoir Verdane");
+    await expect(rowLinks(page).first()).toBeFocused();
+    await page.keyboard.press("j");
+    await expect(preview(page).getByRole("heading", { level: 2 })).toHaveText("Maison Verdane");
+    await expect(rowLinks(page).nth(1)).toBeFocused();
+    // "/" focuses the leads search on this page (labelled "Search"), not the command menu.
+    await page.keyboard.press("/");
+    await expect(page.getByRole("searchbox", { name: "Search leads" })).toBeFocused();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await context.close();
   });
 

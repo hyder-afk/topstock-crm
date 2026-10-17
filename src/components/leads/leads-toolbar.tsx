@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useId, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Bookmark, ChevronDown, Columns3, ListFilter, Trash2, X } from "lucide-react";
 import { deleteView, saveView } from "@/app/(app)/leads/actions";
@@ -34,6 +34,7 @@ import {
   type TeamMember,
 } from "@/lib/leads";
 import type { SavedView } from "@/lib/leads-server";
+import { isTyping } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 const control = cn(buttonVariants({ variant: "quiet" }), "min-h-11 min-w-11 justify-center gap-2 px-3 text-sm font-normal sm:min-h-10");
@@ -70,6 +71,22 @@ export function LeadsToolbar({
   const tSort = useTranslations("Leads.sorts");
   const [search, setSearch] = useState(filters.q ?? "");
   const searchId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // "/" focuses the leads search here, as on Inventory (Apple audit #10; quiet while typing or in a dialog). Capture
+  // phase, so it runs before the app-wide "/" (the command menu), which skips a handled key. A phone with a lead open hides the
+  // toolbar: "/" then opens the command menu as everywhere else.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target) || document.querySelector("[role=dialog]")) return;
+      const input = searchRef.current;
+      if (!input || !input.checkVisibility()) return;
+      e.preventDefault();
+      input.focus();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   // The search box follows the URL (Back, saved views) and writes to it 250 ms after typing stops.
   const [lastQ, setLastQ] = useState(filters.q ?? "");
@@ -93,6 +110,7 @@ export function LeadsToolbar({
             {t("searchLabel")}
           </label>
           <SearchInput
+            ref={searchRef}
             id={searchId}
             name="q"
             value={search}

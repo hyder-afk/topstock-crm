@@ -196,13 +196,15 @@ export function LeadsTable({
   const allSelected = tableRows.length > 0 && tableRows.every((r) => rowSelection[r.id]);
   const someSelected = !allSelected && tableRows.some((r) => rowSelection[r.id]);
 
-  // Up and Down move between leads and open each one in the preview (like a mail list).
+  // Up and Down (or J and K, as on the stock list and the lead page) move between leads and open each one in the
+  // preview (like a mail list).
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const target = event.target as HTMLElement;
     const index = Number(target.dataset.rowLink ?? NaN);
-    if (Number.isNaN(index)) return;
-    const next = index + (event.key === "ArrowDown" ? 1 : -1);
+    if (Number.isNaN(index) || event.metaKey || event.ctrlKey || event.altKey) return;
+    const step = event.key === "ArrowDown" || event.key === "j" ? 1 : event.key === "ArrowUp" || event.key === "k" ? -1 : 0;
+    if (!step) return;
+    const next = index + step;
     if (next < 0 || next >= tableRows.length) return;
     event.preventDefault();
     virtualizer.scrollToIndex(next, { align: "auto" });
