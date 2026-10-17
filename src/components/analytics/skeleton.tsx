@@ -4,6 +4,7 @@ import { Bone } from "@/components/analytics/card";
 import { ChartSkeleton, FunnelSkeleton, SpeedSkeleton } from "@/components/analytics/blocks";
 import { HeatmapSkeleton } from "@/components/analytics/heatmap";
 import { KpiTilesSkeleton } from "@/components/analytics/kpi-tiles";
+import { RightNowSkeleton } from "@/components/analytics/right-now";
 import { TeamSkeleton } from "@/components/analytics/team-table";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +12,7 @@ import { cn } from "@/lib/utils";
 // width (chart areas 240 px, 200 px on phones; heatmap rows 7 × 32 px, the phone's 44 px rows; the team table 3 rows).
 // Used by analytics/loading.tsx (the whole page) and by the page's Suspense boundary (the body, under the header and the
 // filter row already on screen), so nothing jumps when the figures land. No spinners. The Team card shows for managers
-// and admins only (the app layout's data-role; the page decides for real).
+// and admins only, List quality for admins only (the app layout's data-role; the page decides for real).
 
 function CardSkeleton({ span, children, action = false, className }: { span: string; children: React.ReactNode; action?: boolean; className?: string }) {
   return (
@@ -25,7 +26,7 @@ function CardSkeleton({ span, children, action = false, className }: { span: str
   );
 }
 
-export function AnalyticsBodySkeleton({ team }: { team?: boolean }) {
+export function AnalyticsBodySkeleton({ team, batches }: { team?: boolean; batches?: boolean }) {
   return (
     <div className="mt-4 flex flex-col gap-3" aria-hidden="true" data-analytics-skeleton="">
       <Bone className="h-4 w-24" />
@@ -60,6 +61,7 @@ export function AnalyticsBodySkeleton({ team }: { team?: boolean }) {
           <ChartSkeleton bars={6} />
         </CardSkeleton>
       </div>
+      <RightNowSkeleton batches={batches} />
     </div>
   );
 }

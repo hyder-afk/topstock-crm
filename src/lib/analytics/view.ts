@@ -1,8 +1,9 @@
 import { DEFAULT_IDLE, DEFAULT_RANGE, MIN_HEAT_CALLS, analyticsRanges, daysBetween, MAX_RANGE_DAYS, speedBuckets } from "@/lib/analytics/params";
 import type { AnalyticsParams, AnalyticsRange, Bucket } from "@/lib/analytics/params";
-import type { ActivityPart, CallTimesPart, PipelinePart, SalesPart, SpeedPart } from "@/lib/analytics/parts";
-import type { AnalyticsTeamMember } from "@/lib/analytics/fetch";
+import type { ActivityPart, BatchesPart, CallTimesPart, PipelinePart, SalesPart, SpeedPart } from "@/lib/analytics/parts";
+import type { AnalyticsRole, AnalyticsTeamMember } from "@/lib/analytics/fetch";
 import { lostReasons, openStageKeys, type OpenStageKey } from "@/lib/deals";
+import { filtersToParams } from "@/lib/leads";
 import { addMoney, formatMoney } from "@/lib/money";
 
 // Analytics P2 (design docs/evidence/analytics/design.md 2, 4.3, 4.6): what the page draws, as pure functions of the API's
@@ -418,4 +419,84 @@ export function teamOptions(team: AnalyticsTeamMember[], noName: string, locale:
 /** Which x ticks a column chart labels: every 7th day on a phone; Recharts' own spacing otherwise. */
 export function tickInterval(bucket: Bucket, narrow: boolean): number | "preserveStartEnd" {
   return narrow && bucket === "day" ? 6 : "preserveStartEnd";
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Right now: coverage links and list quality (design 1.4, 1.5)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** The lead statuses "Untouched" counts (private.lead_filter_sql's own rule; cool-off, customer and the rest left out). */
+export const UNTOUCHED_STATUSES = ["cold", "warm", "negotiation"] as const;
+
+/**
+ * Whose "Right now" figures these are: "team" (a manager or admin with no person picked), "own" (a rep, or a manager or
+ * admin who picked themselves) or "other" (a manager or admin who picked someone else). `owner` is the lead owner the
+ * figures are for (null for the team).
+ */
+export type CoverageScope = { kind: "team"; owner: null } | { kind: "own" | "other"; owner: string };
+export function coverageScope(role: AnalyticsRole, rep: string | undefined, self: string): CoverageScope {
+  if (role === "rep") return { kind: "own", owner: self };
+  if (!rep) return { kind: "team", owner: null };
+  return { kind: rep === self ? "own" : "other", owner: rep };
+}
+
+/**
+ * The Leads list that holds exactly the Untouched tile's leads (design 1.4): the same statuses, the same inactive days
+ * and the same owner, written by the Leads list's own URL writer, so the two can never drift apart.
+ */
+export function untouchedHref(idle: number, scope: CoverageScope): string {
+  const p = filtersToParams({ status: [...UNTOUCHED_STATUSES], owner: scope.owner ? [scope.owner] : undefined, inactive: idle });
+  return `/leads?${p.toString()}`;
+}
+
+/**
+ * Where the Overdue tile leads: the person's own overdue tasks, or the team's (Tasks reads scope=team for managers and
+ * admins). null when a manager or admin picked someone else: Tasks has no per-person filter, so the count would not
+ * match.
+ */
+export function overdueHref(scope: CoverageScope): string | null {
+  if (scope.kind === "other") return null;
+  return scope.kind === "team" ? "/tasks?tab=overdue&scope=team" : "/tasks?tab=overdue";
+}
+
+export type BatchShare = { count: number; share: number | null };
+export type BatchRow = {
+  key: string;
+  id: string;
+  /** Untrusted text (the uploaded file's name): React text only. */
+  filename: string;
+  createdAt: string;
+  leads: number;
+  contacted: BatchShare;
+  reached: BatchShare;
+  deal: BatchShare;
+  won: BatchShare;
+};
+
+/** List quality rows, newest import first (as the database answers them); every share is of the leads in it now. */
+export function batchRows(b: BatchesPart): BatchRow[] {
+  return b.map((x) => {
+    const of = (count: number): BatchShare => ({ count, share: ratio(count, x.leads) });
+    return {
+      key: x.id,
+      id: x.id,
+      filename: x.filename,
+      createdAt: x.created_at,
+      leads: x.leads,
+      contacted: of(x.contacted),
+      reached: of(x.reached),
+      deal: of(x.with_deal),
+      won: of(x.won),
+    };
+  });
+}
+
+/** The Leads list of one import (its leads now; with the person filter, the ones that person owns). */
+export function batchHref(id: string, owner: string | null): string {
+  return `/leads?${filtersToParams({ batch: id, owner: owner ? [owner] : undefined }).toString()}`;
+}
+
+/** "14 Oct 2026" for an instant, on the Paris calendar (the day the import ran, in the business's zone). */
+export function formatParisDate(at: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Paris" }).format(new Date(at));
 }

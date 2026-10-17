@@ -35,14 +35,14 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/analyt
     .then((d) => (typeof d === "string" ? null : d))
     .catch(() => null);
   return (
-    <AnalyticsProvider initialFilters={toFilters(params)} promise={promise} role={role} today={today}>
+    <AnalyticsProvider initialFilters={toFilters(params)} promise={promise} role={role} self={claims.sub} today={today}>
       <div className="flex flex-col gap-3 pt-4">
         <h1 className="text-3xl font-bold sm:text-4xl">{t("title")}</h1>
         <Suspense fallback={<RangeLine from={range.from} to={range.to} />}>
           <AnalyticsStatus />
         </Suspense>
         <AnalyticsFiltersRow team={team} />
-        <Suspense fallback={<AnalyticsBodySkeleton team={seesTeam && !rep} />}>
+        <Suspense fallback={<AnalyticsBodySkeleton team={seesTeam && !rep} batches={role === "admin"} />}>
           <AnalyticsBody />
         </Suspense>
       </div>

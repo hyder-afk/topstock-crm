@@ -23,6 +23,8 @@ type Ctx = {
   bodyMounted: () => void;
   initial: Initial;
   role: AnalyticsRole;
+  /** The signed-in person's id (from the verified session): whose own figures "Right now" links to. */
+  self: string;
   /** The Paris date today on the server (the custom picker's last day). */
   today: string;
 };
@@ -39,12 +41,14 @@ export function AnalyticsProvider({
   initialFilters,
   promise,
   role,
+  self,
   today,
   children,
 }: {
   initialFilters: AnalyticsFilters;
   promise: Promise<AnalyticsData | null>;
   role: AnalyticsRole;
+  self: string;
   today: string;
   children: React.ReactNode;
 }) {
@@ -59,8 +63,8 @@ export function AnalyticsProvider({
   }, []);
   const initial = useMemo(() => ({ search: filtersToSearch(initialFilters), promise }), [initialFilters, promise]);
   const value = useMemo(
-    () => ({ filters, viewFilters: ready ? filters : initialFilters, setFilters, bodyMounted, initial, role, today }),
-    [filters, ready, initialFilters, setFilters, bodyMounted, initial, role, today],
+    () => ({ filters, viewFilters: ready ? filters : initialFilters, setFilters, bodyMounted, initial, role, self, today }),
+    [filters, ready, initialFilters, setFilters, bodyMounted, initial, role, self, today],
   );
   return <AnalyticsContext.Provider value={value}>{children}</AnalyticsContext.Provider>;
 }

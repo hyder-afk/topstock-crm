@@ -4,9 +4,18 @@ import { expect, test } from "@playwright/test";
 import { createTranslator } from "use-intl/core";
 import type { ActivityPart, CallTimesPart, PipelinePart, SalesPart, SpeedPart } from "@/lib/analytics/parts";
 import { activityPart, callTimesPart, pipelinePart, salesPart, speedPart } from "@/lib/analytics/parts";
+import { batchesPart, type BatchesPart } from "@/lib/analytics/parts";
+import { parseFilters, rpcFilterArgs } from "@/lib/leads";
 import {
   RATE_BINS,
+  UNTOUCHED_STATUSES,
   activityEmpty,
+  batchHref,
+  batchRows,
+  coverageScope,
+  formatParisDate,
+  overdueHref,
+  untouchedHref,
   bestOfRow,
   bucketDate,
   bucketDay,
@@ -345,4 +354,71 @@ test("French messages: the 429 line and the heatmap readout read right", () => {
   expect(tf("heat.cell", { day: "mardi", hour: "10:00", calls: 1, reached: 1, rate: "100 %" })).toBe("mardi 10:00, 1 appel, 1 joint, 100 %");
   expect(te("kpi.connect.sub", { reached: 12, calls: 1 })).toBe("12 of 1 call");
   expect(tf("kpi.won.sub", { count: 0 })).toBe("Aucune affaire gagnée");
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Right now (P3): whose figures, the tiles' links, list quality rows
+// ---------------------------------------------------------------------------------------------------------------------
+const SELF = "11111111-1111-4111-8111-111111111111";
+const OTHER = "22222222-2222-4222-8222-222222222222";
+
+test("coverage scope: a rep is always their own; a manager or admin is the team, themselves or someone else", () => {
+  expect(coverageScope("rep", undefined, SELF)).toEqual({ kind: "own", owner: SELF });
+  expect(coverageScope("rep", OTHER, SELF)).toEqual({ kind: "own", owner: SELF }); // never another person's
+  expect(coverageScope("admin", undefined, SELF)).toEqual({ kind: "team", owner: null });
+  expect(coverageScope("manager", SELF, SELF)).toEqual({ kind: "own", owner: SELF });
+  expect(coverageScope("admin", OTHER, SELF)).toEqual({ kind: "other", owner: OTHER });
+});
+
+test("the Untouched link is the Leads list with exactly the tile's filter (statuses, inactive days, owner)", () => {
+  for (const idle of [7, 30, 90]) {
+    const team = new URL(untouchedHref(idle, { kind: "team", owner: null }), "http://x");
+    expect(team.pathname).toBe("/leads");
+    // Read back by the Leads list's own parser: the same arguments count_leads gets (the attack test's parity, G4).
+    expect(rpcFilterArgs(parseFilters(team.searchParams))).toMatchObject({
+      p_statuses: [...UNTOUCHED_STATUSES],
+      p_owners: null,
+      p_inactive_days: idle,
+      p_search: null,
+      p_countries: null,
+      p_city: null,
+      p_import_batch: null,
+      p_unowned: false,
+    });
+    const own = new URL(untouchedHref(idle, { kind: "other", owner: OTHER }), "http://x");
+    expect(rpcFilterArgs(parseFilters(own.searchParams))).toMatchObject({ p_statuses: [...UNTOUCHED_STATUSES], p_owners: [OTHER], p_inactive_days: idle });
+  }
+});
+
+test("the Overdue link: own tasks, the team's, or none for someone else (Tasks has no per-person view)", () => {
+  expect(overdueHref({ kind: "own", owner: SELF })).toBe("/tasks?tab=overdue");
+  expect(overdueHref({ kind: "team", owner: null })).toBe("/tasks?tab=overdue&scope=team");
+  expect(overdueHref({ kind: "other", owner: OTHER })).toBeNull();
+});
+
+test("list quality: shares of the leads in each import now, file names byte for byte, a batch with none left", () => {
+  const XSS = "<img src=x onerror=alert(1)> liste été.csv";
+  const sample: BatchesPart = batchesPart.parse([
+    { id: SELF, filename: XSS, created_at: "2026-08-18T22:30:00+00:00", leads: 5, contacted: 2, reached: 1, with_deal: 2, won: 1 },
+    { id: OTHER, filename: "vide.csv", created_at: "2026-10-01T08:00:00+00:00", leads: 0, contacted: 0, reached: 0, with_deal: 0, won: 0 },
+  ]);
+  const rows = batchRows(sample);
+  expect(rows[0]).toMatchObject({ filename: XSS, leads: 5, contacted: { count: 2, share: 0.4 }, reached: { count: 1, share: 0.2 }, deal: { count: 2, share: 0.4 }, won: { count: 1, share: 0.2 } });
+  expect(rows[1]).toMatchObject({ leads: 0, contacted: { count: 0, share: null }, won: { count: 0, share: null } });
+  // An import's leads in the Leads list; with the person filter, the ones they own.
+  expect(rpcFilterArgs(parseFilters(new URL(batchHref(SELF, null), "http://x").searchParams))).toMatchObject({ p_import_batch: SELF, p_owners: null, p_statuses: null, p_inactive_days: null });
+  expect(rpcFilterArgs(parseFilters(new URL(batchHref(SELF, OTHER), "http://x").searchParams))).toMatchObject({ p_import_batch: SELF, p_owners: [OTHER] });
+  // The import's day on the Paris calendar: 22:30 UTC on 18 Aug is already 19 Aug in Paris.
+  expect(formatParisDate("2026-08-18T22:30:00+00:00", "en")).toBe("Aug 19, 2026");
+  expect(formatParisDate("2026-08-18T22:30:00+00:00", "fr")).toBe("19 août 2026");
+});
+
+test("Right now messages in both languages", () => {
+  const tf = createTranslator({ locale: "fr", messages: messages("fr"), namespace: "Analytics" });
+  const te = createTranslator({ locale: "en", messages: messages("en"), namespace: "Analytics" });
+  expect(te("rightNow.untouched.label", { days: 30 })).toBe("Untouched 30+ days");
+  expect(tf("rightNow.untouched.label", { days: 30 })).toBe("Sans contact depuis 30 j ou plus");
+  expect(te("listQuality.share", { rate: "40%", count: "2" })).toBe("40% (2)");
+  expect(tf("listQuality.share", { rate: "40 %", count: "2" })).toBe("40 % (2)");
+  expect(tf("rightNow.caughtUp")).toBe("Tout est à jour");
 });

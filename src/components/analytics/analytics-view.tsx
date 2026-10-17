@@ -7,13 +7,15 @@ import { useAnalyticsFilters, useAnalyticsView } from "@/components/analytics/an
 import { CallsCard, FunnelCard, LostCard, ProductsCard, RevenueCard, SpeedCard } from "@/components/analytics/blocks";
 import { HeatmapCard } from "@/components/analytics/heatmap";
 import { KpiTiles } from "@/components/analytics/kpi-tiles";
+import { RightNow } from "@/components/analytics/right-now";
 import { TeamCard } from "@/components/analytics/team-table";
 import { RateLimited } from "@/components/analytics/use-analytics";
 import { COUNT_UP_HYDRATION_MS } from "@/lib/home";
 import { formatClock, formatRange } from "@/lib/analytics/view";
 
 // The streamed part of Analytics (design 4.1, 4.5, 4.7): the range line with "Updated HH:MM" (a polite live region, one
-// short update when new figures land), the quiet 429 line, then "This period": six tiles and the chart cards. A filter
+// short update when new figures land), the quiet 429 line, then "This period": six tiles and the chart cards, and
+// "Right now" (coverage and, for admins, list quality), apart from the dates. A filter
 // change keeps the old frame at 60 % until the new figures land (no skeleton then), with each card aria-busy. A block
 // that failed shows its own error with Try again; the rest stand. A 429 keeps the old frame and says when to try again.
 
@@ -112,6 +114,7 @@ export function AnalyticsBody() {
           <ProductsCard part={data?.sales} {...common} />
         </div>
       </section>
+      <RightNow data={data} loading={loading} busy={busy} stale={stale} onRetry={retry} />
     </FirstVisitContext.Provider>
   );
 }

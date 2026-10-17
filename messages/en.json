@@ -3097,6 +3097,54 @@
         "revenue": "Revenue",
         "pieces": "Pieces"
       }
+    },
+    "rightNow": {
+      "title": "Right now",
+      "note": "Not affected by the dates",
+      "rowLabel": "Coverage right now",
+      "block": "coverage",
+      "caughtUp": "All caught up",
+      "idle": {
+        "label": "Untouched for",
+        "short": "{days} d",
+        "long": "{days} days"
+      },
+      "untouched": {
+        "label": "Untouched {days}+ days",
+        "sub": "Cold, warm or in negotiation, no entry for {days} days",
+        "link": "Open these leads in Leads"
+      },
+      "never": {
+        "label": "Never contacted",
+        "sub": "No entry ever, in the CRM or the sheet"
+      },
+      "noNextStep": {
+        "label": "No next step",
+        "sub": "Warm or in negotiation, no next action or open task"
+      },
+      "overdue": {
+        "label": "Overdue tasks",
+        "sub": "Open tasks past their due time",
+        "subOther": "Open tasks past their due time; Tasks has no per-person view",
+        "link": "Open overdue tasks in Tasks"
+      }
+    },
+    "listQuality": {
+      "title": "List quality per import",
+      "block": "list quality",
+      "caption": "The newest imports. Leads in each import now, and how many were contacted, reached, got a deal and won one since the import.",
+      "file": "File",
+      "imported": "Imported",
+      "leads": "Leads",
+      "contacted": "Contacted",
+      "reached": "Reached",
+      "deal": "Deal",
+      "won": "Won",
+      "share": "{rate} ({count})",
+      "allRemoved": "0 leads (all removed)",
+      "openFile": "Open the leads of this import",
+      "empty": "No imports yet.",
+      "emptyAction": "Import leads"
     }
   }
 }

@@ -3097,6 +3097,54 @@
         "revenue": "Chiffre d’affaires",
         "pieces": "Pièces"
       }
+    },
+    "rightNow": {
+      "title": "En ce moment",
+      "note": "Indépendant des dates",
+      "rowLabel": "Suivi en ce moment",
+      "block": "le suivi",
+      "caughtUp": "Tout est à jour",
+      "idle": {
+        "label": "Sans contact depuis",
+        "short": "{days} j",
+        "long": "{days} jours"
+      },
+      "untouched": {
+        "label": "Sans contact depuis {days} j ou plus",
+        "sub": "Froids, tièdes ou en négociation, aucune entrée depuis {days} jours",
+        "link": "Ouvrir ces prospects dans Prospects"
+      },
+      "never": {
+        "label": "Jamais contactés",
+        "sub": "Aucune entrée, ni dans le CRM ni dans le fichier"
+      },
+      "noNextStep": {
+        "label": "Sans prochaine étape",
+        "sub": "Tièdes ou en négociation, sans prochaine action ni tâche ouverte"
+      },
+      "overdue": {
+        "label": "Tâches en retard",
+        "sub": "Tâches ouvertes dont l’échéance est passée",
+        "subOther": "Tâches ouvertes dont l’échéance est passée ; Tâches n’a pas de vue par personne",
+        "link": "Ouvrir les tâches en retard dans Tâches"
+      }
+    },
+    "listQuality": {
+      "title": "Qualité des listes par import",
+      "block": "la qualité des listes",
+      "caption": "Les imports les plus récents. Prospects de chaque import aujourd’hui, et combien ont été contactés, joints, ont eu une affaire et l’ont gagnée depuis l’import.",
+      "file": "Fichier",
+      "imported": "Importé le",
+      "leads": "Prospects",
+      "contacted": "Contactés",
+      "reached": "Joints",
+      "deal": "Affaire",
+      "won": "Gagnée",
+      "share": "{rate} ({count})",
+      "allRemoved": "0 prospect (tous retirés)",
+      "openFile": "Ouvrir les prospects de cet import",
+      "empty": "Aucun import pour l’instant.",
+      "emptyAction": "Importer des prospects"
     }
   }
 }
