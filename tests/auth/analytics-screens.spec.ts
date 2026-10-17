@@ -4,10 +4,11 @@ import { appReady, createUser, fullSession, isCancelledPrefetch } from "./helper
 import { makeOrg, moveTo, userId } from "./home-fixture";
 import { seedAnalytics } from "./analytics-fixture";
 
-// Analytics P2 evidence screenshots (design 5.4, CLAUDE.md widths): the page with data at 390, 768, 1024, 1280, 1440 and
-// 1728, light and dark, English and French; and a representative set in EN light and FR dark at 390 and 1440: a new
-// org's empty states, one card failing alone, the rep's view, a tooltip open on the Calls chart and on the heatmap (the
-// phone's hour readout at 390), and the loading skeleton. URL asserted before each shot; no console error and no
+// Analytics evidence screenshots (P2 and P3; design 5.4, CLAUDE.md widths): the finished page with data ("This period",
+// "Right now" and list quality) at 390, 768, 1024, 1280, 1440 and 1728, light and dark, English and French; and a
+// representative set in EN light and FR dark at 390 and 1440: a new org's empty states, one card failing alone, the
+// rep's view, a tooltip open on the Calls chart and on the heatmap (the phone's hour readout at 390), "Right now" in view
+// (the admin's team and with a person picked), and the loading skeleton. URL asserted before each shot; no console error and no
 // sideways scroll first. Saved to test-results/analytics-screens, or ANALYTICS_SCREENS_DIR (locally
 // docs/evidence/analytics/screens). Local stack only, fake data.
 test.describe.configure({ mode: "serial", timeout: 1_200_000 });
@@ -22,6 +23,7 @@ type State = Awaited<ReturnType<BrowserContext["storageState"]>>;
 let state: State;
 let repState: State;
 let emptyState: State;
+let repId = "";
 
 const full = [
   { locale: "en", scheme: "light" },
@@ -87,7 +89,8 @@ test.beforeAll(async ({ browser }) => {
   moveTo(adminEmail, org, "admin", "Haider");
   moveTo(repEmail, org, "rep", "Kais");
   moveTo(emptyEmail, makeOrg(`Analytics screens empty ${run}`), "admin", "Henri");
-  seedAnalytics(org, userId(adminEmail), userId(repEmail));
+  repId = userId(repEmail);
+  seedAnalytics(org, userId(adminEmail), repId);
   state = await fullSession(browser, adminEmail, password, secret);
   repState = await fullSession(browser, repEmail, password, repSecret);
   emptyState = await fullSession(browser, emptyEmail, password, emptySecret);
@@ -141,6 +144,22 @@ test("representative set: empty org, one card failing, rep view, tooltips, skele
       }
     },
   });
+  // "Right now" in view: the team's (links on Untouched and Overdue), and a person picked (no Overdue link).
+  for (const [name, search] of [
+    ["analytics-right-now", ""],
+    ["analytics-right-now-person", "?idle=90&rep=REP"],
+  ] as const) {
+    await shoot(browser, name, some, [390, 1440], {
+      path: `/analytics${search.replace("REP", repId)}`,
+      fullPage: false,
+      act: async (page) => {
+        const section = page.locator("section[data-right-now]");
+        await section.scrollIntoViewIfNeeded();
+        await page.evaluate(() => document.querySelector("section[data-right-now]")!.scrollIntoView({ block: "start" }));
+        await expect(section.locator("[data-coverage-tile=untouched] [data-kpi-number]")).toBeVisible();
+      },
+    });
+  }
   // The skeleton (loading.tsx): a client navigation from More (its section list on a phone, the dock from 1024) with
   // Analytics' server answer held back, so the route's loading layout shows where the page will be.
   await shoot(browser, "analytics-loading", some, [390, 1440], {

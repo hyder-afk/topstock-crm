@@ -3,15 +3,18 @@ import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { appReady, createUser, fullSession, isCancelledPrefetch, settled, trackRequests } from "./helpers";
 import { makeOrg, moveTo, userId } from "./home-fixture";
-import { XSS_NAME, expected, seedAnalytics } from "./analytics-fixture";
+import { EMPTY_FILE, XSS_FILE, XSS_NAME, expected, seedAnalytics } from "./analytics-fixture";
 
-// Analytics P2 (design docs/evidence/analytics/design.md 5.3, the "This period" part): the page renders the seeded
+// Analytics P2 and P3 (design docs/evidence/analytics/design.md 5.3): the page renders the seeded
 // figures; the filters update the URL with replaceState and a reload restores the view; a rep sees no person picker and
 // no Team table and only their own numbers (and the API refuses a colleague); the empty states; a 500 shows each card's
 // Try again and a retry recovers; one failed block breaks only its card; a 429 keeps the old frame with the quiet line;
 // prefetch waits 150 ms; "Show as table" holds the chart's numbers; the keyboard path through the charts and the
-// heatmap; axe finds no aria-hidden-focus or nested-interactive; an untrusted product name renders as text. Each person
-// lives in an org made for this run, so every figure is exact. Local stack only, fake data.
+// heatmap; axe finds no aria-hidden-focus or nested-interactive; an untrusted product name renders as text. P3: "Right
+// now" (coverage tiles, the 7/30/90 untouched days, the links whose lists hold exactly the tile's count, and the
+// overdue link rules), list quality per import for admins only (an untrusted file name as text), and the route over
+// HTTP (P1 condition C2: 401 signed out, 400 bad parameters, 403 a rep's colleague, 429 from the real limiter). Each
+// person lives in an org made for this run, so every figure is exact. Local stack only, fake data.
 test.describe.configure({ mode: "serial" });
 
 const password = "Analytics-Pass-42!";
@@ -19,10 +22,12 @@ const run = Date.now();
 const adminEmail = `analytics-admin-${run}@example.test`;
 const repEmail = `analytics-rep-${run}@example.test`;
 const emptyEmail = `analytics-empty-${run}@example.test`;
+const limitEmail = `analytics-limit-${run}@example.test`;
 type State = Awaited<ReturnType<BrowserContext["storageState"]>>;
 let adminState: State;
 let repState: State;
 let emptyState: State;
+let limitState: State;
 let admin = "";
 let rep = "";
 
@@ -66,22 +71,32 @@ const tile = (page: Page, label: string) => tiles(page).locator("[data-tile]").f
 const figure = (page: Page, label: string) => tile(page, label).locator("[data-kpi-number] .sr-only");
 const card = (page: Page, id: string) => page.locator(`section[data-block="analytics-${id}"]`);
 const presets = (page: Page) => page.getByRole("group", { name: /^(Date range|Période)$/ });
+const coverage = (page: Page) => page.getByRole("group", { name: /^(Coverage right now|Suivi en ce moment)$/ });
+const cover = (page: Page, id: string) => coverage(page).locator(`[data-coverage-tile="${id}"]`);
+const coverFigure = (page: Page, id: string) => cover(page, id).locator("[data-kpi-number] .sr-only");
+const idle = (page: Page) => page.getByRole("group", { name: /^(Untouched for|Sans contact depuis)$/ });
+/** The Leads list's count next to its title (count_leads for the URL's filters). */
+const leadsCount = (page: Page) => page.locator("main h1 span.font-mono");
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
   const adminSecret = await createUser(adminEmail, password, true);
   const repSecret = await createUser(repEmail, password, true);
   const emptySecret = await createUser(emptyEmail, password, true);
+  const limitSecret = await createUser(limitEmail, password, true);
   admin = userId(adminEmail);
   rep = userId(repEmail);
   const org = makeOrg(`Analytics e2e ${run}`);
   moveTo(adminEmail, org, "admin", "Ada");
   moveTo(repEmail, org, "rep", "Rita");
-  moveTo(emptyEmail, makeOrg(`Analytics empty ${run}`), "admin", "Eva");
+  const emptyOrg = makeOrg(`Analytics empty ${run}`);
+  moveTo(emptyEmail, emptyOrg, "admin", "Eva");
+  moveTo(limitEmail, emptyOrg, "rep", "Lou"); // the limiter's own person: a 429 never slows another test down
   seedAnalytics(org, admin, rep);
   adminState = await fullSession(browser, adminEmail, password, adminSecret);
   repState = await fullSession(browser, repEmail, password, repSecret);
   emptyState = await fullSession(browser, emptyEmail, password, emptySecret);
+  limitState = await fullSession(browser, limitEmail, password, limitSecret);
 });
 
 test("renders_seeded_figures", async ({ browser }) => {
@@ -103,7 +118,7 @@ test("renders_seeded_figures", async ({ browser }) => {
   await expect(page.locator("[data-updated]")).toHaveAttribute("aria-live", "polite");
   await expect(page.locator("[data-updated]")).toContainText(/Paris time · Updated \d\d:\d\d/);
   // Every block drew its figures; the Team table holds both people and no error shows.
-  for (const id of ["calls", "speed", "funnel", "lost", "team", "heat", "revenue", "products"]) {
+  for (const id of ["calls", "speed", "funnel", "lost", "team", "heat", "revenue", "products", "list-quality"]) {
     await expect(card(page, id)).toBeVisible();
     await expect(card(page, id).locator("[data-block-error]")).toHaveCount(0);
   }
@@ -155,6 +170,7 @@ test("filters_update_the_url_without_history_entries", async ({ browser }) => {
   await dialog.locator(`button[data-iso="${today}"]`).click();
   await expect(page).toHaveURL(new RegExp(`/analytics\\?range=custom&from=${first}&to=${today}$`));
   await expect(page.locator("[data-updated]")).toContainText("Paris time");
+  await expect(dialog).toBeHidden(); // the picker has closed (a click while it closes would only dismiss it)
   // The person filter: Rita's figures, rep= in the URL, the Team table hidden; then the whole team again.
   await presets(page).getByRole("button", { name: "30 days" }).click();
   await page.getByRole("combobox", { name: "Figures for" }).click();
@@ -205,6 +221,14 @@ test("empty_states", async ({ browser }) => {
   await expect(card(page, "products")).toContainText("No sales recorded in this period.");
   await expect(figure(page, "Calls")).toHaveText("0");
   await expect(tile(page, "Win rate")).toContainText("Not enough closed deals yet");
+  // Right now at zero: every tile says "All caught up"; list quality has no imports yet, with Import leads.
+  for (const id of ["untouched", "never", "noNextStep", "overdue"]) {
+    await expect(coverFigure(page, id)).toHaveText("0");
+    await expect(cover(page, id).locator("[data-coverage-sub]")).toHaveText("All caught up");
+  }
+  await expect(cover(page, "overdue").locator(".bg-status-red")).toHaveCount(0);
+  await expect(card(page, "list-quality")).toContainText("No imports yet.");
+  await expect(card(page, "list-quality").getByRole("link", { name: "Import leads" })).toHaveAttribute("href", "/leads/import");
   expect(errors).toEqual([]);
   await context.close();
 });
@@ -215,10 +239,11 @@ test("errors_per_card_and_retry", async ({ browser }) => {
   let fail = true;
   await page.route("**/api/analytics?*", (route) => (fail ? route.fulfill({ status: 500, body: "{}" }) : route.continue()));
   await presets(page).getByRole("button", { name: "7 days" }).click();
-  for (const id of ["calls", "speed", "funnel", "lost", "team", "heat", "revenue", "products"]) {
+  for (const id of ["calls", "speed", "funnel", "lost", "team", "heat", "revenue", "products", "list-quality"]) {
     await expect(card(page, id).getByRole("button", { name: "Try again" })).toBeVisible();
   }
   await expect(tiles(page).getByRole("button", { name: "Try again" }).first()).toBeVisible();
+  await expect(coverage(page).getByRole("button", { name: "Try again" })).toHaveCount(4);
   fail = false;
   await card(page, "calls").getByRole("button", { name: "Try again" }).click();
   await expect(figure(page, "Calls")).toHaveText(String(expected.team.calls7d));
@@ -464,4 +489,192 @@ test("phone_heatmap_fits_326px_and_hour_rows_read_out", async ({ browser }) => {
   expect((await readout.boundingBox())!.height).toBe(before); // two lines reserved: nothing moves
   expect(errors).toEqual([]);
   await context.close();
+});
+
+test("right_now_coverage_tiles_and_their_links", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoAnalytics(page);
+  const c = expected.coverage.team;
+  const section = page.locator("section[data-right-now]");
+  await expect(section.getByRole("heading", { name: "Right now" })).toBeVisible();
+  await expect(section).toContainText("Not affected by the dates");
+  await expect(coverFigure(page, "untouched")).toHaveText(String(c.untouched));
+  await expect(cover(page, "untouched")).toContainText("Untouched 30+ days");
+  await expect(coverFigure(page, "never")).toHaveText(String(c.never));
+  await expect(coverFigure(page, "noNextStep")).toHaveText(String(c.noNextStep));
+  await expect(coverFigure(page, "overdue")).toHaveText(String(c.overdue));
+  await expect(cover(page, "overdue").locator(".bg-status-red")).toHaveCount(1); // a labelled status dot, never a fill
+  await expect(cover(page, "never").getByRole("link")).toHaveCount(0);
+  await expect(cover(page, "noNextStep").getByRole("link")).toHaveCount(0);
+  // Not affected by the dates: 7 days changes "This period", not "Right now".
+  await presets(page).getByRole("button", { name: "7 days" }).click();
+  await expect(figure(page, "Calls")).toHaveText(String(expected.team.calls7d));
+  await expect(coverFigure(page, "untouched")).toHaveText(String(c.untouched));
+  await expect(coverFigure(page, "overdue")).toHaveText(String(c.overdue));
+  await presets(page).getByRole("button", { name: "30 days" }).click();
+  await expect(page).toHaveURL(/\/analytics$/);
+  // The Untouched tile's list holds exactly its count (the Leads list's own filter).
+  const untouched = cover(page, "untouched").getByRole("link", { name: "Open these leads in Leads" });
+  await expect(untouched).toHaveAttribute("href", "/leads?status=cold%2Cwarm%2Cnegotiation&inactive=30");
+  await untouched.click();
+  await expect(page).toHaveURL(/\/leads\?status=cold%2Cwarm%2Cnegotiation&inactive=30$/);
+  await expect(leadsCount(page)).toHaveText(String(c.untouched));
+  // The team's overdue tasks: Tasks' team scope, with the same count.
+  await gotoAnalytics(page);
+  const overdue = cover(page, "overdue").getByRole("link", { name: "Open overdue tasks in Tasks" });
+  await expect(overdue).toHaveAttribute("href", "/tasks?tab=overdue&scope=team");
+  await overdue.click();
+  await expect(page).toHaveURL(/\/tasks\?tab=overdue&scope=team$/);
+  await expect(page.getByRole("tab", { name: /^Overdue/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: /^Overdue/ })).toContainText(String(c.overdue));
+  // 90 and 7 untouched days: in the URL, the label and the figure follow, and the link holds the same count.
+  await gotoAnalytics(page);
+  const length = await page.evaluate(() => history.length);
+  await idle(page).getByRole("button", { name: "90 days" }).click();
+  await expect(page).toHaveURL(/\/analytics\?idle=90$/);
+  await expect(idle(page).getByRole("button", { name: "90 days" })).toHaveAttribute("aria-pressed", "true");
+  await expect(cover(page, "untouched")).toContainText("Untouched 90+ days");
+  await expect(coverFigure(page, "untouched")).toHaveText(String(c.untouched90));
+  await expect(coverFigure(page, "never")).toHaveText(String(c.never));
+  expect(await page.evaluate(() => history.length)).toBe(length);
+  await page.reload();
+  await expect(coverFigure(page, "untouched")).toHaveText(String(c.untouched90));
+  await idle(page).getByRole("button", { name: "7 days" }).click();
+  await expect(page).toHaveURL(/\/analytics\?idle=7$/);
+  await expect(cover(page, "untouched")).toContainText("Untouched 7+ days");
+  const seven = (await coverFigure(page, "untouched").textContent())!;
+  await cover(page, "untouched").getByRole("link").click();
+  await expect(page).toHaveURL(/\/leads\?status=cold%2Cwarm%2Cnegotiation&inactive=7$/);
+  await expect(leadsCount(page)).toHaveText(seven);
+  // A person picked: their own figures; the links carry them (Leads) or vanish (Tasks has no per-person view).
+  await gotoAnalytics(page, `?rep=${rep}`);
+  const r = expected.coverage.rep;
+  await expect(coverFigure(page, "untouched")).toHaveText(String(r.untouched));
+  await expect(coverFigure(page, "never")).toHaveText(String(r.never));
+  await expect(coverFigure(page, "noNextStep")).toHaveText(String(r.noNextStep));
+  await expect(coverFigure(page, "overdue")).toHaveText(String(r.overdue));
+  await expect(cover(page, "overdue").getByRole("link")).toHaveCount(0);
+  await expect(cover(page, "overdue")).toContainText("Tasks has no per-person view");
+  await expect(cover(page, "untouched").getByRole("link")).toHaveAttribute("href", `/leads?status=cold%2Cwarm%2Cnegotiation&owner=${rep}&inactive=30`);
+  await cover(page, "untouched").getByRole("link").click();
+  await expect(leadsCount(page)).toHaveText(String(r.untouched));
+  // The admin picking themselves: their own overdue tasks, linked to their own Tasks list.
+  await gotoAnalytics(page, `?rep=${admin}`);
+  await expect(coverFigure(page, "overdue")).toHaveText(String(expected.coverage.adminOwnOverdue));
+  await expect(cover(page, "overdue").getByRole("link")).toHaveAttribute("href", "/tasks?tab=overdue");
+  await cover(page, "overdue").getByRole("link").click();
+  await expect(page.getByRole("tab", { name: /^Overdue/ })).toContainText(String(expected.coverage.adminOwnOverdue));
+  expect(errors).toEqual([]);
+  await context.close();
+});
+
+test("list_quality_admins_only_with_the_file_name_as_text", async ({ browser }) => {
+  const { context, page, errors } = await open(browser, adminState);
+  await gotoAnalytics(page);
+  const quality = card(page, "list-quality");
+  await expect(quality.getByRole("heading", { name: "List quality per import" })).toBeVisible();
+  const table = quality.getByRole("table");
+  await expect(table.locator("thead th")).toHaveText(["File", "Imported", "Leads", "Contacted", "Reached", "Deal", "Won"]);
+  const rows = table.locator("tbody tr");
+  await expect(rows).toHaveCount(2); // newest first; the rolled-back import is never listed
+  await expect(rows.nth(0).getByRole("rowheader")).toHaveText(EMPTY_FILE);
+  await expect(rows.nth(0)).toContainText("0 leads (all removed)");
+  await expect(rows.nth(0).locator("td").nth(1)).toHaveText("0 leads (all removed)");
+  for (let i = 2; i <= 5; i++) await expect(rows.nth(0).locator("td").nth(i)).toHaveText("—");
+  const b = expected.batch.team;
+  await expect(rows.nth(1).getByRole("rowheader")).toHaveText(XSS_FILE);
+  await expect(rows.nth(1).locator("td").nth(1)).toHaveText(String(b.leads));
+  await expect(rows.nth(1).locator("td").nth(2)).toHaveText(b.contacted);
+  await expect(rows.nth(1).locator("td").nth(3)).toHaveText(b.reached);
+  await expect(rows.nth(1).locator("td").nth(4)).toHaveText(b.deal);
+  await expect(rows.nth(1).locator("td").nth(5)).toHaveText(b.won);
+  await expect(quality).not.toContainText("annule.csv");
+  expect(await page.locator("main img").count()).toBe(0); // the file name is text, never markup
+  // The file links to that import's leads; the list holds the same count.
+  const fileLink = rows.nth(1).getByRole("link", { name: XSS_FILE });
+  await expect(fileLink).toHaveAttribute("href", /^\/leads\?batch=[0-9a-f-]{36}$/);
+  await fileLink.click();
+  await expect(leadsCount(page)).toHaveText(String(b.leads));
+  // With a person picked: the leads of each import that person owns.
+  await gotoAnalytics(page, `?rep=${rep}`);
+  const repRow = card(page, "list-quality").getByRole("table").locator("tbody tr").nth(1);
+  const br = expected.batch.rep;
+  await expect(repRow.locator("td").nth(1)).toHaveText(String(br.leads));
+  await expect(repRow.locator("td").nth(2)).toHaveText(br.contacted);
+  await expect(repRow.locator("td").nth(3)).toHaveText(br.reached);
+  await expect(repRow.locator("td").nth(4)).toHaveText(br.deal);
+  await expect(repRow.locator("td").nth(5)).toHaveText(br.won);
+  await expect(repRow.getByRole("link")).toHaveAttribute("href", new RegExp(`^/leads\\?owner=${rep}&batch=`));
+  expect(errors).toEqual([]);
+  await context.close();
+  // On a phone: one card per import, no sideways scroll.
+  const phone = await open(browser, adminState, { width: 390 });
+  await gotoAnalytics(phone.page);
+  const cards = card(phone.page, "list-quality").locator("[data-batch-card]");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(1)).toContainText(XSS_FILE);
+  await expect(cards.nth(1)).toContainText(b.contacted);
+  await expect(card(phone.page, "list-quality").getByRole("table")).toBeHidden();
+  expect(await phone.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  expect(phone.errors).toEqual([]);
+  await phone.context.close();
+  // A rep: Right now with their own figures and own overdue link; no list quality at all (the API leaves it out too).
+  const asRep = await open(browser, repState);
+  await gotoAnalytics(asRep.page);
+  const r = expected.coverage.rep;
+  await expect(coverFigure(asRep.page, "untouched")).toHaveText(String(r.untouched));
+  await expect(coverFigure(asRep.page, "overdue")).toHaveText(String(r.overdue));
+  await expect(cover(asRep.page, "overdue").getByRole("link")).toHaveAttribute("href", "/tasks?tab=overdue");
+  await expect(cover(asRep.page, "untouched").getByRole("link")).toHaveAttribute("href", `/leads?status=cold%2Cwarm%2Cnegotiation&owner=${rep}&inactive=30`);
+  await expect(card(asRep.page, "list-quality")).toHaveCount(0);
+  await expect(asRep.page.getByText("List quality per import")).toHaveCount(0);
+  const api = await (await asRep.page.request.get("/api/analytics")).json();
+  expect(api.batches).toBeNull();
+  expect(api.team).toBeNull();
+  expect(asRep.errors).toEqual([]);
+  await asRep.context.close();
+});
+
+test("api_answers_401_400_403_and_429_over_http", async ({ browser }) => {
+  const base = test.info().project.use.baseURL;
+  // 401: signed out, whatever the query (the proxy answers before the route; the route checks the session first too).
+  const anon = await browser.newContext();
+  for (const q of ["", "?range=7d", "?foo=1"]) {
+    const res = await anon.request.get(`${base}/api/analytics${q}`);
+    expect(res.status(), q).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized" });
+  }
+  await anon.close();
+  // 400: an unknown, repeated or bad parameter, a custom range out of bounds, a person outside the organisation.
+  const asAdmin = await browser.newContext({ storageState: adminState });
+  const stranger = "00000000-0000-4000-8000-000000000000";
+  for (const q of ["?foo=1", "?range=1y", "?idle=14", "?range=7d&range=30d", "?range=custom", "?range=custom&from=2020-01-01&to=2021-06-01", "?from=2026-01-01", `?rep=${stranger}`, "?rep=not-a-uuid"]) {
+    const res = await asAdmin.request.get(`${base}/api/analytics${q}`);
+    expect(res.status(), q).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid" });
+  }
+  const ok = await asAdmin.request.get(`${base}/api/analytics?idle=90&rep=${rep}`);
+  expect(ok.status()).toBe(200);
+  expect(ok.headers()["cache-control"]).toContain("no-store");
+  expect((await ok.json()).coverage.data.untouched).toBe(1); // Rita at 90 days: Halles Altamar, never contacted
+  await asAdmin.close();
+  // 403: a rep asking for a colleague (the database's own scope check).
+  const asRep = await browser.newContext({ storageState: repState });
+  const refused = await asRep.request.get(`${base}/api/analytics?rep=${admin}`);
+  expect(refused.status()).toBe(403);
+  expect(await refused.json()).toEqual({ error: "forbidden" });
+  await asRep.close();
+  // 429: the real per-person limiter (30 reads a minute), with Retry-After; its own person, so no other test waits.
+  const limited = await browser.newContext({ storageState: limitState });
+  const statuses: number[] = [];
+  for (let i = 0; i < 30; i++) statuses.push((await limited.request.get(`${base}/api/analytics?range=7d`)).status());
+  expect(statuses.every((s) => s === 200)).toBe(true);
+  const over = await limited.request.get(`${base}/api/analytics?range=7d`);
+  expect(over.status()).toBe(429);
+  expect(await over.json()).toEqual({ error: "rate_limited" });
+  const retry = Number(over.headers()["retry-after"]);
+  expect(retry).toBeGreaterThanOrEqual(1);
+  expect(retry).toBeLessThanOrEqual(60);
+  expect(over.headers()["cache-control"]).toContain("no-store");
+  await limited.close();
 });
