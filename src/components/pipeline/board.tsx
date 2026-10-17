@@ -690,7 +690,7 @@ function Pipeline({
           ) : null}
 
           {phone ? (
-            <nav aria-label={t("stageTabs")} className="sticky top-0 z-[5] -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm">
+            <nav aria-label={t("stageTabs")} className="sticky top-0 z-[5] -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm reduced-transparency:bg-background reduced-transparency:backdrop-blur-none">
               <div className="edge-fade flex gap-1 overflow-x-auto">
                 {columns.map((c) => (
                   <button

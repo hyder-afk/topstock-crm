@@ -5,6 +5,8 @@
    Status colours appear only as small dots or labelled badges. */
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* Glass gives way to a solid surface when someone asks for less transparency (DESIGN.md materials; Apple audit #21). */
+@custom-variant reduced-transparency (@media (prefers-reduced-transparency: reduce));
 
 /* A full-height page inside the body's top safe-area padding: 100dvh less that inset, so a short page does not scroll
    by the inset (min-h-dvh plus the padding did). The body itself stays min-h-dvh (border-box: the padding is inside). */
