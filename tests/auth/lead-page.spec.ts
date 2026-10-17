@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { addResizeObserverProbe, ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests } from "./helpers";
+import { addResizeObserverProbe, ageStepUp, appReady, choose, createUser, fullSession, isCancelledPrefetch, nextWindow, seedLeads, setRole, settled, sql, totp, trackRequests, youngSession } from "./helpers";
 
 // The lead page (Day 4b, design 8.5): open from the list and back, J/K, local time, the call panel and every outcome,
 // email and WhatsApp with one-tap logging, notes (edit, undo, delete with a fresh code, draft), read-only and Do not
@@ -353,7 +353,10 @@ test("call_panel_focus_returns (WCAG 2.4.3) and second_call_waits_for_the_open_o
 
 test("phone_return_how_did_it_go: back from the phone app after 5 s asks how it went", async ({ browser }) => {
   const lead = makeLead("Brasserie du Retour");
-  const { context, page, errors } = await open(browser, adminState, { width: 390 });
+  // The page's clock jumps about 3 minutes ahead below; with 15-minute access tokens (jwt_expiry 900) the saved session
+  // must outlive that jump, or this test signs in again (helpers.ts youngSession).
+  const session = await youngSession(browser, adminState, { email: adminEmail, password, secret: adminSecret }, 185_000);
+  const { context, page, errors } = await open(browser, session, { width: 390 });
   await page.clock.install();
   await gotoLead(page, lead);
   await page.getByRole("link", { name: "Call", exact: true }).first().tap();

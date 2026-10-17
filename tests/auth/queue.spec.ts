@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { appReady, countryInHours, createUser, fullSession, setRole, settled, signedInPage, sql } from "./helpers";
+import { appReady, countryInHours, createUser, fullSession, setRole, settled, signedInPage, sql, youngSession } from "./helpers";
 
 // The work queue (Day 4c, design 5.4, 7.4 and 8.5): every outcome key (AZERTY digits too), Skip and Undo (the lead comes
 // back), the follow-up chips and Enter, a meeting needs a time, the outside-hours state and its escape, Do not contact
@@ -15,6 +15,7 @@ const adminEmail = `queue-admin-${run}@example.test`;
 const repEmail = `queue-rep-${run}@example.test`;
 const mateEmail = `queue-mate-${run}@example.test`;
 let adminState: Awaited<ReturnType<BrowserContext["storageState"]>>;
+let adminSecret = "";
 let repState: Awaited<ReturnType<BrowserContext["storageState"]>>;
 const open = countryInHours(true, 30);
 const country = open ?? "FR";
@@ -79,7 +80,7 @@ async function current(page: Page) {
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(240_000);
-  const adminSecret = await createUser(adminEmail, password, true);
+  adminSecret = await createUser(adminEmail, password, true);
   const repSecret = await createUser(repEmail, password, true);
   await createUser(mateEmail, password, true);
   setRole(mateEmail, "admin");
@@ -378,7 +379,11 @@ test("claims_end_cards_leave: 10 minutes without a key or a click, the cards go 
   test.setTimeout(180_000);
   fresh(adminEmail, mateEmail);
   makeLeads(adminEmail, ["Held Alpha", "Held Bravo", "Held Charlie", "Held Delta"]);
-  const { context, page, errors } = await signedInPage(browser, adminState, { baseURL: baseURL() });
+  // The page's clock jumps 10.5 minutes ahead below, and access tokens last 15 minutes (jwt_expiry 900) with auth-js
+  // renewing 90 s early: a session saved minutes ago would be expired after the jump and the queue's calls would fail,
+  // so this test signs in again unless the saved session is young enough (helpers.ts youngSession).
+  const session = await youngSession(browser, adminState, { email: adminEmail, password, secret: adminSecret }, 630_000);
+  const { context, page, errors } = await signedInPage(browser, session, { baseURL: baseURL() });
   // The page's own clock, so 10 minutes can pass at once (it flows normally otherwise).
   await page.clock.install();
   await openQueue(page);

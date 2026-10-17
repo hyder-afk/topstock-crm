@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ageStepUp, appReady, choose, countryInHours, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp } from "./helpers";
+import { ageStepUp, appReady, choose, countryInHours, createUser, fullSession, nextWindow, seedLeads, setRole, sql, totp, youngSession } from "./helpers";
 
 // Evidence screenshots of every sign-in screen, signed out and signed in, against a real Supabase Auth server.
 // Saved to test-results/screens; CI uploads them as the "auth-screens" artifact, locally they are copied into
@@ -22,19 +22,11 @@ const withFactor = `screens-a-${Date.now()}@example.test`;
 const noFactor = `screens-b-${Date.now()}@example.test`;
 let secret = "";
 const states: Record<string, Awaited<ReturnType<BrowserContext["storageState"]>> | undefined> = { none: undefined };
-// When states.full was signed in. Access tokens last 15 minutes (jwt_expiry 900, Haider's decision 9 of 16 Oct 2026) and
-// this file runs about 13 minutes on CI: past the token's expiry, every context built from the same saved state would
-// refresh with the same refresh token, the first one rotates it and the later ones are refused ("already used") and land
-// on /login. So states.full is signed in again once it is older than 10 minutes.
-let fullSignedAt = 0;
-const fullMaxAge = 10 * 60_000;
-
-async function freshFull(browser: Browser) {
-  if (Date.now() - fullSignedAt < fullMaxAge) return states.full;
-  const age = Math.round((Date.now() - fullSignedAt) / 1000);
-  states.full = await fullSession(browser, withFactor, password, secret);
-  fullSignedAt = Date.now();
-  console.log(`screens.spec: states.full signed in again (was ${age} s old)`);
+// Access tokens last 15 minutes (jwt_expiry 900, Haider's decision 9 of 16 Oct 2026) and this file runs about 13 minutes
+// on CI, so states.full is signed in again before it goes stale, or before a shot that moves the page's clock ahead
+// by `aheadMs` (helpers.ts youngSession).
+async function freshFull(browser: Browser, aheadMs = 0) {
+  states.full = await youngSession(browser, states.full!, { email: withFactor, password, secret }, aheadMs);
   return states.full;
 }
 
@@ -65,11 +57,13 @@ async function shoot(
   combos: readonly { locale: string; scheme: "light" | "dark"; widths: readonly number[] }[] = matrix,
   before?: (page: Page) => void | Promise<void>,
   // fullPage false: the viewport only, so layers fixed to the screen (the call panel, sheets) show where they sit.
-  { fullPage = true }: { fullPage?: boolean } = {},
+  // aheadMs: how far `act` moves the page's clock ahead (the "full" session is signed in again if its token would not
+  // outlive the jump).
+  { fullPage = true, aheadMs = 0 }: { fullPage?: boolean; aheadMs?: number } = {},
 ) {
   for (const { locale, scheme, widths } of combos) {
     for (const width of widths) {
-      if (state === "full") await freshFull(browser);
+      if (state === "full") await freshFull(browser, aheadMs);
       const context = await browser.newContext({
         storageState: states[state],
         viewport: { width, height: width < 600 ? 844 : 900 },
@@ -115,7 +109,6 @@ test.beforeAll(async ({ browser }) => {
   await a.page.getByRole("button", { name: "Verify" }).click();
   await expect(a.page).toHaveURL(/\/$/);
   states.full = await a.context.storageState();
-  fullSignedAt = Date.now();
   await a.context.close();
 });
 
@@ -657,7 +650,7 @@ test("work queue: start screen, a card, a follow-up open, the claims ended, no l
     await page.clock.fastForward("10:30");
     await expect(page.getByText(/^(Your leads went back to the team|Vos prospects sont retournés à l’équipe)$/)).toBeVisible();
     await page.waitForTimeout(300);
-  }, lightMatrix, (page) => page.clock.install());
+  }, lightMatrix, (page) => page.clock.install(), { aheadMs: 630_000 });
   // A second admin with no leads of their own: "No leads are assigned to you" with "Work unassigned leads".
   const empty = `screens-q-${Date.now()}@example.test`;
   const emptySecret = await createUser(empty, password, true);
