@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { setLeadsOwner, setLeadsStatus } from "@/app/(app)/leads/actions";
 import { useToast } from "@/components/ui/toast";
+import type { ActionResult } from "@/lib/db-errors";
 import {
   filtersToParams,
   type LeadDetail,
@@ -103,6 +104,10 @@ function useRefresh() {
 
 type Before = { id: string; status: LeadStatus; owner_id: string | null; owner_first_name: string | null; owner_last_name: string | null };
 
+// A server action that throws (the connection dropped, a 5xx, a new deploy) answers like a refusal, so the screen puts
+// the change back and says so instead of keeping a value that was never saved.
+const settled = <T,>(p: Promise<ActionResult<T>>): Promise<ActionResult<T>> => p.catch(() => ({ ok: false as const, error: "unavailable" as const }));
+
 // Status and owner changes, from the preview and the bulk bar: instant, then confirmed, with Undo in the toast.
 export function useLeadChanges(team: TeamMember[]) {
   const t = useTranslations("Leads");
@@ -110,6 +115,14 @@ export function useLeadChanges(team: TeamMember[]) {
   const toast = useToast();
   const patch = usePatchCache();
   const refresh = useRefresh();
+
+  const undoText = useCallback(
+    (results: ActionResult<unknown>[]) => {
+      const failed = results.find((r) => !r.ok);
+      return !failed ? t("undone") : tErr(failed.error === "forbidden" ? "forbidden" : "unavailable");
+    },
+    [t, tErr],
+  );
 
   const restore = useCallback(
     (before: Before[]) => {
@@ -123,7 +136,7 @@ export function useLeadChanges(team: TeamMember[]) {
     async (before: Before[], status: LeadStatus, returnAt: string | null = null) => {
       const ids = before.map((b) => b.id);
       patch(new Map(ids.map((id) => [id, { lead_status: status }])));
-      const res = await setLeadsStatus(ids, status, returnAt);
+      const res = await settled(setLeadsStatus(ids, status, returnAt));
       if (!res.ok) {
         restore(before);
         toast.show(tErr(res.error));
@@ -137,14 +150,15 @@ export function useLeadChanges(team: TeamMember[]) {
           restore(before);
           const groups = new Map<LeadStatus, string[]>();
           before.forEach((b) => groups.set(b.status, [...(groups.get(b.status) ?? []), b.id]));
-          await Promise.all([...groups].map(([s, groupIds]) => setLeadsStatus(groupIds, s)));
+          const results = await Promise.all([...groups].map(([s, groupIds]) => settled(setLeadsStatus(groupIds, s))));
           refresh(ids);
-          toast.show(t("undone"));
+          // A refused or failed Undo says so (the lists are read again either way), never "Undone".
+          toast.show(undoText(results));
         },
       };
       toast.show(changed < ids.length ? t("partlyChanged", { changed, total: ids.length }) : t("statusChanged", { count: changed }), undo);
     },
-    [patch, refresh, restore, t, tErr, toast],
+    [patch, refresh, restore, t, tErr, toast, undoText],
   );
 
   const changeOwner = useCallback(
@@ -152,7 +166,7 @@ export function useLeadChanges(team: TeamMember[]) {
       const ids = before.map((b) => b.id);
       const owner = team.find((m) => m.id === ownerId);
       patch(new Map(ids.map((id) => [id, { owner_id: ownerId, owner_first_name: owner?.first_name ?? null, owner_last_name: owner?.last_name ?? null }])));
-      const res = await setLeadsOwner(ids, ownerId);
+      const res = await settled(setLeadsOwner(ids, ownerId));
       if (!res.ok) {
         restore(before);
         toast.show(tErr(res.error));
@@ -165,14 +179,14 @@ export function useLeadChanges(team: TeamMember[]) {
           restore(before);
           const groups = new Map<string, string[]>();
           before.forEach((b) => groups.set(b.owner_id ?? "", [...(groups.get(b.owner_id ?? "") ?? []), b.id]));
-          await Promise.all([...groups].map(([o, groupIds]) => setLeadsOwner(groupIds, o || null)));
+          const results = await Promise.all([...groups].map(([o, groupIds]) => settled(setLeadsOwner(groupIds, o || null))));
           refresh(ids);
-          toast.show(t("undone"));
+          toast.show(undoText(results));
         },
       };
       toast.show(t("ownerChanged", { count: res.data.changed }), undo);
     },
-    [patch, refresh, restore, t, tErr, team, toast],
+    [patch, refresh, restore, t, tErr, team, toast, undoText],
   );
 
   return { changeStatus, changeOwner };
