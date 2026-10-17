@@ -348,7 +348,9 @@ export function useDealActions(opts: { order?: SortOrder; stepUp?: { requireFres
     async (card: DealCard, fields: UpdateField[], values: { title?: string | null; value?: string | null; expectedClose?: string | null; fulfilment?: Fulfilment | null; contactId?: string | null; ownerId?: string | null }): Promise<UpdateResult | null> => {
       let res: ActionResult<UpdateResult>;
       try {
-        res = await updateDeal({ id: card.id, version: versions.get(card.id) ?? card.version, fields, ...values });
+        // The newer of this tab's last answer and the card on screen: a colleague's edit read since (the sheet, a
+        // refetch) is newer than the version a move of ours left in the map, which would be a false conflict.
+        res = await updateDeal({ id: card.id, version: Math.max(versions.get(card.id) ?? 0, card.version), fields, ...values });
       } catch {
         res = { ok: false, error: "unavailable" };
       }

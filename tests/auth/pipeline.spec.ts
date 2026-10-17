@@ -950,3 +950,35 @@ test("failed_move_rolls_back_its_own_card_only: another deal moved meanwhile sta
   expect(errors.filter((e) => !/ERR_FAILED|Failed to fetch|Failed to load resource/.test(e))).toEqual([]);
   await context.close();
 });
+
+test("field_edit_after_own_move_and_a_colleagues_edit_needs_no_conflict_round_trip (bugs audit M6)", async ({ browser }) => {
+  const deal = makeDeal({ title: `Versions ${run}` });
+  const { context, page, errors } = await open(browser);
+  await gotoBoard(page);
+  await mainOf(page, deal).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => stageOf(deal)).toBe("qualified");
+  await expect(toast(page)).toContainText("Moved to Qualified");
+  // A colleague changes the value since (the version goes up; the superuser's write skips the guard, so it is bumped
+  // here as update_deal would).
+  sql(`update public.deals set value = 999, version = version + 1 where id = '${deal}'`);
+  // The sheet reads the deal as it is now (the colleague's value), and the title is edited there.
+  const updates: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.headers()["next-action"] && r.postData()?.includes('"fields":["title"]')) updates.push(r.postData() ?? "");
+  });
+  // Opened from the card in this tab (a reload would forget the version the move left behind).
+  await mainOf(page, deal).focus();
+  await page.keyboard.press("Enter");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByLabel("Value")).toHaveValue(/999/);
+  await sheet.getByLabel("What’s being sold").fill(`Versions renamed ${run}`);
+  await sheet.getByLabel("What’s being sold").press("Enter");
+  await expect(toast(page)).toContainText("Saved");
+  expect(sql(`select title from public.deals where id = '${deal}'`)).toBe(`Versions renamed ${run}`);
+  // One request: the version sent is the one on screen, not the older one this tab's move left behind (which the
+  // database refused as a conflict before the sheet sent it again).
+  expect(updates).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await context.close();
+});
