@@ -68,7 +68,7 @@ export function LowStockCard({ lowStock, loading, onRetry }: { lowStock: LowStoc
                 <ul className="-mx-2 flex flex-col">
                   {lowStock.sample.map((item) => (
                     <li key={item.id} className="flex min-h-14 min-w-0 flex-col justify-center px-2 py-2 md:min-h-12">
-                      <span className="truncate text-sm font-medium">{item.name}</span>
+                      <span className="truncate text-sm">{item.name}</span>
                       <span className="font-mono text-xs break-words">
                         {t("available", { available: format.number(item.available), reorder: format.number(item.reorder_point) })}
                       </span>

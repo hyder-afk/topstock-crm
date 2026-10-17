@@ -41,7 +41,7 @@ function Row({ item, onOpen }: { item: AttentionItem; onOpen: (id: string) => vo
         className="flex min-h-14 w-full items-center gap-3 rounded-md px-2 text-left transition-[background-color,scale] duration-150 hover:bg-muted active:scale-[0.99] md:min-h-12"
       >
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium">
+          <span className="truncate text-sm">
             {item.company_name}
             <span className="font-normal text-muted-foreground"> · {tStage(`short.${item.stage}`)}</span>
           </span>
