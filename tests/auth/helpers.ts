@@ -151,6 +151,25 @@ export async function fullSession(browser: import("@playwright/test").Browser, e
   return state;
 }
 
+// Access tokens last 15 minutes (jwt_expiry 900, Haider's decision 9 of 16 Oct 2026) and auth-js renews a token 90 s
+// before it ends. A saved session goes stale in two ways: contexts built from it after its token expires all renew
+// with the same refresh token (the first rotates it, the later ones are refused and land on /login), and a page whose
+// clock is moved ahead (clock.fastForward) sees its token as expired and its server calls fail (queue.spec
+// claims_end_cards_leave on CI, a5b2fdb). `youngSession` returns `state` while its access token outlives `aheadMs` (the
+// clock jump the test makes) by the renewal margin plus 2 minutes for the test itself, and otherwise signs in again.
+export async function youngSession(
+  browser: import("@playwright/test").Browser,
+  state: Awaited<ReturnType<BrowserContext["storageState"]>>,
+  who: { email: string; password: string; secret: string },
+  aheadMs = 0,
+) {
+  const { exp } = jwtPayload(sessionFromCookies(state.cookies).access_token);
+  const left = (exp ?? 0) * 1000 - Date.now();
+  if (left - aheadMs > 90_000 + 120_000) return state;
+  console.log(`youngSession: ${who.email.split("@")[0]} signed in again (token had ${Math.round(left / 1000)} s left, clock jump ${aheadMs / 1000} s)`);
+  return fullSession(browser, who.email, who.password, who.secret);
+}
+
 // The signed-in page is interactive once React has hydrated: the dock has measured its sections (the bead shows), and
 // two more frames let the remaining effects (the keyboard shortcuts) attach. Keys pressed earlier go nowhere; WebKit in
 // CI and a 20x-throttled Chromium both showed it.

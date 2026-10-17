@@ -31,7 +31,7 @@ This file embeds the whole project plan. Your first job is to unpack it into the
 - **Plain language.** No jargon without a six-word explanation. He knows sales and what the product should feel like.
 - **He judges by seeing.** After any UI step, take screenshots (Playwright) and tell him the file paths, and start the dev server so he can open the app in the browser pane. Expect feedback as phone screenshots.
 - **Be honest** about cost, limits and time, even when it is not what he hoped. He has accepted corrections before.
-- **Money:** budget is $0 beyond Claude Max and Vercel Pro ($20/month). Warn before anything that could cost money and offer the free route.
+- **Money:** budget is $0 beyond Claude Max (Vercel Hobby; Pro declined 16 Oct 2026, go-live decision 4). Warn before anything that could cost money and offer the free route.
 - **Ask** before anything irreversible (deleting data, rotating keys, force-pushing, upgrading plans). Otherwise take the obvious option and say which one you took.
 - **Secrets and real data never enter a session.** Do not ask Haider to paste keys, passwords, the real lead CSV or real stock sheets. Keys go into `.env.local` (git-ignored) or Vercel/Supabase settings by Haider himself. If he pastes a secret by mistake, tell him to rotate it and do not repeat it.
 
@@ -83,7 +83,7 @@ Print this checklist for Haider, one item at a time, and wait for "done" after e
 
 1. **GitHub**: create a **private** repository `topstock-crm`, turn on two-factor authentication. Then add it as the remote and push `main`.
 2. **Supabase**: create two projects, `topstock-dev` and `topstock-prod`, both in an **EU region (Paris `eu-west-3` or Frankfurt `eu-central-1`)**; region cannot be changed later. Turn on MFA on the Supabase account. Haider gives you only the **dev project reference** (the short id in the dashboard URL), never keys.
-3. **Vercel**: create the account (Hobby for now; Pro before the first live deploy), MFA on, set the function region to Paris (`cdg1`) or Frankfurt (`fra1`) when the project is imported.
+3. **Vercel**: create the account (Hobby; Pro declined 16 Oct 2026, go-live decision 4 in `docs/go-live.md`), MFA on, set the function region to Paris (`cdg1`) or Frankfurt (`fra1`) when the project is imported.
 4. **Node.js** installed (checked in the pre-flight).
 5. **Zoom** (not needed until Release 3): paid plan with cloud recording and audio transcripts, to be verified in Zoom settings before Day 14.
 6. MFA on the email accounts of Haider, Henri and Kais.
@@ -154,6 +154,10 @@ The split command must produce files with exactly these sizes (`wc -c`):
 ---
 
 # Embedded files (written by the split command; do not edit by hand here)
+
+> **Note (16 Oct 2026):** these copies are older than the files in `docs/`; where they differ, `docs/` wins. In
+> particular, "Vercel Pro ($20/month)" below is superseded by go-live decision 4 (`docs/go-live.md`): production
+> stays on Vercel Hobby, Pro declined; the options are in `docs/evidence/day8/hosting-options.md`.
 
 <<<FILE CLAUDE.md>>>
 # TopStock Wholesale CRM + IMS

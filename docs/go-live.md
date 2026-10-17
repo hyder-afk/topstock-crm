@@ -11,17 +11,16 @@ rows 2, 4, 8, 29, 30, 35, 43, 44 and 46, section 12 (Gate 1, "Backups and keep-a
 
 | # | Decision | Parts |
 |---|---|---|
-| 1 | **No Vercel Pro.** Production stays on Vercel's free Hobby plan for now; the hosting question stays open (decision 4 below) | B |
+| 1 | **No Vercel Pro.** Production stays on Vercel's free Hobby plan for now; hosting decided the same day: "Stay on vercel for now" (decision 4 below) | B |
 | 2 | **Yes:** set up production Supabase (`topstock-prod`, account B), your own steps | C, D, E, F (up to your own account and two-factor) |
 | 3 | **Yes:** backups, restore test, keep-alive, and the orphan sweeper's dry runs | G, H, I, I2 |
 | 4 | **Later:** the real data import, "when everything is ready" | J (deferred) |
 | 5 | **Later:** inviting Henri and Kais, "when everything is ready" | K (deferred) |
 
-**So, in two sessions:** **now** decisions 1 and 9, parts A, B, C, D (and optionally G1 with G2 step 1), I3.1 and
+**So, in two sessions:** **now** decision 1 (decision 9 is decided: 900 seconds, already set by you on 16 Oct), parts A, B, C, D (and optionally G1 with G2 step 1), I3.1 and
 I3.2; **from 31 Oct** parts E, F, the rest of G, then H, I, I2 and I3.3 (next section explains why). **Not now:**
-parts J and K. Before either of them: Claude comes back with hosting options, free ones first, with what each costs
-and changes (decision 4); the daily security digest is running (part I3.3); and, for part K, the email sender question
-is answered (decision 2).
+parts J and K. Before either of them: the daily security digest is running (part I3.3) and, for part K, the email
+sender question is answered (decision 2). Hosting is decided (decision 4: Vercel Hobby for now).
 
 ### GitHub Actions minutes (until 31 Oct)
 
@@ -31,13 +30,14 @@ sweep-lead-files) can run before then. topstock-crm is public, so its own CI use
 working.
 
 **Now (no topstock-ops workflow runs):**
-- decisions 1 and 9, then parts A and B;
+- decision 1 (decision 9 is decided), then parts A and B;
 - C1 to C6. Pasting migrate-prod in C6 is fine, because it only runs when you start it by hand: **do not start it**;
 - all of part D;
 - optionally G1 and G2 step 1 (the key pair and the `AGE_PUBLIC_KEY` secret);
 - I3.1 and I3.2.
 
-Meanwhile Claude does the `jwt_expiry` PR (if you say yes to decision 9) and the hosting options (decision 4). The
+Meanwhile Claude does the `jwt_expiry` PR (decision 9: 900 seconds); the hosting options are compared in
+`docs/evidence/day8/hosting-options.md` (decision 4, decided: stay on Vercel for now). The
 security digest template (I3.3) is written (16 Oct 2026) and comes to you as its own PR; once merged, its migration is
 part of the SHA Claude confirms on 31 Oct.
 
@@ -77,8 +77,9 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2, I3.3).
 ## Decisions for you (answer Claude in one line each; recommendation in bold)
 
 1. **Production web address.** The Site URL in part D. **Keep `https://topstock-crm.vercel.app` for now**; a custom
-   domain (for example crm.topstockwholesale.com) can come later and changes part D's two URLs. If the hosting
-   answer (decision 4) moves the app, the address changes with it and Claude gives the new part D3 and F values.
+   domain (for example crm.topstockwholesale.com) can come later and changes part D's two URLs. Hosting stays on
+   Vercel for now (decision 4); if the app ever moves, the address changes with it and Claude gives the new part D3
+   and F values.
 2. **Email sender for production** (needed for part K, which is deferred). Supabase's built-in sender (what dev uses
    today) only delivers to members of account B's Supabase team, at most 2 emails an hour, and refuses the app's own
    bilingual email templates. So with it, **invitations and password-reset emails cannot reach Henri and Kais**.
@@ -92,17 +93,16 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2, I3.3).
    accounts start as reps. You change their role yourself in the app: **More > Team** (admins only; it asks for a
    code from your authenticator app when the last one is older than 10 minutes). Claude confirms in part A that this
    screen is merged and live. Never change roles with SQL in the production dashboard.
-4. **Hosting: Vercel Hobby for now, no Vercel Pro** (decided by you on 16 Oct 2026: "i dont want to get vercel pro extra
-   cost no"). Said plainly: Vercel's fair-use guidelines limit the Hobby plan to non-commercial, personal use
-   (https://vercel.com/docs/limits/fair-use-guidelines, "Commercial usage"). They count as commercial any deployment
-   used for the financial gain of anyone involved in it. A company's own sales CRM falls under that rule, so **the
-   hosting question stays open**. Vercel can enforce that rule, for example by asking for an upgrade or by pausing the
-   project (Master Plan section 3 already says Hobby "risks suspension"). The harm today is low: nothing real is on it,
-   and a pause would only take the login page offline; no data would be lost, because the data lives in Supabase, not in
-   Vercel. Parts A to I3 hold no real data and only your own account, so they go ahead. **Claude comes back with hosting
-   options, free ones first, with what each costs and changes, before part J (real data) and part K (invites)**, and you
-   decide then. Meanwhile: **Deployment Protection stays on Standard Protection** and one free Firewall rule is added
-   (part B).
+4. **Hosting: decided 16 Oct 2026, production stays on Vercel Hobby for now** (your words: "Stay on vercel for now";
+   earlier the same day: "i dont want to get vercel pro extra cost no"). Said plainly: Vercel's fair-use guidelines
+   limit the Hobby plan to non-commercial, personal use (https://vercel.com/docs/limits/fair-use-guidelines,
+   "Commercial usage"). They count as commercial any deployment used for the financial gain of anyone involved in
+   it, and a company's own sales CRM falls under that rule. **You accept that risk:** Vercel may ask for an upgrade or
+   pause the project (Master Plan section 3 already says Hobby "risks suspension"); a pause takes the app offline but
+   loses no data, because the data lives in Supabase, not in Vercel. The option comparison is in
+   `docs/evidence/day8/hosting-options.md`. If Vercel ever asks for an upgrade or pauses the project, Claude plans the move
+   (recommended: Cloudflare Workers Paid, about $5 a month) as its own step. Meanwhile: **Deployment Protection stays
+   on Standard Protection** and one free Firewall rule is added (part B).
 5. **Leaked password protection** (Supabase rejects passwords known from breaches) exists only on Supabase's paid
    plan. **Stay on Free for now** (decided 15 Oct 2026; the setting stays off; passwords are 12+ characters with mixed
    types plus two-factor) unless you want to pay for Supabase Pro, which also removes the need for keep-alive.
@@ -115,15 +115,16 @@ I3.1, I3.2) and about 2 hours from 31 Oct (E, F, G, H, I, I2, I3.3).
    in account B.
 8. **Keep-alive once a day** (not every 3 days): Supabase says a few database requests each day keeps a Free
    project awake. It is free.
-9. **How long a sign-in token lasts in production (`jwt_expiry`)**, left open on 15 Oct 2026 for go-live (log:
-   "jwt_expiry 60 to 15 min is decided at go-live"). Today it is 3600 seconds (1 hour) on dev and in
-   `supabase/config.toml`. After "Sign out of all devices", another device stays signed in until its token runs out (Day
-   7a residual R2). **Recommended: 900 seconds (15 minutes)**: it shrinks that window from 1 hour to 15 minutes;
-   Supabase's guide says the 1-hour default suits most apps and values under 5 minutes should not be used, and with
-   three people the extra token refreshes are far below the limit (150 per 5 minutes). If you say yes, Claude changes
-   `jwt_expiry` to 900 in `supabase/config.toml` in a small PR of its own (so dev and the tests use the same value as
-   production) and you type 900 in part D6. If you say no, part D6 stays at 3600 and R2 stays as recorded (up to 1
-   hour). Either way it can be changed later on the same screen.
+9. **How long a sign-in token lasts in production (`jwt_expiry`)**: **decided by you on 16 Oct 2026: "15 minutes",
+   900 seconds.** You already set Access token (JWT) expiry to 900 in the production dashboard that day, so part D6
+   is only a check. Claude's small PR sets `jwt_expiry = 900` in `supabase/config.toml` (dev gets it on the next
+   deploy-dev-db run; CI's local stack and the tests use it too) and the "Sign out of all devices" sheet now says
+   "within 15 minutes". Why: after "Sign out of all devices", another device stays signed in until its token runs
+   out (Day 7a residual R2); 900 shrinks that window from 1 hour to 15 minutes. Supabase's guide says the 1-hour
+   default suits most apps and values under 5 minutes should not be used; with three people the extra token
+   refreshes are far below the limit (150 per 5 minutes). It was left open on 15 Oct 2026 for go-live (log:
+   "jwt_expiry 60 to 15 min is decided at go-live"); until then it was 3600 seconds (1 hour). It can be changed later
+   on the same screen, together with `supabase/config.toml`.
 
 ---
 
@@ -160,11 +161,11 @@ newer one.
 
 Why: you decided on 16 Oct 2026 not to pay for Vercel Pro. Production stays on the free Hobby plan for now. Vercel's
 fair-use guidelines limit Hobby to non-commercial use (https://vercel.com/docs/limits/fair-use-guidelines), and that
-rule covers this business app, so the hosting question stays open. Vercel can enforce the rule (for example by
-asking for an upgrade or pausing the project); today that would only take the login page offline, and no data would
-be lost, because the data lives in Supabase. **Claude comes back with hosting options, free ones first, with what
-each costs and changes, before part J (real data) and part K (invites).** Nothing in this part costs money; do not
-upgrade anything.
+rule covers this business app. You decided on 16 Oct 2026 to stay on Vercel for now and accept that risk (decision 4):
+Vercel can enforce the rule (for example by asking for an upgrade or pausing the project); a pause would take the app
+offline, and no data would be lost, because the data lives in Supabase. The options are compared in
+`docs/evidence/day8/hosting-options.md`; if Vercel ever acts, Claude plans the move (recommended: Cloudflare Workers
+Paid, about $5 a month) as its own step. Nothing in this part costs money; do not upgrade anything.
 
 ### B1. Deployment Protection
 1. Go to vercel.com and sign in. If Vercel offers Pro or a trial anywhere, decline it.
@@ -208,7 +209,7 @@ screen asks for a card or an upgrade, stop and tell Claude.
 requests it logged as over the limit (the number only, never addresses). If it is 0 or close, edit the rule, change
 the action from Log to **Default (429)**, **Save Rule** > **Review Changes** > **Publish**.
 
-If production moves away from Vercel later (decision 4), this rule stays behind with Vercel, and Claude gives the
+If production ever moves away from Vercel (decision 4: only if Vercel asks for an upgrade or pauses it), this rule stays behind with Vercel, and Claude gives the
 equivalent step for the new host.
 
 **Done when:** Standard Protection shown, the preview shows Vercel's log-in page, and the rule is published.
@@ -353,9 +354,12 @@ you choose decision 2 (a), Claude gives separate steps for the SMTP sender, the 
 ### D6. Authentication > Sessions (tokens)
 Supabase's guide puts the access token expiry on the Auth **Sessions** page, and refresh token reuse under that
 page's advanced settings. If a name differs, look for "JWT expiry" or "access token expiry".
+**Access token (JWT) expiry: you already set it to 900 on 16 Oct 2026 (decision 9).** On 31 Oct you only check that
+it still says **900**; change nothing. If it shows another number, set 900 again and tell Claude.
+
 | Setting | Value | config.toml |
 |---|---|---|
-| Access token (JWT) expiry | **3600** seconds, or **900** if you said yes to decision 9 | `jwt_expiry = 3600` (900 after Claude's PR) |
+| Access token (JWT) expiry | **900** seconds (decision 9; set by you on 16 Oct 2026, only checked on 31 Oct) | `jwt_expiry = 900` |
 | Detect and revoke compromised refresh tokens (refresh token rotation) | **ON** | `enable_refresh_token_rotation = true` |
 | Refresh token reuse interval | **10** seconds | `refresh_token_reuse_interval = 10` |
 
@@ -691,15 +695,16 @@ old. If it is red, the summary says why; the runbook's "When it is red" table sa
 **Where Gate 1 stands.** Done: the code part (16 Oct). Now: production settings (D) and access checked (I3.1,
 I3.2). **Waiting for 31 Oct** (GitHub Actions minutes): the database in production and its checks (E, F5), backups
 (G), the restore test (H), keep-alive (I), the sweeper's dry runs (I2) and the security digest (I3.3; its template
-is written, waiting for its PR to merge). **Still open as well, so Gate 1 is not fully passed:** the hosting decision
-(decision 4). Real data (part J) waits for all of these, and for your "when everything is ready".
+is written, waiting for its PR to merge). Hosting is decided (decision 4, 16 Oct 2026: Vercel Hobby for now, the
+fair-use risk accepted), so it no longer holds Gate 1 open. Real data (part J) waits for all of these, and for your
+"when everything is ready".
 
 ---
 
 ## Part J. Real data: the 30,000 leads and the stock sheets (DEFERRED)
 
 **Deferred** (your decision of 16 Oct 2026: "not right now when everything is ready"). **Do not start this part.**
-Before it: the hosting answer (decision 4), the security digest running green (part I3.3), Gate 1 fully passed, and Claude's
+Before it: the security digest running green (part I3.3), Gate 1 fully passed, and Claude's
 "part J ready" with a fresh go-ahead from you. The steps below stay as written for that day.
 
 Why: the files go from your computer straight into the app. They never go to Claude, GitHub or any cloud session.
@@ -733,7 +738,7 @@ match. Delete local copies of the files you no longer need.
 ## Part K. Invite Henri and Kais (DEFERRED)
 
 **Deferred** (your decision of 16 Oct 2026: "when everything is ready"). **Do not start this part.** Before it: part J
-done and Gate 1 fully passed, the hosting answer (decision 4), your choice of email sender (decision 2) and Claude's
+done and Gate 1 fully passed, your choice of email sender (decision 2) and Claude's
 "part K ready". The steps below
 stay as written for that day.
 
@@ -778,10 +783,8 @@ If it says "You are the last admin", you tried to change your own role: leave yo
   the production project reference or anything else from account B, lead or stock rows, the files, screenshots that
   show data, IP addresses from the Firewall page.
 - After the first session, Claude logs which parts are done; after the 31 Oct session (parts E to I3.3), Claude logs
-  "go-live parts A to I3 done" in docs/log.md and lists what stays open: hosting (decision 4, Claude's hosting
-  options, free ones first, before parts J and K), the security digest (I3.3) if it is not green yet, parts J and K (deferred), the
-  email sender (decision 2), backup storage (decision 6), later restore tests (decision 7), `jwt_expiry` if still
-  open (decision 9), the sweeper's switch-on after its dry-run week (I2 step 7), the Firewall rule's switch from Log
+  "go-live parts A to I3 done" in docs/log.md and lists what stays open: the security digest (I3.3) if it is not green yet, parts J and K (deferred), the
+  email sender (decision 2), backup storage (decision 6), later restore tests (decision 7), the sweeper's switch-on after its dry-run week (I2 step 7), the Firewall rule's switch from Log
   to 429 (B3), and switching the client stock link on in production (off until you decide, after Gate 1).
 
 ---
@@ -803,7 +806,7 @@ Variables (Settings > Secrets and variables > Actions > Variables): `SWEEPER_SHA
 sweeper script runs) and `SWEEP_APPLY` (`no` for the dry-run week, then `yes`), both part I2.
 
 Nothing for production is stored in Vercel except the two public values of part F1 (the production address and the
-publishable key). Hosting stays on Vercel Hobby until decision 4 is answered.
+publishable key). Hosting stays on Vercel Hobby (decision 4, decided 16 Oct 2026).
 
 ### Templates (in topstock-crm, pasted into topstock-ops)
 - `docs/ops-templates/migrate-prod.yml`: by hand; types MIGRATE; checks out a commit on main read-only; proves
@@ -841,7 +844,7 @@ publishable key). Hosting stays on Vercel Hobby until decision 4 is answered.
 | 43 | Security monitoring | I3.3 (template written 16 Oct 2026; pasted from 31 Oct) |
 | 44 | Backups and restore | G, H, I (and restore-production.md) |
 | 46 | Security headers on the production address | F5 check 2 |
-| Gate 1 | Hosting decision | decision 4 (open) |
+| Gate 1 | Hosting decision | decision 4 (decided 16 Oct 2026: Vercel Hobby for now; `docs/evidence/day8/hosting-options.md`) |
 
 ### Pages checked (Context7, 16 Oct 2026)
 - For part I3.3 (security digest): Supabase guides (`/websites/supabase_guides`) Auth Audit Logs (what is logged; the
